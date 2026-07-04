@@ -5,6 +5,26 @@ export type ClientOptions = {
 };
 
 /**
+ * Brand
+ *
+ * The brand a product belongs to, with its source website(s).
+ */
+export type Brand = {
+    /**
+     * Id
+     */
+    id?: number | null;
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Website Urls
+     */
+    website_urls?: Array<string>;
+};
+
+/**
  * ExampleResponse
  *
  * Response payload returned by the example endpoint.
@@ -48,6 +68,375 @@ export type HealthResponse = {
      * Database
      */
     database: 'up';
+};
+
+/**
+ * ItemPatchRequest
+ *
+ * Editable staged fields (review-time corrections).
+ */
+export type ItemPatchRequest = {
+    /**
+     * Staged Title
+     */
+    staged_title?: string | null;
+    /**
+     * Staged Description
+     */
+    staged_description?: string | null;
+    /**
+     * Staged Meta
+     */
+    staged_meta?: string | null;
+    /**
+     * Staged Images Json
+     */
+    staged_images_json?: Array<unknown> | null;
+    /**
+     * Staged Weights Json
+     */
+    staged_weights_json?: Array<unknown> | null;
+};
+
+/**
+ * ItemPublic
+ */
+export type ItemPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Job Id
+     */
+    job_id: number;
+    /**
+     * Tillin Product Id
+     */
+    tillin_product_id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Source Url
+     */
+    source_url?: string | null;
+    /**
+     * Source Method
+     */
+    source_method?: string | null;
+    /**
+     * Match Score
+     */
+    match_score?: number | null;
+    /**
+     * Staged Title
+     */
+    staged_title?: string | null;
+    /**
+     * Staged Description
+     */
+    staged_description?: string | null;
+    /**
+     * Staged Meta
+     */
+    staged_meta?: string | null;
+    /**
+     * Staged Images Json
+     */
+    staged_images_json?: Array<unknown> | null;
+    /**
+     * Staged Weights Json
+     */
+    staged_weights_json?: Array<unknown> | null;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Attempt Count
+     */
+    attempt_count: number;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * JobCounts
+ */
+export type JobCounts = {
+    /**
+     * Total
+     */
+    total?: number;
+    /**
+     * Pending
+     */
+    pending?: number;
+    /**
+     * Processing
+     */
+    processing?: number;
+    /**
+     * Ready For Review
+     */
+    ready_for_review?: number;
+    /**
+     * Approved
+     */
+    approved?: number;
+    /**
+     * Applied
+     */
+    applied?: number;
+    /**
+     * Rejected
+     */
+    rejected?: number;
+    /**
+     * Failed
+     */
+    failed?: number;
+};
+
+/**
+ * JobCreateRequest
+ */
+export type JobCreateRequest = {
+    selection: JobSelection;
+    /**
+     * Config
+     */
+    config?: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * JobPublic
+ */
+export type JobPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Selection Json
+     */
+    selection_json: {
+        [key: string]: unknown;
+    };
+    /**
+     * Config Json
+     */
+    config_json: {
+        [key: string]: unknown;
+    };
+    counts: JobCounts;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * JobSelection
+ *
+ * Product selection: explicit Tillin ids or a tag (exactly one).
+ */
+export type JobSelection = {
+    /**
+     * Ids
+     */
+    ids?: Array<number> | null;
+    /**
+     * Tag
+     */
+    tag?: string | null;
+};
+
+/**
+ * LoginRequest
+ *
+ * Credentials submitted to the login endpoint.
+ */
+export type LoginRequest = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Password
+     */
+    password: string;
+};
+
+/**
+ * PaginatedResponse[JobPublic]
+ */
+export type PaginatedResponseJobPublic = {
+    /**
+     * Items
+     */
+    items: Array<JobPublic>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+    /**
+     * Total Pages
+     */
+    total_pages: number;
+};
+
+/**
+ * PaginatedResponse[Product]
+ */
+export type PaginatedResponseProduct = {
+    /**
+     * Items
+     */
+    items: Array<Product>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+    /**
+     * Total Pages
+     */
+    total_pages: number;
+};
+
+/**
+ * Product
+ *
+ * Canonical product as consumed by the enrichment/intake engine.
+ */
+export type Product = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Title
+     */
+    title?: string | null;
+    /**
+     * Reference Code
+     */
+    reference_code?: string | null;
+    brand?: Brand | null;
+    /**
+     * Season
+     */
+    season?: string | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+    /**
+     * Department
+     */
+    department?: string | null;
+    /**
+     * Variants
+     */
+    variants?: Array<ProductVariant>;
+    /**
+     * Images
+     */
+    images?: Array<ProductImage>;
+};
+
+/**
+ * ProductImage
+ *
+ * An image associated with a product.
+ */
+export type ProductImage = {
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Position
+     */
+    position?: number | null;
+};
+
+/**
+ * ProductVariant
+ *
+ * A single sellable variant (style x color x size) of a product.
+ */
+export type ProductVariant = {
+    /**
+     * Id
+     */
+    id?: number | null;
+    /**
+     * Sku
+     */
+    sku?: string | null;
+    /**
+     * Barcode
+     */
+    barcode?: string | null;
+    /**
+     * Weight
+     */
+    weight?: number | null;
+    /**
+     * Weight Unit
+     */
+    weight_unit?: string | null;
+};
+
+/**
+ * UserPublic
+ *
+ * Public-facing representation of a user.
+ */
+export type UserPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Full Name
+     */
+    full_name?: string | null;
+    /**
+     * Is Active
+     */
+    is_active: boolean;
 };
 
 /**
@@ -171,3 +560,324 @@ export type ExampleReadExampleResponses = {
 };
 
 export type ExampleReadExampleResponse = ExampleReadExampleResponses[keyof ExampleReadExampleResponses];
+
+export type AuthLoginData = {
+    body: LoginRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/login';
+};
+
+export type AuthLoginErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AuthLoginError = AuthLoginErrors[keyof AuthLoginErrors];
+
+export type AuthLoginResponses = {
+    /**
+     * Successful Response
+     */
+    200: UserPublic;
+};
+
+export type AuthLoginResponse = AuthLoginResponses[keyof AuthLoginResponses];
+
+export type AuthLogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/logout';
+};
+
+export type AuthLogoutResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AuthLogoutResponse = AuthLogoutResponses[keyof AuthLogoutResponses];
+
+export type AuthReadCurrentUserData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/me';
+};
+
+export type AuthReadCurrentUserErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AuthReadCurrentUserError = AuthReadCurrentUserErrors[keyof AuthReadCurrentUserErrors];
+
+export type AuthReadCurrentUserResponses = {
+    /**
+     * Successful Response
+     */
+    200: UserPublic;
+};
+
+export type AuthReadCurrentUserResponse = AuthReadCurrentUserResponses[keyof AuthReadCurrentUserResponses];
+
+export type ProductsListProductsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Tag
+         *
+         * Select products by tag
+         */
+        tag?: string | null;
+        /**
+         * Ids
+         *
+         * Select products by id (repeatable)
+         */
+        ids?: Array<number> | null;
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Per Page
+         */
+        per_page?: number;
+    };
+    url: '/products';
+};
+
+export type ProductsListProductsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsListProductsError = ProductsListProductsErrors[keyof ProductsListProductsErrors];
+
+export type ProductsListProductsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaginatedResponseProduct;
+};
+
+export type ProductsListProductsResponse = ProductsListProductsResponses[keyof ProductsListProductsResponses];
+
+export type JobsListJobsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/jobs';
+};
+
+export type JobsListJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsListJobsError = JobsListJobsErrors[keyof JobsListJobsErrors];
+
+export type JobsListJobsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaginatedResponseJobPublic;
+};
+
+export type JobsListJobsResponse = JobsListJobsResponses[keyof JobsListJobsResponses];
+
+export type JobsCreateEnrichmentJobData = {
+    body: JobCreateRequest;
+    path?: never;
+    query?: never;
+    url: '/jobs';
+};
+
+export type JobsCreateEnrichmentJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsCreateEnrichmentJobError = JobsCreateEnrichmentJobErrors[keyof JobsCreateEnrichmentJobErrors];
+
+export type JobsCreateEnrichmentJobResponses = {
+    /**
+     * Successful Response
+     */
+    201: JobPublic;
+};
+
+export type JobsCreateEnrichmentJobResponse = JobsCreateEnrichmentJobResponses[keyof JobsCreateEnrichmentJobResponses];
+
+export type JobsReadJobData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/jobs/{job_id}';
+};
+
+export type JobsReadJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsReadJobError = JobsReadJobErrors[keyof JobsReadJobErrors];
+
+export type JobsReadJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobPublic;
+};
+
+export type JobsReadJobResponse = JobsReadJobResponses[keyof JobsReadJobResponses];
+
+export type ItemsReadItemData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}';
+};
+
+export type ItemsReadItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsReadItemError = ItemsReadItemErrors[keyof ItemsReadItemErrors];
+
+export type ItemsReadItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsReadItemResponse = ItemsReadItemResponses[keyof ItemsReadItemResponses];
+
+export type ItemsPatchItemData = {
+    body: ItemPatchRequest;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}';
+};
+
+export type ItemsPatchItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsPatchItemError = ItemsPatchItemErrors[keyof ItemsPatchItemErrors];
+
+export type ItemsPatchItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsPatchItemResponse = ItemsPatchItemResponses[keyof ItemsPatchItemResponses];
+
+export type ItemsApproveItemData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/approve';
+};
+
+export type ItemsApproveItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsApproveItemError = ItemsApproveItemErrors[keyof ItemsApproveItemErrors];
+
+export type ItemsApproveItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsApproveItemResponse = ItemsApproveItemResponses[keyof ItemsApproveItemResponses];
+
+export type ItemsRejectItemData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/reject';
+};
+
+export type ItemsRejectItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsRejectItemError = ItemsRejectItemErrors[keyof ItemsRejectItemErrors];
+
+export type ItemsRejectItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsRejectItemResponse = ItemsRejectItemResponses[keyof ItemsRejectItemResponses];

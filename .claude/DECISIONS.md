@@ -72,3 +72,37 @@ Job-completion emails go through Brevo (`BREVO_API_KEY`, future
 
 The template came from a codex-based workflow; this repo uses Claude. All
 `.codex/` references migrated to `.claude/` (this directory).
+
+## 2026-07-04 — Queue: worker-terminal rollup, retry without backoff (yet)
+
+`enrichment_item` is claimed FIFO via `SELECT ... FOR UPDATE SKIP LOCKED`
+(SQLite in tests ignores the lock, keeping logic testable). Failures requeue
+immediately up to 3 attempts, then `failed`; the job rolls up to
+completed/partial/failed once no item is pending/processing. Exponential
+backoff (tenacity) and per-host rate limiting are deliberately deferred to
+Phase 2 (marked TODO in `app/jobs/queue.py` / `worker.py`). The
+`backend/worker.py` entrypoint refuses to start until the real pipeline is
+wired, rather than silently draining the queue.
+
+## 2026-07-04 — Claude client: official SDK, not raw httpx
+
+`clients/claude.py` uses the official `anthropic` SDK (per claude-api skill
+guidance) with an injectable `http_client` so tests mock at the httpx
+transport level — consistent with the other clients, zero real calls in the
+suite. Copy generation uses structured outputs (`output_config.format`
+json_schema), and the default model is `claude-sonnet-5` (plan-locked); no
+sampling parameters are sent (rejected on Sonnet 5).
+
+## 2026-07-04 — Frontend: hand-written input/label ui components
+
+The shadcn-svelte CLI wasn't used to add input/label (network/interactive);
+minimal hand-written components matching the "lyra" style (rounded-none,
+h-9, text-xs) live in `src/lib/components/ui/{input,label}/`. If the CLI is
+run later for the same components, diff against these before overwriting.
+
+## 2026-07-04 — Job creation by tag defers item expansion
+
+`POST /jobs` with `{tag}` stores the selection but creates zero items — the
+worker will expand tags into product ids via the Xano read path once real
+credentials exist (TODO in `api/services/enrichment.py`). Ids-based
+selections create items immediately.

@@ -9,6 +9,8 @@
   import { frontendEnv } from "./lib/env"
   import AppErrorFallback from "@/lib/components/app/AppErrorFallback.svelte"
   import HomePage from "./routes/HomePage.svelte"
+  import JobNewPage from "./routes/JobNewPage.svelte"
+  import LoginPage from "./routes/LoginPage.svelte"
   import MaintenancePage from "./routes/MaintenancePage.svelte"
   import NotFoundPage from "./routes/NotFoundPage.svelte"
 
@@ -32,6 +34,8 @@
     {:else}
       <Router>
         <Route path="/" component={HomePage} {appName} />
+        <Route path="/login" component={LoginPage} {appName} />
+        <Route path="/jobs/new" component={JobNewPage} {appName} />
         <Route path="*" component={NotFoundPage} {appName} />
       </Router>
     {/if}
