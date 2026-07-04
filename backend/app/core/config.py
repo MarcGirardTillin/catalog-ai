@@ -68,6 +68,15 @@ class Settings(BaseSettings):
     XANO_SERVICE_TOKEN: str = ""
     XANO_TIMEOUT_SECONDS: float = 30.0
 
+    # External service clients (all optional: empty key = integration disabled).
+    ANTHROPIC_API_KEY: str = ""
+    AI_DEFAULT_MODEL: str = "claude-sonnet-5"
+    PHOTOROOM_API_KEY: str = ""
+    FIRECRAWL_API_KEY: str = ""
+    BREVO_API_KEY: str = ""
+    BREVO_SENDER_EMAIL: str = ""
+    BREVO_SENDER_NAME: str = "CatalogAI"
+
     @property
     def xano_configured(self) -> bool:
         """Whether the Xano read path has the base URL and token it needs."""
