@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
@@ -48,11 +49,13 @@ async def handle_http_exception(_: Request, exc: HTTPException) -> JSONResponse:
 async def handle_validation_exception(
     _: Request, exc: RequestValidationError
 ) -> JSONResponse:
+    # jsonable_encoder: pydantic puts the raw exception object in `ctx` when a
+    # model_validator raises (not JSON-serializable as-is).
     return _error_response(
         status_code=422,
         code="validation_error",
         message="Request validation failed",
-        detail=exc.errors(),
+        detail=jsonable_encoder(exc.errors()),
     )
 
 
