@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/nunito";
+@import "@fontsource/roboto/400.css";
+@import "@fontsource/roboto/500.css";
+@import "@fontsource/roboto/700.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Design tokens ported from the Tillin design system
+ * (github.com/MarcGirardTillin/tillin-design-system, src/tokens.ts).
+ * Shapes (radius, "lyra" shadcn-svelte style: rounded-none) are kept as-is —
+ * only colors, typography, and status/semantic colors are ported. */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  /* Status colors for review-queue badges (enrichment_item / intake_line
+   * states) — ported from Tillin's `semantic` token group. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-draft: var(--draft);
+  --color-draft-foreground: var(--draft-foreground);
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+  --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
+  --font-title: "Nunito Variable", "Nunito", ui-sans-serif, sans-serif;
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* Tillin brand: Navy #150245 / Violet #716df6 / Lavande #d5d7fc. */
+  --background: #f4f4f4; /* gris100 — page canvas */
+  --foreground: #150245; /* ink */
+  --card: #ffffff;
+  --card-foreground: #150245;
+  --popover: #ffffff;
+  --popover-foreground: #150245;
+  --primary: #716df6; /* violet */
+  --primary-foreground: #ffffff;
+  --secondary: #eeedff; /* violetSoft */
+  --secondary-foreground: #5b56e0; /* violetDeep */
+  --muted: #ececf0; /* gris250 */
+  --muted-foreground: #9a9ab0;
+  --accent: #eeedff; /* violetSoft */
+  --accent-foreground: #5b56e0; /* violetDeep */
+  --destructive: #e2523c; /* danger */
+  --border: #dbdbdb; /* gris200 */
+  --input: #dbdbdb;
+  --ring: #716df6;
+
+  --success: #e3f6ec;
+  --success-foreground: #1f7a4d;
+  --info: #eeedff;
+  --info-foreground: #5b56e0;
+  --warning: #fff4e0; /* "sale" in the source tokens */
+  --warning-foreground: #a56a12;
+  --draft: #f0f0f4;
+  --draft-foreground: #6b6b82;
+}
+
+/* Dark palette: NOT part of the source Tillin design system (light-only
+ * today) — derived here from its navy/violet hues so the template's existing
+ * dark mode keeps working. Replace once Tillin defines an official dark
+ * variant. */
+.dark {
+  --background: #150245; /* navy */
+  --foreground: #f4f4fb;
+  --card: #2c1f5c; /* navyLine */
+  --card-foreground: #f4f4fb;
+  --popover: #2c1f5c;
+  --popover-foreground: #f4f4fb;
+  --primary: #716df6;
+  --primary-foreground: #ffffff;
+  --secondary: #2c1f5c;
+  --secondary-foreground: #d5d7fc; /* lavande */
+  --muted: #2c1f5c;
+  --muted-foreground: #9a94c9; /* navyMuted */
+  --accent: #2c1f5c;
+  --accent-foreground: #d5d7fc;
+  --destructive: #e2523c;
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: #716df6;
+
+  --success: oklch(0.4 0.08 155 / 30%);
+  --success-foreground: #8fe3b8; /* successUp */
+  --info: #2c1f5c;
+  --info-foreground: #d5d7fc;
+  --warning: oklch(0.4 0.08 70 / 30%);
+  --warning-foreground: #e0952c; /* saleDot */
+  --draft: #2c1f5c;
+  --draft-foreground: #9a9ab0;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-title;
+  }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+}

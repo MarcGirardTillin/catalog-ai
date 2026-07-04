@@ -1,0 +1,48 @@
+services:
+  db:
+    restart: "no"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  adminer:
+    restart: "no"
+    ports:
+      - "8080:8080"
+
+  backend:
+    restart: "no"
+    ports:
+      - "8000:8000"
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    # command: sleep infinity  # Infinite loop to keep container alive doing nothing
+    command:
+      - fastapi
+      - run
+      - --reload
+      - "app/main.py"
+    develop:
+      watch:
+        - path: ./backend
+          action: sync
+          target: /app/backend
+          ignore:
+            - ./backend/.venv
+            - .venv
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    # TODO: remove once coverage is done locally
+    volumes:
+      - ./backend/htmlcov:/app/backend/htmlcov
+
+  frontend:
+    restart: "no"
+    ports:
+      - "5173:80"
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+        - NODE_ENV=development

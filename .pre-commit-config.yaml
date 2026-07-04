@@ -1,0 +1,59 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-yaml
+        args:
+          - --unsafe
+      - id: mixed-line-ending
+        args:
+          - --fix=lf
+      - id: end-of-file-fixer
+        exclude: ^frontend/src/client/.*
+      - id: trailing-whitespace
+        exclude: ^frontend/src/client/.*
+  - repo: local
+    hooks:
+#      - id: local-biome-check
+#        name: biome check
+#        entry: npm run lint
+#        language: system
+#        types: [text]
+#        files: ^frontend/
+
+      - id: local-ruff-check
+        name: ruff check
+        entry: bash ./scripts/run-uv.sh --cwd backend bash scripts/lint.sh
+        require_serial: true
+        language: unsupported
+        types: [python]
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: local-ruff-format
+        name: ruff format
+        entry: bash ./scripts/run-uv.sh --cwd backend bash scripts/format.sh
+        require_serial: true
+        language: unsupported
+        types: [python]
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: local-mypy
+        name: mypy check
+        entry: bash ./scripts/run-uv.sh --cwd backend bash scripts/mypy.sh
+        require_serial: true
+        language: unsupported
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+#      - id: generate-frontend-sdk
+#        name: Generate Frontend SDK
+#        entry: bash ./scripts/generate-client.sh
+#        pass_filenames: false
+#        language: unsupported
+#        files: ^backend/.*$|^scripts/generate-client\.sh$

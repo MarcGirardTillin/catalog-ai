@@ -1,0 +1,24 @@
+server {
+  listen 8080;
+
+  location = /healthz {
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  location = /config.js {
+    root /usr/share/nginx/html;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate";
+    add_header Pragma "no-cache";
+    add_header Expires "0";
+    try_files $uri =404;
+  }
+
+  location / {
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+    try_files $uri /index.html =404;
+  }
+
+  include /etc/nginx/extra-conf.d/*.conf;
+}

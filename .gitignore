@@ -1,0 +1,23 @@
+node_modules/
+
+# Local IDE / tooling
+.idea/
+*.iml
+.venv/
+.pre-commit-cache/
+
+# Agent-local state (but keep the durable memory files versioned)
+.claude/*
+!.claude/DECISIONS.md
+!.claude/MISTAKES.md
+
+# Python cache
+__pycache__/
+
+# Env & secrets
+.env
+# .env.* # Uncomment this ligne in your repos
+secrets/
+.pem
+.key
+everyday-tasks/
