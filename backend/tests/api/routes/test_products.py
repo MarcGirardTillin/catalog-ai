@@ -23,6 +23,8 @@ def override_xano() -> Iterator[InstallXano]:
         def with_login(request: httpx.Request) -> httpx.Response:
             if request.url.path.endswith("/auth/login"):
                 return httpx.Response(200, json={"authToken": "jwt-token"})
+            if request.url.path.endswith("/brand"):
+                return httpx.Response(200, json=[])
             return handler(request)
 
         def dependency() -> XanoClient:

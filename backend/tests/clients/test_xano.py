@@ -33,10 +33,17 @@ TILLIN_PRODUCT = {
 }
 
 
+BRANDS = [
+    {"id": 1332, "title": "Gramicci", "brand_website": "https://gramicci.co.uk"},
+    {"id": 44, "title": "Multi", "website_urls": ["https://a.com", "https://b.com"]},
+]
+
+
 def _store(
     *,
     products: list[dict] | None = None,
     detail: dict | None = None,
+    brands: list[dict] | None = None,
     data_source: str = "",
 ) -> httpx.MockTransport:
     """Fake Xano: /auth/login issues a token, reads require the bearer."""
@@ -48,6 +55,8 @@ def _store(
         if path.endswith("/auth/login"):
             return httpx.Response(200, json={"authToken": "jwt-token"})
         assert request.headers.get("Authorization") == "Bearer jwt-token"
+        if path.endswith("/brand"):
+            return httpx.Response(200, json=BRANDS if brands is None else brands)
         if path.endswith(PRODUCTS_PATH):
             return httpx.Response(
                 200,
@@ -78,9 +87,12 @@ def test_search_maps_payload_and_sends_filters() -> None:
     captured: dict[str, httpx.Request] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/auth/login"):
+        path = request.url.path
+        if path.endswith("/auth/login"):
             return httpx.Response(200, json={"authToken": "jwt-token"})
-        captured["request"] = request
+        if path.endswith("/brand"):
+            return httpx.Response(200, json=BRANDS)
+        captured["request"] = request  # only the products request
         return httpx.Response(200, json={"items": [TILLIN_PRODUCT], "itemsTotal": 1})
 
     with _client(httpx.MockTransport(handler)) as client:
@@ -98,12 +110,47 @@ def test_search_maps_payload_and_sends_filters() -> None:
     assert product.id == 1911
     assert product.title == "Veste matelassée"
     assert product.reference_code == "AW25-VM01"
-    assert product.brand is not None and product.brand.id == 1332
     assert product.category == "Vestes"
     assert [v.sku for v in product.variants] == ["VM01-S", "VM01-M"]
     assert product.variants[0].barcode == "3600000000001"
     # Images come from variants; the shared src is de-duplicated.
     assert [image.url for image in product.images] == ["https://cdn.tillin/vm01-1.jpg"]
+    # Brand id resolved to name + website via the /brand map.
+    assert product.brand is not None
+    assert product.brand.id == 1332
+    assert product.brand.name == "Gramicci"
+    assert product.brand.website_urls == ["https://gramicci.co.uk"]
+
+
+def test_brand_map_resolves_name_and_urls_both_shapes() -> None:
+    # brand 1332 -> single `brand_website`; brand 44 -> `website_urls` list.
+    one = {"id": 1, "brand_id": 1332, "product_variants": []}
+    many = {"id": 2, "brand_id": 44, "product_variants": []}
+    with _client(_store(products=[one, many])) as client:
+        page = client.search_products()
+    by_id = {p.id: p for p in page.items}
+    assert by_id[1].brand is not None
+    assert by_id[1].brand.website_urls == ["https://gramicci.co.uk"]
+    assert by_id[2].brand is not None
+    assert by_id[2].brand.website_urls == ["https://a.com", "https://b.com"]
+
+
+def test_brand_map_failure_is_non_fatal() -> None:
+    # /brand returns 500 -> products keep brand_id only, no raise.
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        if path.endswith("/brand"):
+            return httpx.Response(500)
+        return httpx.Response(200, json={"items": [TILLIN_PRODUCT], "itemsTotal": 1})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        page = client.search_products()
+    assert page.items[0].brand is not None
+    assert page.items[0].brand.id == 1332
+    assert page.items[0].brand.name is None
+    assert page.items[0].brand.website_urls == []
 
 
 def test_get_product_returns_detail_and_404_is_none() -> None:

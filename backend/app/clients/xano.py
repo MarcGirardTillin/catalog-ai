@@ -11,6 +11,7 @@ test data). Raw Tillin field names are isolated in ``_map_*`` so the live
 contract lives in one place.
 """
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -22,7 +23,10 @@ from app.api.schemas import Brand, Product, ProductImage, ProductVariant
 
 PRODUCTS_PATH = "/products_with_pagination"
 PRODUCT_PATH = "/product"
+BRANDS_PATH = "/brand"
 LOGIN_PATH = "/auth/login"
+
+logger = logging.getLogger(__name__)
 
 
 class XanoError(AppException):
@@ -92,17 +96,47 @@ def _variant_images(variants: Sequence[Mapping[str, Any]]) -> list[ProductImage]
     return images
 
 
-def _map_product(raw: Mapping[str, Any]) -> Product:
-    """Map one raw Tillin product (list or detail shape) onto :class:`Product`.
+def _to_urls(value: Any) -> list[str]:
+    """Normalize a brand website field to a list of URLs.
 
-    Brand is carried as an id only — the Tillin product payload has no nested
-    brand and no website URL; the brand's source site(s) live in CatalogAI.
+    Accepts whatever the Tillin brand table holds: a single text field
+    (`brand_website`), a comma/space-separated string, or a native list of
+    strings (`website_urls`). Unknown shapes yield an empty list.
     """
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if v and str(v).strip()]
+    parts = str(value).replace(",", " ").split()
+    return [p for p in parts if p]
+
+
+def _map_brand(brand_id: Any, brands: Mapping[int, Mapping[str, Any]]) -> Brand | None:
+    """Resolve a product's `brand_id` to a canonical Brand (name + site URLs).
+
+    The Tillin product payload carries only `brand_id`; the brand's title and
+    website(s) come from the separately-fetched `/brand` map. Both a single
+    `brand_website` text field and a `website_urls` list are supported.
+    """
+    if not brand_id:
+        return None
+    info = brands.get(int(brand_id), {})
+    return Brand(
+        id=int(brand_id),
+        name=_first(info, "title", "name") if info else None,
+        website_urls=_to_urls(_first(info, "website_urls", "brand_website"))
+        if info
+        else [],
+    )
+
+
+def _map_product(
+    raw: Mapping[str, Any], brands: Mapping[int, Mapping[str, Any]] | None = None
+) -> Product:
+    """Map one raw Tillin product (list or detail shape) onto :class:`Product`."""
     variants_raw = [
         v for v in _as_list(raw.get("product_variants")) if isinstance(v, Mapping)
     ]
-    brand_id = _first(raw, "brand_id")
-    brand = Brand(id=brand_id) if brand_id else None
     category = raw.get("category")
     category_name = (
         _first(category, "title", "name") if isinstance(category, Mapping) else None
@@ -111,7 +145,7 @@ def _map_product(raw: Mapping[str, Any]) -> Product:
         id=_first(raw, "id", "product_id"),
         title=_first(raw, "title", "title_label"),
         reference_code=_first(raw, "product_reference_code"),
-        brand=brand,
+        brand=_map_brand(_first(raw, "brand_id"), brands or {}),
         category=category_name,
         variants=[_map_variant(v) for v in variants_raw],
         images=_variant_images(variants_raw),
@@ -143,6 +177,7 @@ class XanoClient:
             transport=transport,
         )
         self._token: str | None = None
+        self._brands: dict[int, Mapping[str, Any]] | None = None
 
     def __enter__(self) -> "XanoClient":
         return self
@@ -212,6 +247,25 @@ class XanoClient:
         except httpx.HTTPError as exc:
             raise XanoError("Xano is unreachable", code="xano_unavailable") from exc
 
+    def _brand_map(self) -> dict[int, Mapping[str, Any]]:
+        """Lazily load and cache the `{brand_id: brand}` map from `/brand`.
+
+        Brand enrichment is best-effort: if the endpoint is unavailable the map
+        is cached empty and products keep their `brand_id` only (never raises).
+        """
+        if self._brands is not None:
+            return self._brands
+        brands: dict[int, Mapping[str, Any]] = {}
+        try:
+            payload = self._request(BRANDS_PATH, {})
+            for raw in _as_list(payload):
+                if isinstance(raw, Mapping) and raw.get("id") is not None:
+                    brands[int(raw["id"])] = raw
+        except XanoError:
+            logger.warning("could not load Xano brands; brand names/URLs omitted")
+        self._brands = brands
+        return brands
+
     # -- reads --------------------------------------------------------------
 
     def search_products(
@@ -250,9 +304,10 @@ class XanoClient:
         payload = self._request(PRODUCTS_PATH, params)
         if not isinstance(payload, Mapping):
             return ProductPage(items=[], total=0, page=page, per_page=per_page)
+        brands = self._brand_map()
         raw_items = payload.get("items")
         items = [
-            _map_product(item)
+            _map_product(item, brands)
             for item in (raw_items if isinstance(raw_items, list) else [])
             if isinstance(item, Mapping)
         ]
@@ -264,4 +319,4 @@ class XanoClient:
         payload = self._request(f"{PRODUCT_PATH}/{product_id}", {})
         if not isinstance(payload, Mapping):
             return None
-        return _map_product(payload)
+        return _map_product(payload, self._brand_map())
