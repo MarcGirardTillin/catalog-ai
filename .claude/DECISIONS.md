@@ -182,3 +182,35 @@ tick products, "Créer un job" builds a job from the selected ids. The main
 flow is now search → select → job (the header/CTAs point to `/products`;
 `/jobs/new` remains for direct id/tag entry). The Xano bearer token never
 reaches the browser — the backend proxies behind the session cookie.
+
+## 2026-07-06 — Search filters from /get_all_informations; CatalogAI selection
+
+Product search exposes classification filters (brand, category, season,
+supplier, tag) sourced from Tillin's `/get_all_informations`
+(`company_all_informations.{brands,categories,seasons,suppliers,tags}`,
+normalized to `{id,title,parent_id?}` and cached). New `XanoClient.
+get_classification()` + `GET /catalog/filters` back the frontend
+`FilterSelect` dropdowns on `ProductSearchPage`, which also now shows each
+product's brand name + category. Brand website URLs are normalized to add a
+scheme (Tillin stores bare hosts like `salomon.com`).
+
+## 2026-07-06 — Auth: Xano credentials accepted as a login fallback
+
+`/auth/login` tries app-local users first, then falls back to validating the
+credentials against Xano (`verify_login` → `/auth/login` + `/auth/me`). On
+success a local "federated" user is upserted (random unusable password;
+`get_or_create_federated_user`) and the normal session cookie is issued. This
+lets Tillin/Xano users sign in with their Xano identifiers without a separate
+account, while keeping the session model unchanged. Gated on `xano_configured`.
+Verified live end-to-end (real Xano user → CatalogAI session). Does NOT
+supersede the 2026-06-18 "app-local users" decision — local users still work;
+Xano is an additional provider, not a proxy.
+
+## 2026-07-06 — Full Leg A pipeline verified on live data
+
+End-to-end proof with real integrations: Xano product read (brand name,
+category, website URLs) → Shopify JSON resolution (ARMEDANGELS matched by
+barcode, score 1.0, 6 images + source URL scraped) → Claude copy (real FR
+description + meta via `claude-sonnet-5`). Confirms the injectable pipeline
+works with real clients, not just mocks. Still TODO: Photoroom 4:5 image
+processing, weight mapping coverage, apply/writeback to Xano.
