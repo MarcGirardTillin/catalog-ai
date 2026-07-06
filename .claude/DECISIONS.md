@@ -214,3 +214,19 @@ barcode, score 1.0, 6 images + source URL scraped) → Claude copy (real FR
 description + meta via `claude-sonnet-5`). Confirms the injectable pipeline
 works with real clients, not just mocks. Still TODO: Photoroom 4:5 image
 processing, weight mapping coverage, apply/writeback to Xano.
+
+## 2026-07-06 — Writeback (apply): destinations/ port + Tillin adapter
+
+Approved items are written back through a destination port
+(`app/destinations/base.py::Destination`), keeping the engine
+destination-agnostic. First adapter `xano_tillin.py` maps staged fields onto
+Tillin's write endpoints: copy → `POST /product/{id}/enrich`
+(`{title, description, meta_description}`), images → `POST /product_image/
+{id}/bulk` (`{image_urls: [...]}`, URLs directly — Tillin ingests them, so no
+Photoroom upload needed). Images pushed before copy. `POST /items/{id}/apply`
+(approved → applied) drives it via `apply_item`; only `approved` items apply
+(guards double-writes — critical because the bulk endpoint APPENDS images, it
+does not replace). Manual push only (a button), per the saved "never auto-push"
+feedback. `staged_weights_json` is NOT written (Tillin weight endpoints are
+per-product/per-variant and separate; left review-only for now). Verified live:
+the adapter wrote a real title/description/image to a Tillin test product.
