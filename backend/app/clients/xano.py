@@ -27,6 +27,14 @@ BRANDS_PATH = "/brand"
 CLASSIFICATION_PATH = "/get_all_informations"
 LOGIN_PATH = "/auth/login"
 
+
+def _enrich_path(product_id: int) -> str:
+    return f"{PRODUCT_PATH}/{product_id}/enrich"
+
+
+def _bulk_images_path(product_id: int) -> str:
+    return f"/product_image/{product_id}/bulk"
+
 # Classification groups exposed for product-search filters, and how each maps
 # onto the `products_with_pagination` filter param.
 CLASSIFICATION_GROUPS = ("brands", "categories", "seasons", "suppliers", "tags")
@@ -316,6 +324,38 @@ class XanoClient:
         except httpx.HTTPError as exc:
             raise XanoError("Xano is unreachable", code="xano_unavailable") from exc
 
+    def _post(self, path: str, body: Mapping[str, Any]) -> Any:
+        """POST with bearer auth; re-login once on 401 (expired token)."""
+        if self._token is None:
+            self._login()
+        response = self._do_post(path, body)
+        if response.status_code == 401:
+            self._login()
+            response = self._do_post(path, body)
+        if response.status_code >= 400:
+            raise XanoError(
+                "Xano returned an error response",
+                detail={"upstream_status": response.status_code},
+            )
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
+    def _do_post(self, path: str, body: Mapping[str, Any]) -> httpx.Response:
+        try:
+            return self._client.post(
+                path,
+                json=dict(body),
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+        except httpx.TimeoutException as exc:
+            raise XanoError(
+                "Xano request timed out", code="xano_timeout", status_code=504
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise XanoError("Xano is unreachable", code="xano_unavailable") from exc
+
     def _brand_map(self) -> dict[int, Mapping[str, Any]]:
         """Lazily load and cache the `{brand_id: brand}` map from `/brand`.
 
@@ -420,3 +460,39 @@ class XanoClient:
             options.sort(key=lambda o: o["title"].lower())
             result[group] = options
         return result
+
+    # -- writes (enrichment apply) -----------------------------------------
+
+    def enrich_product(
+        self,
+        product_id: int,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        meta_description: str | None = None,
+    ) -> None:
+        """Write staged copy back to Tillin (`/product/{id}/enrich`).
+
+        Only the provided fields are sent; None values are omitted so the
+        endpoint leaves them untouched.
+        """
+        body: dict[str, Any] = {}
+        if title is not None:
+            body["title"] = title
+        if description is not None:
+            body["description"] = description
+        if meta_description is not None:
+            body["meta_description"] = meta_description
+        if not body:
+            return
+        self._post(_enrich_path(product_id), body)
+
+    def add_product_images(self, product_id: int, image_urls: list[str]) -> None:
+        """Append images to a product from URLs (`/product_image/{id}/bulk`).
+
+        NOTE: the endpoint appends — it does not replace existing images.
+        """
+        urls = [u for u in image_urls if u]
+        if not urls:
+            return
+        self._post(_bulk_images_path(product_id), {"image_urls": urls})

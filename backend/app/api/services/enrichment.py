@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
 from app.api.schemas.enrichment import JobCounts
+from app.destinations.base import Destination
 from app.models import EnrichmentItem, EnrichmentJob
 
 # Review transitions allowed from each current status.
@@ -102,6 +103,25 @@ def review_item(db: Session, item: EnrichmentItem, decision: str) -> EnrichmentI
             message=f"Cannot mark '{item.status}' item as {decision}",
         )
     item.status = decision
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def apply_item(
+    db: Session, item: EnrichmentItem, destination: Destination
+) -> EnrichmentItem:
+    """Write an approved item's staged fields to the destination, then mark it
+    applied. Only `approved` items can be applied (guards double-writes)."""
+    if item.status != "approved":
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message=f"Cannot apply an item in status '{item.status}'",
+        )
+    destination.apply(item)
+    item.status = "applied"
+    item.error = None
     db.commit()
     db.refresh(item)
     return item

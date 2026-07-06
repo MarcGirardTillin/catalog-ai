@@ -148,3 +148,53 @@ def test_list_job_items_with_status_filter(auth_client: TestClient) -> None:
     assert ready.json()["items"][0]["staged_title"] == "Titre stagé"
 
     assert auth_client.get("/jobs/99999/items").status_code == 404
+
+
+def test_apply_writes_to_destination_and_marks_applied(
+    auth_client: TestClient,
+) -> None:
+    job = _create_job(auth_client, [1911])
+
+    from app.api.deps import get_db, get_xano_client
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    # Stage + find the item.
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).first()
+    assert item is not None
+    item.status = "ready_for_review"
+    item.staged_title = "Nouveau titre"
+    item.staged_description = "Desc"
+    item.staged_images_json = [{"url": "https://a.jpg"}]
+    db.commit()
+    item_id = item.id
+
+    # A capturing fake Xano client for the destination writes.
+    writes: dict[str, Any] = {}
+
+    class _FakeXano:
+        def add_product_images(self, pid: int, urls: list[str]) -> None:
+            writes["images"] = (pid, urls)
+
+        def enrich_product(self, pid: int, **kw: Any) -> None:
+            writes["enrich"] = (pid, kw)
+
+    app.dependency_overrides[get_xano_client] = lambda: _FakeXano()
+    try:
+        # Cannot apply before approval (Xano available, but wrong state).
+        assert auth_client.post(f"/items/{item_id}/apply").status_code == 409
+
+        assert auth_client.post(f"/items/{item_id}/approve").status_code == 200
+
+        response = auth_client.post(f"/items/{item_id}/apply")
+        assert response.status_code == 200
+        assert response.json()["status"] == "applied"
+        assert writes["images"] == (1911, ["https://a.jpg"])
+        assert writes["enrich"][0] == 1911
+        assert writes["enrich"][1]["title"] == "Nouveau titre"
+
+        # Re-applying an already-applied item is rejected.
+        assert auth_client.post(f"/items/{item_id}/apply").status_code == 409
+    finally:
+        app.dependency_overrides.pop(get_xano_client, None)

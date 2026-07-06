@@ -240,6 +240,36 @@ def test_token_is_reused_then_refreshed_on_401() -> None:
         assert login_count["n"] == 2
 
 
+def test_write_methods_post_expected_bodies() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        import json as _json
+
+        calls.append((request.url.path, _json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.add_product_images(1911, ["https://a.jpg", "", "https://b.jpg"])
+        client.enrich_product(
+            1911, title="T", description="D", meta_description="M"
+        )
+        # None fields are omitted; an all-None enrich sends nothing.
+        client.enrich_product(1911, description="only-desc")
+        client.enrich_product(1911)
+        client.add_product_images(1911, [])  # no-op
+
+    assert calls[0][0].endswith("/product_image/1911/bulk")
+    assert calls[0][1] == {"image_urls": ["https://a.jpg", "https://b.jpg"]}
+    assert calls[1][0].endswith("/product/1911/enrich")
+    assert calls[1][1] == {"title": "T", "description": "D", "meta_description": "M"}
+    assert calls[2][1] == {"description": "only-desc"}
+    # The all-None enrich and empty-image calls made no extra requests.
+    assert len(calls) == 3
+
+
 def test_login_failure_raises() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"message": "nope"})

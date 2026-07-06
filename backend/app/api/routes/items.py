@@ -1,11 +1,17 @@
-"""Enrichment item routes: detail, staged edits, review decisions."""
+"""Enrichment item routes: detail, staged edits, review decisions, apply."""
 
 from fastapi import APIRouter
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentUserDep, SessionDep, XanoDep
 from app.api.schemas.enrichment import ItemPatchRequest, ItemPublic
 from app.api.services.accounts import resolve_account_id
-from app.api.services.enrichment import get_item, review_item, update_staged_fields
+from app.api.services.enrichment import (
+    apply_item,
+    get_item,
+    review_item,
+    update_staged_fields,
+)
+from app.destinations.xano_tillin import XanoTillinDestination
 
 router = APIRouter(prefix="/items", tags=["items"])
 
@@ -47,4 +53,15 @@ def reject_item(
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
     item = review_item(db, item, "rejected")
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.post("/{item_id}/apply", response_model=ItemPublic)
+def apply_item_route(
+    item_id: int, db: SessionDep, current_user: CurrentUserDep, xano: XanoDep
+) -> ItemPublic:
+    """Write an approved item's staged enrichment back to Tillin (Xano)."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = apply_item(db, item, XanoTillinDestination(xano))
     return ItemPublic.model_validate(item, from_attributes=True)
