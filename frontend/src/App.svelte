@@ -9,7 +9,10 @@
   import { frontendEnv } from "./lib/env"
   import AppErrorFallback from "@/lib/components/app/AppErrorFallback.svelte"
   import HomePage from "./routes/HomePage.svelte"
+  import ItemReviewPage from "./routes/ItemReviewPage.svelte"
+  import JobDetailPage from "./routes/JobDetailPage.svelte"
   import JobNewPage from "./routes/JobNewPage.svelte"
+  import JobsListPage from "./routes/JobsListPage.svelte"
   import LoginPage from "./routes/LoginPage.svelte"
   import MaintenancePage from "./routes/MaintenancePage.svelte"
   import NotFoundPage from "./routes/NotFoundPage.svelte"
@@ -36,6 +39,17 @@
         <Route path="/" component={HomePage} {appName} />
         <Route path="/login" component={LoginPage} {appName} />
         <Route path="/jobs/new" component={JobNewPage} {appName} />
+        <Route path="/jobs/:id">
+          {#snippet children(params)}
+            <JobDetailPage {appName} id={params.id} />
+          {/snippet}
+        </Route>
+        <Route path="/jobs" component={JobsListPage} {appName} />
+        <Route path="/items/:id">
+          {#snippet children(params)}
+            <ItemReviewPage {appName} id={params.id} />
+          {/snippet}
+        </Route>
         <Route path="*" component={NotFoundPage} {appName} />
       </Router>
     {/if}

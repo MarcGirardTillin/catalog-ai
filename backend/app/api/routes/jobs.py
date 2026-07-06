@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.api.schemas import PaginatedResponse
-from app.api.schemas.enrichment import JobCreateRequest, JobPublic
+from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobPublic
 from app.api.services.accounts import resolve_account_id
 from app.api.services.enrichment import create_job, get_job, job_counts
-from app.models import EnrichmentJob
+from app.models import EnrichmentItem, EnrichmentJob
+from app.models.enrichment import ITEM_STATUSES
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -74,3 +75,37 @@ def list_jobs(
 def read_job(job_id: int, db: SessionDep, current_user: CurrentUserDep) -> JobPublic:
     account_id = resolve_account_id(db, current_user)
     return _to_public(db, get_job(db, account_id=account_id, job_id=job_id))
+
+
+@router.get("/{job_id}/items", response_model=PaginatedResponse[ItemPublic])
+def list_job_items(
+    job_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    status: Annotated[str | None, Query(enum=list(ITEM_STATUSES))] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> PaginatedResponse[ItemPublic]:
+    """List a job's items, optionally filtered by status (review queue)."""
+    account_id = resolve_account_id(db, current_user)
+    job = get_job(db, account_id=account_id, job_id=job_id)
+    base = select(EnrichmentItem).where(EnrichmentItem.job_id == job.id)
+    if status is not None:
+        base = base.where(EnrichmentItem.status == status)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = (
+        db.execute(
+            base.order_by(EnrichmentItem.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .scalars()
+        .all()
+    )
+    return PaginatedResponse(
+        items=[ItemPublic.model_validate(item, from_attributes=True) for item in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size,
+    )

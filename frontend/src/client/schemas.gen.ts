@@ -464,6 +464,43 @@ export const LoginRequestSchema = {
     description: 'Credentials submitted to the login endpoint.'
 } as const;
 
+export const PaginatedResponse_ItemPublic_Schema = {
+    properties: {
+        items: {
+            items: {
+                $ref: '#/components/schemas/ItemPublic'
+            },
+            type: 'array',
+            title: 'Items'
+        },
+        total: {
+            type: 'integer',
+            title: 'Total'
+        },
+        page: {
+            type: 'integer',
+            title: 'Page'
+        },
+        page_size: {
+            type: 'integer',
+            title: 'Page Size'
+        },
+        total_pages: {
+            type: 'integer',
+            title: 'Total Pages'
+        }
+    },
+    type: 'object',
+    required: [
+        'items',
+        'total',
+        'page',
+        'page_size',
+        'total_pages'
+    ],
+    title: 'PaginatedResponse[ItemPublic]'
+} as const;
+
 export const PaginatedResponse_JobPublic_Schema = {
     properties: {
         items: {

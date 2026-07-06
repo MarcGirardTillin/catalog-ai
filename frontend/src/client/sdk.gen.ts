@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -125,6 +125,17 @@ export const jobsCreateEnrichmentJob = <ThrowOnError extends boolean = false>(op
 export const jobsReadJob = <ThrowOnError extends boolean = false>(options: Options<JobsReadJobData, ThrowOnError>): RequestResult<JobsReadJobResponses, JobsReadJobErrors, ThrowOnError> => (options.client ?? client).get<JobsReadJobResponses, JobsReadJobErrors, ThrowOnError>({
     responseType: 'json',
     url: '/jobs/{job_id}',
+    ...options
+});
+
+/**
+ * List Job Items
+ *
+ * List a job's items, optionally filtered by status (review queue).
+ */
+export const jobsListJobItems = <ThrowOnError extends boolean = false>(options: Options<JobsListJobItemsData, ThrowOnError>): RequestResult<JobsListJobItemsResponses, JobsListJobItemsErrors, ThrowOnError> => (options.client ?? client).get<JobsListJobItemsResponses, JobsListJobItemsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/jobs/{job_id}/items',
     ...options
 });
 

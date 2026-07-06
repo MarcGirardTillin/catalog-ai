@@ -279,6 +279,32 @@ export type LoginRequest = {
 };
 
 /**
+ * PaginatedResponse[ItemPublic]
+ */
+export type PaginatedResponseItemPublic = {
+    /**
+     * Items
+     */
+    items: Array<ItemPublic>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+    /**
+     * Total Pages
+     */
+    total_pages: number;
+};
+
+/**
  * PaginatedResponse[JobPublic]
  */
 export type PaginatedResponseJobPublic = {
@@ -761,6 +787,49 @@ export type JobsReadJobResponses = {
 };
 
 export type JobsReadJobResponse = JobsReadJobResponses[keyof JobsReadJobResponses];
+
+export type JobsListJobItemsData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: {
+        /**
+         * Status
+         */
+        status?: 'pending' | 'processing' | 'ready_for_review' | 'approved' | 'applied' | 'rejected' | 'failed';
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/jobs/{job_id}/items';
+};
+
+export type JobsListJobItemsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsListJobItemsError = JobsListJobItemsErrors[keyof JobsListJobItemsErrors];
+
+export type JobsListJobItemsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaginatedResponseItemPublic;
+};
+
+export type JobsListJobItemsResponse = JobsListJobItemsResponses[keyof JobsListJobItemsResponses];
 
 export type ItemsReadItemData = {
     body?: never;

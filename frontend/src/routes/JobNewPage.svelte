@@ -1,7 +1,7 @@
 <script lang="ts">
   import { navigate } from "svelte5-router"
 
-  import { authLogout, jobsCreateEnrichmentJob } from "@/client"
+  import { jobsCreateEnrichmentJob } from "@/client"
   import type { JobPublic } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import {
@@ -13,6 +13,7 @@
   } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import AppHeader from "@/lib/components/app/AppHeader.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -67,26 +68,12 @@
     idsRaw = ""
     tag = ""
   }
-
-  async function onLogout() {
-    await authLogout()
-    navigate("/login")
-  }
 </script>
 
 <RequireAuth>
   {#snippet children(user)}
     <div class="bg-background min-h-dvh">
-      <!-- Sticky header, works from 320px wide up. -->
-      <header class="border-border bg-card sticky top-0 z-10 border-b">
-        <div class="mx-auto flex max-w-2xl items-center justify-between gap-2 px-4 py-3">
-          <h1 class="font-title text-base font-bold">{appName}</h1>
-          <div class="flex items-center gap-2">
-            <span class="text-muted-foreground hidden text-xs sm:inline">{user.email}</span>
-            <Button variant="ghost" size="sm" onclick={onLogout}>Déconnexion</Button>
-          </div>
-        </div>
-      </header>
+      <AppHeader {appName} {user} />
 
       <main class="mx-auto max-w-2xl p-4">
         {#if createdJob}
@@ -116,9 +103,17 @@
                   <dd class="font-medium">{createdJob.counts.failed}</dd>
                 </div>
               </dl>
-              <Button variant="secondary" class="w-full sm:w-auto" onclick={resetForm}>
-                Lancer un autre job
-              </Button>
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  class="w-full sm:w-auto"
+                  onclick={() => navigate(`/jobs/${createdJob?.id}`)}
+                >
+                  Suivre le job
+                </Button>
+                <Button variant="secondary" class="w-full sm:w-auto" onclick={resetForm}>
+                  Lancer un autre job
+                </Button>
+              </div>
             </CardContent>
           </Card>
         {:else}
@@ -158,7 +153,7 @@
                       id="ids"
                       rows="5"
                       placeholder="Ex. 101, 102, 103 (séparés par virgules, espaces ou retours à la ligne)"
-                      class="border-input bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-none border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+                      class="border-input bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
                       bind:value={idsRaw}
                     ></textarea>
                     <p class="text-muted-foreground text-xs">

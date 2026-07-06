@@ -115,3 +115,36 @@ def test_item_review_flow(auth_client: TestClient) -> None:
 
     counts = auth_client.get(f"/jobs/{job['id']}").json()["counts"]
     assert counts["rejected"] == 1
+
+
+def test_list_job_items_with_status_filter(auth_client: TestClient) -> None:
+    job = _create_job(auth_client, [11, 12, 13])
+
+    listing = auth_client.get(f"/jobs/{job['id']}/items")
+    assert listing.status_code == 200
+    body = listing.json()
+    assert body["total"] == 3
+    assert [i["tillin_product_id"] for i in body["items"]] == [11, 12, 13]
+    assert all(i["status"] == "pending" for i in body["items"])
+
+    # Stage one item, then filter by status.
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    override = app.dependency_overrides[get_db]
+    db = next(override())
+    db_item = db.get(EnrichmentItem, body["items"][0]["id"])
+    assert db_item is not None
+    db_item.status = "ready_for_review"
+    db_item.staged_title = "Titre stagé"
+    db.commit()
+
+    ready = auth_client.get(
+        f"/jobs/{job['id']}/items", params={"status": "ready_for_review"}
+    )
+    assert ready.status_code == 200
+    assert ready.json()["total"] == 1
+    assert ready.json()["items"][0]["staged_title"] == "Titre stagé"
+
+    assert auth_client.get("/jobs/99999/items").status_code == 404
