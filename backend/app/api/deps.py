@@ -27,23 +27,30 @@ def get_db() -> Generator[Session]:
 SessionDep = Annotated[Session, Depends(get_db)]
 
 
-def get_xano_client() -> Generator[XanoClient]:
-    """Yield a Xano client, or fail clearly when it is not configured."""
+# Process-wide client: one httpx pool and one cached login token reused across
+# requests (re-login happens lazily on a 401). Not per-request — that would log
+# in on every call.
+_xano_client: XanoClient | None = None
+
+
+def get_xano_client() -> XanoClient:
+    """Return the shared Xano client, or fail clearly when unconfigured."""
+    global _xano_client
     if not settings.xano_configured:
         raise AppException(
             status_code=503,
             code="xano_not_configured",
             message="Xano integration is not configured",
         )
-    client = XanoClient(
-        base_url=settings.XANO_BASE_URL,
-        token=settings.XANO_SERVICE_TOKEN,
-        timeout=settings.XANO_TIMEOUT_SECONDS,
-    )
-    try:
-        yield client
-    finally:
-        client.close()
+    if _xano_client is None:
+        _xano_client = XanoClient(
+            settings.XANO_BASE_URL,
+            email=settings.XANO_LOGIN_EMAIL,
+            password=settings.XANO_LOGIN_PASSWORD,
+            data_source=settings.XANO_DATA_SOURCE,
+            timeout=settings.XANO_TIMEOUT_SECONDS,
+        )
+    return _xano_client
 
 
 XanoDep = Annotated[XanoClient, Depends(get_xano_client)]

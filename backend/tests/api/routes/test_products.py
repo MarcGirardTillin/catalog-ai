@@ -1,6 +1,6 @@
-"""Tests for the GET /products read path (auth + Xano dependency mocked)."""
+"""Tests for the GET /products search path (auth + Xano dependency mocked)."""
 
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Iterator
 
 import httpx
 import pytest
@@ -20,17 +20,20 @@ def override_xano() -> Iterator[InstallXano]:
     clients: list[XanoClient] = []
 
     def install(handler: Handler) -> None:
-        def dependency() -> Generator[XanoClient]:
+        def with_login(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/auth/login"):
+                return httpx.Response(200, json={"authToken": "jwt-token"})
+            return handler(request)
+
+        def dependency() -> XanoClient:
             client = XanoClient(
-                base_url="https://tillin.test",
-                token="t",
-                transport=httpx.MockTransport(handler),
+                "https://tillin.test",
+                email="svc@tillin.fr",
+                password="secret",
+                transport=httpx.MockTransport(with_login),
             )
             clients.append(client)
-            try:
-                yield client
-            finally:
-                client.close()
+            return client
 
         app.dependency_overrides[get_xano_client] = dependency
 
@@ -40,26 +43,29 @@ def override_xano() -> Iterator[InstallXano]:
         client.close()
 
 
-def _ok_handler(_: httpx.Request) -> httpx.Response:
+def _one_product(_: httpx.Request) -> httpx.Response:
     return httpx.Response(
         200,
-        json={"items": [{"id": 101, "name": "Item"}], "itemsTotal": 1},
+        json={
+            "items": [{"id": 101, "title": "Item", "brand_id": 7}],
+            "itemsTotal": 1,
+        },
     )
 
 
 def test_requires_authentication(client: TestClient) -> None:
-    response = client.get("/products", params={"tag": "ss25"})
+    response = client.get("/products", params={"search": "veste"})
 
     assert response.status_code == 401
     assert response.json()["code"] == "not_authenticated"
 
 
-def test_list_products_by_tag(
+def test_search_products_maps_and_paginates(
     auth_client: TestClient, override_xano: InstallXano
 ) -> None:
-    override_xano(_ok_handler)
+    override_xano(_one_product)
 
-    response = auth_client.get("/products", params={"tag": "ss25"})
+    response = auth_client.get("/products", params={"search": "veste"})
 
     assert response.status_code == 200
     body = response.json()
@@ -68,34 +74,37 @@ def test_list_products_by_tag(
     assert body["items"][0]["id"] == 101
 
 
-def test_list_products_by_ids(
+def test_filters_are_forwarded_to_xano(
     auth_client: TestClient, override_xano: InstallXano
 ) -> None:
     captured: dict[str, httpx.Request] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["request"] = request
-        return _ok_handler(request)
+        return _one_product(request)
 
     override_xano(handler)
 
-    response = auth_client.get("/products", params=[("ids", 101), ("ids", 102)])
+    response = auth_client.get(
+        "/products", params={"search": "veste", "brand": 1332, "page": 2}
+    )
 
     assert response.status_code == 200
-    assert captured["request"].url.params["ids"] == "101,102"
+    params = captured["request"].url.params
+    assert params["search_query_text"] == "veste"
+    assert params["search_query_brand"] == "1332"
+    assert params["external[page]"] == "2"
 
 
-def test_requires_exactly_one_selector(
+def test_no_filters_is_allowed(
     auth_client: TestClient, override_xano: InstallXano
 ) -> None:
-    override_xano(_ok_handler)
+    override_xano(_one_product)
 
-    neither = auth_client.get("/products")
-    both = auth_client.get("/products", params={"tag": "ss25", "ids": 1})
+    response = auth_client.get("/products")
 
-    assert neither.status_code == 400
-    assert neither.json()["code"] == "invalid_selection"
-    assert both.status_code == 400
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
 
 
 def test_upstream_error_surfaces_as_502(
@@ -103,16 +112,24 @@ def test_upstream_error_surfaces_as_502(
 ) -> None:
     override_xano(lambda request: httpx.Response(503))
 
-    response = auth_client.get("/products", params={"tag": "ss25"})
+    response = auth_client.get("/products", params={"search": "x"})
 
     assert response.status_code == 502
     assert response.json()["code"] == "xano_error"
 
 
-def test_returns_503_when_xano_not_configured(auth_client: TestClient) -> None:
-    # Authenticated, but no Xano override -> the real dependency runs with empty
-    # settings.
-    response = auth_client.get("/products", params={"tag": "ss25"})
+def test_returns_503_when_xano_not_configured(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Authenticated, no override -> the real dependency runs. Force it
+    # unconfigured (the dev .env may carry real creds) and reset the singleton
+    # so no live call is made.
+    from app.api import deps
+
+    monkeypatch.setattr(deps, "_xano_client", None)
+    monkeypatch.setattr(deps.settings, "XANO_BASE_URL", "")
+
+    response = auth_client.get("/products", params={"search": "x"})
 
     assert response.status_code == 503
     assert response.json()["code"] == "xano_not_configured"

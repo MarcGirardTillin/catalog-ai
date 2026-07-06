@@ -63,9 +63,15 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER: str = ""
     FIRST_SUPERUSER_PASSWORD: str = ""
 
-    # Xano (Tillin REST API — first destination adapter; read path for now)
+    # Xano (Tillin REST API — first destination adapter; read path for now).
+    # Auth is email/password login -> a bearer `authToken` (JWT); there is no
+    # static service token on this workspace.
     XANO_BASE_URL: str = ""
-    XANO_SERVICE_TOKEN: str = ""
+    XANO_LOGIN_EMAIL: str = ""
+    XANO_LOGIN_PASSWORD: str = ""
+    # Xano datasource selector: empty = live/default, "test" = the seeded test
+    # datasource (sent as the `X-Data-Source` header on every call).
+    XANO_DATA_SOURCE: str = ""
     XANO_TIMEOUT_SECONDS: float = 30.0
 
     # External service clients (all optional: empty key = integration disabled).
@@ -79,8 +85,10 @@ class Settings(BaseSettings):
 
     @property
     def xano_configured(self) -> bool:
-        """Whether the Xano read path has the base URL and token it needs."""
-        return bool(self.XANO_BASE_URL and self.XANO_SERVICE_TOKEN)
+        """Whether the Xano read path has the base URL and login it needs."""
+        return bool(
+            self.XANO_BASE_URL and self.XANO_LOGIN_EMAIL and self.XANO_LOGIN_PASSWORD
+        )
 
     @property
     def BACKEND_CORS_ORIGIN_LIST(self) -> list[str]:

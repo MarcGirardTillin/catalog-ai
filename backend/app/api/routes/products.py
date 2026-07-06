@@ -1,7 +1,9 @@
-"""Product selection route — reads the Tillin catalog through Xano.
+"""Product selection route — searches the Tillin catalog through Xano.
 
-This is the Phase 0 read path: pick products by ``tag`` or by explicit ``ids``
-so an enrichment job can later be built from the selection.
+Backs the CatalogAI selection screen: free-text search + filters over the
+Tillin catalog so the user can pick product ids, then build an enrichment job
+from that selection. The Xano bearer token never reaches the browser — the
+backend proxies the call behind the session cookie.
 """
 
 from typing import Annotated
@@ -9,7 +11,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import XanoDep, get_current_user
-from app.api.exceptions import AppException
 from app.api.schemas import PaginatedResponse, Product
 
 router = APIRouter(
@@ -22,22 +23,28 @@ router = APIRouter(
 @router.get("", response_model=PaginatedResponse[Product])
 def list_products(
     xano: XanoDep,
-    tag: Annotated[str | None, Query(description="Select products by tag")] = None,
-    ids: Annotated[
-        list[int] | None, Query(description="Select products by id (repeatable)")
-    ] = None,
+    search: Annotated[str | None, Query(description="Free-text search")] = None,
+    brand: Annotated[int | None, Query(description="Filter by brand id")] = None,
+    category: Annotated[int | None, Query(description="Filter by category id")] = None,
+    supplier: Annotated[int | None, Query(description="Filter by supplier id")] = None,
+    season: Annotated[int | None, Query(description="Filter by season id")] = None,
+    tag: Annotated[int | None, Query(description="Filter by tag id")] = None,
+    status: Annotated[str | None, Query(description="Filter by status")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedResponse[Product]:
-    """Return a page of canonical products selected by tag or by ids."""
-    if (tag is None) == (not ids):
-        raise AppException(
-            status_code=400,
-            code="invalid_selection",
-            message="Provide exactly one of 'tag' or 'ids'",
-        )
-
-    result = xano.list_products(tag=tag, ids=ids, page=page, per_page=per_page)
+    """Return a page of canonical products matching the search + filters."""
+    result = xano.search_products(
+        text=search,
+        brand=brand,
+        category=category,
+        supplier=supplier,
+        season=season,
+        tag=tag,
+        status=status,
+        page=page,
+        per_page=per_page,
+    )
     total_pages = (result.total + per_page - 1) // per_page if per_page else 0
     return PaginatedResponse(
         items=result.items,

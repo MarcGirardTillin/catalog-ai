@@ -37,18 +37,15 @@ def _build_reader() -> ProductReader:
 
         client = XanoClient(
             settings.XANO_BASE_URL,
-            settings.XANO_SERVICE_TOKEN,
+            email=settings.XANO_LOGIN_EMAIL,
+            password=settings.XANO_LOGIN_PASSWORD,
+            data_source=settings.XANO_DATA_SOURCE,
             timeout=settings.XANO_TIMEOUT_SECONDS,
         )
-
-        def read(product_id: int) -> Product | None:
-            page = client.list_products(ids=[product_id], per_page=1)
-            return page.items[0] if page.items else None
-
-        return read
+        return client.get_product
 
     logger.warning(
-        "XANO_BASE_URL not configured — using the placeholder product reader "
+        "XANO not configured — using the placeholder product reader "
         "(local dev only; staged results carry no real catalog data)."
     )
     return _placeholder_reader
