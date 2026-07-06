@@ -72,3 +72,19 @@ running `initdb`/`alembic`.
 **Prevention:** run long native installers to completion; a present `bin/`
 without `lib/` and without a registered service means the server component
 didn't deploy — re-run to completion rather than hand-initdb'ing.
+
+## 2026-07-06 — Tests read the real .env, leaking live creds into assertions
+
+**Symptom:** `test_returns_503_when_xano_not_configured` failed with 200 once
+real Xano creds were added to `.env` — the "not configured" path actually made
+a live Xano call.
+**Root cause:** pydantic-settings loads the repo-root `.env` in tests too, so
+`settings.xano_configured` became True and the real dependency ran (and hit the
+live API).
+**Fix:** the test now `monkeypatch`es `deps.settings.XANO_BASE_URL=""` and
+resets the client singleton, forcing the unconfigured branch with no network.
+**Prevention:** any test asserting "integration X disabled" must neutralize the
+setting explicitly (monkeypatch), not assume the env is empty — the dev `.env`
+may carry real credentials. Bonus gotcha: a process-wide client singleton
+(`deps._xano_client`) must be reset in such tests to avoid a live client
+leaking across tests.

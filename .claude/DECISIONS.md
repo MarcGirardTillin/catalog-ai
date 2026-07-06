@@ -151,3 +151,34 @@ counts + items, polls every 2.5s while pending/processing), `ItemReviewPage`
 weight proposals, sticky bottom approve/reject bar — approve auto-saves dirty
 edits). Shared `AppHeader` + `StatusBadge` (Tillin bg/fg/dot triplets). Typed
 client regenerated (`jobsListJobItems`).
+
+## 2026-07-06 — Xano read path wired against the live contract
+
+Confirmed the Tillin Xano contract against the live API and rewrote
+`clients/xano.py`. Auth is **email/password login → bearer `authToken`**
+(JWT; cached, re-login once on 401) — there is no static service token, so
+`XANO_SERVICE_TOKEN` is replaced by `XANO_LOGIN_EMAIL`/`XANO_LOGIN_PASSWORD`.
+An `X-Data-Source: test` header (`XANO_DATA_SOURCE=test`) selects the seeded
+test datasource (381 products) vs the near-empty live default. Two reads:
+`search_products` (free text + brand/category/supplier/season/tag filters over
+`/products_with_pagination`, parsing the `{items,itemsTotal,curPage}` envelope)
+and `get_product` (`/product/{id}` detail, 404 → None) — the worker reader now
+uses the latter. The client is a process-wide singleton in `deps.py` (one login
+reused across requests). `GET /products` exposes search+filters+pagination.
+
+Two contract facts that shape the app: (1) the product payload carries only
+`brand_id` — **no nested brand and no website URL**, so the brand's source
+site(s) for scraping must live in CatalogAI (deferred); (2) images live on
+variants (`product_image.src`), not the product. Verified live end-to-end:
+search returns 381, a job over real ids stages real Tillin titles through the
+worker (source resolution `skipped` until brand websites exist).
+
+## 2026-07-06 — Product selection happens in CatalogAI
+
+`products_with_pagination` has no by-ids filter, and (per the user) its search
++ filters are the natural way to pick products. So selection is a CatalogAI
+screen (`ProductSearchPage`, `/products`): search/paginate the Tillin catalog,
+tick products, "Créer un job" builds a job from the selected ids. The main
+flow is now search → select → job (the header/CTAs point to `/products`;
+`/jobs/new` remains for direct id/tag entry). The Xano bearer token never
+reaches the browser — the backend proxies behind the session cookie.
