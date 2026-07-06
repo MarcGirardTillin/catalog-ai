@@ -1,13 +1,19 @@
 <script lang="ts">
+  import { onMount } from "svelte"
   import { navigate } from "svelte5-router"
 
-  import { jobsCreateEnrichmentJob, productsListProducts } from "@/client"
-  import type { Product } from "@/client"
+  import {
+    catalogGetFilters,
+    jobsCreateEnrichmentJob,
+    productsListProducts,
+  } from "@/client"
+  import type { CatalogFilters, Product } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppHeader from "@/lib/components/app/AppHeader.svelte"
+  import FilterSelect from "@/lib/components/app/FilterSelect.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -22,6 +28,14 @@
   let loading = $state(false)
   let errorMessage = $state<string | null>(null)
 
+  // Filter options (loaded once) + current selections.
+  let filters = $state<CatalogFilters | null>(null)
+  let brand = $state<number | null>(null)
+  let category = $state<number | null>(null)
+  let season = $state<number | null>(null)
+  let supplier = $state<number | null>(null)
+  let tag = $state<number | null>(null)
+
   // Selected product ids persist across pages/searches until the job is created.
   let selected = $state<Set<number>>(new Set())
   let translate = $state(false)
@@ -29,11 +43,24 @@
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined
 
+  const activeFilterCount = $derived(
+    [brand, category, season, supplier, tag].filter((v) => v !== null).length,
+  )
+
   async function load() {
     loading = true
     errorMessage = null
     const { data, error } = await productsListProducts({
-      query: { search: search.trim() || null, page, per_page: PER_PAGE },
+      query: {
+        search: search.trim() || null,
+        brand,
+        category,
+        season,
+        supplier,
+        tag,
+        page,
+        per_page: PER_PAGE,
+      },
     })
     loading = false
     if (error || !data) {
@@ -46,9 +73,22 @@
     totalPages = data.total_pages
   }
 
-  $effect(() => {
+  onMount(() => {
     load()
+    catalogGetFilters().then(({ data }) => {
+      if (data) filters = data
+    })
   })
+
+  function onFilterChange() {
+    page = 1
+    load()
+  }
+
+  function clearFilters() {
+    brand = category = season = supplier = tag = null
+    onFilterChange()
+  }
 
   function onSearchInput() {
     clearTimeout(searchTimer)
@@ -105,6 +145,25 @@
           class="h-10 text-sm"
         />
 
+        {#if filters}
+          <div class="flex flex-col gap-2">
+            <div class="flex flex-wrap gap-2">
+              <FilterSelect label="Marque" options={filters.brands ?? []} bind:value={brand} onchange={onFilterChange} />
+              <FilterSelect label="Catégorie" options={filters.categories ?? []} bind:value={category} onchange={onFilterChange} />
+              <FilterSelect label="Saison" options={filters.seasons ?? []} bind:value={season} onchange={onFilterChange} />
+            </div>
+            <div class="flex flex-wrap items-end gap-2">
+              <FilterSelect label="Fournisseur" options={filters.suppliers ?? []} bind:value={supplier} onchange={onFilterChange} />
+              <FilterSelect label="Tag" options={filters.tags ?? []} bind:value={tag} onchange={onFilterChange} />
+              {#if activeFilterCount > 0}
+                <Button variant="ghost" size="sm" class="h-9" onclick={clearFilters}>
+                  Réinitialiser ({activeFilterCount})
+                </Button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
         {/if}
@@ -155,8 +214,20 @@
                       class="bg-muted size-12 shrink-0 rounded-md object-cover"
                     />
                   {/if}
-                  <div class="flex min-w-0 flex-col">
+                  <div class="flex min-w-0 flex-col gap-0.5">
                     <span class="truncate text-sm font-medium">{label(product)}</span>
+                    {#if product.brand?.name || product.category}
+                      <span class="flex flex-wrap items-center gap-1.5 text-xs">
+                        {#if product.brand?.name}
+                          <span class="text-foreground font-medium">{product.brand.name}</span>
+                        {/if}
+                        {#if product.category}
+                          <span class="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5">
+                            {product.category}
+                          </span>
+                        {/if}
+                      </span>
+                    {/if}
                     <span class="text-muted-foreground flex flex-wrap gap-x-2 text-xs">
                       <span class="font-mono">#{product.id}</span>
                       {#if product.reference_code}

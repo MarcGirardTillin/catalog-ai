@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -92,6 +92,17 @@ export const authReadCurrentUser = <ThrowOnError extends boolean = false>(option
 export const productsListProducts = <ThrowOnError extends boolean = false>(options?: Options<ProductsListProductsData, ThrowOnError>): RequestResult<ProductsListProductsResponses, ProductsListProductsErrors, ThrowOnError> => (options?.client ?? client).get<ProductsListProductsResponses, ProductsListProductsErrors, ThrowOnError>({
     responseType: 'json',
     url: '/products',
+    ...options
+});
+
+/**
+ * Get Filters
+ *
+ * Brands, categories, seasons, suppliers and tags for the search filters.
+ */
+export const catalogGetFilters = <ThrowOnError extends boolean = false>(options?: Options<CatalogGetFiltersData, ThrowOnError>): RequestResult<CatalogGetFiltersResponses, CatalogGetFiltersErrors, ThrowOnError> => (options?.client ?? client).get<CatalogGetFiltersResponses, CatalogGetFiltersErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/catalog/filters',
     ...options
 });
 

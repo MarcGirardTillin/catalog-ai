@@ -37,6 +37,54 @@ export const BrandSchema = {
     description: 'The brand a product belongs to, with its source website(s).'
 } as const;
 
+export const CatalogFiltersSchema = {
+    properties: {
+        brands: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Brands',
+            default: []
+        },
+        categories: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Categories',
+            default: []
+        },
+        seasons: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Seasons',
+            default: []
+        },
+        suppliers: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Suppliers',
+            default: []
+        },
+        tags: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Tags',
+            default: []
+        }
+    },
+    type: 'object',
+    title: 'CatalogFilters',
+    description: 'Classification lists backing the product-search filters.'
+} as const;
+
 export const ExampleResponseSchema = {
     properties: {
         status: {
@@ -60,6 +108,37 @@ export const ExampleResponseSchema = {
     ],
     title: 'ExampleResponse',
     description: 'Response payload returned by the example endpoint.'
+} as const;
+
+export const FilterOptionSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        title: {
+            type: 'string',
+            title: 'Title'
+        },
+        parent_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Parent Id'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'title'
+    ],
+    title: 'FilterOption',
+    description: 'One selectable value in a search filter (brand, category, …).'
 } as const;
 
 export const HTTPValidationErrorSchema = {

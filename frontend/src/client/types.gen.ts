@@ -25,6 +25,34 @@ export type Brand = {
 };
 
 /**
+ * CatalogFilters
+ *
+ * Classification lists backing the product-search filters.
+ */
+export type CatalogFilters = {
+    /**
+     * Brands
+     */
+    brands?: Array<FilterOption>;
+    /**
+     * Categories
+     */
+    categories?: Array<FilterOption>;
+    /**
+     * Seasons
+     */
+    seasons?: Array<FilterOption>;
+    /**
+     * Suppliers
+     */
+    suppliers?: Array<FilterOption>;
+    /**
+     * Tags
+     */
+    tags?: Array<FilterOption>;
+};
+
+/**
  * ExampleResponse
  *
  * Response payload returned by the example endpoint.
@@ -42,6 +70,26 @@ export type ExampleResponse = {
      * Sample Id
      */
     sample_id: number;
+};
+
+/**
+ * FilterOption
+ *
+ * One selectable value in a search filter (brand, category, …).
+ */
+export type FilterOption = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Parent Id
+     */
+    parent_id?: number | null;
 };
 
 /**
@@ -728,6 +776,31 @@ export type ProductsListProductsResponses = {
 };
 
 export type ProductsListProductsResponse = ProductsListProductsResponses[keyof ProductsListProductsResponses];
+
+export type CatalogGetFiltersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/catalog/filters';
+};
+
+export type CatalogGetFiltersErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CatalogGetFiltersError = CatalogGetFiltersErrors[keyof CatalogGetFiltersErrors];
+
+export type CatalogGetFiltersResponses = {
+    /**
+     * Successful Response
+     */
+    200: CatalogFilters;
+};
+
+export type CatalogGetFiltersResponse = CatalogGetFiltersResponses[keyof CatalogGetFiltersResponses];
 
 export type JobsListJobsData = {
     body?: never;
