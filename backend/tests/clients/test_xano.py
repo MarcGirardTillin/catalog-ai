@@ -135,6 +135,31 @@ def test_brand_map_resolves_name_and_urls_both_shapes() -> None:
     assert by_id[2].brand.website_urls == ["https://a.com", "https://b.com"]
 
 
+def test_get_classification_normalizes_groups() -> None:
+    company = {
+        "brands": [{"id": 2, "title": "Zed"}, {"id": 1, "title": "Alpha"}],
+        "categories": [{"id": 5, "title": "Shoes", "parent_id": 0}],
+        "seasons": [{"id": 9, "title": None}, {"id": 8, "title": "SS25"}],
+        "suppliers": [{"id": 3, "name": "ACME"}],  # suppliers use `name`
+        "tags": [{"id": 7, "title": "New"}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        return httpx.Response(200, json={"company_all_informations": company})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        filters = client.get_classification()
+
+    # Sorted by title; suppliers `name` normalized to `title`.
+    assert [b["title"] for b in filters["brands"]] == ["Alpha", "Zed"]
+    assert filters["categories"][0] == {"id": 5, "title": "Shoes", "parent_id": 0}
+    assert filters["suppliers"][0]["title"] == "ACME"
+    # The season with title=None is dropped.
+    assert [s["title"] for s in filters["seasons"]] == ["SS25"]
+
+
 def test_brand_map_failure_is_non_fatal() -> None:
     # /brand returns 500 -> products keep brand_id only, no raise.
     def handler(request: httpx.Request) -> httpx.Response:

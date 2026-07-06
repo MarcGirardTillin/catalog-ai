@@ -24,9 +24,57 @@ from app.api.schemas import Brand, Product, ProductImage, ProductVariant
 PRODUCTS_PATH = "/products_with_pagination"
 PRODUCT_PATH = "/product"
 BRANDS_PATH = "/brand"
+CLASSIFICATION_PATH = "/get_all_informations"
 LOGIN_PATH = "/auth/login"
 
+# Classification groups exposed for product-search filters, and how each maps
+# onto the `products_with_pagination` filter param.
+CLASSIFICATION_GROUPS = ("brands", "categories", "seasons", "suppliers", "tags")
+
 logger = logging.getLogger(__name__)
+
+
+def verify_login(
+    base_url: str,
+    email: str,
+    password: str,
+    *,
+    data_source: str = "",
+    timeout: float = 15.0,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any] | None:
+    """Validate a user's Xano credentials; return their profile or None.
+
+    Used to let Tillin/Xano users sign in to CatalogAI with their Xano
+    identifiers. Returns `{email, full_name}` on success (best-effort name from
+    `/auth/me`), or None when the credentials are rejected/unreachable.
+    """
+    headers = {"Accept": "application/json"}
+    if data_source:
+        headers["X-Data-Source"] = data_source
+    try:
+        with httpx.Client(
+            base_url=base_url.rstrip("/"),
+            headers=headers,
+            timeout=timeout,
+            transport=transport,
+        ) as client:
+            login = client.post(LOGIN_PATH, json={"email": email, "password": password})
+            if login.status_code != 200:
+                return None
+            token = _first(login.json(), "authToken", "token")
+            if not token:
+                return None
+            profile: dict[str, Any] = {"email": email, "full_name": None}
+            me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+            if me.status_code == 200 and isinstance(me.json(), Mapping):
+                data = me.json()
+                profile["full_name"] = _first(data, "name", "full_name")
+                profile["email"] = _first(data, "email") or email
+            return profile
+    except httpx.HTTPError:
+        logger.warning("Xano credential check failed to reach the API")
+        return None
 
 
 class XanoError(AppException):
@@ -96,19 +144,25 @@ def _variant_images(variants: Sequence[Mapping[str, Any]]) -> list[ProductImage]
     return images
 
 
-def _to_urls(value: Any) -> list[str]:
-    """Normalize a brand website field to a list of URLs.
+def _normalize_url(url: str) -> str:
+    """Ensure a site URL carries a scheme (Tillin data has bare hosts)."""
+    url = url.strip().rstrip("/")
+    if url and "://" not in url:
+        url = f"https://{url}"
+    return url
 
-    Accepts whatever the Tillin brand table holds: a single text field
-    (`brand_website`), a comma/space-separated string, or a native list of
-    strings (`website_urls`). Unknown shapes yield an empty list.
+
+def _to_urls(value: Any) -> list[str]:
+    """Normalize a brand website field to a list of scheme-qualified URLs.
+
+    Accepts whatever the Tillin brand table holds: a native list of strings
+    (`website_urls`), a single text field, or a comma/space-separated string.
+    Bare hosts (`salomon.com`) are given an `https://` scheme.
     """
     if not value:
         return []
-    if isinstance(value, list):
-        return [str(v).strip() for v in value if v and str(v).strip()]
-    parts = str(value).replace(",", " ").split()
-    return [p for p in parts if p]
+    raw = value if isinstance(value, list) else str(value).replace(",", " ").split()
+    return [u for u in (_normalize_url(str(v)) for v in raw) if u]
 
 
 def _map_brand(brand_id: Any, brands: Mapping[int, Mapping[str, Any]]) -> Brand | None:
@@ -320,3 +374,34 @@ class XanoClient:
         if not isinstance(payload, Mapping):
             return None
         return _map_product(payload, self._brand_map())
+
+    def get_classification(self) -> dict[str, list[dict[str, Any]]]:
+        """Classification lists for search filters (brands, categories, …).
+
+        Each group is normalized to `{id, title, parent_id?}` options, sorted
+        by title. Sources the company's `/get_all_informations` payload.
+        """
+        payload = self._request(CLASSIFICATION_PATH, {})
+        company = (
+            payload.get("company_all_informations")
+            if isinstance(payload, Mapping)
+            else None
+        )
+        result: dict[str, list[dict[str, Any]]] = {g: [] for g in CLASSIFICATION_GROUPS}
+        if not isinstance(company, Mapping):
+            return result
+        for group in CLASSIFICATION_GROUPS:
+            options: list[dict[str, Any]] = []
+            for raw in _as_list(company.get(group)):
+                if not isinstance(raw, Mapping) or raw.get("id") is None:
+                    continue
+                title = _first(raw, "title", "name")
+                if not title:  # skip unnamed rows (some seasons have title=None)
+                    continue
+                option: dict[str, Any] = {"id": int(raw["id"]), "title": str(title)}
+                if "parent_id" in raw:
+                    option["parent_id"] = raw.get("parent_id")
+                options.append(option)
+            options.sort(key=lambda o: o["title"].lower())
+            result[group] = options
+        return result
