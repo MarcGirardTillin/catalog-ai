@@ -178,6 +178,29 @@ def test_brand_map_failure_is_non_fatal() -> None:
     assert page.items[0].brand.website_urls == []
 
 
+def test_images_from_product_level_and_protocol_relative() -> None:
+    # Product-level images come first; variant image is appended; URLs are
+    # scheme-normalized (protocol-relative -> https).
+    product = {
+        "id": 178,
+        "product_images": [
+            {"src": "https://s3.host/img-a", "position": 1},
+            {"src": "//cdn.host/img-b", "position": 2},
+        ],
+        "product_variants": [
+            {"id": 1, "product_image": {"src": "https://s3.host/img-a"}},  # dup
+            {"id": 2, "product_image": {"src": "//cdn.host/img-c"}},
+        ],
+    }
+    with _client(_store(products=[product])) as client:
+        page = client.search_products()
+    assert [i.url for i in page.items[0].images] == [
+        "https://s3.host/img-a",
+        "https://cdn.host/img-b",
+        "https://cdn.host/img-c",
+    ]
+
+
 def test_get_product_returns_detail_and_404_is_none() -> None:
     with _client(_store(detail=TILLIN_PRODUCT)) as client:
         product = client.get_product(1911)

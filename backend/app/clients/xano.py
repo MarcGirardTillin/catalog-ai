@@ -12,7 +12,7 @@ contract lives in one place.
 """
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -128,28 +128,43 @@ def _map_variant(raw: Mapping[str, Any]) -> ProductVariant:
     )
 
 
-def _variant_images(variants: Sequence[Mapping[str, Any]]) -> list[ProductImage]:
-    """Tillin images live on variants (`product_image.src`), not the product."""
+def _normalize_url(url: str) -> str:
+    """Ensure a URL carries a scheme (Tillin data has bare/protocol-relative)."""
+    url = url.strip().rstrip("/")
+    if not url:
+        return ""
+    if url.startswith("//"):  # protocol-relative (e.g. `//cdn.host/...`)
+        return f"https:{url}"
+    if "://" not in url:  # bare host (e.g. `salomon.com`)
+        return f"https://{url}"
+    return url
+
+
+def _collect_images(raw: Mapping[str, Any]) -> list[ProductImage]:
+    """Gather a product's images: product-level first, then per-variant.
+
+    Tillin exposes images both on the product (`product_images`) and on each
+    variant (`product_image`); some products have only one or the other. URLs
+    are scheme-normalized and de-duplicated, keeping product-level order.
+    """
     images: list[ProductImage] = []
     seen: set[str] = set()
-    for variant in variants:
-        raw = variant.get("product_image")
-        if not isinstance(raw, Mapping):
-            continue
-        src = _first(raw, "src", "url")
-        if not src or str(src) in seen:
-            continue
-        seen.add(str(src))
-        images.append(ProductImage(url=str(src), position=_first(raw, "position")))
+
+    def add(entry: Any) -> None:
+        if not isinstance(entry, Mapping):
+            return
+        src = _normalize_url(str(_first(entry, "src", "url") or ""))
+        if not src or src in seen:
+            return
+        seen.add(src)
+        images.append(ProductImage(url=src, position=_first(entry, "position")))
+
+    for entry in _as_list(raw.get("product_images")):
+        add(entry)
+    for variant in _as_list(raw.get("product_variants")):
+        if isinstance(variant, Mapping):
+            add(variant.get("product_image"))
     return images
-
-
-def _normalize_url(url: str) -> str:
-    """Ensure a site URL carries a scheme (Tillin data has bare hosts)."""
-    url = url.strip().rstrip("/")
-    if url and "://" not in url:
-        url = f"https://{url}"
-    return url
 
 
 def _to_urls(value: Any) -> list[str]:
@@ -202,7 +217,7 @@ def _map_product(
         brand=_map_brand(_first(raw, "brand_id"), brands or {}),
         category=category_name,
         variants=[_map_variant(v) for v in variants_raw],
-        images=_variant_images(variants_raw),
+        images=_collect_images(raw),
     )
 
 
