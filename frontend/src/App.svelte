@@ -16,6 +16,7 @@
   import LoginPage from "./routes/LoginPage.svelte"
   import MaintenancePage from "./routes/MaintenancePage.svelte"
   import NotFoundPage from "./routes/NotFoundPage.svelte"
+  import ProductSearchPage from "./routes/ProductSearchPage.svelte"
 
   const appName = frontendEnv.appName() || "Techlab starter"
   const maintenanceEnabled = frontendEnv.maintenanceEnabled()
@@ -38,6 +39,7 @@
       <Router>
         <Route path="/" component={HomePage} {appName} />
         <Route path="/login" component={LoginPage} {appName} />
+        <Route path="/products" component={ProductSearchPage} {appName} />
         <Route path="/jobs/new" component={JobNewPage} {appName} />
         <Route path="/jobs/:id">
           {#snippet children(params)}

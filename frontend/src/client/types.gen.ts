@@ -658,17 +658,47 @@ export type ProductsListProductsData = {
     path?: never;
     query?: {
         /**
+         * Search
+         *
+         * Free-text search
+         */
+        search?: string | null;
+        /**
+         * Brand
+         *
+         * Filter by brand id
+         */
+        brand?: number | null;
+        /**
+         * Category
+         *
+         * Filter by category id
+         */
+        category?: number | null;
+        /**
+         * Supplier
+         *
+         * Filter by supplier id
+         */
+        supplier?: number | null;
+        /**
+         * Season
+         *
+         * Filter by season id
+         */
+        season?: number | null;
+        /**
          * Tag
          *
-         * Select products by tag
+         * Filter by tag id
          */
-        tag?: string | null;
+        tag?: number | null;
         /**
-         * Ids
+         * Status
          *
-         * Select products by id (repeatable)
+         * Filter by status
          */
-        ids?: Array<number> | null;
+        status?: string | null;
         /**
          * Page
          */

@@ -87,7 +87,7 @@ export const authReadCurrentUser = <ThrowOnError extends boolean = false>(option
 /**
  * List Products
  *
- * Return a page of canonical products selected by tag or by ids.
+ * Return a page of canonical products matching the search + filters.
  */
 export const productsListProducts = <ThrowOnError extends boolean = false>(options?: Options<ProductsListProductsData, ThrowOnError>): RequestResult<ProductsListProductsResponses, ProductsListProductsErrors, ThrowOnError> => (options?.client ?? client).get<ProductsListProductsResponses, ProductsListProductsErrors, ThrowOnError>({
     responseType: 'json',

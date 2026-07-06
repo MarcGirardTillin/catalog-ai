@@ -26,7 +26,7 @@
       </button>
       <nav class="flex items-center gap-1">
         <Button variant="ghost" size="sm" onclick={() => navigate("/jobs")}>Jobs</Button>
-        <Button variant="ghost" size="sm" onclick={() => navigate("/jobs/new")}>Nouveau</Button>
+        <Button variant="ghost" size="sm" onclick={() => navigate("/products")}>Produits</Button>
       </nav>
     </div>
     <div class="flex items-center gap-2">
