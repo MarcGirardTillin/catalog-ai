@@ -56,6 +56,30 @@ accepted trade-off to stay compatible with shadcn-svelte updates. Dark palette
 is derived (source DS is light-only). Open: lucide icons vs the DS's own
 linear icon set.
 
+## 2026-07-06 — Design system: adopt Tillin rounded corners (reverses square)
+
+Superseded the "keep square corners" trade-off above. The `--radius-*` theme
+tokens in `frontend/src/app.css` now match the DS `radius` group (sm 8 / md 12 /
+lg 16 / xl 20 px) instead of deriving from a single `--radius`, and every
+component's hardcoded `rounded-none` was swapped for a token class: buttons
+`rounded-md` (small/icon sizes `rounded-sm`), inputs/textarea/skeleton
+`rounded-md`, cards `rounded-lg`, dropdown surfaces `rounded-md` with items
+`rounded-sm`. Left square on purpose: full-bleed card images
+(`*:[img]:rounded-none`, clipped by the card's `overflow-hidden rounded-lg`)
+and the interior card-header/footer (no visible outer corner). Favicon replaced
+with the Tillin "smile" mark (white on a violet `#716df6` tile, path lifted from
+the DS `tillin-logo-navy.svg`); tab title set to `CatalogAI`. HomePage now has a
+"Se connecter" CTA routing to `/login` (was template filler with no auth entry).
+
+Also closed two remaining DS gaps: (1) the status `dot` swatches
+(`--*-dot` → `bg-success-dot` etc.) added alongside the existing bg/fg pairs
+for review-queue badge indicators; (2) the DS `text.body` tone (`#3a3a55`,
+`--body` → `text-body`) applied as the base document text color while headings
+keep `ink` (`--foreground`). Mono font switched to `Roboto Mono` (DS
+`font.mono`), replacing JetBrains Mono. Still intentionally NOT migrated: the
+DS's `--tl-*` explicit hover hues (shadcn uses opacity-based hovers) and the
+wordmark logo in the app header.
+
 ## 2026-07-04 — Prod topology: single origin via nginx proxy
 
 The httpOnly samesite=lax auth cookie does not survive cross-origin XHR, so
@@ -106,3 +130,24 @@ run later for the same components, diff against these before overwriting.
 worker will expand tags into product ids via the Xano read path once real
 credentials exist (TODO in `api/services/enrichment.py`). Ids-based
 selections create items immediately.
+
+## 2026-07-06 — Worker wired: composed pipeline with explicit degraded mode
+
+`app/enrich/pipeline.py` composes the Leg A steps into the worker `Processor`:
+title template (default `{brand} {title}`, per-job override) → source
+resolution (Shopify JSON) → weights + raw source images from the resolved
+page → optional Claude copy. `backend/worker.py` no longer refuses to start
+(supersedes the 2026-07-04 note): it builds the pipeline from settings and
+degrades explicitly — no Xano creds → placeholder product reader (loud
+LOCAL-DEV-ONLY warning), no Anthropic key → copy skipped. Photoroom image
+processing remains TODO (Phase 1); staged images are the raw source URLs.
+
+## 2026-07-06 — Review surface: `/jobs`, `/jobs/:id`, `/items/:id`
+
+Added `GET /jobs/{id}/items` (paginated, optional status filter) and the
+mobile-first review UI: `JobsListPage` (hub), `JobDetailPage` (progress bar +
+counts + items, polls every 2.5s while pending/processing), `ItemReviewPage`
+(editable staged title/description/meta, source link + score, image grid,
+weight proposals, sticky bottom approve/reject bar — approve auto-saves dirty
+edits). Shared `AppHeader` + `StatusBadge` (Tillin bg/fg/dot triplets). Typed
+client regenerated (`jobsListJobItems`).

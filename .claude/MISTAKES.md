@@ -38,3 +38,37 @@ fixtures that go through `EmailStr` validation.
 **Fix:** lengthened the dev default; prod secrets are generated
 (`secrets.token_urlsafe(48)`).
 **Prevention:** any default HMAC secret must be ≥ 32 bytes.
+
+## 2026-07-06 — `fastapi dev` crashes on the Windows cp1252 console
+
+**Symptom:** the backend never starts under `fastapi dev app/main.py`;
+`UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f680'`
+(the 🚀 in the startup banner) from `fastapi_cli` → `rich_toolkit`.
+**Root cause:** the FastAPI CLI's rich banner prints emoji to a legacy
+Windows console whose default encoding is cp1252, which has no code point
+for the rocket glyph. The app code is never reached — it's a console-encoding
+crash in the launcher, not an app bug.
+**Fix:** run uvicorn directly and force UTF-8:
+`PYTHONUTF8=1 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`.
+**Prevention:** on Windows, start the local backend via uvicorn (not
+`fastapi dev`), or set `PYTHONUTF8=1` in the environment. The API mounts at
+the root (`/healthcheck`, `/version`, `/auth/*`, `/jobs`, `/items/*`,
+`/products`), not under `/api/v1`.
+
+## 2026-07-06 — winget PostgreSQL install left a half-installed server
+
+**Symptom:** after a `winget install PostgreSQL.PostgreSQL.18` that appeared
+to run, only the CLI tools existed (`bin/`), while `lib/` and the service were
+missing; a manual `initdb` then failed with
+`could not access file "dict_snowball"`.
+**Root cause:** the install was a background task killed mid-run when the
+session ended, so the EDB installer's server component never deployed. `winget
+list` didn't even register the package. Letting the original background task
+finish (exit 0, "Installé correctement") produced a complete install with the
+`postgresql-x64-18` service Running and a cluster on port 5432.
+**Fix:** don't interrupt the EDB installer; verify completeness via
+`Test-Path 'C:\Program Files\PostgreSQL\18\lib'` + the running service before
+running `initdb`/`alembic`.
+**Prevention:** run long native installers to completion; a present `bin/`
+without `lib/` and without a registered service means the server component
+didn't deploy — re-run to completion rather than hand-initdb'ing.
