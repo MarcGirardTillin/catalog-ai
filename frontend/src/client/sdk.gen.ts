@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -55,6 +55,9 @@ export const exampleReadExample = <ThrowOnError extends boolean = false>(options
  * Login
  *
  * Verify credentials and set the session cookie.
+ *
+ * Tries app-local users first, then falls back to Xano credentials so Tillin
+ * users can sign in with their Xano identifiers.
  */
 export const authLogin = <ThrowOnError extends boolean = false>(options: Options<AuthLoginData, ThrowOnError>): RequestResult<AuthLoginResponses, AuthLoginErrors, ThrowOnError> => (options.client ?? client).post<AuthLoginResponses, AuthLoginErrors, ThrowOnError>({
     responseType: 'json',
@@ -187,5 +190,16 @@ export const itemsApproveItem = <ThrowOnError extends boolean = false>(options: 
 export const itemsRejectItem = <ThrowOnError extends boolean = false>(options: Options<ItemsRejectItemData, ThrowOnError>): RequestResult<ItemsRejectItemResponses, ItemsRejectItemErrors, ThrowOnError> => (options.client ?? client).post<ItemsRejectItemResponses, ItemsRejectItemErrors, ThrowOnError>({
     responseType: 'json',
     url: '/items/{item_id}/reject',
+    ...options
+});
+
+/**
+ * Apply Item Route
+ *
+ * Write an approved item's staged enrichment back to Tillin (Xano).
+ */
+export const itemsApplyItemRoute = <ThrowOnError extends boolean = false>(options: Options<ItemsApplyItemRouteData, ThrowOnError>): RequestResult<ItemsApplyItemRouteResponses, ItemsApplyItemRouteErrors, ThrowOnError> => (options.client ?? client).post<ItemsApplyItemRouteResponses, ItemsApplyItemRouteErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/items/{item_id}/apply',
     ...options
 });

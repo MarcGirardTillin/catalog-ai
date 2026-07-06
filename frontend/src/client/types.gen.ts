@@ -1053,3 +1053,33 @@ export type ItemsRejectItemResponses = {
 };
 
 export type ItemsRejectItemResponse = ItemsRejectItemResponses[keyof ItemsRejectItemResponses];
+
+export type ItemsApplyItemRouteData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/apply';
+};
+
+export type ItemsApplyItemRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsApplyItemRouteError = ItemsApplyItemRouteErrors[keyof ItemsApplyItemRouteErrors];
+
+export type ItemsApplyItemRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsApplyItemRouteResponse = ItemsApplyItemRouteResponses[keyof ItemsApplyItemRouteResponses];

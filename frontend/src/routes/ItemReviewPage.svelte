@@ -1,7 +1,13 @@
 <script lang="ts">
   import { navigate } from "svelte5-router"
 
-  import { itemsApproveItem, itemsPatchItem, itemsReadItem, itemsRejectItem } from "@/client"
+  import {
+    itemsApplyItemRoute,
+    itemsApproveItem,
+    itemsPatchItem,
+    itemsReadItem,
+    itemsRejectItem,
+  } from "@/client"
   import type { ItemPublic } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
@@ -41,6 +47,7 @@
   })
 
   const reviewable = $derived(item?.status === "ready_for_review")
+  const applicable = $derived(item?.status === "approved")
   const dirty = $derived(
     item !== null &&
       (title !== (item.staged_title ?? "") ||
@@ -87,6 +94,19 @@
     busy = false
     if (error || !data) {
       errorMessage = "Action impossible."
+      return
+    }
+    navigate(`/jobs/${data.job_id}`)
+  }
+
+  async function apply() {
+    if (!item) return
+    busy = true
+    errorMessage = null
+    const { data, error } = await itemsApplyItemRoute({ path: { item_id: item.id } })
+    busy = false
+    if (error || !data) {
+      errorMessage = "Écriture vers Tillin impossible. Réessayez."
       return
     }
     navigate(`/jobs/${data.job_id}`)
@@ -245,6 +265,18 @@
                 </Button>
                 <Button class="flex-1" disabled={busy} onclick={() => decide("approve")}>
                   {dirty ? "Enregistrer et valider" : "Valider"}
+                </Button>
+              </div>
+            </div>
+          {:else if applicable}
+            <!-- Approved item: manual push to Tillin (no auto-push). -->
+            <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t p-3">
+              <div class="mx-auto flex max-w-2xl items-center gap-3">
+                <span class="text-muted-foreground hidden text-xs sm:inline">
+                  Validé — prêt à écrire dans Tillin.
+                </span>
+                <Button class="flex-1 sm:flex-none" disabled={busy} onclick={apply}>
+                  {busy ? "Écriture…" : "Appliquer vers Tillin"}
                 </Button>
               </div>
             </div>
