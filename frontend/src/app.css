@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/roboto-mono/400.css";
+@import "@fontsource/roboto-mono/500.css";
 @import "@fontsource-variable/nunito";
 @import "@fontsource/roboto/400.css";
 @import "@fontsource/roboto/500.css";
@@ -10,13 +11,13 @@
 
 /* Design tokens ported from the Tillin design system
  * (github.com/MarcGirardTillin/tillin-design-system, src/tokens.ts).
- * Shapes (radius, "lyra" shadcn-svelte style: rounded-none) are kept as-is —
- * only colors, typography, and status/semantic colors are ported. */
+ * Radius scale matches the DS `radius` token group (sm 8 / md 12 / lg 16 px);
+ * components use these instead of the old "lyra" square corners (rounded-none). */
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -32,20 +33,28 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-dot: var(--destructive-dot);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* Softer paragraph text (DS `text.body`), for `text-body`. */
+  --color-body: var(--body);
   /* Status colors for review-queue badges (enrichment_item / intake_line
-   * states) — ported from Tillin's `semantic` token group. */
+   * states) — ported from Tillin's `semantic` token group. Each status has a
+   * bg / foreground / dot (saturated indicator swatch) triplet. */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-success-dot: var(--success-dot);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+  --color-info-dot: var(--info-dot);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-dot: var(--warning-dot);
   --color-draft: var(--draft);
   --color-draft-foreground: var(--draft-foreground);
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+  --color-draft-dot: var(--draft-dot);
+  --font-mono: "Roboto Mono", monospace; /* DS `font.mono` */
   --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
   --font-title: "Nunito Variable", "Nunito", ui-sans-serif, sans-serif;
 }
@@ -55,7 +64,8 @@
 
   /* Tillin brand: Navy #150245 / Violet #716df6 / Lavande #d5d7fc. */
   --background: #f4f4f4; /* gris100 — page canvas */
-  --foreground: #150245; /* ink */
+  --foreground: #150245; /* ink — headings */
+  --body: #3a3a55; /* softer paragraph text (DS `text.body`, distinct from ink) */
   --card: #ffffff;
   --card-foreground: #150245;
   --popover: #ffffff;
@@ -73,14 +83,21 @@
   --input: #dbdbdb;
   --ring: #716df6;
 
+  /* Status colors — bg / fg / dot triplets (DS `semantic` group). The `dot`
+   * is the saturated indicator swatch for badge/status pills. */
   --success: #e3f6ec;
   --success-foreground: #1f7a4d;
+  --success-dot: #1f8a5b; /* successDot */
   --info: #eeedff;
   --info-foreground: #5b56e0;
+  --info-dot: #716df6; /* infoDot */
   --warning: #fff4e0; /* "sale" in the source tokens */
   --warning-foreground: #a56a12;
+  --warning-dot: #e0952c; /* saleDot */
   --draft: #f0f0f4;
   --draft-foreground: #6b6b82;
+  --draft-dot: #9a9ab0; /* draftDot */
+  --destructive-dot: #e2523c; /* dangerDot */
 }
 
 /* Dark palette: NOT part of the source Tillin design system (light-only
@@ -90,6 +107,7 @@
 .dark {
   --background: #150245; /* navy */
   --foreground: #f4f4fb;
+  --body: #c9c9e0; /* softened light body text on navy */
   --card: #2c1f5c; /* navyLine */
   --card-foreground: #f4f4fb;
   --popover: #2c1f5c;
@@ -109,12 +127,17 @@
 
   --success: oklch(0.4 0.08 155 / 30%);
   --success-foreground: #8fe3b8; /* successUp */
+  --success-dot: #8fe3b8; /* brighter dot on navy */
   --info: #2c1f5c;
   --info-foreground: #d5d7fc;
+  --info-dot: #716df6;
   --warning: oklch(0.4 0.08 70 / 30%);
   --warning-foreground: #e0952c; /* saleDot */
+  --warning-dot: #e0952c;
   --draft: #2c1f5c;
   --draft-foreground: #9a9ab0;
+  --draft-dot: #9a9ab0;
+  --destructive-dot: #e2523c;
 }
 
 @layer base {
@@ -123,7 +146,9 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    /* Base prose uses the softer `body` tone; headings stay `ink`
+     * (DS text.ink vs text.body). Components set their own text color. */
+    @apply bg-background text-body font-sans;
     margin: 0;
   }
 
@@ -133,7 +158,7 @@
   h4,
   h5,
   h6 {
-    @apply font-title;
+    @apply text-foreground font-title;
   }
 
   button,
