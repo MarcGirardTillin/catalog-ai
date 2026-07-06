@@ -1,5 +1,7 @@
 """User persistence and authentication helpers."""
 
+import secrets
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,22 @@ def create_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+def get_or_create_federated_user(
+    db: Session, *, email: str, full_name: str | None = None
+) -> User:
+    """Find a user by email, or create one for an externally-authenticated login.
+
+    Used when a user signs in via Xano credentials: there is no local password,
+    so a random unusable one is stored (they can only authenticate upstream).
+    """
+    user = get_user_by_email(db, email)
+    if user is not None:
+        return user
+    return create_user(
+        db, email=email, password=secrets.token_urlsafe(32), full_name=full_name
+    )
 
 
 def authenticate_user(db: Session, *, email: str, password: str) -> User | None:

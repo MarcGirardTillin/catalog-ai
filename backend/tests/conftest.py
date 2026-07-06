@@ -23,6 +23,19 @@ TEST_USER_EMAIL = "dev@catalogai.io"
 TEST_USER_PASSWORD = "password123"
 
 
+@pytest.fixture(autouse=True)
+def _disable_xano() -> Generator[None]:
+    """Keep tests offline: the dev .env may carry real Xano creds, which would
+    otherwise make the auth Xano-fallback (and product routes) hit the live API.
+    Tests that exercise Xano re-enable it explicitly with monkeypatch."""
+    from app.core.config import settings
+
+    original = settings.XANO_BASE_URL
+    settings.XANO_BASE_URL = ""
+    yield
+    settings.XANO_BASE_URL = original
+
+
 @pytest.fixture
 def db_session_factory() -> Generator[sessionmaker[Session]]:
     engine = create_engine(
