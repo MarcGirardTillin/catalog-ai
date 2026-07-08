@@ -18,6 +18,7 @@
   import MaintenancePage from "./routes/MaintenancePage.svelte"
   import NotFoundPage from "./routes/NotFoundPage.svelte"
   import ProductSearchPage from "./routes/ProductSearchPage.svelte"
+  import SettingsPage from "./routes/SettingsPage.svelte"
 
   const appName = frontendEnv.appName() || "Techlab starter"
   const maintenanceEnabled = frontendEnv.maintenanceEnabled()
@@ -49,6 +50,7 @@
           {/snippet}
         </Route>
         <Route path="/jobs" component={JobsListPage} {appName} />
+        <Route path="/settings" component={SettingsPage} {appName} />
         <Route path="/items/:id">
           {#snippet children(params)}
             <ItemReviewPage {appName} id={params.id} />

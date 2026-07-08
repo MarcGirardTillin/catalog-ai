@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left"
+  import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
@@ -11,6 +13,7 @@
     itemsRejectItem,
     itemsResolveItemRoute,
     itemsRetryItemRoute,
+    jobsListJobItems,
   } from "@/client"
   import type { ItemPublic, Product } from "@/client"
   import { Button } from "@/lib/components/ui/button"
@@ -25,6 +28,7 @@
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
@@ -39,6 +43,12 @@
   let busy = $state(false)
   let resolving = $state(false)
   let manualUrl = $state("")
+
+  // Sibling items of the same job (serial review navigation).
+  let siblings = $state<{ id: number; status: string }[]>([])
+  // Two-step reject: first activation arms the button, second confirms.
+  let confirmingReject = $state(false)
+  let rejectTimer: ReturnType<typeof setTimeout> | undefined
 
   // Editable staged fields (review-time corrections).
   let title = $state("")
@@ -79,18 +89,62 @@
 
   $effect(() => {
     const itemId = Number(id)
+    // Reset so navigating between sibling items shows a fresh skeleton.
+    item = null
+    product = null
+    errorMessage = null
+    confirmingReject = false
     itemsReadItem({ path: { item_id: itemId } }).then(({ data, error }) => {
       if (error || !data) {
         errorMessage = "Item introuvable."
         return
       }
       hydrate(data)
+      // Siblings for prev/next navigation (same job, worker order).
+      jobsListJobItems({
+        path: { job_id: data.job_id },
+        query: { page_size: 100 },
+      }).then(({ data: page }) => {
+        siblings = (page?.items ?? []).map((i) => ({ id: i.id, status: i.status }))
+      })
     })
     // Fetch the current Tillin product in parallel; ignore failures.
     itemsReadItemProduct({ path: { item_id: itemId } }).then(({ data }) => {
       product = data ?? null
     })
   })
+
+  const currentIndex = $derived(siblings.findIndex((s) => s.id === Number(id)))
+  const prevId = $derived(currentIndex > 0 ? siblings[currentIndex - 1]?.id : null)
+  const nextId = $derived(
+    currentIndex >= 0 && currentIndex < siblings.length - 1
+      ? siblings[currentIndex + 1]?.id
+      : null,
+  )
+
+  // Next item still awaiting review — forward first, then from the start.
+  function nextReviewableId(): number | null {
+    const itemId = Number(id)
+    const others = siblings.filter(
+      (s) => s.id !== itemId && s.status === "ready_for_review",
+    )
+    if (others.length === 0) return null
+    const after = others.find(
+      (s) => siblings.findIndex((x) => x.id === s.id) > currentIndex,
+    )
+    return (after ?? others[0]).id
+  }
+
+  // After a decision, chain to the next item to review; else back to the job.
+  function continueReview(jobId: number) {
+    if (!prefs.auto_advance) {
+      navigate(`/jobs/${jobId}`)
+      return
+    }
+    const next = nextReviewableId()
+    if (next !== null) navigate(`/items/${next}`)
+    else navigate(`/jobs/${jobId}`)
+  }
 
   const reviewable = $derived(item?.status === "ready_for_review")
   const applicable = $derived(item?.status === "approved")
@@ -220,7 +274,20 @@
       return
     }
     toast.success(decision === "approve" ? "Item validé" : "Item rejeté")
-    navigate(`/jobs/${data.job_id}`)
+    continueReview(data.job_id)
+  }
+
+  // Reject is destructive-ish: first activation arms, second confirms.
+  function requestReject() {
+    if (!confirmingReject) {
+      confirmingReject = true
+      clearTimeout(rejectTimer)
+      rejectTimer = setTimeout(() => (confirmingReject = false), 4000)
+      return
+    }
+    clearTimeout(rejectTimer)
+    confirmingReject = false
+    decide("reject")
   }
 
   async function approveAndApply() {
@@ -248,7 +315,7 @@
       return
     }
     toast.success("Appliqué à Tillin ✓")
-    navigate(`/jobs/${applied.job_id}`)
+    continueReview(applied.job_id)
   }
 
   async function apply() {
@@ -261,7 +328,7 @@
       return
     }
     toast.success("Appliqué à Tillin ✓")
-    navigate(`/jobs/${data.job_id}`)
+    continueReview(data.job_id)
   }
 
   async function retry() {
@@ -297,6 +364,38 @@
     manualUrl = ""
   }
 
+  // Keyboard shortcuts for serial review (opt-in via les préférences,
+  // flèches comprises). Inactive while typing in a field.
+  function onKeydown(event: KeyboardEvent) {
+    if (!prefs.shortcuts_enabled) return
+    if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return
+    const target = event.target as HTMLElement | null
+    if (target?.closest("input, textarea, select, [contenteditable]")) return
+    if (item === null) return
+
+    if (event.key === "ArrowLeft" && prevId !== null) {
+      event.preventDefault()
+      navigate(`/items/${prevId}`)
+    } else if (event.key === "ArrowRight" && nextId !== null) {
+      event.preventDefault()
+      navigate(`/items/${nextId}`)
+    } else if (!busy && reviewable && (event.key === "v" || event.key === "V")) {
+      event.preventDefault()
+      decide("approve")
+    } else if (!busy && reviewable && (event.key === "r" || event.key === "R")) {
+      event.preventDefault()
+      requestReject()
+    } else if (!busy && (event.key === "a" || event.key === "A")) {
+      if (reviewable) {
+        event.preventDefault()
+        approveAndApply()
+      } else if (applicable) {
+        event.preventDefault()
+        apply()
+      }
+    }
+  }
+
   // Fil d'Ariane : tant que l'item n'est pas chargé, on ne connaît pas le job.
   const breadcrumbs = $derived.by((): { label: string; href?: string }[] => {
     if (!item) return [{ label: "Jobs", href: "/jobs" }]
@@ -307,6 +406,17 @@
     ]
   })
 </script>
+
+{#snippet kbd(letter: string)}
+  {#if prefs.shortcuts_enabled}
+    <kbd
+      class="pointer-events-none hidden rounded border border-current/30 px-1 font-mono text-[10px] leading-4 opacity-60 sm:inline-block"
+      aria-hidden="true"
+    >
+      {letter}
+    </kbd>
+  {/if}
+{/snippet}
 
 {#snippet applyCheckbox(key: string)}
   <label
@@ -322,6 +432,8 @@
     Appliquer
   </label>
 {/snippet}
+
+<svelte:window onkeydown={onKeydown} />
 
 <RequireAuth>
   {#snippet children(user)}
@@ -341,6 +453,33 @@
               {product?.title ?? `Produit #${item.tillin_product_id}`}
             </h1>
             <div class="flex shrink-0 items-center gap-2">
+              {#if siblings.length > 1 && currentIndex >= 0}
+                <div class="border-border flex items-center rounded-md border">
+                  <button
+                    type="button"
+                    class="text-muted-foreground hover:text-foreground flex size-7 cursor-pointer items-center justify-center disabled:cursor-default disabled:opacity-40"
+                    aria-label="Item précédent"
+                    title={prefs.shortcuts_enabled ? "Item précédent (←)" : "Item précédent"}
+                    disabled={prevId === null}
+                    onclick={() => prevId !== null && navigate(`/items/${prevId}`)}
+                  >
+                    <ChevronLeft size={16} aria-hidden="true" />
+                  </button>
+                  <span class="text-muted-foreground px-1 font-mono text-xs tabular-nums">
+                    {currentIndex + 1}/{siblings.length}
+                  </span>
+                  <button
+                    type="button"
+                    class="text-muted-foreground hover:text-foreground flex size-7 cursor-pointer items-center justify-center disabled:cursor-default disabled:opacity-40"
+                    aria-label="Item suivant"
+                    title={prefs.shortcuts_enabled ? "Item suivant (→)" : "Item suivant"}
+                    disabled={nextId === null}
+                    onclick={() => nextId !== null && navigate(`/items/${nextId}`)}
+                  >
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              {/if}
               {#if retryable}
                 <Button variant="outline" size="sm" disabled={busy} onclick={retry}>
                   {busy ? "…" : "Régénérer"}
@@ -650,15 +789,19 @@
                   onclick={approveAndApply}
                 >
                   {busy ? "…" : "Valider et appliquer"}
+                  {@render kbd("A")}
                 </Button>
                 <div class="flex gap-2 sm:contents">
                   <Button
-                    variant="outline"
-                    class="text-destructive flex-1 sm:order-1 sm:w-auto sm:min-w-28 sm:flex-none"
+                    variant={confirmingReject ? "destructive" : "outline"}
+                    class="flex-1 sm:order-1 sm:w-auto sm:min-w-28 sm:flex-none {confirmingReject
+                      ? ''
+                      : 'text-destructive'}"
                     disabled={busy}
-                    onclick={() => decide("reject")}
+                    onclick={requestReject}
                   >
-                    Rejeter
+                    {confirmingReject ? "Confirmer le rejet" : "Rejeter"}
+                    {@render kbd("R")}
                   </Button>
                   <Button
                     variant="secondary"
@@ -667,6 +810,7 @@
                     onclick={() => decide("approve")}
                   >
                     Valider
+                    {@render kbd("V")}
                   </Button>
                 </div>
               </div>
@@ -680,6 +824,7 @@
                 </span>
                 <Button class="flex-1 sm:min-w-44 sm:flex-none" disabled={busy} onclick={apply}>
                   {busy ? "Écriture…" : "Appliquer vers Tillin"}
+                  {@render kbd("A")}
                 </Button>
               </div>
             </div>

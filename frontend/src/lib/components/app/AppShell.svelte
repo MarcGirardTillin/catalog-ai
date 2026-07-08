@@ -6,6 +6,7 @@
   import LogOut from "@lucide/svelte/icons/log-out"
   import Menu from "@lucide/svelte/icons/menu"
   import Package from "@lucide/svelte/icons/package"
+  import Settings from "@lucide/svelte/icons/settings"
   import X from "@lucide/svelte/icons/x"
   import { listen, navigate } from "svelte5-router"
 
@@ -75,6 +76,9 @@
     },
   ]
 
+  // Paramètres : section séparée en bas de la sidebar, au-dessus du bloc user.
+  const settingsActive = $derived(pathname.startsWith("/settings"))
+
   let drawerOpen = $state(false)
 
   // Initiales : deux premières lettres de la partie locale de l'email.
@@ -122,6 +126,20 @@
       </button>
     {/each}
   </nav>
+
+  <div class="border-border border-t p-2">
+    <button
+      type="button"
+      class="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors {settingsActive
+        ? 'bg-accent text-accent-foreground font-medium'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+      aria-current={settingsActive ? "page" : undefined}
+      onclick={() => go("/settings")}
+    >
+      <Settings size={16} class="shrink-0" />
+      Paramètres
+    </button>
+  </div>
 
   <div class="border-border flex items-center justify-between gap-2 border-t p-3">
     <div class="flex min-w-0 items-center gap-2">

@@ -4,6 +4,7 @@
 
   import { authReadCurrentUser } from "@/client"
   import type { UserPublic } from "@/client"
+  import { loadPreferences } from "@/lib/preferences.svelte"
   import { Skeleton } from "@/lib/components/ui/skeleton"
 
   let { children }: { children: Snippet<[UserPublic]> } = $props()
@@ -19,6 +20,8 @@
         return
       }
       user = data
+      // Préférences UI : chargées une fois par session (garde interne).
+      loadPreferences()
     })
   })
 </script>

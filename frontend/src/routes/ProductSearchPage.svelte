@@ -17,13 +17,15 @@
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import FilterSelect from "@/lib/components/app/FilterSelect.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
   let { appName }: { appName: string } = $props()
 
-  const PER_PAGE = 20
+  // Densité des tables : padding vertical des cellules selon la préférence.
+  const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2")
 
   let search = $state("")
   let page = $state(1)
@@ -113,7 +115,8 @@
         supplier,
         tag,
         page,
-        per_page: PER_PAGE,
+        // Lu au moment de l'appel : suit la préférence « produits par page ».
+        per_page: prefs.products_per_page,
       },
     })
     loading = false
@@ -357,7 +360,7 @@
                       onclick={() => toggle(product.id)}
                       onkeydown={(e) => onRowKeydown(e, product.id)}
                     >
-                      <td class="px-4 py-2">
+                      <td class="px-4 {cellPad}">
                         <input
                           type="checkbox"
                           class="accent-primary block size-4"
@@ -367,7 +370,7 @@
                           onchange={() => toggle(product.id)}
                         />
                       </td>
-                      <td class="px-2 py-2">
+                      <td class="px-2 {cellPad}">
                         {#if product.images?.[0]?.url}
                           <img
                             src={product.images[0].url}
@@ -387,7 +390,7 @@
                           </span>
                         {/if}
                       </td>
-                      <td class="px-4 py-2">
+                      <td class="px-4 {cellPad}">
                         <div class="flex min-w-0 flex-col gap-0.5">
                           <span class="line-clamp-2 font-medium">{label(product)}</span>
                           {#if product.reference_code && product.reference_code !== label(product)}
@@ -397,10 +400,10 @@
                           {/if}
                         </div>
                       </td>
-                      <td class="px-4 py-2 whitespace-nowrap">
+                      <td class="px-4 {cellPad} whitespace-nowrap">
                         {product.brand?.name ?? "—"}
                       </td>
-                      <td class="px-4 py-2">
+                      <td class="px-4 {cellPad}">
                         {#if product.category}
                           <span
                             class="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-xs whitespace-nowrap"
@@ -411,7 +414,7 @@
                           <span class="text-muted-foreground">—</span>
                         {/if}
                       </td>
-                      <td class="px-4 py-2 text-right whitespace-nowrap tabular-nums">
+                      <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {product.variants?.length ?? 0}
                       </td>
                     </tr>

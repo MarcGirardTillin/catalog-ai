@@ -6,12 +6,16 @@
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import { formatDuration, formatRelativeDate } from "@/lib/format"
 
   let { appName }: { appName: string } = $props()
+
+  // Densité des tables : padding vertical des cellules selon la préférence.
+  const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
   let jobs = $state<JobPublic[] | null>(null)
   let errorMessage = $state<string | null>(null)
@@ -96,9 +100,9 @@
                       onclick={() => openJob(job.id)}
                       onkeydown={(e) => onRowKeydown(e, job.id)}
                     >
-                      <td class="px-4 py-2.5 font-medium whitespace-nowrap">#{job.id}</td>
-                      <td class="px-4 py-2.5"><StatusBadge status={job.status} /></td>
-                      <td class="px-4 py-2.5">
+                      <td class="px-4 {cellPad} font-medium whitespace-nowrap">#{job.id}</td>
+                      <td class="px-4 {cellPad}"><StatusBadge status={job.status} /></td>
+                      <td class="px-4 {cellPad}">
                         <div class="flex items-center gap-2">
                           <div class="bg-muted h-1.5 w-20 shrink-0 overflow-hidden rounded-full">
                             <div
@@ -111,13 +115,13 @@
                           </span>
                         </div>
                       </td>
-                      <td class="px-4 py-2.5 text-right whitespace-nowrap tabular-nums">
+                      <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {job.counts.total ?? 0}
                       </td>
-                      <td class="px-4 py-2.5 text-right whitespace-nowrap tabular-nums">
+                      <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {job.duration_seconds != null ? formatDuration(job.duration_seconds) : "—"}
                       </td>
-                      <td class="text-muted-foreground px-4 py-2.5 text-right text-xs whitespace-nowrap tabular-nums">
+                      <td class="text-muted-foreground px-4 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
                         {formatRelativeDate(job.created_at)}
                       </td>
                     </tr>

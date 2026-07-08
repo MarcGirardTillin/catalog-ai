@@ -5,6 +5,34 @@ export type ClientOptions = {
 };
 
 /**
+ * AccountSettings
+ *
+ * Boutique-level enrichment defaults (stored on account.settings_json).
+ */
+export type AccountSettings = {
+    /**
+     * Title Template
+     */
+    title_template?: string | null;
+    /**
+     * Editorial Instructions
+     */
+    editorial_instructions?: string | null;
+    /**
+     * Meta Max Length
+     */
+    meta_max_length?: number;
+    /**
+     * Notify On Job Done
+     */
+    notify_on_job_done?: boolean;
+    /**
+     * Notify Email
+     */
+    notify_email?: string | null;
+};
+
+/**
  * Brand
  *
  * The brand a product belongs to, with its source website(s).
@@ -50,6 +78,26 @@ export type CatalogFilters = {
      * Tags
      */
     tags?: Array<FilterOption>;
+};
+
+/**
+ * ConnectionStatus
+ *
+ * Read-only Tillin/Xano connection health (no secrets).
+ */
+export type ConnectionStatus = {
+    /**
+     * Configured
+     */
+    configured: boolean;
+    /**
+     * Host
+     */
+    host?: string | null;
+    /**
+     * Data Source
+     */
+    data_source?: string | null;
 };
 
 /**
@@ -495,6 +543,20 @@ export type PaginatedResponseProduct = {
 };
 
 /**
+ * PasswordChangeRequest
+ */
+export type PasswordChangeRequest = {
+    /**
+     * Current Password
+     */
+    current_password: string;
+    /**
+     * New Password
+     */
+    new_password: string;
+};
+
+/**
  * Product
  *
  * Canonical product as consumed by the enrichment/intake engine.
@@ -585,6 +647,32 @@ export type ProductVariant = {
      * Weight Unit
      */
     weight_unit?: string | null;
+};
+
+/**
+ * UserPreferences
+ *
+ * Per-user UI preferences (stored on user.preferences_json).
+ *
+ * Unknown keys in storage are ignored; missing keys take these defaults.
+ */
+export type UserPreferences = {
+    /**
+     * Shortcuts Enabled
+     */
+    shortcuts_enabled?: boolean;
+    /**
+     * Auto Advance
+     */
+    auto_advance?: boolean;
+    /**
+     * Density
+     */
+    density?: 'comfortable' | 'compact';
+    /**
+     * Products Per Page
+     */
+    products_per_page?: number;
 };
 
 /**
@@ -798,6 +886,31 @@ export type AuthReadCurrentUserResponses = {
 };
 
 export type AuthReadCurrentUserResponse = AuthReadCurrentUserResponses[keyof AuthReadCurrentUserResponses];
+
+export type AuthUpdatePasswordData = {
+    body: PasswordChangeRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/password';
+};
+
+export type AuthUpdatePasswordErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AuthUpdatePasswordError = AuthUpdatePasswordErrors[keyof AuthUpdatePasswordErrors];
+
+export type AuthUpdatePasswordResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AuthUpdatePasswordResponse = AuthUpdatePasswordResponses[keyof AuthUpdatePasswordResponses];
 
 export type ProductsListProductsData = {
     body?: never;
@@ -1326,3 +1439,128 @@ export type StatsDashboardStatsResponses = {
 };
 
 export type StatsDashboardStatsResponse = StatsDashboardStatsResponses[keyof StatsDashboardStatsResponses];
+
+export type SettingsReadMyPreferencesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/me';
+};
+
+export type SettingsReadMyPreferencesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SettingsReadMyPreferencesError = SettingsReadMyPreferencesErrors[keyof SettingsReadMyPreferencesErrors];
+
+export type SettingsReadMyPreferencesResponses = {
+    /**
+     * Successful Response
+     */
+    200: UserPreferences;
+};
+
+export type SettingsReadMyPreferencesResponse = SettingsReadMyPreferencesResponses[keyof SettingsReadMyPreferencesResponses];
+
+export type SettingsUpdateMyPreferencesData = {
+    body: UserPreferences;
+    path?: never;
+    query?: never;
+    url: '/settings/me';
+};
+
+export type SettingsUpdateMyPreferencesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SettingsUpdateMyPreferencesError = SettingsUpdateMyPreferencesErrors[keyof SettingsUpdateMyPreferencesErrors];
+
+export type SettingsUpdateMyPreferencesResponses = {
+    /**
+     * Successful Response
+     */
+    200: UserPreferences;
+};
+
+export type SettingsUpdateMyPreferencesResponse = SettingsUpdateMyPreferencesResponses[keyof SettingsUpdateMyPreferencesResponses];
+
+export type SettingsReadAccountSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/account';
+};
+
+export type SettingsReadAccountSettingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SettingsReadAccountSettingsError = SettingsReadAccountSettingsErrors[keyof SettingsReadAccountSettingsErrors];
+
+export type SettingsReadAccountSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountSettings;
+};
+
+export type SettingsReadAccountSettingsResponse = SettingsReadAccountSettingsResponses[keyof SettingsReadAccountSettingsResponses];
+
+export type SettingsUpdateAccountSettingsData = {
+    body: AccountSettings;
+    path?: never;
+    query?: never;
+    url: '/settings/account';
+};
+
+export type SettingsUpdateAccountSettingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SettingsUpdateAccountSettingsError = SettingsUpdateAccountSettingsErrors[keyof SettingsUpdateAccountSettingsErrors];
+
+export type SettingsUpdateAccountSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountSettings;
+};
+
+export type SettingsUpdateAccountSettingsResponse = SettingsUpdateAccountSettingsResponses[keyof SettingsUpdateAccountSettingsResponses];
+
+export type SettingsReadConnectionStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/connection';
+};
+
+export type SettingsReadConnectionStatusErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SettingsReadConnectionStatusError = SettingsReadConnectionStatusErrors[keyof SettingsReadConnectionStatusErrors];
+
+export type SettingsReadConnectionStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConnectionStatus;
+};
+
+export type SettingsReadConnectionStatusResponse = SettingsReadConnectionStatusResponses[keyof SettingsReadConnectionStatusResponses];

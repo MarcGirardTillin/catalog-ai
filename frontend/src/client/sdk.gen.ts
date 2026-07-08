@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -85,6 +85,20 @@ export const authReadCurrentUser = <ThrowOnError extends boolean = false>(option
     responseType: 'json',
     url: '/auth/me',
     ...options
+});
+
+/**
+ * Update Password
+ *
+ * Change the signed-in user's local password (current one required).
+ */
+export const authUpdatePassword = <ThrowOnError extends boolean = false>(options: Options<AuthUpdatePasswordData, ThrowOnError>): RequestResult<AuthUpdatePasswordResponses, AuthUpdatePasswordErrors, ThrowOnError> => (options.client ?? client).post<AuthUpdatePasswordResponses, AuthUpdatePasswordErrors, ThrowOnError>({
+    url: '/auth/password',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**
@@ -261,5 +275,64 @@ export const itemsApplyItemRoute = <ThrowOnError extends boolean = false>(option
 export const statsDashboardStats = <ThrowOnError extends boolean = false>(options?: Options<StatsDashboardStatsData, ThrowOnError>): RequestResult<StatsDashboardStatsResponses, StatsDashboardStatsErrors, ThrowOnError> => (options?.client ?? client).get<StatsDashboardStatsResponses, StatsDashboardStatsErrors, ThrowOnError>({
     responseType: 'json',
     url: '/stats/dashboard',
+    ...options
+});
+
+/**
+ * Read My Preferences
+ *
+ * The signed-in user's UI preferences (defaults filled in).
+ */
+export const settingsReadMyPreferences = <ThrowOnError extends boolean = false>(options?: Options<SettingsReadMyPreferencesData, ThrowOnError>): RequestResult<SettingsReadMyPreferencesResponses, SettingsReadMyPreferencesErrors, ThrowOnError> => (options?.client ?? client).get<SettingsReadMyPreferencesResponses, SettingsReadMyPreferencesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/settings/me',
+    ...options
+});
+
+/**
+ * Update My Preferences
+ */
+export const settingsUpdateMyPreferences = <ThrowOnError extends boolean = false>(options: Options<SettingsUpdateMyPreferencesData, ThrowOnError>): RequestResult<SettingsUpdateMyPreferencesResponses, SettingsUpdateMyPreferencesErrors, ThrowOnError> => (options.client ?? client).put<SettingsUpdateMyPreferencesResponses, SettingsUpdateMyPreferencesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/settings/me',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Account Settings
+ *
+ * The account's enrichment defaults (defaults filled in).
+ */
+export const settingsReadAccountSettings = <ThrowOnError extends boolean = false>(options?: Options<SettingsReadAccountSettingsData, ThrowOnError>): RequestResult<SettingsReadAccountSettingsResponses, SettingsReadAccountSettingsErrors, ThrowOnError> => (options?.client ?? client).get<SettingsReadAccountSettingsResponses, SettingsReadAccountSettingsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/settings/account',
+    ...options
+});
+
+/**
+ * Update Account Settings
+ */
+export const settingsUpdateAccountSettings = <ThrowOnError extends boolean = false>(options: Options<SettingsUpdateAccountSettingsData, ThrowOnError>): RequestResult<SettingsUpdateAccountSettingsResponses, SettingsUpdateAccountSettingsErrors, ThrowOnError> => (options.client ?? client).put<SettingsUpdateAccountSettingsResponses, SettingsUpdateAccountSettingsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/settings/account',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Connection Status
+ *
+ * Whether the Tillin/Xano integration is configured (never any secret).
+ */
+export const settingsReadConnectionStatus = <ThrowOnError extends boolean = false>(options?: Options<SettingsReadConnectionStatusData, ThrowOnError>): RequestResult<SettingsReadConnectionStatusResponses, SettingsReadConnectionStatusErrors, ThrowOnError> => (options?.client ?? client).get<SettingsReadConnectionStatusResponses, SettingsReadConnectionStatusErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/settings/connection',
     ...options
 });
