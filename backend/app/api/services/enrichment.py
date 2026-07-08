@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 from app.api.exceptions import AppException
 from app.api.schemas.enrichment import JobCounts
 from app.destinations.base import Destination
-from app.models import EnrichmentItem, EnrichmentJob
+from app.models import Account, EnrichmentItem, EnrichmentJob
+
+# Account-level defaults merged into a new job's config when absent.
+_ACCOUNT_CONFIG_DEFAULTS = ("title_template", "editorial_instructions")
 
 # Review transitions allowed from each current status.
 _REVIEW_TRANSITIONS = {
@@ -32,6 +35,13 @@ def create_job(
     items for those are created by the worker once the read path has real
     credentials. The job is stored with its selection either way.
     """
+    # The account's enrichment defaults apply unless the job overrides them.
+    account = db.get(Account, account_id)
+    defaults = (account.settings_json if account else None) or {}
+    for key in _ACCOUNT_CONFIG_DEFAULTS:
+        if defaults.get(key) and not config.get(key):
+            config = {**config, key: defaults[key]}
+
     job = EnrichmentJob(
         account_id=account_id, selection_json=selection, config_json=config
     )

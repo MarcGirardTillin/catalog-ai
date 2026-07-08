@@ -9,6 +9,7 @@ from app.api.routes import (
     items,
     jobs,
     products,
+    settings,
     stats,
     system,
 )
@@ -22,3 +23,4 @@ api_router.include_router(catalog.router)
 api_router.include_router(jobs.router)
 api_router.include_router(items.router)
 api_router.include_router(stats.router)
+api_router.include_router(settings.router)

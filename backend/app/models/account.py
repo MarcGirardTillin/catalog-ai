@@ -4,8 +4,9 @@ Single-tenant today (one default account); multi-tenant is additive later.
 """
 
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import JSON, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -18,6 +19,10 @@ class Account(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True)
+    # Boutique-level enrichment defaults (title template, editorial
+    # instructions, notifications…); None = all defaults. Validated by the
+    # AccountSettings schema at the API boundary.
+    settings_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -1,11 +1,16 @@
 """Authentication routes: login, logout, and current-user."""
 
 from fastapi import APIRouter, Response
+from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.api.exceptions import AppException
 from app.api.schemas import LoginRequest, UserPublic
-from app.api.services.users import authenticate_user, get_or_create_federated_user
+from app.api.services.users import (
+    authenticate_user,
+    change_password,
+    get_or_create_federated_user,
+)
 from app.clients.xano import verify_login
 from app.core.config import settings
 from app.core.security import create_access_token
@@ -73,3 +78,21 @@ def logout(response: Response) -> None:
 def read_current_user(current_user: CurrentUserDep) -> UserPublic:
     """Return the currently authenticated user."""
     return UserPublic.model_validate(current_user, from_attributes=True)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+@router.post("/password", status_code=204)
+def update_password(
+    payload: PasswordChangeRequest, db: SessionDep, current_user: CurrentUserDep
+) -> None:
+    """Change the signed-in user's local password (current one required)."""
+    change_password(
+        db,
+        current_user,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+    )

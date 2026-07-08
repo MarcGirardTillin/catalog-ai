@@ -1,8 +1,9 @@
 """Application user (app-local authentication)."""
 
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import JSON, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -25,6 +26,11 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str | None] = mapped_column(String(255), default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
+    # Per-user UI preferences (shortcuts, review flow, density…); None = all
+    # defaults. Validated by the UserPreferences schema at the API boundary.
+    preferences_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -56,3 +56,24 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User | None:
     if not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+def change_password(
+    db: Session, user: User, *, current_password: str, new_password: str
+) -> None:
+    """Set a new password after verifying the current one.
+
+    Federated (Xano-only) users carry a random unusable password, so they
+    cannot pass the current-password check — by design: their credential
+    lives upstream.
+    """
+    from app.api.exceptions import AppException
+
+    if not verify_password(current_password, user.hashed_password):
+        raise AppException(
+            status_code=400,
+            code="invalid_password",
+            message="Le mot de passe actuel est incorrect",
+        )
+    user.hashed_password = hash_password(new_password)
+    db.commit()
