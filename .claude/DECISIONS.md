@@ -301,3 +301,33 @@ HomePage became a dashboard placeholder (shortcut cards; KPIs planned for R2).
 clear the sidebar. Remaining phases: R2 (KPI dashboard, jobs table, filter
 chips), R3 (item-to-item review nav, keyboard shortcuts, confirmations).
 Settings pages from Sprint B will live in the sidebar.
+
+## 2026-07-08 — UI refonte R2: dashboard KPIs, jobs table, filter chips
+
+New account-scoped `GET /stats/dashboard` (applied/ready/running counts, avg
+per-item processing seconds over settled items, auto-resolution rate =
+shopify_json share of settled source_methods; date math Python-side for
+Postgres/SQLite parity). HomePage is a real dashboard: 4 stat tiles following
+the dataviz stat-tile contract (sentence-case label, semibold proportional
+figures, text tokens — no accent color on values), auto-resolve line, 5 recent
+jobs, quick actions, empty state. JobsListPage: cards → SaaS table (status,
+mini progress bar, products, duration, relative date; tabular-nums only in
+table columns; keyboard-accessible row links). ProductSearchPage: active-filter
+chips (removable, "Tout effacer" at ≥2) + richer empty state with reset.
+Shared `lib/format.ts` (formatDuration, formatRelativeDate). R3 remains:
+item-to-item review nav, keyboard shortcuts, confirmations, dark-mode polish.
+
+## 2026-07-08 — Per-field apply selection + products-as-table
+
+Reviewers can now decide field by field what gets written to Tillin:
+`enrichment_item.apply_fields_json` (migration 0007; {"title": false, ...} —
+missing key or null = apply). The Tillin adapter skips unchecked fields and
+makes no enrich call when all copy fields are excluded; the images bulk call is
+skipped when "images" is false. UI: an "Appliquer" checkbox per field on the
+review screen (unchecked = dimmed proposed block), persisted through the
+existing save-if-dirty flow (normalized comparison: true ≡ absent), plus a
+non-blocking "nothing will be written" warning. ProductSearchPage's card grid
+became a JobsListPage-style table (row selection + current-page select-all with
+indeterminate state, thumbnail, title+ref, brand, category, variant count);
+multi-page selection Set, chips, pagination and the sticky create-job bar are
+unchanged.
