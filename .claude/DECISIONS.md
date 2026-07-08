@@ -399,3 +399,29 @@ meta counter now reads meta_max_length from a lazy accountSettings store
 (lib/accountSettings.svelte.ts) instead of a hardcoded 160. The /instructions
 calls use the generated axios `client` with raw paths (lib/api/instructions.ts)
 — written before regen, kept because they are thin and typed locally.
+
+## 2026-07-08 — Per-image/per-weight apply selection + brand website_urls management
+
+`apply_fields_json` grew per-entry selection keys next to the per-field booleans:
+`image_urls` (subset of staged image URLs to send; absent = all, empty = none,
+unknown URLs ignored, staged order preserved, no effect when `images: false`)
+and `weights` + `weight_variant_ids` (same rules). The schemas' typing relaxed
+from dict[str, bool] to dict[str, Any] to carry the lists. Weights writeback to
+Tillin still does NOT exist (needs the Xano set_variant_weights endpoint, plan
+infra) — the destination computes the filtered selection but sends nothing; the
+review UI says so with a « Bientôt actif » badge. Review UX: whole thumbnail
+toggles selection (deselected = opacity-40 + ring), "n/m sélectionnées" +
+select-all/none; keys are OMITTED when everything is selected; selection
+participates in `dirty` and is saved through the existing PATCH flow.
+
+Brand reference websites are now manageable in-app: XanoClient.list_brands()
+(GET /brand, errors surfaced — unlike the best-effort _brand_map cache) and
+set_brand_website_urls() (POST /brand/{id}/website_urls per the user-provided
+Xano endpoint, body {"website_urls": [...]}, URLs normalized via
+_normalize_url, then the _brands cache is invalidated so subsequent product
+reads see fresh URLs). App routes GET /brands + PUT /brands/{id}/website_urls
+(max 20 URLs, 500 chars each). Settings gained a 4th « Marques » tab: lazy
+first-open load, client-side name search, inline one-URL-per-line editing,
+optimistic row update. The PUT's upstream write shape (body key) is assumed
+from the endpoint name and must be confirmed against real Xano on first live
+use.
