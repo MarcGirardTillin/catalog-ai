@@ -127,6 +127,78 @@ Cheap glue only; no pipeline compute on Xano:
 - **Phase 2 — async batch (the real UX):** job/item queue + separate **worker service** so you launch a job, leave, and come back to review. Concurrency + rate limit + retry, progress page, apply-approved, optional notify-when-done.
 - **Phase 3 — robust scraping (deferred task):** Firecrawl fallback + manual method override + full-page LLM extraction; for WAF sites (Farfetch/Asics) plug in **Bright Data Web Unlocker** via the ready-made `unlocker.py` interface.
 - **Phase 4 — polish:** brand `website_urls` settings UI, optional direct Shopify push, run history + per-provider cost tracking.
+- **Import sprint (parallel track):** supplier file (PDF/Excel/CSV) → analyze → create products in Tillin — see the dedicated section below; can run alongside Phases 2–4 once the platform pieces (jobs/review/writeback) exist.
+
+---
+
+## Import sprint — supplier file → product creation in Tillin (dedicated sprint)
+
+A second product line **upstream** of enrichment: instead of enriching products that already exist in Tillin, the user uploads a **supplier file** (order PDF, Excel, or CSV), the app analyzes it, and **creates** the products in Tillin. This automates the manual workflows already done for the **L'Espion** and **Bambinoh** boutiques (supplier PDF/Excel → Tillin import CSV), and chains naturally into enrichment afterwards (import creates the products; an enrichment job completes them).
+
+It is a **dedicated sprint**, not Phase 5 of enrichment: it has its own pipeline (parse → normalize → stage), its own domain (per-boutique/supplier conventions), and only shares the platform (jobs/worker/review/writeback). It can be built **in parallel** with the remaining enrichment phases.
+
+### Flow
+
+```
+/imports/new  upload file + pick boutique/supplier profile
+   → POST /imports  (job type "import", file stored to object storage)
+   → worker: 1. parse file        (pdf → text/tables via LLM; xlsx/csv → rows)
+             2. extract products  (LLM-structured → normalized product schema)
+             3. apply profile     (pricing rule, brand rule, category mapping, season…)
+             4. stage import_item (ready_for_review, with per-field confidence)
+   → /imports/[id]/review  edit/approve/reject per product (spreadsheet-like grid)
+   → apply approved → destination port:
+        a) MVP: generate the Tillin import CSV (download / hand to existing import)
+        b) later: create directly via Xano API (products + variants + barcodes)
+```
+
+### Backend modules (reuses the existing skeleton)
+
+- **`imports/`** — new package, sibling of `enrich/`:
+  - `parsers/` — one parser per file family behind `parse_file(bytes, mime) -> RawDocument`:
+    - `pdf.py` — supplier order PDFs. Extraction via **Claude with document/vision input** (PDFs are heterogeneous per supplier; deterministic table extraction is the fallback, LLM is the default).
+    - `tabular.py` — Excel (`openpyxl`) + CSV; header detection and column mapping are LLM-assisted, values are read deterministically from the rows (prices/EANs must never be hallucinated).
+  - `extract.py` — LLM-structured extraction to a **normalized product schema**: `{supplier_ref, ean/barcode, title, color, sizes[], qty, wholesale_price, retail_price?, category?, brand?}` with a per-field `confidence`. Numeric/EAN fields are cross-checked against the raw cells (no generated values).
+  - `profiles.py` — **boutique/supplier convention profiles**, data-driven (DB table + seed), one per (boutique, supplier):
+    - pricing rule: e.g. L'Espion = round-up-to-nearest-5 of `wholesale × coefficient`; Garcia/Bambinoh = use `retailPrice` as-is
+    - brand rule: fixed brand, or derived (Bambinoh: from supplier folder name, no uppercase)
+    - category mapping: supplier label → Tillin category list; **leave empty when not deducible** (never guess)
+    - season, VAT, and any boutique defaults
+  - `csv_out.py` — render approved items to the **Tillin import CSV** format (the proven path used manually today).
+- **`jobs/`** — reuse `queue.py`/`runner.py` with a job `type` (`enrichment` | `import`); new `import_item` staging table mirroring `enrichment_item`.
+- **`destinations/`** — the existing port gains a `create_products` capability on the Tillin adapter (phase b); phase a ships with the CSV renderer only.
+- **`api/`** — `POST /imports` (multipart upload), `GET /imports/{id}`, `PATCH /import_items/{id}`, approve/reject, `GET /imports/{id}/csv`, `GET/PUT /import_profiles`.
+
+### Frontend (SvelteKit)
+- `/imports/new` — file dropzone + boutique/supplier profile picker + option overrides (coefficient, season…).
+- `/imports/[id]` — progress (same pattern as jobs).
+- `/imports/[id]/review` — editable grid of extracted products (title, EAN, sizes/qty, computed retail price, category, brand) with per-field confidence highlighting; approve/reject; **Download Tillin CSV** / (later) **Create in Tillin**.
+- `/settings/import-profiles` — manage convention profiles.
+
+### Import sprint phasing
+- **I1 — parse & extract:** upload → worker parses PDF/Excel/CSV → normalized products staged (one real L'Espion PDF + one Garcia Excel as fixtures).
+- **I2 — profiles & review:** convention profiles applied (pricing/brand/category/season), review grid, edit/approve, **Tillin import CSV download**. This already replaces the manual workflow end-to-end.
+- **I3 — direct creation:** `create_products` on the Xano destination adapter (products + variants + EANs), duplicate detection (EAN/reference already in Tillin → flag, don't recreate), then hand off to an enrichment job.
+
+### Parallel agent workstreams
+The sprint splits into lots with **disjoint write sets**, per the repo's delegation rules (one worker = one boundary; generated client + OpenAPI regen decided centrally in the main thread):
+
+| Lot | Scope (write boundary) | Depends on |
+|---|---|---|
+| A — parsing/extraction | `backend/app/imports/parsers/`, `extract.py` + tests/fixtures | nothing (contract: normalized schema, frozen first) |
+| B — profiles & CSV out | `backend/app/imports/profiles.py`, `csv_out.py`, seed + tests | schema contract only |
+| C — jobs/API plumbing | `backend/app/api/` (import routes/schemas/services), `jobs/` job-type, `models/` + Alembic migration | schema contract only |
+| D — frontend | `frontend/src/routes/imports/**`, settings page | C's OpenAPI contract (mock until regen) |
+| E — Xano direct creation (I3) | `backend/app/destinations/` + Xano-side thin endpoints | A–C shipped |
+
+Sequencing: freeze the normalized product schema + API contract in the main thread first, then A, B, C run fully in parallel; D starts against the contract; E last. OpenAPI/client regeneration happens once in the main thread after C settles.
+
+### Verification (import sprint)
+1. **Unit:** parser fixtures (1 L'Espion PDF, 1 Garcia Excel, 1 generic CSV) → expected normalized rows; pricing rule (`wholesale × coef` rounded up to nearest 5); category mapping leaves unknowns empty; EAN/price values are byte-identical to the source cells.
+2. **Integration:** upload a real supplier file → review grid → approve → generated CSV imports cleanly into Tillin (manual import path).
+3. **I3:** direct creation on 2–3 test products → products/variants/EANs visible in Tillin; duplicate upload is flagged, not recreated.
+
+---
 
 ## Future / separate sprints (out of scope here)
 - **AI imagery sprint — image presentation styles:** let the user choose **flat-lay** (source selection), **on-model** (Photoroom **Virtual Model API** — flat-lay/ghost-mannequin → on-model, 12+ preset or custom brand models, poses, scene presets), and **in-scene / lifestyle** (Photoroom **AI Backgrounds** — generative scene from a text prompt). Both are Photoroom **Image Editing API Plus plan** (credits per image). Larger feature → its own sprint; the `images.py` interface should leave room for a `presentation_style` param.
