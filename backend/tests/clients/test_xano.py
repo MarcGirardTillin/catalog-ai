@@ -44,6 +44,7 @@ def _store(
     products: list[dict] | None = None,
     detail: dict | None = None,
     brands: list[dict] | None = None,
+    categories: list[dict] | None = None,
     data_source: str = "",
 ) -> httpx.MockTransport:
     """Fake Xano: /auth/login issues a token, reads require the bearer."""
@@ -57,6 +58,11 @@ def _store(
         assert request.headers.get("Authorization") == "Bearer jwt-token"
         if path.endswith("/brand"):
             return httpx.Response(200, json=BRANDS if brands is None else brands)
+        if path.endswith("/get_all_informations"):
+            return httpx.Response(
+                200,
+                json={"company_all_informations": {"categories": categories or []}},
+            )
         if path.endswith(PRODUCTS_PATH):
             return httpx.Response(
                 200,
@@ -208,6 +214,44 @@ def test_get_product_returns_detail_and_404_is_none() -> None:
 
     with _client(_store(detail=None)) as client:
         assert client.get_product(9999) is None
+
+
+def test_get_product_resolves_flat_category_id_via_classification() -> None:
+    # The detail shape carries no nested `category`, only a flat `category_id`;
+    # the title is resolved through the classification map.
+    detail = {
+        "id": 2680,
+        "title": "Polo rayé",
+        "brand_id": 1332,
+        "category_id": 1465,
+        "category_ids": [1465],
+        "product_variants": [],
+    }
+    store = _store(detail=detail, categories=[{"id": 1465, "title": "Polos"}])
+    with _client(store) as client:
+        product = client.get_product(2680)
+    assert product is not None
+    assert product.category == "Polos"
+
+
+def test_get_product_category_is_none_when_classification_unavailable() -> None:
+    # /get_all_informations failing must not break the detail read.
+    detail = {"id": 2680, "title": "Polo", "category_id": 1465, "product_variants": []}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        if path.endswith("/get_all_informations"):
+            return httpx.Response(500)
+        if path.endswith("/brand"):
+            return httpx.Response(200, json=BRANDS)
+        return httpx.Response(200, json=detail)
+
+    with _client(httpx.MockTransport(handler)) as client:
+        product = client.get_product(2680)
+    assert product is not None
+    assert product.category is None
 
 
 def test_data_source_header_is_sent() -> None:

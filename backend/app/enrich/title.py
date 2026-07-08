@@ -21,9 +21,25 @@ def _token_values(product: Product) -> dict[str, str]:
     }
 
 
+def _drop_brand_if_already_in_title(values: dict[str, str]) -> None:
+    """Blank the `brand` token when the title already contains the brand name.
+
+    Tillin titles often embed the brand (e.g. "ARMEDANGELS Polo rayé…"), which
+    would render "ARMEDANGELS ARMEDANGELS Polo rayé…" with `{brand} {title}`.
+    Matching is case-insensitive and word-bounded; only applies when both
+    values are non-empty.
+    """
+    brand, title = values["brand"], values["title"]
+    if not brand or not title:
+        return
+    if re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", title, flags=re.IGNORECASE):
+        values["brand"] = ""
+
+
 def apply_title_template(product: Product, template: str) -> str:
     """Render a title template; unknown tokens raise, empty values collapse."""
     values = _token_values(product)
+    _drop_brand_if_already_in_title(values)
 
     def replace(match: re.Match[str]) -> str:
         token = match.group(1)

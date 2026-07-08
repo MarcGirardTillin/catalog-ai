@@ -207,23 +207,46 @@ def _map_brand(brand_id: Any, brands: Mapping[int, Mapping[str, Any]]) -> Brand 
     )
 
 
+def _map_category(
+    raw: Mapping[str, Any], categories: Mapping[int, str] | None
+) -> str | None:
+    """Resolve the category title from either raw Tillin product shape.
+
+    The list shape (`/products_with_pagination`) nests the full category
+    (`{"category": {"id": …, "title": …}}`); the detail shape (`/product/{id}`)
+    only carries a flat `category_id`, resolved via the classification map.
+    """
+    category = raw.get("category")
+    if isinstance(category, Mapping):
+        name = _first(category, "title", "name")
+        if name is not None:
+            return str(name)
+    category_id = raw.get("category_id")
+    if categories and category_id is not None:
+        try:
+            return categories.get(int(category_id))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def _map_product(
-    raw: Mapping[str, Any], brands: Mapping[int, Mapping[str, Any]] | None = None
+    raw: Mapping[str, Any],
+    brands: Mapping[int, Mapping[str, Any]] | None = None,
+    categories: Mapping[int, str] | None = None,
 ) -> Product:
     """Map one raw Tillin product (list or detail shape) onto :class:`Product`."""
     variants_raw = [
         v for v in _as_list(raw.get("product_variants")) if isinstance(v, Mapping)
     ]
-    category = raw.get("category")
-    category_name = (
-        _first(category, "title", "name") if isinstance(category, Mapping) else None
-    )
     return Product(
         id=_first(raw, "id", "product_id"),
         title=_first(raw, "title", "title_label"),
         reference_code=_first(raw, "product_reference_code"),
         brand=_map_brand(_first(raw, "brand_id"), brands or {}),
-        category=category_name,
+        category=_map_category(raw, categories),
+        description=_first(raw, "description", "body_html"),
+        meta_description=_first(raw, "meta_description"),
         variants=[_map_variant(v) for v in variants_raw],
         images=_collect_images(raw),
     )
@@ -255,6 +278,7 @@ class XanoClient:
         )
         self._token: str | None = None
         self._brands: dict[int, Mapping[str, Any]] | None = None
+        self._categories: dict[int, str] | None = None
 
     def __enter__(self) -> "XanoClient":
         return self
@@ -375,6 +399,24 @@ class XanoClient:
         self._brands = brands
         return brands
 
+    def _category_map(self) -> dict[int, str]:
+        """Lazily load and cache the `{category_id: title}` map.
+
+        Sourced from the classification endpoint (same payload as the search
+        filters). Best-effort like `_brand_map`: on failure the map is cached
+        empty and detail products simply keep `category=None` (never raises).
+        """
+        if self._categories is not None:
+            return self._categories
+        categories: dict[int, str] = {}
+        try:
+            for option in self.get_classification().get("categories", []):
+                categories[int(option["id"])] = str(option["title"])
+        except XanoError:
+            logger.warning("could not load Xano categories; category names omitted")
+        self._categories = categories
+        return categories
+
     # -- reads --------------------------------------------------------------
 
     def search_products(
@@ -428,7 +470,7 @@ class XanoClient:
         payload = self._request(f"{PRODUCT_PATH}/{product_id}", {})
         if not isinstance(payload, Mapping):
             return None
-        return _map_product(payload, self._brand_map())
+        return _map_product(payload, self._brand_map(), self._category_map())
 
     def get_classification(self) -> dict[str, list[dict[str, Any]]]:
         """Classification lists for search filters (brands, categories, …).

@@ -45,5 +45,8 @@ class Product(BaseModel):
     season: str | None = None
     category: str | None = None
     department: str | None = None
+    # Current destination-side copy, shown as before/after context in review.
+    description: str | None = None
+    meta_description: str | None = None
     variants: list[ProductVariant] = Field(default_factory=list)
     images: list[ProductImage] = Field(default_factory=list)
