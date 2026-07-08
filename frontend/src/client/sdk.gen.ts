@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -121,7 +121,8 @@ export const jobsListJobs = <ThrowOnError extends boolean = false>(options?: Opt
 /**
  * Create Enrichment Job
  *
- * Create a job and enqueue its items (fire-and-forget: returns at once).
+ * Create a job, enqueue its items, and kick off processing in the
+ * background (the response returns at once; the worker drains after).
  */
 export const jobsCreateEnrichmentJob = <ThrowOnError extends boolean = false>(options: Options<JobsCreateEnrichmentJobData, ThrowOnError>): RequestResult<JobsCreateEnrichmentJobResponses, JobsCreateEnrichmentJobErrors, ThrowOnError> => (options.client ?? client).post<JobsCreateEnrichmentJobResponses, JobsCreateEnrichmentJobErrors, ThrowOnError>({
     responseType: 'json',
@@ -131,6 +132,17 @@ export const jobsCreateEnrichmentJob = <ThrowOnError extends boolean = false>(op
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Retry Job Failures
+ *
+ * Requeue a job's failed/rejected items and kick the worker.
+ */
+export const jobsRetryJobFailures = <ThrowOnError extends boolean = false>(options: Options<JobsRetryJobFailuresData, ThrowOnError>): RequestResult<JobsRetryJobFailuresResponses, JobsRetryJobFailuresErrors, ThrowOnError> => (options.client ?? client).post<JobsRetryJobFailuresResponses, JobsRetryJobFailuresErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/jobs/{job_id}/retry',
+    ...options
 });
 
 /**
@@ -173,6 +185,43 @@ export const itemsPatchItem = <ThrowOnError extends boolean = false>(options: Op
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Read Item Product
+ *
+ * Fetch the item's current Tillin product (before/after review context).
+ */
+export const itemsReadItemProduct = <ThrowOnError extends boolean = false>(options: Options<ItemsReadItemProductData, ThrowOnError>): RequestResult<ItemsReadItemProductResponses, ItemsReadItemProductErrors, ThrowOnError> => (options.client ?? client).get<ItemsReadItemProductResponses, ItemsReadItemProductErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/items/{item_id}/product',
+    ...options
+});
+
+/**
+ * Resolve Item Route
+ *
+ * Manually resolve an item from a chosen source page and re-stage it.
+ */
+export const itemsResolveItemRoute = <ThrowOnError extends boolean = false>(options: Options<ItemsResolveItemRouteData, ThrowOnError>): RequestResult<ItemsResolveItemRouteResponses, ItemsResolveItemRouteErrors, ThrowOnError> => (options.client ?? client).post<ItemsResolveItemRouteResponses, ItemsResolveItemRouteErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/items/{item_id}/resolve',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retry Item Route
+ *
+ * Requeue one item for a full re-generation and kick the worker.
+ */
+export const itemsRetryItemRoute = <ThrowOnError extends boolean = false>(options: Options<ItemsRetryItemRouteData, ThrowOnError>): RequestResult<ItemsRetryItemRouteResponses, ItemsRetryItemRouteErrors, ThrowOnError> => (options.client ?? client).post<ItemsRetryItemRouteResponses, ItemsRetryItemRouteErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/items/{item_id}/retry',
+    ...options
 });
 
 /**

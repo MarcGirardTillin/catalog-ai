@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
   import { jobsCreateEnrichmentJob } from "@/client"
@@ -13,7 +14,7 @@
   } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
-  import AppHeader from "@/lib/components/app/AppHeader.svelte"
+  import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -57,9 +58,10 @@
     })
     submitting = false
     if (error || !data) {
-      errorMessage = "Création du job impossible. Réessayez."
+      toast.error("Création du job impossible. Réessayez.")
       return
     }
+    toast.success(`Job #${data.id} créé — traitement lancé`)
     createdJob = data
   }
 
@@ -72,10 +74,12 @@
 
 <RequireAuth>
   {#snippet children(user)}
-    <div class="bg-background min-h-dvh">
-      <AppHeader {appName} {user} />
-
-      <main class="mx-auto max-w-2xl p-4">
+    <AppShell
+      {appName}
+      {user}
+      breadcrumbs={[{ label: "Jobs", href: "/jobs" }, { label: "Nouveau job" }]}
+    >
+      <div class="mx-auto max-w-2xl p-4">
         {#if createdJob}
           <Card>
             <CardHeader>
@@ -186,7 +190,7 @@
             </CardContent>
           </Card>
         {/if}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   {/snippet}
 </RequireAuth>

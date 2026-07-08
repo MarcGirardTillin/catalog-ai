@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ModeWatcher } from "mode-watcher"
+  import { mode, ModeWatcher } from "mode-watcher"
+  import { Toaster } from "svelte-sonner"
   import {
     QueryClient,
     QueryClientProvider,
@@ -30,6 +31,7 @@
 </script>
 
 <ModeWatcher />
+<Toaster richColors position="top-right" theme={mode.current ?? "system"} />
 
 <QueryClientProvider client={queryClient}>
   <svelte:boundary>

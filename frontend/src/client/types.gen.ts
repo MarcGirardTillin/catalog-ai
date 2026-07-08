@@ -179,6 +179,12 @@ export type ItemPublic = {
      */
     match_score?: number | null;
     /**
+     * Resolution Json
+     */
+    resolution_json?: {
+        [key: string]: unknown;
+    } | null;
+    /**
      * Staged Title
      */
     staged_title?: string | null;
@@ -207,9 +213,33 @@ export type ItemPublic = {
      */
     attempt_count: number;
     /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds?: number | null;
+    /**
      * Updated At
      */
     updated_at: string;
+};
+
+/**
+ * ItemResolveRequest
+ *
+ * Manually point an item at a specific source product page.
+ */
+export type ItemResolveRequest = {
+    /**
+     * Source Url
+     */
+    source_url: string;
 };
 
 /**
@@ -292,6 +322,18 @@ export type JobPublic = {
      * Created At
      */
     created_at: string;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds?: number | null;
 };
 
 /**
@@ -435,6 +477,14 @@ export type Product = {
      * Department
      */
     department?: string | null;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Meta Description
+     */
+    meta_description?: string | null;
     /**
      * Variants
      */
@@ -861,6 +911,36 @@ export type JobsCreateEnrichmentJobResponses = {
 
 export type JobsCreateEnrichmentJobResponse = JobsCreateEnrichmentJobResponses[keyof JobsCreateEnrichmentJobResponses];
 
+export type JobsRetryJobFailuresData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/jobs/{job_id}/retry';
+};
+
+export type JobsRetryJobFailuresErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsRetryJobFailuresError = JobsRetryJobFailuresErrors[keyof JobsRetryJobFailuresErrors];
+
+export type JobsRetryJobFailuresResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobPublic;
+};
+
+export type JobsRetryJobFailuresResponse = JobsRetryJobFailuresResponses[keyof JobsRetryJobFailuresResponses];
+
 export type JobsReadJobData = {
     body?: never;
     path: {
@@ -993,6 +1073,96 @@ export type ItemsPatchItemResponses = {
 };
 
 export type ItemsPatchItemResponse = ItemsPatchItemResponses[keyof ItemsPatchItemResponses];
+
+export type ItemsReadItemProductData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/product';
+};
+
+export type ItemsReadItemProductErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsReadItemProductError = ItemsReadItemProductErrors[keyof ItemsReadItemProductErrors];
+
+export type ItemsReadItemProductResponses = {
+    /**
+     * Successful Response
+     */
+    200: Product;
+};
+
+export type ItemsReadItemProductResponse = ItemsReadItemProductResponses[keyof ItemsReadItemProductResponses];
+
+export type ItemsResolveItemRouteData = {
+    body: ItemResolveRequest;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/resolve';
+};
+
+export type ItemsResolveItemRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsResolveItemRouteError = ItemsResolveItemRouteErrors[keyof ItemsResolveItemRouteErrors];
+
+export type ItemsResolveItemRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsResolveItemRouteResponse = ItemsResolveItemRouteResponses[keyof ItemsResolveItemRouteResponses];
+
+export type ItemsRetryItemRouteData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/retry';
+};
+
+export type ItemsRetryItemRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsRetryItemRouteError = ItemsRetryItemRouteErrors[keyof ItemsRetryItemRouteErrors];
+
+export type ItemsRetryItemRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsRetryItemRouteResponse = ItemsRetryItemRouteResponses[keyof ItemsRetryItemRouteResponses];
 
 export type ItemsApproveItemData = {
     body?: never;

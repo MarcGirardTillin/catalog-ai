@@ -42,13 +42,29 @@
   }
 </script>
 
-<!-- Mobile-first: single column, comfortable touch targets, card grows to max-w-sm on larger screens. -->
-<main class="bg-background flex min-h-dvh items-center justify-center p-4">
-  <Card class="w-full max-w-sm">
-    <CardHeader>
-      <CardTitle class="font-title text-2xl">{appName}</CardTitle>
-      <CardDescription>Connectez-vous pour accéder au catalogue.</CardDescription>
-    </CardHeader>
+<!-- Mobile-first: single column, comfortable touch targets, card grows to max-w-sm on larger screens.
+     Subtle radial primary glow for a SaaS-style login backdrop. -->
+<main
+  class="bg-background relative flex min-h-dvh items-center justify-center overflow-hidden p-4"
+>
+  <div
+    class="bg-primary/10 pointer-events-none absolute -top-32 left-1/2 size-120 -translate-x-1/2 rounded-full blur-3xl"
+    aria-hidden="true"
+  ></div>
+
+  <div class="relative flex w-full max-w-sm flex-col items-center gap-6">
+    <div class="flex flex-col items-center gap-1">
+      <span class="font-title text-foreground text-2xl font-bold">{appName}</span>
+      <span class="text-primary text-xs font-semibold tracking-[0.24em] uppercase">
+        Enrichissement de catalogue
+      </span>
+    </div>
+
+    <Card class="w-full shadow-sm">
+      <CardHeader>
+        <CardTitle class="font-title text-lg">Connexion</CardTitle>
+        <CardDescription>Connectez-vous pour accéder au catalogue.</CardDescription>
+      </CardHeader>
     <CardContent>
       <form class="flex flex-col gap-4" onsubmit={onSubmit}>
         <div class="flex flex-col gap-1.5">
@@ -97,6 +113,7 @@
           {submitting ? "Connexion…" : "Se connecter"}
         </Button>
       </form>
-    </CardContent>
-  </Card>
+      </CardContent>
+    </Card>
+  </div>
 </main>

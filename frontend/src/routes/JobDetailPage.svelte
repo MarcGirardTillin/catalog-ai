@@ -1,12 +1,13 @@
 <script lang="ts">
+  import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
-  import { jobsListJobItems, jobsReadJob } from "@/client"
+  import { jobsListJobItems, jobsReadJob, jobsRetryJobFailures } from "@/client"
   import type { ItemPublic, JobPublic } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
-  import AppHeader from "@/lib/components/app/AppHeader.svelte"
+  import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
 
@@ -15,6 +16,7 @@
   let job = $state<JobPublic | null>(null)
   let items = $state<ItemPublic[] | null>(null)
   let errorMessage = $state<string | null>(null)
+  let retrying = $state(false)
 
   async function load() {
     const jobId = Number(id)
@@ -62,6 +64,50 @@
     return Math.round((done / counts.total) * 100)
   })
 
+  function formatDuration(seconds: number): string {
+    const s = Math.round(seconds)
+    if (s < 60) return `${s} s`
+    const m = Math.floor(s / 60)
+    const rem = s % 60
+    return rem === 0 ? `${m} min` : `${m} min ${rem} s`
+  }
+
+  // Live elapsed while the job is still running (recomputed on each poll tick).
+  let now = $state(Date.now())
+  $effect(() => {
+    const t = setInterval(() => (now = Date.now()), 1000)
+    return () => clearInterval(t)
+  })
+
+  const timing = $derived.by(() => {
+    if (!job) return null
+    if (job.duration_seconds != null) {
+      return { label: "Durée", value: formatDuration(job.duration_seconds) }
+    }
+    if (job.started_at) {
+      const elapsed = (now - new Date(job.started_at).getTime()) / 1000
+      return { label: "En cours depuis", value: formatDuration(Math.max(0, elapsed)) }
+    }
+    return null
+  })
+
+  const retryableCount = $derived(counts.failed + counts.rejected)
+
+  async function retryFailures() {
+    if (!job) return
+    const count = retryableCount
+    retrying = true
+    const { data, error } = await jobsRetryJobFailures({ path: { job_id: job.id } })
+    retrying = false
+    if (error || !data) {
+      toast.error("Relance impossible.")
+      return
+    }
+    toast.success(`Relance des échecs lancée (${count} item${count > 1 ? "s" : ""})`)
+    job = data
+    load() // refresh items; polling resumes since the job is pending again
+  }
+
   const COUNT_LABELS: [keyof Omit<typeof counts, "total">, string][] = [
     ["pending", "En attente"],
     ["processing", "En cours"],
@@ -75,10 +121,12 @@
 
 <RequireAuth>
   {#snippet children(user)}
-    <div class="bg-background min-h-dvh">
-      <AppHeader {appName} {user} />
-
-      <main class="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+    <AppShell
+      {appName}
+      {user}
+      breadcrumbs={[{ label: "Jobs", href: "/jobs" }, { label: `Job #${id}` }]}
+    >
+      <div class="mx-auto flex max-w-2xl flex-col gap-3 p-4">
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
           <Button variant="secondary" class="w-full sm:w-auto" onclick={() => navigate("/jobs")}>
@@ -105,6 +153,12 @@
                 </div>
                 <span class="text-muted-foreground font-mono text-xs">{progress}%</span>
               </div>
+              {#if timing}
+                <div class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                  <span>{timing.label}</span>
+                  <span class="text-foreground font-mono font-medium">{timing.value}</span>
+                </div>
+              {/if}
               <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
                 {#each COUNT_LABELS as [key, label] (key)}
                   {#if counts[key] > 0}
@@ -115,6 +169,20 @@
                   {/if}
                 {/each}
               </dl>
+              {#if retryableCount > 0}
+                <div class="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={retrying}
+                    onclick={retryFailures}
+                  >
+                    {retrying
+                      ? "Relance…"
+                      : `Relancer les échecs (${retryableCount})`}
+                  </Button>
+                </div>
+              {/if}
             </CardContent>
           </Card>
 
@@ -151,6 +219,9 @@
                       {#if item.match_score != null}
                         <span class="font-mono">score {item.match_score.toFixed(2)}</span>
                       {/if}
+                      {#if item.duration_seconds != null}
+                        <span class="font-mono">⏱ {formatDuration(item.duration_seconds)}</span>
+                      {/if}
                       {#if item.error}
                         <span class="text-destructive">{item.error}</span>
                       {/if}
@@ -161,7 +232,7 @@
             {/each}
           {/if}
         {/if}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   {/snippet}
 </RequireAuth>

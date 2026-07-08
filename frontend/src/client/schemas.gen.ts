@@ -293,6 +293,18 @@ export const ItemPublicSchema = {
             ],
             title: 'Match Score'
         },
+        resolution_json: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Resolution Json'
+        },
         staged_title: {
             anyOf: [
                 {
@@ -365,6 +377,41 @@ export const ItemPublicSchema = {
             type: 'integer',
             title: 'Attempt Count'
         },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        },
+        duration_seconds: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Duration Seconds'
+        },
         updated_at: {
             type: 'string',
             format: 'date-time',
@@ -381,6 +428,22 @@ export const ItemPublicSchema = {
         'updated_at'
     ],
     title: 'ItemPublic'
+} as const;
+
+export const ItemResolveRequestSchema = {
+    properties: {
+        source_url: {
+            type: 'string',
+            minLength: 1,
+            title: 'Source Url'
+        }
+    },
+    type: 'object',
+    required: [
+        'source_url'
+    ],
+    title: 'ItemResolveRequest',
+    description: 'Manually point an item at a specific source product page.'
 } as const;
 
 export const JobCountsSchema = {
@@ -475,6 +538,41 @@ export const JobPublicSchema = {
             type: 'string',
             format: 'date-time',
             title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        },
+        duration_seconds: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Duration Seconds'
         }
     },
     type: 'object',
@@ -724,6 +822,28 @@ export const ProductSchema = {
                 }
             ],
             title: 'Department'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        },
+        meta_description: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Meta Description'
         },
         variants: {
             items: {

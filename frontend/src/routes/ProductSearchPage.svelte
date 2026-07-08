@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte"
+  import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
   import {
@@ -12,7 +13,7 @@
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Skeleton } from "@/lib/components/ui/skeleton"
-  import AppHeader from "@/lib/components/app/AppHeader.svelte"
+  import AppShell from "@/lib/components/app/AppShell.svelte"
   import FilterSelect from "@/lib/components/app/FilterSelect.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
@@ -122,19 +123,18 @@
     })
     submitting = false
     if (error || !data) {
-      errorMessage = "Création du job impossible."
+      toast.error("Création du job impossible.")
       return
     }
+    toast.success(`Job #${data.id} créé — traitement lancé`)
     navigate(`/jobs/${data.id}`)
   }
 </script>
 
 <RequireAuth>
   {#snippet children(user)}
-    <div class="bg-background min-h-dvh">
-      <AppHeader {appName} {user} />
-
-      <main class="mx-auto flex max-w-2xl flex-col gap-3 p-4 pb-24">
+    <AppShell {appName} {user} breadcrumbs={[{ label: "Produits" }]}>
+      <div class="mx-auto flex max-w-2xl flex-col gap-3 p-4 pb-24">
         <h1 class="font-title text-lg font-bold">Sélectionner des produits</h1>
 
         <Input
@@ -266,11 +266,11 @@
             </Button>
           </div>
         {/if}
-      </main>
+      </div>
 
-      <!-- Sticky selection/action bar -->
+      <!-- Sticky selection/action bar (offset by the sidebar width on desktop) -->
       {#if selected.size > 0}
-        <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t p-3">
+        <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t p-3 sm:left-60">
           <div class="mx-auto flex max-w-2xl items-center gap-3">
             <label class="text-muted-foreground flex items-center gap-1.5 text-xs">
               <input type="checkbox" bind:checked={translate} class="accent-primary size-3.5" />
@@ -282,6 +282,6 @@
           </div>
         </div>
       {/if}
-    </div>
+    </AppShell>
   {/snippet}
 </RequireAuth>

@@ -6,7 +6,7 @@
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
-  import AppHeader from "@/lib/components/app/AppHeader.svelte"
+  import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
 
@@ -35,10 +35,8 @@
 
 <RequireAuth>
   {#snippet children(user)}
-    <div class="bg-background min-h-dvh">
-      <AppHeader {appName} {user} />
-
-      <main class="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+    <AppShell {appName} {user} breadcrumbs={[{ label: "Jobs" }]}>
+      <div class="mx-auto flex max-w-2xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Jobs d'enrichissement</h1>
           <Button size="sm" onclick={() => navigate("/products")}>Nouveau job</Button>
@@ -83,7 +81,7 @@
             </button>
           {/each}
         {/if}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   {/snippet}
 </RequireAuth>
