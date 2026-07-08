@@ -79,7 +79,7 @@
       {user}
       breadcrumbs={[{ label: "Jobs", href: "/jobs" }, { label: "Nouveau job" }]}
     >
-      <div class="mx-auto max-w-2xl p-4">
+      <div class="mx-auto max-w-4xl p-4">
         {#if createdJob}
           <Card>
             <CardHeader>
@@ -157,7 +157,7 @@
                       id="ids"
                       rows="5"
                       placeholder="Ex. 101, 102, 103 (séparés par virgules, espaces ou retours à la ligne)"
-                      class="border-input bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+                      class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
                       bind:value={idsRaw}
                     ></textarea>
                     <p class="text-muted-foreground text-xs">

@@ -17,9 +17,9 @@
 </script>
 
 <label class="flex min-w-0 flex-1 flex-col gap-1">
-  <span class="text-muted-foreground text-xs">{label}</span>
+  <span class="text-foreground text-xs font-medium">{label}</span>
   <select
-    class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2 text-xs transition-colors outline-none focus-visible:ring-1"
+    class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2 text-sm transition-colors outline-none focus-visible:ring-1"
     bind:value
     onchange={() => onchange?.()}
   >

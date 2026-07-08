@@ -14,7 +14,14 @@
   } from "@/client"
   import type { ItemPublic, Product } from "@/client"
   import { Button } from "@/lib/components/ui/button"
-  import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
+  import {
+    Card,
+    CardAction,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
@@ -38,6 +45,10 @@
   let description = $state("")
   let meta = $state("")
 
+  // Per-field apply choice: key absent or `true` = written to Tillin on apply,
+  // `false` = skipped. Keys: "title" | "description" | "meta" | "images".
+  let applyFields = $state<Record<string, boolean>>({})
+
   // Recommended SEO meta length; past this we warn (soft limit).
   const META_MAX = 160
 
@@ -46,6 +57,24 @@
     title = data.staged_title ?? ""
     description = data.staged_description ?? ""
     meta = data.staged_meta ?? ""
+    applyFields = { ...(data.apply_fields_json ?? {}) }
+  }
+
+  function isApplied(key: string): boolean {
+    return applyFields[key] ?? true
+  }
+
+  function toggleApply(key: string) {
+    applyFields = { ...applyFields, [key]: !isApplied(key) }
+  }
+
+  // Normalized signature: only explicitly-unchecked keys matter
+  // (a key set to `true` is equivalent to an absent key).
+  function excludedKeys(fields: Record<string, boolean> | null | undefined): string {
+    return Object.keys(fields ?? {})
+      .filter((key) => fields?.[key] === false)
+      .sort()
+      .join(",")
   }
 
   $effect(() => {
@@ -76,11 +105,28 @@
     item !== null &&
       (title !== (item.staged_title ?? "") ||
         description !== (item.staged_description ?? "") ||
-        meta !== (item.staged_meta ?? "")),
+        meta !== (item.staged_meta ?? "") ||
+        excludedKeys(applyFields) !== excludedKeys(item.apply_fields_json)),
   )
   const images = $derived(
     (item?.staged_images_json ?? []) as { url: string; position?: number }[],
   )
+
+  // Every field that actually has staged content is unchecked: nothing will
+  // be written to Tillin on apply. Warn, but do not block.
+  const nothingApplied = $derived.by(() => {
+    const withContent = (
+      [
+        ["title", title.trim() !== ""],
+        ["description", description.trim() !== ""],
+        ["meta", meta.trim() !== ""],
+        ["images", images.length > 0],
+      ] as const
+    )
+      .filter(([, has]) => has)
+      .map(([key]) => key)
+    return withContent.length > 0 && withContent.every((key) => !isApplied(key))
+  })
   const weights = $derived(
     (item?.staged_weights_json ?? []) as {
       variant_id: number
@@ -146,6 +192,7 @@
         staged_title: title || null,
         staged_description: description || null,
         staged_meta: meta || null,
+        apply_fields_json: applyFields,
       },
     })
     busy = false
@@ -260,6 +307,21 @@
     ]
   })
 </script>
+
+{#snippet applyCheckbox(key: string)}
+  <label
+    class="text-muted-foreground flex cursor-pointer items-center gap-1.5 text-xs font-normal"
+  >
+    <input
+      type="checkbox"
+      class="accent-primary size-3.5"
+      checked={isApplied(key)}
+      disabled={!reviewable}
+      onchange={() => toggleApply(key)}
+    />
+    Appliquer
+  </label>
+{/snippet}
 
 <RequireAuth>
   {#snippet children(user)}
@@ -409,12 +471,18 @@
           <Card>
             <CardHeader>
               <CardTitle class="font-title text-sm">Contenu proposé</CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Décochez les champs à ne pas écrire dans Tillin.
+              </CardDescription>
             </CardHeader>
             <CardContent class="flex flex-col gap-4">
               <!-- Titre : actuel vs proposé -->
               <div class="flex flex-col gap-1.5">
                 <div class="flex items-center justify-between">
-                  <Label for="staged-title">Titre</Label>
+                  <div class="flex items-center gap-3">
+                    <Label for="staged-title">Titre</Label>
+                    {@render applyCheckbox("title")}
+                  </div>
                   <span class="text-muted-foreground font-mono text-xs">{title.length}</span>
                 </div>
                 <div class="grid gap-2 sm:grid-cols-2">
@@ -428,12 +496,12 @@
                       {/if}
                     </div>
                   </div>
-                  <div class="flex flex-col gap-1">
+                  <div class="flex flex-col gap-1" class:opacity-60={!isApplied("title")}>
                     <span class="text-muted-foreground text-xs">Proposé</span>
                     <textarea
                       id="staged-title"
                       rows="1"
-                      class="border-input bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
+                      class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
                       bind:value={title}
                       disabled={!reviewable}
                     ></textarea>
@@ -442,7 +510,10 @@
               </div>
               <!-- Description : actuelle vs proposée -->
               <div class="flex flex-col gap-1.5">
-                <Label for="staged-description">Description</Label>
+                <div class="flex items-center gap-3">
+                  <Label for="staged-description">Description</Label>
+                  {@render applyCheckbox("description")}
+                </div>
                 <div class="grid gap-2 sm:grid-cols-2">
                   <div class="flex flex-col gap-1">
                     <span class="text-muted-foreground text-xs">Actuel</span>
@@ -456,12 +527,12 @@
                       {/if}
                     </div>
                   </div>
-                  <div class="flex flex-col gap-1">
+                  <div class="flex flex-col gap-1" class:opacity-60={!isApplied("description")}>
                     <span class="text-muted-foreground text-xs">Proposé</span>
                     <textarea
                       id="staged-description"
                       rows="6"
-                      class="border-input bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-80 min-h-24 w-full resize-none overflow-y-auto rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
+                      class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-80 min-h-24 w-full resize-none overflow-y-auto rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
                       placeholder="Pas de description générée (copie IA non branchée)."
                       bind:value={description}
                       disabled={!reviewable}
@@ -472,7 +543,10 @@
               <!-- Meta description : actuelle vs proposée -->
               <div class="flex flex-col gap-1.5">
                 <div class="flex items-center justify-between">
-                  <Label for="staged-meta">Meta description</Label>
+                  <div class="flex items-center gap-3">
+                    <Label for="staged-meta">Meta description</Label>
+                    {@render applyCheckbox("meta")}
+                  </div>
                   <span
                     class="font-mono text-xs {meta.length > META_MAX
                       ? 'text-destructive'
@@ -492,12 +566,12 @@
                       {/if}
                     </div>
                   </div>
-                  <div class="flex flex-col gap-1">
+                  <div class="flex flex-col gap-1" class:opacity-60={!isApplied("meta")}>
                     <span class="text-muted-foreground text-xs">Proposé</span>
                     <textarea
                       id="staged-meta"
                       rows="2"
-                      class="border-input bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
+                      class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
                       placeholder="Pas de meta générée."
                       bind:value={meta}
                       disabled={!reviewable}
@@ -523,9 +597,13 @@
             <Card>
               <CardHeader>
                 <CardTitle class="font-title text-sm">Images source ({images.length})</CardTitle>
+                <CardAction>{@render applyCheckbox("images")}</CardAction>
               </CardHeader>
               <CardContent>
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div
+                  class="grid grid-cols-2 gap-2 sm:grid-cols-3"
+                  class:opacity-60={!isApplied("images")}
+                >
                   {#each images as image (image.url)}
                     <img
                       src={image.url}
@@ -560,6 +638,11 @@
             <div
               class="border-border bg-card fixed inset-x-0 bottom-0 border-t p-3 sm:left-60"
             >
+              {#if nothingApplied}
+                <p class="text-destructive mx-auto max-w-4xl pb-2 text-xs" role="alert">
+                  Aucun champ ne sera écrit dans Tillin.
+                </p>
+              {/if}
               <div class="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button
                   class="w-full sm:order-3 sm:w-auto sm:min-w-44"

@@ -126,7 +126,7 @@
       {user}
       breadcrumbs={[{ label: "Jobs", href: "/jobs" }, { label: `Job #${id}` }]}
     >
-      <div class="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+      <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
           <Button variant="secondary" class="w-full sm:w-auto" onclick={() => navigate("/jobs")}>
