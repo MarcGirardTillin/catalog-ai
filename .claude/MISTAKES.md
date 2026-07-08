@@ -88,3 +88,13 @@ setting explicitly (monkeypatch), not assume the env is empty — the dev `.env`
 may carry real credentials. Bonus gotcha: a process-wide client singleton
 (`deps._xano_client`) must be reset in such tests to avoid a live client
 leaking across tests.
+
+## uvicorn --reload (Windows) silently misses new routes
+
+Symptom: added `GET /items/{id}/product` + `POST /items/{id}/resolve`, all tests
+green, but the running server 404'd them and `/openapi.json` didn't list them.
+Cause: WatchFiles under Windows didn't reload after the route-file edits (it had
+reloaded on an earlier model edit, then went stale). Fix: fully restart the
+uvicorn process; don't trust `--reload` to have applied route/router changes.
+Prevention: after backend router changes, verify with
+`curl /openapi.json | grep <path>` before testing in the UI; restart if missing.

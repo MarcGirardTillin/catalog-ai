@@ -230,3 +230,74 @@ does not replace). Manual push only (a button), per the saved "never auto-push"
 feedback. `staged_weights_json` is NOT written (Tillin weight endpoints are
 per-product/per-variant and separate; left review-only for now). Verified live:
 the adapter wrote a real title/description/image to a Tillin test product.
+
+## 2026-07-08 — Jobs auto-trigger on creation + run duration
+
+`POST /jobs` now schedules processing via FastAPI `BackgroundTasks`
+(`app/jobs/runner.py::process_pending` drains the queue in-process using a
+cached pipeline). The standalone `worker.py` still works (same pipeline via the
+shared `build_pipeline` factory; safe to run alongside thanks to
+`FOR UPDATE SKIP LOCKED`) but is no longer required for the UI to process jobs.
+The runner is injected as a dependency (`get_job_runner`) so tests override it
+with a no-op (TestClient runs background tasks inline; the autouse default keeps
+job-count assertions valid). Run duration: `enrichment_job` gained
+`started_at` (set at first claim) / `finished_at` (set when `_rollup_job`
+settles the job); `JobPublic.duration_seconds` is computed and shown on the Job
+page (live "en cours depuis …" while running). Migration `0004`.
+
+## 2026-07-08 — Review screen: manual resolution + Tillin context + persisted candidates
+
+The resolver already produced `candidates` + `reason`; the pipeline now
+persists them on the item (`resolution_json`, migration `0005`) so the review
+UI can (a) diagnose why a product landed in `needs_manual` and (b) offer the
+below-threshold candidates as one-click picks. `POST /items/{id}/resolve`
+(`{source_url}`) re-stages an item from a chosen/pasted Shopify product URL via
+`EnrichmentPipeline.stage_from_url` (source_method="manual"); allowed while
+ready_for_review/approved, 422 on an unreachable/non-product URL. Injected as
+`PipelineDep` (`get_enrichment_pipeline`). `GET /items/{id}/product` returns the
+current Tillin product (canonical Product gained `description`/`meta_description`)
+for before/after context. Review page redesigned: "Produit actuel (Tillin)"
+card (ref/brand/category/variants/current images+description), source card with
+diagnostic + candidate picker + manual-URL input, char counters on title/meta,
+meta as a textarea. NOTE: Windows uvicorn `--reload` did not pick up new routes
+until a full restart (WatchFiles miss) — see MISTAKES.
+
+## 2026-07-08 — Sprint A review/apply UX (parallel workers) + retry
+
+Executed with two parallel workers (backend-only / frontend-only write sets), per
+the delegation workflow. Ships:
+- Title fix: `apply_title_template` drops the `{brand}` token when the brand
+  name already appears in the title (word-boundary, case-insensitive) — Tillin
+  titles usually embed the brand, so `{brand} {title}` duplicated it.
+- Category on detail: Tillin's `/product/{id}` carries only a flat
+  `category_id` (list shape nests `{category:{title}}`); `_map_category`
+  resolves it via a lazy non-fatal `_category_map()` built from
+  `/get_all_informations` (same pattern as `_brand_map`). Verified live
+  (#2680 → "T-SHIRTS").
+- Review screen: before/after side-by-side (current Tillin title/description/
+  meta read-only next to the editable proposed fields), variant count without
+  SKU list, and a three-action bar: Rejeter / Valider / **Valider et
+  appliquer** (save→approve→apply chained; if apply fails after approve the
+  screen falls back to the existing "Appliquer" bar).
+- Retry: `POST /items/{id}/retry` (full re-generation: wipes staged_*/
+  resolution, resets attempts, re-opens the job, background-runs) and
+  `POST /jobs/{id}/retry` (requeues failed+rejected). `applied` is NOT
+  retryable yet — Tillin's bulk image endpoint appends, so re-apply needs an
+  image-dedupe guard first (planned with Sprint B). UI: "Régénérer" button on
+  the item screen, "Relancer les échecs (n)" on the job page.
+
+## 2026-07-08 — UI refonte R1: SaaS app shell
+
+The authenticated UI moved from a centered-column-with-navbar layout to a SaaS
+app shell (`AppShell.svelte`): fixed 240px sidebar (wordmark, Dashboard/
+Produits/Jobs nav with active state, user block + ThemePicker at the bottom),
+sticky h-14 topbar with breadcrumbs (prop-driven `{label, href?}[]`, replaces
+the artisanal "← back" links) and a user menu (initials avatar → bits-ui
+dropdown, logout). Mobile: sidebar becomes a drawer. Action feedback moved from
+inline text to svelte-sonner toasts (top-right, theme-synced); form-validation
+errors stay inline. LoginPage restyled (wordmark + card on a soft radial halo);
+HomePage became a dashboard placeholder (shortcut cards; KPIs planned for R2).
+`AppHeader.svelte` deleted. Fixed bottom action bars are offset `sm:left-60` to
+clear the sidebar. Remaining phases: R2 (KPI dashboard, jobs table, filter
+chips), R3 (item-to-item review nav, keyboard shortcuts, confirmations).
+Settings pages from Sprint B will live in the sidebar.
