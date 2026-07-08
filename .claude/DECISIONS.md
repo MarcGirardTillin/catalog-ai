@@ -331,3 +331,35 @@ became a JobsListPage-style table (row selection + current-page select-all with
 indeterminate state, thumbnail, title+ref, brand, category, variant count);
 multi-page selection Set, chips, pagination and the sticky create-job bar are
 unchanged.
+
+## 2026-07-08 — UI refonte R3: serial review flow
+
+ItemReviewPage gained sibling navigation (prev/next + "3/7" position from the
+job's item list, ←/→ keys), decision chaining (Valider / Rejeter / Valider et
+appliquer / Appliquer now jump to the NEXT ready_for_review item of the job —
+forward first, wrap to start — and only fall back to the job page when nothing
+is left to review), keyboard shortcuts (V approve, R reject, A
+approve-and-apply or apply, inactive while typing in a field, kbd hints on the
+buttons desktop-only), and a two-step reject (first activation arms the button
+— "Confirmer le rejet", destructive variant, 4s auto-reset — second confirms;
+no modal primitive needed). Navigating between items resets the page state so
+each item shows a fresh skeleton.
+
+## 2026-07-08 — Settings: user preferences + account defaults
+
+New Paramètres section (sidebar entry + /settings page, 4 cards). Storage:
+`user.preferences_json` + `account.settings_json` (migration 0008), validated
+at the API boundary by UserPreferences / AccountSettings schemas (defaults fill
+missing keys; PUT sends the full object). User prefs: shortcuts_enabled
+(DEFAULT OFF — review V/R/A/arrows are opt-in, kbd hints hidden when off),
+auto_advance (continueReview falls back to the job page when off), table
+density (comfortable/compact cell padding), products_per_page (read at call
+time). Account defaults: title_template + editorial_instructions are MERGED
+into new jobs' config_json when the job doesn't override them (create_job),
+meta_max_length, and notify_on_job_done/notify_email saved as a Brevo
+placeholder (badge « Bientôt actif », no email sent yet). Also:
+GET /settings/connection (configured/host/data_source, never a secret) and
+POST /auth/password (current password required, min 8; federated Xano users
+can't pass the current-password check by design — their credential lives
+upstream). Frontend prefs live in a module-level runes store
+(lib/preferences.svelte.ts) loaded once by RequireAuth.
