@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ChevronDown from "@lucide/svelte/icons/chevron-down"
+  import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
@@ -15,6 +17,7 @@
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import JobOptionsPanel from "@/lib/components/app/JobOptionsPanel.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -24,6 +27,11 @@
   let tag = $state("")
   let translate = $state(false)
   let submitting = $state(false)
+
+  // Options de génération (section dépliable ; reste montée une fois ouverte
+  // pour conserver les saisies quand on la replie).
+  let optionsOpen = $state(false)
+  let optionsPanel = $state<ReturnType<typeof JobOptionsPanel>>()
   let errorMessage = $state<string | null>(null)
   let createdJob = $state<JobPublic | null>(null)
 
@@ -53,7 +61,8 @@
     const { data, error } = await jobsCreateEnrichmentJob({
       body: {
         selection: mode === "ids" ? { ids: parsedIds } : { tag: tag.trim() },
-        config: { translate },
+        // Seules les options réellement renseignées partent dans la config.
+        config: { translate, ...(optionsPanel?.collectConfig() ?? {}) },
       },
     })
     submitting = false
@@ -178,6 +187,30 @@
                   <input type="checkbox" bind:checked={translate} class="accent-primary size-4" />
                   Traduire les contenus
                 </label>
+
+                <!-- Options de génération (repliées par défaut pour garder le
+                     formulaire léger ; montées en permanence = saisies gardées). -->
+                <div class="border-border flex flex-col rounded-md border">
+                  <button
+                    type="button"
+                    aria-expanded={optionsOpen}
+                    class="text-foreground hover:bg-muted/50 flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2.5 text-sm font-medium transition-colors"
+                    onclick={() => (optionsOpen = !optionsOpen)}
+                  >
+                    {#if optionsOpen}
+                      <ChevronDown size={14} aria-hidden="true" />
+                    {:else}
+                      <ChevronRight size={14} aria-hidden="true" />
+                    {/if}
+                    Options de génération
+                    <span class="text-muted-foreground text-xs font-normal">
+                      instructions, SEO, sources
+                    </span>
+                  </button>
+                  <div class="px-3 pb-3" hidden={!optionsOpen}>
+                    <JobOptionsPanel bind:this={optionsPanel} />
+                  </div>
+                </div>
 
                 {#if errorMessage}
                   <p class="text-destructive text-xs" role="alert">{errorMessage}</p>

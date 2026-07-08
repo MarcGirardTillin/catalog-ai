@@ -28,6 +28,7 @@
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { accountSettings, loadAccountSettings } from "@/lib/accountSettings.svelte"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
@@ -59,8 +60,11 @@
   // `false` = skipped. Keys: "title" | "description" | "meta" | "images".
   let applyFields = $state<Record<string, boolean>>({})
 
-  // Recommended SEO meta length; past this we warn (soft limit).
-  const META_MAX = 160
+  // Recommended SEO meta length; past this we warn (soft limit). Suit le
+  // réglage de compte `meta_max_length` (chargé une fois par session,
+  // défaut 160 tant que le fetch n'a pas abouti ou s'il échoue).
+  loadAccountSettings()
+  const META_MAX = $derived(accountSettings.meta_max_length)
 
   function hydrate(data: ItemPublic) {
     item = data

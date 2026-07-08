@@ -19,6 +19,10 @@ export type AccountSettings = {
      */
     editorial_instructions?: string | null;
     /**
+     * Client Context
+     */
+    client_context?: string | null;
+    /**
      * Meta Max Length
      */
     meta_max_length?: number;
@@ -200,6 +204,72 @@ export type HealthResponse = {
      * Database
      */
     database: 'up';
+};
+
+/**
+ * InstructionCreate
+ */
+export type InstructionCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Content
+     */
+    content: string;
+    /**
+     * Categories
+     */
+    categories?: Array<string>;
+};
+
+/**
+ * InstructionPublic
+ */
+export type InstructionPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Content
+     */
+    content: string;
+    /**
+     * Categories
+     */
+    categories?: Array<string>;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * InstructionUpdate
+ */
+export type InstructionUpdate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Content
+     */
+    content: string;
+    /**
+     * Categories
+     */
+    categories?: Array<string>;
 };
 
 /**
@@ -1564,3 +1634,115 @@ export type SettingsReadConnectionStatusResponses = {
 };
 
 export type SettingsReadConnectionStatusResponse = SettingsReadConnectionStatusResponses[keyof SettingsReadConnectionStatusResponses];
+
+export type InstructionsListInstructionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/instructions';
+};
+
+export type InstructionsListInstructionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type InstructionsListInstructionsError = InstructionsListInstructionsErrors[keyof InstructionsListInstructionsErrors];
+
+export type InstructionsListInstructionsResponses = {
+    /**
+     * Response Instructions-List Instructions
+     *
+     * Successful Response
+     */
+    200: Array<InstructionPublic>;
+};
+
+export type InstructionsListInstructionsResponse = InstructionsListInstructionsResponses[keyof InstructionsListInstructionsResponses];
+
+export type InstructionsCreateInstructionData = {
+    body: InstructionCreate;
+    path?: never;
+    query?: never;
+    url: '/instructions';
+};
+
+export type InstructionsCreateInstructionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type InstructionsCreateInstructionError = InstructionsCreateInstructionErrors[keyof InstructionsCreateInstructionErrors];
+
+export type InstructionsCreateInstructionResponses = {
+    /**
+     * Successful Response
+     */
+    201: InstructionPublic;
+};
+
+export type InstructionsCreateInstructionResponse = InstructionsCreateInstructionResponses[keyof InstructionsCreateInstructionResponses];
+
+export type InstructionsDeleteInstructionData = {
+    body?: never;
+    path: {
+        /**
+         * Instruction Id
+         */
+        instruction_id: number;
+    };
+    query?: never;
+    url: '/instructions/{instruction_id}';
+};
+
+export type InstructionsDeleteInstructionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type InstructionsDeleteInstructionError = InstructionsDeleteInstructionErrors[keyof InstructionsDeleteInstructionErrors];
+
+export type InstructionsDeleteInstructionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type InstructionsDeleteInstructionResponse = InstructionsDeleteInstructionResponses[keyof InstructionsDeleteInstructionResponses];
+
+export type InstructionsUpdateInstructionData = {
+    body: InstructionUpdate;
+    path: {
+        /**
+         * Instruction Id
+         */
+        instruction_id: number;
+    };
+    query?: never;
+    url: '/instructions/{instruction_id}';
+};
+
+export type InstructionsUpdateInstructionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type InstructionsUpdateInstructionError = InstructionsUpdateInstructionErrors[keyof InstructionsUpdateInstructionErrors];
+
+export type InstructionsUpdateInstructionResponses = {
+    /**
+     * Successful Response
+     */
+    200: InstructionPublic;
+};
+
+export type InstructionsUpdateInstructionResponse = InstructionsUpdateInstructionResponses[keyof InstructionsUpdateInstructionResponses];

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -335,4 +335,46 @@ export const settingsReadConnectionStatus = <ThrowOnError extends boolean = fals
     responseType: 'json',
     url: '/settings/connection',
     ...options
+});
+
+/**
+ * List Instructions
+ *
+ * The account's instruction library, sorted by name.
+ */
+export const instructionsListInstructions = <ThrowOnError extends boolean = false>(options?: Options<InstructionsListInstructionsData, ThrowOnError>): RequestResult<InstructionsListInstructionsResponses, InstructionsListInstructionsErrors, ThrowOnError> => (options?.client ?? client).get<InstructionsListInstructionsResponses, InstructionsListInstructionsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/instructions',
+    ...options
+});
+
+/**
+ * Create Instruction
+ */
+export const instructionsCreateInstruction = <ThrowOnError extends boolean = false>(options: Options<InstructionsCreateInstructionData, ThrowOnError>): RequestResult<InstructionsCreateInstructionResponses, InstructionsCreateInstructionErrors, ThrowOnError> => (options.client ?? client).post<InstructionsCreateInstructionResponses, InstructionsCreateInstructionErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/instructions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Instruction
+ */
+export const instructionsDeleteInstruction = <ThrowOnError extends boolean = false>(options: Options<InstructionsDeleteInstructionData, ThrowOnError>): RequestResult<InstructionsDeleteInstructionResponses, InstructionsDeleteInstructionErrors, ThrowOnError> => (options.client ?? client).delete<InstructionsDeleteInstructionResponses, InstructionsDeleteInstructionErrors, ThrowOnError>({ url: '/instructions/{instruction_id}', ...options });
+
+/**
+ * Update Instruction
+ */
+export const instructionsUpdateInstruction = <ThrowOnError extends boolean = false>(options: Options<InstructionsUpdateInstructionData, ThrowOnError>): RequestResult<InstructionsUpdateInstructionResponses, InstructionsUpdateInstructionErrors, ThrowOnError> => (options.client ?? client).put<InstructionsUpdateInstructionResponses, InstructionsUpdateInstructionErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/instructions/{instruction_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });

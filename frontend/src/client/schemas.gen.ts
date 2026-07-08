@@ -24,6 +24,17 @@ export const AccountSettingsSchema = {
             ],
             title: 'Editorial Instructions'
         },
+        client_context: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Client Context'
+        },
         meta_max_length: {
             type: 'integer',
             maximum: 320,
@@ -320,6 +331,107 @@ export const HealthResponseSchema = {
     ],
     title: 'HealthResponse',
     description: 'Response returned by the healthcheck endpoint.'
+} as const;
+
+export const InstructionCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 120,
+            minLength: 1,
+            title: 'Name'
+        },
+        content: {
+            type: 'string',
+            minLength: 1,
+            title: 'Content'
+        },
+        categories: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Categories'
+        }
+    },
+    type: 'object',
+    required: [
+        'name',
+        'content'
+    ],
+    title: 'InstructionCreate'
+} as const;
+
+export const InstructionPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        content: {
+            type: 'string',
+            title: 'Content'
+        },
+        categories: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Categories'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'name',
+        'content',
+        'created_at',
+        'updated_at'
+    ],
+    title: 'InstructionPublic'
+} as const;
+
+export const InstructionUpdateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 120,
+            minLength: 1,
+            title: 'Name'
+        },
+        content: {
+            type: 'string',
+            minLength: 1,
+            title: 'Content'
+        },
+        categories: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Categories'
+        }
+    },
+    type: 'object',
+    required: [
+        'name',
+        'content'
+    ],
+    title: 'InstructionUpdate'
 } as const;
 
 export const ItemPatchRequestSchema = {

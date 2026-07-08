@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ChevronDown from "@lucide/svelte/icons/chevron-down"
+  import ChevronUp from "@lucide/svelte/icons/chevron-up"
   import ImageIcon from "@lucide/svelte/icons/image"
   import PackageSearch from "@lucide/svelte/icons/package-search"
   import Search from "@lucide/svelte/icons/search"
@@ -20,6 +22,7 @@
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import FilterSelect from "@/lib/components/app/FilterSelect.svelte"
+  import JobOptionsPanel from "@/lib/components/app/JobOptionsPanel.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -47,6 +50,11 @@
   let selected = $state<Set<number>>(new Set())
   let translate = $state(false)
   let submitting = $state(false)
+
+  // Options de génération (panneau dépliable au-dessus de la barre d'action ;
+  // reste monté quand il est replié pour conserver les saisies).
+  let optionsOpen = $state(false)
+  let optionsPanel = $state<ReturnType<typeof JobOptionsPanel>>()
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -202,7 +210,11 @@
     if (selected.size === 0) return
     submitting = true
     const { data, error } = await jobsCreateEnrichmentJob({
-      body: { selection: { ids: [...selected] }, config: { translate } },
+      body: {
+        selection: { ids: [...selected] },
+        // Seules les options réellement renseignées partent dans la config.
+        config: { translate, ...(optionsPanel?.collectConfig() ?? {}) },
+      },
     })
     submitting = false
     if (error || !data) {
@@ -451,15 +463,39 @@
 
       <!-- Sticky selection/action bar (offset by the sidebar width on desktop) -->
       {#if selected.size > 0}
-        <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t p-3 sm:left-60">
-          <div class="mx-auto flex max-w-4xl items-center gap-3 sm:justify-end">
-            <label class="text-muted-foreground flex items-center gap-1.5 text-xs">
-              <input type="checkbox" bind:checked={translate} class="accent-primary size-3.5" />
-              Traduire
-            </label>
-            <Button class="flex-1 sm:min-w-44 sm:flex-none" disabled={submitting} onclick={createJob}>
-              Créer un job ({selected.size})
-            </Button>
+        <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t sm:left-60">
+          <!-- Panneau d'options replié/déplié (monté en permanence : les
+               saisies survivent au repli, jusqu'à vider la sélection). -->
+          <div
+            class="border-border max-h-[55vh] overflow-y-auto border-b"
+            hidden={!optionsOpen}
+          >
+            <div class="mx-auto max-w-4xl p-3">
+              <JobOptionsPanel bind:this={optionsPanel} />
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="mx-auto flex max-w-4xl items-center gap-3 sm:justify-end">
+              <label class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                <input type="checkbox" bind:checked={translate} class="accent-primary size-3.5" />
+                Traduire
+              </label>
+              <Button
+                variant="outline"
+                aria-expanded={optionsOpen}
+                onclick={() => (optionsOpen = !optionsOpen)}
+              >
+                Options
+                {#if optionsOpen}
+                  <ChevronDown size={14} aria-hidden="true" data-icon="inline-end" />
+                {:else}
+                  <ChevronUp size={14} aria-hidden="true" data-icon="inline-end" />
+                {/if}
+              </Button>
+              <Button class="flex-1 sm:min-w-44 sm:flex-none" disabled={submitting} onclick={createJob}>
+                Créer un job ({selected.size})
+              </Button>
+            </div>
           </div>
         </div>
       {/if}
