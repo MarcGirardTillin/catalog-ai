@@ -363,3 +363,39 @@ POST /auth/password (current password required, min 8; federated Xano users
 can't pass the current-password check by design — their credential lives
 upstream). Frontend prefs live in a module-level runes store
 (lib/preferences.svelte.ts) loaded once by RequireAuth.
+
+## 2026-07-08 — Sprint B: steerable generation (instruction library, boutique context, job options)
+
+Named editorial instructions live in their own table (`instruction_template`,
+migration 0009: account_id, name, content, categories_json) with account-scoped
+CRUD at /instructions — NOT in settings_json, because they are a growing list
+with per-category defaults, not a single value. Jobs SNAPSHOT instructions at
+creation: `config.instruction_id` is resolved server-side into
+`config.editorial_instructions` and then dropped from the persisted config, so
+deleting/editing a template never rewrites past jobs. When neither an
+instruction nor free text is chosen, create_job snapshots
+`category_instructions` ({category: content} from templates claiming
+categories; newest wins a disputed category) and the pipeline picks by
+product.category at stage time. Instruction precedence (locked by tests):
+explicit editorial_instructions > instruction_id > account default
+editorial_instructions > category_instructions. Account defaults merged into
+job config grew to title_template, editorial_instructions, client_context,
+meta_max_length. Pipeline: `extra_website_urls` extend the brand sites for
+resolution (dedup, order kept); `seo_keywords` join the copywriter's product
+context; `client_context` is prefixed as a "Contexte boutique :" block before
+the instructions; meta_max_length parameterizes the Claude system prompt
+(was hardcoded 160).
+
+Frontend: Paramètres became 3 tabs (Préférences / Enrichissement / Compte) —
+panels stay mounted (hidden) so unsaved input survives tab switches. The
+Enrichissement tab hosts the relocated title-template builder, the boutique
+context markdown, meta_max_length, and the instruction library
+(lib/components/settings/InstructionLibrary.svelte, two-step delete). Job
+options (instruction picker with "Automatique"/library/"Texte libre…", SEO
+keyword chips, one-URL-per-line extra sources) live in a shared
+JobOptionsPanel used by ProductSearchPage (collapsible above the sticky
+selection bar) and JobNewPage; only filled keys are sent in config. The review
+meta counter now reads meta_max_length from a lazy accountSettings store
+(lib/accountSettings.svelte.ts) instead of a hardcoded 160. The /instructions
+calls use the generated axios `client` with raw paths (lib/api/instructions.ts)
+— written before regen, kept because they are thin and typed locally.
