@@ -32,12 +32,20 @@ class XanoTillinDestination:
         self._client = client
 
     def apply(self, item: EnrichmentItem) -> None:
+        # Reviewer's per-field keep/drop: a missing key means "apply it".
+        include: dict[str, Any] = item.apply_fields_json or {}
+
         urls = _image_urls(item.staged_images_json)
-        if urls:
+        if urls and include.get("images", True):
             self._client.add_product_images(item.tillin_product_id, urls)
-        self._client.enrich_product(
-            item.tillin_product_id,
-            title=item.staged_title,
-            description=item.staged_description,
-            meta_description=item.staged_meta,
-        )
+        copy = {
+            "title": item.staged_title if include.get("title", True) else None,
+            "description": item.staged_description
+            if include.get("description", True)
+            else None,
+            "meta_description": item.staged_meta
+            if include.get("meta", True)
+            else None,
+        }
+        if any(value is not None for value in copy.values()):
+            self._client.enrich_product(item.tillin_product_id, **copy)

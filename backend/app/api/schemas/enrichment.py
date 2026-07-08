@@ -62,6 +62,7 @@ class ItemPublic(BaseModel):
     staged_meta: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None
+    apply_fields_json: dict[str, bool] | None = None
     error: str | None = None
     attempt_count: int
     started_at: datetime | None = None
@@ -87,6 +88,8 @@ class ItemPatchRequest(BaseModel):
     staged_meta: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None
+    # Per-field keep/drop for the apply step ({"title": false, ...}).
+    apply_fields_json: dict[str, bool] | None = None
 
 
 class ItemResolveRequest(BaseModel):
