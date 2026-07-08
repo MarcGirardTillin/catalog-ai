@@ -2,7 +2,16 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, catalog, example, items, jobs, products, system
+from app.api.routes import (
+    auth,
+    catalog,
+    example,
+    items,
+    jobs,
+    products,
+    stats,
+    system,
+)
 
 api_router = APIRouter()
 api_router.include_router(system.router)
@@ -12,3 +21,4 @@ api_router.include_router(products.router)
 api_router.include_router(catalog.router)
 api_router.include_router(jobs.router)
 api_router.include_router(items.router)
+api_router.include_router(stats.router)
