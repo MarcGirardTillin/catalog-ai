@@ -9,6 +9,7 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
+  import { formatDuration, formatRelativeDate } from "@/lib/format"
 
   let { appName }: { appName: string } = $props()
 
@@ -25,18 +26,31 @@
     })
   })
 
-  function selectionLabel(job: JobPublic): string {
-    const selection = job.selection_json as { ids?: number[]; tag?: string }
-    if (selection.tag) return `Tag « ${selection.tag} »`
-    const count = selection.ids?.length ?? 0
-    return `${count} produit${count > 1 ? "s" : ""}`
+  // done = total - pending - processing (same rule as JobDetailPage).
+  function progressOf(job: JobPublic): { done: number; total: number; percent: number } {
+    const total = job.counts.total ?? 0
+    const pending = job.counts.pending ?? 0
+    const processing = job.counts.processing ?? 0
+    const done = Math.max(0, total - pending - processing)
+    return { done, total, percent: total === 0 ? 0 : Math.round((done / total) * 100) }
+  }
+
+  function openJob(id: number) {
+    navigate(`/jobs/${id}`)
+  }
+
+  function onRowKeydown(event: KeyboardEvent, id: number) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      openJob(id)
+    }
   }
 </script>
 
 <RequireAuth>
   {#snippet children(user)}
     <AppShell {appName} {user} breadcrumbs={[{ label: "Jobs" }]}>
-      <div class="mx-auto flex max-w-2xl flex-col gap-3 p-4">
+      <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Jobs d'enrichissement</h1>
           <Button size="sm" onclick={() => navigate("/products")}>Nouveau job</Button>
@@ -45,41 +59,73 @@
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
         {:else if jobs === null}
-          <Skeleton class="h-20 w-full" />
-          <Skeleton class="h-20 w-full" />
+          <Skeleton class="h-10 w-full" />
+          <Skeleton class="h-10 w-full" />
+          <Skeleton class="h-10 w-full" />
         {:else if jobs.length === 0}
           <Card>
-            <CardContent class="text-muted-foreground py-6 text-center text-sm">
-              Aucun job pour l'instant — lancez votre premier enrichissement.
+            <CardContent class="flex flex-col items-center gap-3 py-8 text-center">
+              <p class="text-muted-foreground text-sm">
+                Aucun job — créez le premier depuis la recherche produits.
+              </p>
+              <Button onclick={() => navigate("/products")}>Rechercher des produits</Button>
             </CardContent>
           </Card>
         {:else}
-          {#each jobs as job (job.id)}
-            <button
-              type="button"
-              class="w-full cursor-pointer text-left"
-              onclick={() => navigate(`/jobs/${job.id}`)}
-            >
-              <Card class="hover:ring-primary/40 transition-shadow">
-                <CardContent class="flex flex-col gap-2">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-title text-sm font-bold">Job #{job.id}</span>
-                    <StatusBadge status={job.status} />
-                  </div>
-                  <div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                    <span>{selectionLabel(job)}</span>
-                    <span>{job.counts.total ?? 0} item{(job.counts.total ?? 0) > 1 ? "s" : ""}</span>
-                    {#if (job.counts.ready_for_review ?? 0) > 0}
-                      <span class="text-warning-foreground font-medium">
-                        {job.counts.ready_for_review} à valider
-                      </span>
-                    {/if}
-                    <span>{new Date(job.created_at).toLocaleString("fr-FR")}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
-          {/each}
+          <Card class="py-0">
+            <CardContent class="overflow-x-auto px-0">
+              <table class="w-full min-w-xl text-sm">
+                <thead>
+                  <tr class="border-border border-b">
+                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Job</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Statut</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Progression</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Produits</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Durée</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Créé</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each jobs as job (job.id)}
+                    {@const progress = progressOf(job)}
+                    <tr
+                      role="link"
+                      tabindex="0"
+                      aria-label={`Ouvrir le job #${job.id}`}
+                      class="border-border hover:bg-muted/50 focus-visible:bg-muted/50 cursor-pointer border-b outline-none transition-colors last:border-b-0"
+                      onclick={() => openJob(job.id)}
+                      onkeydown={(e) => onRowKeydown(e, job.id)}
+                    >
+                      <td class="px-4 py-2.5 font-medium whitespace-nowrap">#{job.id}</td>
+                      <td class="px-4 py-2.5"><StatusBadge status={job.status} /></td>
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center gap-2">
+                          <div class="bg-muted h-1.5 w-20 shrink-0 overflow-hidden rounded-full">
+                            <div
+                              class="bg-primary h-full rounded-full transition-all"
+                              style={`width: ${progress.percent}%`}
+                            ></div>
+                          </div>
+                          <span class="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+                            {progress.done}/{progress.total}
+                          </span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2.5 text-right whitespace-nowrap tabular-nums">
+                        {job.counts.total ?? 0}
+                      </td>
+                      <td class="px-4 py-2.5 text-right whitespace-nowrap tabular-nums">
+                        {job.duration_seconds != null ? formatDuration(job.duration_seconds) : "—"}
+                      </td>
+                      <td class="text-muted-foreground px-4 py-2.5 text-right text-xs whitespace-nowrap tabular-nums">
+                        {formatRelativeDate(job.created_at)}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
         {/if}
       </div>
     </AppShell>

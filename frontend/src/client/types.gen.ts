@@ -53,6 +53,42 @@ export type CatalogFilters = {
 };
 
 /**
+ * DashboardStats
+ *
+ * Account-scoped headline numbers for the dashboard KPI row.
+ */
+export type DashboardStats = {
+    /**
+     * Applied Items
+     */
+    applied_items?: number;
+    /**
+     * Ready Items
+     */
+    ready_items?: number;
+    /**
+     * Running Jobs
+     */
+    running_jobs?: number;
+    /**
+     * Jobs Total
+     */
+    jobs_total?: number;
+    /**
+     * Items Total
+     */
+    items_total?: number;
+    /**
+     * Avg Item Seconds
+     */
+    avg_item_seconds?: number | null;
+    /**
+     * Auto Resolve Rate
+     */
+    auto_resolve_rate?: number | null;
+};
+
+/**
  * ExampleResponse
  *
  * Response payload returned by the example endpoint.
@@ -144,6 +180,12 @@ export type ItemPatchRequest = {
      * Staged Weights Json
      */
     staged_weights_json?: Array<unknown> | null;
+    /**
+     * Apply Fields Json
+     */
+    apply_fields_json?: {
+        [key: string]: boolean;
+    } | null;
 };
 
 /**
@@ -204,6 +246,12 @@ export type ItemPublic = {
      * Staged Weights Json
      */
     staged_weights_json?: Array<unknown> | null;
+    /**
+     * Apply Fields Json
+     */
+    apply_fields_json?: {
+        [key: string]: boolean;
+    } | null;
     /**
      * Error
      */
@@ -1253,3 +1301,28 @@ export type ItemsApplyItemRouteResponses = {
 };
 
 export type ItemsApplyItemRouteResponse = ItemsApplyItemRouteResponses[keyof ItemsApplyItemRouteResponses];
+
+export type StatsDashboardStatsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/stats/dashboard';
+};
+
+export type StatsDashboardStatsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StatsDashboardStatsError = StatsDashboardStatsErrors[keyof StatsDashboardStatsErrors];
+
+export type StatsDashboardStatsResponses = {
+    /**
+     * Successful Response
+     */
+    200: DashboardStats;
+};
+
+export type StatsDashboardStatsResponse = StatsDashboardStatsResponses[keyof StatsDashboardStatsResponses];

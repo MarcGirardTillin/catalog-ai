@@ -85,6 +85,61 @@ export const CatalogFiltersSchema = {
     description: 'Classification lists backing the product-search filters.'
 } as const;
 
+export const DashboardStatsSchema = {
+    properties: {
+        applied_items: {
+            type: 'integer',
+            title: 'Applied Items',
+            default: 0
+        },
+        ready_items: {
+            type: 'integer',
+            title: 'Ready Items',
+            default: 0
+        },
+        running_jobs: {
+            type: 'integer',
+            title: 'Running Jobs',
+            default: 0
+        },
+        jobs_total: {
+            type: 'integer',
+            title: 'Jobs Total',
+            default: 0
+        },
+        items_total: {
+            type: 'integer',
+            title: 'Items Total',
+            default: 0
+        },
+        avg_item_seconds: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Avg Item Seconds'
+        },
+        auto_resolve_rate: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Auto Resolve Rate'
+        }
+    },
+    type: 'object',
+    title: 'DashboardStats',
+    description: 'Account-scoped headline numbers for the dashboard KPI row.'
+} as const;
+
 export const ExampleResponseSchema = {
     properties: {
         status: {
@@ -235,6 +290,20 @@ export const ItemPatchRequestSchema = {
                 }
             ],
             title: 'Staged Weights Json'
+        },
+        apply_fields_json: {
+            anyOf: [
+                {
+                    additionalProperties: {
+                        type: 'boolean'
+                    },
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Apply Fields Json'
         }
     },
     type: 'object',
@@ -361,6 +430,20 @@ export const ItemPublicSchema = {
                 }
             ],
             title: 'Staged Weights Json'
+        },
+        apply_fields_json: {
+            anyOf: [
+                {
+                    additionalProperties: {
+                        type: 'boolean'
+                    },
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Apply Fields Json'
         },
         error: {
             anyOf: [
