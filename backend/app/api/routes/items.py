@@ -1,13 +1,27 @@
 """Enrichment item routes: detail, staged edits, review decisions, apply."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 
-from app.api.deps import CurrentUserDep, SessionDep, XanoDep
-from app.api.schemas.enrichment import ItemPatchRequest, ItemPublic
+from app.api.deps import (
+    CurrentUserDep,
+    JobRunnerDep,
+    PipelineDep,
+    SessionDep,
+    XanoDep,
+)
+from app.api.exceptions import AppException
+from app.api.schemas import Product
+from app.api.schemas.enrichment import (
+    ItemPatchRequest,
+    ItemPublic,
+    ItemResolveRequest,
+)
 from app.api.services.accounts import resolve_account_id
 from app.api.services.enrichment import (
     apply_item,
     get_item,
+    resolve_item_from_url,
+    retry_item,
     review_item,
     update_staged_fields,
 )
@@ -20,6 +34,56 @@ router = APIRouter(prefix="/items", tags=["items"])
 def read_item(item_id: int, db: SessionDep, current_user: CurrentUserDep) -> ItemPublic:
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.get("/{item_id}/product", response_model=Product)
+def read_item_product(
+    item_id: int, db: SessionDep, current_user: CurrentUserDep, xano: XanoDep
+) -> Product:
+    """Fetch the item's current Tillin product (before/after review context)."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    product = xano.get_product(item.tillin_product_id)
+    if product is None:
+        raise AppException(
+            status_code=404,
+            code="not_found",
+            message=f"Product {item.tillin_product_id} not found in Tillin",
+        )
+    return product
+
+
+@router.post("/{item_id}/resolve", response_model=ItemPublic)
+def resolve_item_route(
+    item_id: int,
+    payload: ItemResolveRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    pipeline: PipelineDep,
+) -> ItemPublic:
+    """Manually resolve an item from a chosen source page and re-stage it."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = resolve_item_from_url(
+        db, item, payload.source_url, stage=pipeline.stage_from_url
+    )
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.post("/{item_id}/retry", response_model=ItemPublic)
+def retry_item_route(
+    item_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    background: BackgroundTasks,
+    run_job: JobRunnerDep,
+) -> ItemPublic:
+    """Requeue one item for a full re-generation and kick the worker."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = retry_item(db, item)
+    background.add_task(run_job, item.job_id)
     return ItemPublic.model_validate(item, from_attributes=True)
 
 

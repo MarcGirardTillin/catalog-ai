@@ -40,6 +40,14 @@ class EnrichmentJob(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Set when the first item leaves the queue / when the last one settles, so
+    # we can report how long the run actually took (started -> finished).
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
 
     items: Mapped[list["EnrichmentItem"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
@@ -62,6 +70,9 @@ class EnrichmentItem(Base):
     source_url: Mapped[str | None] = mapped_column(String(2048), default=None)
     source_method: Mapped[str | None] = mapped_column(String(30), default=None)
     match_score: Mapped[float | None] = mapped_column(default=None)
+    # Why resolution landed where it did: {"reason": str|None,
+    # "candidates": [{"url","title","score"}]} — powers the manual-resolve UI.
+    resolution_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
 
     staged_title: Mapped[str | None] = mapped_column(String(500), default=None)
     staged_description: Mapped[str | None] = mapped_column(default=None)
@@ -71,6 +82,13 @@ class EnrichmentItem(Base):
 
     error: Mapped[str | None] = mapped_column(default=None)
     attempt_count: Mapped[int] = mapped_column(default=0)
+    # Per-item processing window: claim -> settled (reset on each new claim).
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

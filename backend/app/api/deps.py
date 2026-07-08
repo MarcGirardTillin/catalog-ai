@@ -1,7 +1,7 @@
 """Shared FastAPI dependencies for DB access and external clients."""
 
-from collections.abc import Generator
-from typing import Annotated
+from collections.abc import Callable, Generator
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Cookie, Depends
 from sqlalchemy.orm import Session
@@ -54,6 +54,33 @@ def get_xano_client() -> XanoClient:
 
 
 XanoDep = Annotated[XanoClient, Depends(get_xano_client)]
+
+
+# Background job runner. Injected so the route can schedule enrichment after a
+# job is created, and so tests can override it with a no-op / spy.
+JobRunner = Callable[[int], None]
+
+
+def get_job_runner() -> JobRunner:
+    from app.jobs.runner import process_pending
+
+    return process_pending
+
+
+JobRunnerDep = Annotated[JobRunner, Depends(get_job_runner)]
+
+
+def get_enrichment_pipeline() -> "EnrichmentPipeline":
+    """Return the process-wide enrichment pipeline (manual re-resolve, etc.)."""
+    from app.jobs.runner import get_pipeline
+
+    return get_pipeline()
+
+
+if TYPE_CHECKING:
+    from app.enrich.pipeline import EnrichmentPipeline
+
+PipelineDep = Annotated["EnrichmentPipeline", Depends(get_enrichment_pipeline)]
 
 
 def _unauthenticated() -> AppException:

@@ -6,6 +6,7 @@ silently ignores FOR UPDATE, which keeps the logic testable single-threaded.
 """
 
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 # Item statuses that mean "the worker is done with this item".
 _WORKER_TERMINAL = ("ready_for_review", "approved", "applied", "rejected", "failed")
+
+
+def _utcnow() -> datetime:
+    """Wall-clock timestamps for processing windows.
+
+    NOT `func.now()`: Postgres' now() is the TRANSACTION start time, and the
+    session's next transaction opens right after the claim commits — so claim
+    and completion would carry near-identical timestamps (item durations of 0s).
+    """
+    return datetime.now(UTC)
 
 
 def claim_next_item(db: Session) -> EnrichmentItem | None:
@@ -34,9 +45,13 @@ def claim_next_item(db: Session) -> EnrichmentItem | None:
 
     item.status = "processing"
     item.attempt_count += 1
+    item.started_at = _utcnow()
+    item.finished_at = None
     job = db.get(EnrichmentJob, item.job_id)
     if job is not None and job.status == "pending":
         job.status = "processing"
+        if job.started_at is None:
+            job.started_at = _utcnow()
     db.commit()
     db.refresh(item)
     return item
@@ -46,6 +61,7 @@ def complete_item(db: Session, item: EnrichmentItem) -> None:
     """Mark a processed item as staged and ready for human review."""
     item.status = "ready_for_review"
     item.error = None
+    item.finished_at = _utcnow()
     db.commit()
     _rollup_job(db, item.job_id)
 
@@ -59,6 +75,7 @@ def fail_item(db: Session, item: EnrichmentItem, error: str) -> None:
     item.error = error
     if item.attempt_count >= MAX_ATTEMPTS:
         item.status = "failed"
+        item.finished_at = _utcnow()
         logger.error("item %s failed permanently: %s", item.id, error)
     else:
         item.status = "pending"
@@ -91,4 +108,6 @@ def _rollup_job(db: Session, job_id: int) -> None:
         job.status = "partial"
     else:
         job.status = "completed"
+    if job.finished_at is None:
+        job.finished_at = _utcnow()
     db.commit()

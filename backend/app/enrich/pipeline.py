@@ -26,7 +26,7 @@ from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
 from app.models import EnrichmentItem
 from app.sources.resolver import resolve_source_url
-from app.sources.shopify_json import fetch_product
+from app.sources.shopify_json import fetch_product, score_product_match
 
 logger = logging.getLogger(__name__)
 
@@ -74,38 +74,87 @@ class EnrichmentPipeline:
         item.source_url = resolved.url
         item.source_method = resolved.method_used or resolved.status
         item.match_score = resolved.score
+        # Keep the diagnostic (why) + candidate matches for the review UI.
+        item.resolution_json = {
+            "reason": resolved.reason,
+            "candidates": [c.model_dump() for c in resolved.candidates],
+        }
 
         # 3. Source-dependent transforms (weights, raw source images).
         source_product: dict[str, Any] | None = None
         if resolved.status == "resolved" and resolved.url:
             site, handle = _split_product_url(resolved.url)
             source_product = fetch_product(self._http, site, handle)
-        if source_product:
-            proposals = map_weights(
-                product.variants, source_product.get("variants") or []
-            )
-            item.staged_weights_json = proposals or None
-            images = [
-                {"url": str(image["src"]), "position": position}
-                for position, image in enumerate(
-                    source_product.get("images") or [], start=1
-                )
-                if isinstance(image, dict) and image.get("src")
-            ]
-            # Raw source images for review; Photoroom 4:5 processing is TODO.
-            item.staged_images_json = images or None
+        self._stage_source(item, product, source_product)
 
         # 4. Copy generation — optional (needs an API key).
-        if self._claude is not None:
-            copy = self._claude.generate_copy(
-                _copy_context(product, source_product),
-                editorial_instructions=str(config.get("editorial_instructions") or ""),
-                model=config.get("ai_model"),
+        self._stage_copy(item, product, source_product, config)
+
+    def stage_from_url(self, item: EnrichmentItem, url: str) -> None:
+        """Manually (re)resolve an item from a specific source-page URL.
+
+        Fetches the page, re-scores the match, and re-stages weights/images/copy
+        exactly as an auto-resolve would — but with ``source_method='manual'``.
+        Raises LookupError when the URL yields no product page.
+        """
+        product = self._read_product(item.tillin_product_id)
+        if product is None:
+            raise LookupError(
+                f"product {item.tillin_product_id} not found at the source"
             )
-            item.staged_description = copy.description_fr
-            item.staged_meta = copy.meta_description_fr
-        else:
+        config: dict[str, Any] = item.job.config_json or {}
+        site, handle = _split_product_url(url)
+        source_product = fetch_product(self._http, site, handle)
+        if source_product is None:
+            raise LookupError(f"no product page at {url}")
+
+        item.source_url = url
+        item.source_method = "manual"
+        item.match_score = score_product_match(product, source_product)
+        self._stage_source(item, product, source_product)
+        self._stage_copy(item, product, source_product, config)
+
+    def _stage_source(
+        self,
+        item: EnrichmentItem,
+        product: Product,
+        source_product: dict[str, Any] | None,
+    ) -> None:
+        """Stage weights + raw source images from a resolved source page."""
+        if not source_product:
+            return
+        proposals = map_weights(
+            product.variants, source_product.get("variants") or []
+        )
+        item.staged_weights_json = proposals or None
+        images = [
+            {"url": str(image["src"]), "position": position}
+            for position, image in enumerate(
+                source_product.get("images") or [], start=1
+            )
+            if isinstance(image, dict) and image.get("src")
+        ]
+        # Raw source images for review; Photoroom 4:5 processing is TODO.
+        item.staged_images_json = images or None
+
+    def _stage_copy(
+        self,
+        item: EnrichmentItem,
+        product: Product,
+        source_product: dict[str, Any] | None,
+        config: dict[str, Any],
+    ) -> None:
+        """Generate FR copy — optional (needs an API key)."""
+        if self._claude is None:
             logger.info("item %s: copy skipped (no AI client configured)", item.id)
+            return
+        copy = self._claude.generate_copy(
+            _copy_context(product, source_product),
+            editorial_instructions=str(config.get("editorial_instructions") or ""),
+            model=config.get("ai_model"),
+        )
+        item.staged_description = copy.description_fr
+        item.staged_meta = copy.meta_description_fr
 
 
 def _copy_context(

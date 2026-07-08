@@ -1,7 +1,9 @@
 """Enrichment job/item persistence and state transitions."""
 
+from collections.abc import Callable
 from typing import Any
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -92,6 +94,97 @@ def update_staged_fields(
     db.commit()
     db.refresh(item)
     return item
+
+
+def resolve_item_from_url(
+    db: Session,
+    item: EnrichmentItem,
+    url: str,
+    *,
+    stage: Callable[[EnrichmentItem, str], None],
+) -> EnrichmentItem:
+    """Re-stage an item from a manually-chosen source page (`stage` fetches +
+    scores + stages). Allowed while the item is still under review."""
+    if item.status not in ("ready_for_review", "approved"):
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message=f"Cannot re-resolve an item in status '{item.status}'",
+        )
+    try:
+        stage(item, url)
+    except (LookupError, ValueError, httpx.HTTPError) as exc:
+        db.rollback()
+        raise AppException(
+            status_code=422,
+            code="unresolvable_source",
+            message=f"Could not resolve from that URL: {exc}",
+        ) from exc
+    item.error = None
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+# Statuses a retry (re-generation) is allowed from. `applied` is deliberately
+# excluded for now: re-applying would re-send image URLs to Tillin's bulk
+# endpoint, which APPENDS (no replace) — needs a dedupe guard first.
+_RETRYABLE = ("ready_for_review", "rejected", "failed")
+
+
+def _reset_item_for_retry(item: EnrichmentItem) -> None:
+    """Wipe staged results and requeue the item for a fresh pipeline run."""
+    item.status = "pending"
+    item.source_url = None
+    item.source_method = None
+    item.match_score = None
+    item.resolution_json = None
+    item.staged_title = None
+    item.staged_description = None
+    item.staged_meta = None
+    item.staged_images_json = None
+    item.staged_weights_json = None
+    item.error = None
+    item.attempt_count = 0
+    item.started_at = None
+    item.finished_at = None
+
+
+def retry_item(db: Session, item: EnrichmentItem) -> EnrichmentItem:
+    """Requeue one item for a full re-generation (resolve + scrape + copy)."""
+    if item.status not in _RETRYABLE:
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message=f"Cannot retry an item in status '{item.status}'",
+        )
+    _reset_item_for_retry(item)
+    job = db.get(EnrichmentJob, item.job_id)
+    if job is not None:
+        job.status = "pending"
+        job.started_at = None
+        job.finished_at = None
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def retry_failed_items(db: Session, job: EnrichmentJob) -> int:
+    """Requeue every failed/rejected item of a job. Returns how many."""
+    targets = [i for i in job.items if i.status in ("failed", "rejected")]
+    if not targets:
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message="No failed or rejected item to retry in this job",
+        )
+    for item in targets:
+        _reset_item_for_retry(item)
+    job.status = "pending"
+    job.started_at = None
+    job.finished_at = None
+    db.commit()
+    return len(targets)
 
 
 def review_item(db: Session, item: EnrichmentItem, decision: str) -> EnrichmentItem:

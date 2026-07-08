@@ -42,6 +42,10 @@ class JobPublic(BaseModel):
     config_json: dict[str, Any]
     counts: JobCounts
     created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    # Wall-clock processing time in seconds, once the run has settled.
+    duration_seconds: float | None = None
 
 
 class ItemPublic(BaseModel):
@@ -52,6 +56,7 @@ class ItemPublic(BaseModel):
     source_url: str | None = None
     source_method: str | None = None
     match_score: float | None = None
+    resolution_json: dict[str, Any] | None = None
     staged_title: str | None = None
     staged_description: str | None = None
     staged_meta: str | None = None
@@ -59,7 +64,19 @@ class ItemPublic(BaseModel):
     staged_weights_json: list[Any] | None = None
     error: str | None = None
     attempt_count: int
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    # Wall-clock processing time in seconds, once the item has settled.
+    duration_seconds: float | None = None
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _compute_duration(self) -> "ItemPublic":
+        if self.started_at is not None and self.finished_at is not None:
+            self.duration_seconds = (
+                self.finished_at - self.started_at
+            ).total_seconds()
+        return self
 
 
 class ItemPatchRequest(BaseModel):
@@ -70,3 +87,15 @@ class ItemPatchRequest(BaseModel):
     staged_meta: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None
+
+
+class ItemResolveRequest(BaseModel):
+    """Manually point an item at a specific source product page."""
+
+    source_url: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _looks_like_product_url(self) -> "ItemResolveRequest":
+        if "/products/" not in self.source_url:
+            raise ValueError("Expected a Shopify product URL (…/products/<handle>)")
+        return self

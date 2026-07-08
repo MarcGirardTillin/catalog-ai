@@ -180,6 +180,61 @@ def test_pipeline_without_claude_and_without_brand_site(
     db.close()
 
 
+def test_pipeline_persists_resolution_candidates(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: PRODUCT, http_client=http_client
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.resolution_json is not None
+    candidates = item.resolution_json["candidates"]
+    assert candidates and candidates[0]["score"] == 1.0
+    assert candidates[0]["url"] == f"{SITE}/products/g-short-double-navy"
+    db.close()
+
+
+def test_stage_from_url_manually_restages(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    item.status = "ready_for_review"
+    item.source_method = "needs_manual"
+    db.commit()
+    claude = _FakeClaude()
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        pipeline.stage_from_url(item, f"{SITE}/products/g-short-double-navy")
+
+    db.commit()
+    db.refresh(item)
+    assert item.source_method == "manual"
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    assert item.match_score == 1.0
+    assert item.staged_images_json == [
+        {"url": f"{SITE}/cdn/1.jpg", "position": 1},
+        {"url": f"{SITE}/cdn/2.jpg", "position": 2},
+    ]
+    assert item.staged_description == "Un short robuste et léger."
+    db.close()
+
+
 def test_pipeline_missing_product_fails_item(
     db_session_factory: sessionmaker[Session],
 ) -> None:

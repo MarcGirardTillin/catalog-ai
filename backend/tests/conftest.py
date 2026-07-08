@@ -61,6 +61,12 @@ def client(
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    # Default to a no-op background runner so job creation doesn't drain the
+    # queue synchronously (TestClient runs background tasks inline). Tests that
+    # exercise the trigger override this with a spy.
+    from app.api.deps import get_job_runner
+
+    app.dependency_overrides[get_job_runner] = lambda: (lambda job_id: None)
     main_module_any = cast(Any, main_module)
     original_ping_database = main_module_any.ping_database
     main_module_any.ping_database = lambda: True

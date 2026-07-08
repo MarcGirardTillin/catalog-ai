@@ -57,6 +57,10 @@ def test_complete_and_rollup_completed(
         item = claim_next_item(db)
         assert item is not None
         complete_item(db, item)
+        db.refresh(item)
+        # Per-item timing: claim -> settled.
+        assert item.started_at is not None
+        assert item.finished_at is not None
 
     db.refresh(job)
     assert job.status == "completed"
