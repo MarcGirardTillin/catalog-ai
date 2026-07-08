@@ -160,6 +160,7 @@ It is a **dedicated sprint**, not Phase 5 of enrichment: it has its own pipeline
     - `pdf.py` — supplier order PDFs. Extraction via **Claude with document/vision input** (PDFs are heterogeneous per supplier; deterministic table extraction is the fallback, LLM is the default).
     - `tabular.py` — Excel (`openpyxl`) + CSV; header detection and column mapping are LLM-assisted, values are read deterministically from the rows (prices/EANs must never be hallucinated).
   - `extract.py` — LLM-structured extraction to a **normalized product schema**: `{supplier_ref, ean/barcode, title, color, sizes[], qty, wholesale_price, retail_price?, category?, brand?}` with a per-field `confidence`. Numeric/EAN fields are cross-checked against the raw cells (no generated values).
+    - **Schema decision (2026-07-09):** the internal schema is a **clean model informed by Tillin's product data design** (product / variant / barcode, as already mapped by `clients/xano.py`) — NOT the Tillin import CSV template. The template is a flat, lossy destination format; the internal schema must also carry review-only data (confidence, wholesale price, ordered qty, raw supplier ref). Two constraints lock it: it must render **losslessly to the Tillin import CSV** (I2 path) and map cleanly to the Xano product entities (I3 path). Freeze it in the main thread at sprint start by confronting the import template + the Xano product model + the real fixture files below.
   - `profiles.py` — **boutique/supplier convention profiles**, data-driven (DB table + seed), one per (boutique, supplier):
     - pricing rule: e.g. L'Espion = round-up-to-nearest-5 of `wholesale × coefficient`; Garcia/Bambinoh = use `retailPrice` as-is
     - brand rule: fixed brand, or derived (Bambinoh: from supplier folder name, no uppercase)
@@ -177,9 +178,14 @@ It is a **dedicated sprint**, not Phase 5 of enrichment: it has its own pipeline
 - `/settings/import-profiles` — manage convention profiles.
 
 ### Import sprint phasing
-- **I1 — parse & extract:** upload → worker parses PDF/Excel/CSV → normalized products staged (one real L'Espion PDF + one Garcia Excel as fixtures).
+- **I1 — parse & extract:** upload → worker parses PDF/Excel/CSV → normalized products staged. Real fixtures live in `everyday-tasks/` (user-provided, 2026-07-09):
+  - `everyday-tasks/integration LEspion/pdfs traites/Confirmation12610566.pdf` (L'Espion order PDF)
+  - `everyday-tasks/integration LEspion/pdfs traites/ORDER_PJLESPION--EURL-SAMANTA_2026-02-04_19026798.pdf` (L'Espion order PDF, larger)
+  - `everyday-tasks/integration LEspion/pdfs traites/2026-06-30-19037114-Y-s.xlsx` (L'Espion Excel)
+  - `everyday-tasks/integration Bambinoh/Le Temps Des Cerises/Commande BAMB3201 - 02359226.xlsx` (Bambinoh supplier Excel)
 - **I2 — profiles & review:** convention profiles applied (pricing/brand/category/season), review grid, edit/approve, **Tillin import CSV download**. This already replaces the manual workflow end-to-end.
-- **I3 — direct creation:** `create_products` on the Xano destination adapter (products + variants + EANs), duplicate detection (EAN/reference already in Tillin → flag, don't recreate), then hand off to an enrichment job.
+- **I3 — direct creation:** `create_products` on the Xano destination adapter (products + variants + EANs), duplicate detection against the existing Tillin catalog by **EAN/barcode AND `product_reference_code`** (either match → flag, don't recreate; surface the conflicting Tillin product in review), then hand off to an enrichment job.
+  - ⚠️ **CHECKPOINT before building I3 (user-requested, 2026-07-09):** the current Xano product-creation endpoint is NOT sized for volume writes. Stop and have Marc validate/rework the Xano API (bulk shape, rate, transactionality) before implementing the adapter — do not build against the existing endpoint as-is.
 
 ### Parallel agent workstreams
 The sprint splits into lots with **disjoint write sets**, per the repo's delegation rules (one worker = one boundary; generated client + OpenAPI regen decided centrally in the main thread):
@@ -195,11 +201,29 @@ The sprint splits into lots with **disjoint write sets**, per the repo's delegat
 Sequencing: freeze the normalized product schema + API contract in the main thread first, then A, B, C run fully in parallel; D starts against the contract; E last. OpenAPI/client regeneration happens once in the main thread after C settles.
 
 ### Verification (import sprint)
-1. **Unit:** parser fixtures (1 L'Espion PDF, 1 Garcia Excel, 1 generic CSV) → expected normalized rows; pricing rule (`wholesale × coef` rounded up to nearest 5); category mapping leaves unknowns empty; EAN/price values are byte-identical to the source cells.
+1. **Unit:** parser fixtures (the real `everyday-tasks/` files listed in I1: 2 L'Espion PDFs, 1 L'Espion Excel, 1 Bambinoh/Le Temps Des Cerises Excel, plus 1 generic CSV) → expected normalized rows; pricing rule (`wholesale × coef` rounded up to nearest 5); category mapping leaves unknowns empty; EAN/price values are byte-identical to the source cells.
 2. **Integration:** upload a real supplier file → review grid → approve → generated CSV imports cleanly into Tillin (manual import path).
 3. **I3:** direct creation on 2–3 test products → products/variants/EANs visible in Tillin; duplicate upload is flagged, not recreated.
 
 ---
+
+## Usage metering & client billing sprint (user-requested 2026-07-09)
+
+CatalogAI will be priced to Tillin's clients on consumption: AI tokens first, plus the other metered tools (Photoroom credits, Firecrawl, later Bright Data). This is a platform brick — every pipeline (enrichment, import, future imagery) must be metered at the source so billing never needs per-feature retrofits.
+
+### Design
+- **`usage_event` table** (app Postgres): `id, account_id, job_id?, item_id?, source (enrichment|import|…), provider (claude|photoroom|firecrawl|unlocker), model?, metric (input_tokens|output_tokens|cache_read_tokens|images|credits|requests), quantity, created_at`. One row per external call; append-only.
+- **Record at the client-wrapper level**, not in pipelines: `ClaudeClient.generate_copy` reads `response.usage` (input/output/cache tokens) and emits events; the Photoroom/Firecrawl wrappers count credits/requests the same way. Pipelines stay metering-agnostic — any new feature using the wrappers is billed for free.
+- **Pricing table** (config or DB): unit cost per (provider, model, metric) + per-account margin/coefficient → computed cost and billable amount are derived at query time, never stored on the event (repricing stays possible).
+- **API**: `GET /usage/summary?period=` (per account: totals by provider/metric, computed cost), `GET /usage/by-job` (unit economics per job/product — replaces the plan's "cost sanity" logging item).
+- **UI**: « Consommation » — dashboard tile (month-to-date) + dedicated page: per month, per provider, per job; export CSV for invoicing.
+
+### Phasing
+- **M1 — record:** usage_event table + Claude token capture (enrichment copy calls). Ship with the import sprint's extraction calls metered from day one.
+- **M2 — read:** aggregation endpoints + Consommation UI.
+- **M3 — rate:** pricing table + billable computation + per-account coefficient, CSV export for invoicing.
+
+Multi-account note: today the app has a single "default" account; per-client billing becomes meaningful when client boutiques get their own accounts — the account_id dimension is in the schema from M1 so no backfill is needed.
 
 ## Future / separate sprints (out of scope here)
 - **AI imagery sprint — image presentation styles:** let the user choose **flat-lay** (source selection), **on-model** (Photoroom **Virtual Model API** — flat-lay/ghost-mannequin → on-model, 12+ preset or custom brand models, poses, scene presets), and **in-scene / lifestyle** (Photoroom **AI Backgrounds** — generative scene from a text prompt). Both are Photoroom **Image Editing API Plus plan** (credits per image). Larger feature → its own sprint; the `images.py` interface should leave room for a `presentation_style` param.
@@ -209,7 +233,7 @@ Sequencing: freeze the normalized product schema + API contract in the main thre
 1. **Unit (pytest):** suggest.json matcher returns the right handle for `G5FU-T081` on `https://gramicci.co.uk`; `apply_title_template`; weight conversion; `process_image` returns a **4:5** JPEG at target size on the configured bg color; `generate_copy` returns FR description+meta for **both** Claude and OpenAI.
 2. **Integration:** run a job over 2–3 tagged test products → worker stages results → review queue shows before/after → approve one → confirm the Tillin product/variants/images updated and the existing Shopify sync reflects it.
 3. **Scraping:** Firecrawl fetch on a non-Shopify page; per-product method override works; (Phase 3) unlocker succeeds on an Asics/Farfetch page.
-4. **Cost sanity:** log per-product spend (Firecrawl + Photoroom + Claude) to validate unit economics before scaling batch size.
+4. **Cost sanity:** per-product spend (Firecrawl + Photoroom + Claude) — superseded by the usage metering sprint's `GET /usage/by-job` (see the dedicated section); validate unit economics before scaling batch size.
 
 ## Open items to confirm during build
 - Exact template strings (proposed title `{Brand} {Title}`, filename `{reference}_{color}_{position}`).
