@@ -30,8 +30,9 @@ from app.sources.shopify_json import fetch_product, score_product_match
 
 logger = logging.getLogger(__name__)
 
-# Plan-proposed default; overridable per job via config_json["title_template"].
-DEFAULT_TITLE_TEMPLATE = "{brand} {title}"
+# Default per user decision (Tillin titles usually already carry the brand);
+# overridable per job via config_json["title_template"] or account settings.
+DEFAULT_TITLE_TEMPLATE = "{title}"
 
 ProductReader = Callable[[int], Product | None]
 

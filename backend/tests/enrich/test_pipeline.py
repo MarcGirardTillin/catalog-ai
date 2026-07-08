@@ -136,7 +136,8 @@ def test_pipeline_stages_title_weights_images_and_copy(
 
     db.refresh(item)
     assert item.status == "ready_for_review"
-    assert item.staged_title == "Gramicci G-Short Double Navy"
+    # Default template is {title} — the brand is not prepended anymore.
+    assert item.staged_title == "G-Short Double Navy"
     assert item.source_url == f"{SITE}/products/g-short-double-navy"
     assert item.source_method == "shopify_json"
     assert item.match_score == 1.0
