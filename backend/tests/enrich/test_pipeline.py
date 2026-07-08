@@ -101,12 +101,14 @@ class _FakeClaude:
         *,
         editorial_instructions: str = "",
         model: str | None = None,
+        meta_max_length: int = 160,
     ) -> Any:
         self.calls.append(
             {
                 "ctx": product_ctx,
                 "instructions": editorial_instructions,
                 "model": model,
+                "meta_max_length": meta_max_length,
             }
         )
 
@@ -233,6 +235,116 @@ def test_stage_from_url_manually_restages(
         {"url": f"{SITE}/cdn/2.jpg", "position": 2},
     ]
     assert item.staged_description == "Un short robuste et léger."
+    db.close()
+
+
+def test_pipeline_reaches_extra_website_urls(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """A job's extra sources are tried even when the brand has no website."""
+    db = db_session_factory()
+    product = Product(
+        id=PRODUCT.id,
+        title=PRODUCT.title,
+        reference_code=PRODUCT.reference_code,
+        brand=Brand(id=7, name="Gramicci"),  # no website_urls
+        season=PRODUCT.season,
+        variants=PRODUCT.variants,
+    )
+    item = _seed_item(
+        db,
+        product.id,
+        config={"extra_website_urls": ["  ", f"{SITE}", f"{SITE}/"]},
+    )
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: product, http_client=http_client
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    assert item.source_method == "shopify_json"
+    db.close()
+
+
+def test_pipeline_passes_context_keywords_and_meta_length_to_claude(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    _seed_item(
+        db,
+        PRODUCT.id,
+        config={
+            "editorial_instructions": "Ton sobre.",
+            "client_context": "Boutique lyonnaise, mode responsable.",
+            "seo_keywords": ["short homme", "gramicci"],
+            "meta_max_length": 140,
+        },
+    )
+    claude = _FakeClaude()
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        assert process_one(db, pipeline) is True
+
+    call = claude.calls[0]
+    # The boutique context is prefixed before the job's instructions.
+    assert call["instructions"] == (
+        "Contexte boutique :\nBoutique lyonnaise, mode responsable.\n\nTon sobre."
+    )
+    assert call["ctx"]["seo_keywords"] == ["short homme", "gramicci"]
+    assert call["meta_max_length"] == 140
+    db.close()
+
+
+def test_pipeline_selects_instruction_by_product_category(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    product = Product(
+        id=PRODUCT.id,
+        title=PRODUCT.title,
+        reference_code=PRODUCT.reference_code,
+        brand=PRODUCT.brand,
+        season=PRODUCT.season,
+        category="Shorts",
+        variants=PRODUCT.variants,
+    )
+    _seed_item(
+        db,
+        product.id,
+        config={
+            "category_instructions": {
+                "Shorts": "Parle de la coupe.",
+                "Polos": "Parle du col.",
+            }
+        },
+    )
+    claude = _FakeClaude()
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: product,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        assert process_one(db, pipeline) is True
+
+    # The product's category picks its snapshotted instruction; defaults hold.
+    assert claude.calls[0]["instructions"] == "Parle de la coupe."
+    assert claude.calls[0]["meta_max_length"] == 160
     db.close()
 
 

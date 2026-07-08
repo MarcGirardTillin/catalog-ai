@@ -74,9 +74,7 @@ def get_pipeline() -> EnrichmentPipeline:
     """Return the process-wide pipeline, building it (and its httpx pool) once."""
     global _pipeline
     if _pipeline is None:
-        http_client = httpx.Client(
-            timeout=20.0, headers={"User-Agent": _USER_AGENT}
-        )
+        http_client = httpx.Client(timeout=20.0, headers={"User-Agent": _USER_AGENT})
         _pipeline = build_pipeline(http_client)
     return _pipeline
 
@@ -98,4 +96,6 @@ def process_pending(job_id: int) -> None:
         if not worked:
             break
         processed += 1
-    logger.info("Background run (triggered by job %s) drained %s item(s)", job_id, processed)
+    logger.info(
+        "Background run (triggered by job %s) drained %s item(s)", job_id, processed
+    )

@@ -66,7 +66,7 @@ def client(
     # exercise the trigger override this with a spy.
     from app.api.deps import get_job_runner
 
-    app.dependency_overrides[get_job_runner] = lambda: (lambda job_id: None)
+    app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
     main_module_any = cast(Any, main_module)
     original_ping_database = main_module_any.ping_database
     main_module_any.ping_database = lambda: True

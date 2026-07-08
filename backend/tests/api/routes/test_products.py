@@ -127,9 +127,10 @@ def test_returns_503_when_xano_not_configured(
     # unconfigured (the dev .env may carry real creds) and reset the singleton
     # so no live call is made.
     from app.api import deps
+    from app.core.config import settings
 
     monkeypatch.setattr(deps, "_xano_client", None)
-    monkeypatch.setattr(deps.settings, "XANO_BASE_URL", "")
+    monkeypatch.setattr(settings, "XANO_BASE_URL", "")
 
     response = auth_client.get("/products", params={"search": "x"})
 

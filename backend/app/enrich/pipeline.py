@@ -69,8 +69,8 @@ class EnrichmentPipeline:
         template = config.get("title_template") or DEFAULT_TITLE_TEMPLATE
         item.staged_title = apply_title_template(product, template) or None
 
-        # 2. Resolve the product's page on the brand site(s).
-        websites = product.brand.website_urls if product.brand else []
+        # 2. Resolve the product's page on the brand site(s) + job extras.
+        websites = _candidate_websites(product, config)
         resolved = resolve_source_url(self._http, product, websites)
         item.source_url = resolved.url
         item.source_method = resolved.method_used or resolved.status
@@ -124,9 +124,7 @@ class EnrichmentPipeline:
         """Stage weights + raw source images from a resolved source page."""
         if not source_product:
             return
-        proposals = map_weights(
-            product.variants, source_product.get("variants") or []
-        )
+        proposals = map_weights(product.variants, source_product.get("variants") or [])
         item.staged_weights_json = proposals or None
         images = [
             {"url": str(image["src"]), "position": position}
@@ -150,16 +148,50 @@ class EnrichmentPipeline:
             logger.info("item %s: copy skipped (no AI client configured)", item.id)
             return
         copy = self._claude.generate_copy(
-            _copy_context(product, source_product),
-            editorial_instructions=str(config.get("editorial_instructions") or ""),
+            _copy_context(
+                product, source_product, seo_keywords=config.get("seo_keywords")
+            ),
+            editorial_instructions=_effective_instructions(product, config),
             model=config.get("ai_model"),
+            meta_max_length=int(config.get("meta_max_length") or 160),
         )
         item.staged_description = copy.description_fr
         item.staged_meta = copy.meta_description_fr
 
 
+def _candidate_websites(product: Product, config: dict[str, Any]) -> list[str]:
+    """Brand sites + the job's extra sources (deduplicated, order preserved)."""
+    brand_sites = product.brand.website_urls if product.brand else []
+    extras = config.get("extra_website_urls") or []
+    websites: list[str] = []
+    for url in [*brand_sites, *extras]:
+        cleaned = str(url or "").strip()
+        if cleaned and cleaned not in websites:
+            websites.append(cleaned)
+    return websites
+
+
+def _effective_instructions(product: Product, config: dict[str, Any]) -> str:
+    """The copywriter's consignes: job-wide instructions, else the snapshotted
+    per-category default, optionally prefixed by the boutique context."""
+    instructions = str(config.get("editorial_instructions") or "")
+    if not instructions:
+        by_category = config.get("category_instructions") or {}
+        instructions = str(by_category.get(product.category or "", "") or "")
+    client_context = str(config.get("client_context") or "")
+    if client_context:
+        context_block = f"Contexte boutique :\n{client_context}"
+        instructions = (
+            f"{context_block}\n\n{instructions}" if instructions else context_block
+        )
+    return instructions
+
+
 def _copy_context(
-    product: Product, source_product: dict[str, Any] | None
+    product: Product,
+    source_product: dict[str, Any] | None,
+    *,
+    seo_keywords: list[str] | None = None,
 ) -> dict[str, Any]:
     """Product facts handed to the copywriter (canonical + source page)."""
     ctx: dict[str, Any] = {
@@ -169,6 +201,7 @@ def _copy_context(
         "season": product.season,
         "category": product.category,
         "department": product.department,
+        "seo_keywords": list(seo_keywords or []) or None,
     }
     if source_product:
         ctx["source_title"] = source_product.get("title")

@@ -74,9 +74,7 @@ class ItemPublic(BaseModel):
     @model_validator(mode="after")
     def _compute_duration(self) -> "ItemPublic":
         if self.started_at is not None and self.finished_at is not None:
-            self.duration_seconds = (
-                self.finished_at - self.started_at
-            ).total_seconds()
+            self.duration_seconds = (self.finished_at - self.started_at).total_seconds()
         return self
 
 

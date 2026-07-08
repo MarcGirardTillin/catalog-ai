@@ -43,9 +43,7 @@ class XanoTillinDestination:
             "description": item.staged_description
             if include.get("description", True)
             else None,
-            "meta_description": item.staged_meta
-            if include.get("meta", True)
-            else None,
+            "meta_description": item.staged_meta if include.get("meta", True) else None,
         }
         if any(value is not None for value in copy.values()):
             self._client.enrich_product(item.tillin_product_id, **copy)

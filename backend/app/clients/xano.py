@@ -35,6 +35,7 @@ def _enrich_path(product_id: int) -> str:
 def _bulk_images_path(product_id: int) -> str:
     return f"/product_image/{product_id}/bulk"
 
+
 # Classification groups exposed for product-search filters, and how each maps
 # onto the `products_with_pagination` filter param.
 CLASSIFICATION_GROUPS = ("brands", "categories", "seasons", "suppliers", "tags")

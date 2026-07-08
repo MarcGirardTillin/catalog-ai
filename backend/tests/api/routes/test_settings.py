@@ -49,6 +49,7 @@ def test_account_settings_roundtrip_and_job_defaults(auth_client: TestClient) ->
     payload: dict[str, Any] = {
         "title_template": "{title} {color}",
         "editorial_instructions": "Ton chaleureux, vouvoiement.",
+        "client_context": "# Boutique\nMode responsable à Lyon.",
         "meta_max_length": 155,
         "notify_on_job_done": True,
         "notify_email": "shop@example.com",
@@ -59,7 +60,13 @@ def test_account_settings_roundtrip_and_job_defaults(auth_client: TestClient) ->
     # New jobs inherit the account defaults…
     job = auth_client.post("/jobs", json={"selection": {"ids": [1]}}).json()
     assert job["config_json"]["title_template"] == "{title} {color}"
-    assert job["config_json"]["editorial_instructions"] == "Ton chaleureux, vouvoiement."
+    assert (
+        job["config_json"]["editorial_instructions"] == "Ton chaleureux, vouvoiement."
+    )
+    assert (
+        job["config_json"]["client_context"] == "# Boutique\nMode responsable à Lyon."
+    )
+    assert job["config_json"]["meta_max_length"] == 155
 
     # …unless the job explicitly overrides them.
     override = auth_client.post(

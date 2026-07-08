@@ -1,5 +1,7 @@
 """Unit tests for the Xano client: login auth + Tillin -> canonical mapping."""
 
+from typing import Any
+
 import httpx
 import pytest
 
@@ -41,10 +43,10 @@ BRANDS = [
 
 def _store(
     *,
-    products: list[dict] | None = None,
-    detail: dict | None = None,
-    brands: list[dict] | None = None,
-    categories: list[dict] | None = None,
+    products: list[dict[str, Any]] | None = None,
+    detail: dict[str, Any] | None = None,
+    brands: list[dict[str, Any]] | None = None,
+    categories: list[dict[str, Any]] | None = None,
     data_source: str = "",
 ) -> httpx.MockTransport:
     """Fake Xano: /auth/login issues a token, reads require the bearer."""
@@ -285,7 +287,7 @@ def test_token_is_reused_then_refreshed_on_401() -> None:
 
 
 def test_write_methods_post_expected_bodies() -> None:
-    calls: list[tuple[str, dict]] = []
+    calls: list[tuple[str, dict[str, Any]]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/auth/login"):
@@ -297,9 +299,7 @@ def test_write_methods_post_expected_bodies() -> None:
 
     with _client(httpx.MockTransport(handler)) as client:
         client.add_product_images(1911, ["https://a.jpg", "", "https://b.jpg"])
-        client.enrich_product(
-            1911, title="T", description="D", meta_description="M"
-        )
+        client.enrich_product(1911, title="T", description="D", meta_description="M")
         # None fields are omitted; an all-None enrich sends nothing.
         client.enrich_product(1911, description="only-desc")
         client.enrich_product(1911)

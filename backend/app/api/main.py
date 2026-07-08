@@ -6,6 +6,7 @@ from app.api.routes import (
     auth,
     catalog,
     example,
+    instructions,
     items,
     jobs,
     products,
@@ -24,3 +25,4 @@ api_router.include_router(jobs.router)
 api_router.include_router(items.router)
 api_router.include_router(stats.router)
 api_router.include_router(settings.router)
+api_router.include_router(instructions.router)

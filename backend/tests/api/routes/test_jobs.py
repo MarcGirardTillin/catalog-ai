@@ -160,7 +160,7 @@ def test_create_job_schedules_background_runner(auth_client: TestClient) -> None
         job = _create_job(auth_client, [201, 202])
     finally:
         # Restore the fixture's default no-op runner.
-        app.dependency_overrides[get_job_runner] = lambda: (lambda job_id: None)
+        app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
 
     assert seen == [job["id"]]
 
@@ -254,7 +254,9 @@ def test_resolve_item_manually_restages(auth_client: TestClient) -> None:
     try:
         valid = {"source_url": "https://x/products/foo"}
         # Pending item: cannot re-resolve yet.
-        assert auth_client.post(f"/items/{item_id}/resolve", json=valid).status_code == 409
+        assert (
+            auth_client.post(f"/items/{item_id}/resolve", json=valid).status_code == 409
+        )
 
         item.status = "ready_for_review"
         db.commit()
@@ -306,7 +308,7 @@ def test_retry_item_resets_and_requeues(auth_client: TestClient) -> None:
     try:
         response = auth_client.post(f"/items/{item_id}/retry")
     finally:
-        app.dependency_overrides[get_job_runner] = lambda: (lambda job_id: None)
+        app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
 
     assert response.status_code == 200
     body = response.json()

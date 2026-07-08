@@ -81,9 +81,7 @@ class EnrichmentItem(Base):
     staged_weights_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     # Reviewer's per-field keep/drop choices for the apply step, e.g.
     # {"title": false, "images": true}. Missing key or None = apply the field.
-    apply_fields_json: Mapped[dict[str, Any] | None] = mapped_column(
-        JSON, default=None
-    )
+    apply_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
 
     error: Mapped[str | None] = mapped_column(default=None)
     attempt_count: Mapped[int] = mapped_column(default=0)

@@ -28,9 +28,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     # Per-user UI preferences (shortcuts, review flow, density…); None = all
     # defaults. Validated by the UserPreferences schema at the API boundary.
-    preferences_json: Mapped[dict[str, Any] | None] = mapped_column(
-        JSON, default=None
-    )
+    preferences_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

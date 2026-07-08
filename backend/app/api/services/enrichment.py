@@ -10,16 +10,56 @@ from sqlalchemy.orm import Session
 from app.api.exceptions import AppException
 from app.api.schemas.enrichment import JobCounts
 from app.destinations.base import Destination
-from app.models import Account, EnrichmentItem, EnrichmentJob
+from app.models import Account, EnrichmentItem, EnrichmentJob, InstructionTemplate
 
 # Account-level defaults merged into a new job's config when absent.
-_ACCOUNT_CONFIG_DEFAULTS = ("title_template", "editorial_instructions")
+_ACCOUNT_CONFIG_DEFAULTS = (
+    "title_template",
+    "editorial_instructions",
+    "client_context",
+    "meta_max_length",
+)
 
 # Review transitions allowed from each current status.
 _REVIEW_TRANSITIONS = {
     "approved": ("ready_for_review",),
     "rejected": ("ready_for_review", "approved"),
 }
+
+
+def _resolve_instruction(
+    db: Session, *, account_id: int, instruction_id: int
+) -> InstructionTemplate:
+    instruction = db.get(InstructionTemplate, instruction_id)
+    if instruction is None or instruction.account_id != account_id:
+        raise AppException(
+            status_code=404, code="not_found", message="Instruction not found"
+        )
+    return instruction
+
+
+def _category_defaults(db: Session, account_id: int) -> dict[str, str]:
+    """Snapshot of per-category default instructions: {category: content}.
+
+    Templates that claim categories (`categories_json` non-empty) each map
+    their categories to their content. A category claimed by several templates
+    resolves to the most recent one (deterministic: rows applied in
+    created_at/id order, later — newer — wins).
+    """
+    rows = (
+        db.execute(
+            select(InstructionTemplate)
+            .where(InstructionTemplate.account_id == account_id)
+            .order_by(InstructionTemplate.created_at, InstructionTemplate.id)
+        )
+        .scalars()
+        .all()
+    )
+    defaults: dict[str, str] = {}
+    for template in rows:
+        for category in template.categories_json or []:
+            defaults[str(category)] = template.content
+    return defaults
 
 
 def create_job(
@@ -31,16 +71,42 @@ def create_job(
 ) -> EnrichmentJob:
     """Create a job; explicit ids become items immediately.
 
+    The persisted config is a snapshot: instruction templates referenced by
+    ``instruction_id`` (or claimed per category) are copied into it, so later
+    edits/deletions of the library never affect this job. Instruction
+    precedence at copy time: explicit ``editorial_instructions`` >
+    ``instruction_id`` > account default ``editorial_instructions`` >
+    per-category snapshot (``category_instructions``).
+
     TODO(plan): tag selections need a Xano read to expand into product ids —
     items for those are created by the worker once the read path has real
     credentials. The job is stored with its selection either way.
     """
+    config = dict(config)
+
+    # A named instruction is resolved server-side and snapshotted; the id is
+    # dropped from the stored config (explicit editorial_instructions win).
+    instruction_id = config.pop("instruction_id", None)
+    if instruction_id is not None:
+        instruction = _resolve_instruction(
+            db, account_id=account_id, instruction_id=int(instruction_id)
+        )
+        if not config.get("editorial_instructions"):
+            config["editorial_instructions"] = instruction.content
+    elif not config.get("editorial_instructions"):
+        # No pinned instructions: snapshot the per-category defaults.
+        category_defaults = _category_defaults(db, account_id)
+        if category_defaults:
+            config["category_instructions"] = category_defaults
+
     # The account's enrichment defaults apply unless the job overrides them.
+    # Note: an account-level editorial_instructions default still outranks the
+    # category snapshot (the pipeline prefers editorial_instructions).
     account = db.get(Account, account_id)
     defaults = (account.settings_json if account else None) or {}
     for key in _ACCOUNT_CONFIG_DEFAULTS:
         if defaults.get(key) and not config.get(key):
-            config = {**config, key: defaults[key]}
+            config[key] = defaults[key]
 
     job = EnrichmentJob(
         account_id=account_id, selection_json=selection, config_json=config

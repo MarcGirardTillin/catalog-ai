@@ -70,6 +70,29 @@ def test_claude_generate_copy_parses_structured_output() -> None:
     assert "Ton sobre." in body["messages"][0]["content"]
 
 
+def test_claude_meta_max_length_parameterizes_system_prompt() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(
+            200,
+            json=_claude_response(
+                {"description_fr": "Desc.", "meta_description_fr": "Meta."}
+            ),
+        )
+
+    client = _claude_client(handler)
+    client.generate_copy({"title": "G-Short"}, meta_max_length=140)
+    body = json.loads(captured["request"].content)
+    assert "140 caractères maximum" in body["system"]
+
+    # The default stays at 160 characters.
+    client.generate_copy({"title": "G-Short"})
+    body = json.loads(captured["request"].content)
+    assert "160 caractères maximum" in body["system"]
+
+
 def test_claude_refusal_and_upstream_error_raise() -> None:
     def refusal(_: httpx.Request) -> httpx.Response:
         payload = _claude_response({})

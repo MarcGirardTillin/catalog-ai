@@ -29,12 +29,16 @@ COPY_SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM_PROMPT = (
-    "Tu rédiges des fiches produit pour une boutique de mode multimarques. "
-    "À partir du contexte produit fourni, écris une description FR engageante "
-    "et fidèle (pas d'invention de caractéristiques) et une meta description "
-    "FR de 160 caractères maximum."
-)
+DEFAULT_META_MAX_LENGTH = 160
+
+
+def _system_prompt(meta_max_length: int) -> str:
+    return (
+        "Tu rédiges des fiches produit pour une boutique de mode multimarques. "
+        "À partir du contexte produit fourni, écris une description FR engageante "
+        "et fidèle (pas d'invention de caractéristiques) et une meta description "
+        f"FR de {meta_max_length} caractères maximum."
+    )
 
 
 class CopyResult(BaseModel):
@@ -67,6 +71,7 @@ class ClaudeClient:
         *,
         editorial_instructions: str = "",
         model: str | None = None,
+        meta_max_length: int = DEFAULT_META_MAX_LENGTH,
     ) -> CopyResult:
         """Generate FR description + meta description for one product."""
         user_content = "Contexte produit (JSON) :\n" + json.dumps(
@@ -79,7 +84,7 @@ class ClaudeClient:
             response = self._client.messages.create(
                 model=model or self._model,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=_system_prompt(meta_max_length),
                 output_config={
                     "format": {"type": "json_schema", "schema": COPY_SCHEMA}
                 },

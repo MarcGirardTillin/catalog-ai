@@ -26,6 +26,8 @@ class AccountSettings(BaseModel):
     title_template: str | None = None
     # Default editorial instructions handed to the copywriter for new jobs.
     editorial_instructions: str | None = None
+    # Boutique context (markdown) prefixed to the copywriter's instructions.
+    client_context: str | None = None
     # Soft SEO limit surfaced by the meta counter in review.
     meta_max_length: int = Field(160, ge=50, le=320)
     # Notifications (UI placeholder until the Brevo integration lands).
