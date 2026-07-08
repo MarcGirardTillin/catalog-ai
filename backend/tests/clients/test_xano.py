@@ -374,11 +374,12 @@ def test_set_brand_website_urls_normalizes_and_invalidates_cache() -> None:
             1332, [" gramicci.com ", "", "//cdn.gramicci.jp", "https://gramicci.co.uk/"]
         )
         assert captured["body"] == {
+            "brand_id": 1332,
             "website_urls": [
                 "https://gramicci.com",
                 "https://cdn.gramicci.jp",
                 "https://gramicci.co.uk",
-            ]
+            ],
         }
 
         client.search_products()  # cache was invalidated -> /brand re-fetched

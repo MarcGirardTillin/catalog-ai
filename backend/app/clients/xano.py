@@ -575,5 +575,9 @@ class XanoClient:
         brand cache is invalidated so subsequent product reads see the update.
         """
         normalized = normalize_website_urls(urls)
-        self._post(_brand_website_urls_path(brand_id), {"website_urls": normalized})
+        # The Xano endpoint expects brand_id in the body too (not only the path).
+        self._post(
+            _brand_website_urls_path(brand_id),
+            {"brand_id": brand_id, "website_urls": normalized},
+        )
         self._brands = None

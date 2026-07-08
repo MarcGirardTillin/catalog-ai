@@ -107,7 +107,8 @@ def test_update_website_urls_normalizes_and_posts(
     assert request.method == "POST"
     assert request.url.path.endswith("/brand/1332/website_urls")
     assert json.loads(request.content) == {
-        "website_urls": ["https://gramicci.com", "https://cdn.gramicci.jp"]
+        "brand_id": 1332,
+        "website_urls": ["https://gramicci.com", "https://cdn.gramicci.jp"],
     }
 
 
