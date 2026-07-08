@@ -314,6 +314,77 @@ def test_write_methods_post_expected_bodies() -> None:
     assert len(calls) == 3
 
 
+def test_list_brands_maps_and_sorts_by_name() -> None:
+    brands: list[dict[str, Any]] = [
+        {"id": 3, "title": "zeta", "brand_website": "zeta.com"},
+        {"id": 9},  # unnamed -> sorts last
+        {"id": 1, "title": "Alpha", "website_urls": ["https://a.com", "b.com"]},
+    ]
+    with _client(_store(brands=brands)) as client:
+        result = client.list_brands()
+
+    assert [(b.id, b.name) for b in result] == [
+        (1, "Alpha"),
+        (3, "zeta"),
+        (9, None),
+    ]
+    # URLs are scheme-normalized in both brand shapes.
+    assert result[0].website_urls == ["https://a.com", "https://b.com"]
+    assert result[1].website_urls == ["https://zeta.com"]
+    assert result[2].website_urls == []
+
+
+def test_list_brands_surfaces_upstream_errors() -> None:
+    # Unlike the best-effort product-side brand map, this read must raise.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        return httpx.Response(500)
+
+    with _client(httpx.MockTransport(handler)) as client:
+        with pytest.raises(XanoError) as exc_info:
+            client.list_brands()
+    assert exc_info.value.status_code == 502
+
+
+def test_set_brand_website_urls_normalizes_and_invalidates_cache() -> None:
+    brand_reads = {"n": 0}
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        if path.endswith("/brand/1332/website_urls"):
+            import json as _json
+
+            captured["body"] = _json.loads(request.content)
+            return httpx.Response(200, json={"ok": True})
+        if path.endswith("/brand"):
+            brand_reads["n"] += 1
+            return httpx.Response(200, json=BRANDS)
+        return httpx.Response(200, json={"items": [], "itemsTotal": 0})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.search_products()  # warms the brand cache
+        client.search_products()  # cache hit — still one /brand read
+        assert brand_reads["n"] == 1
+
+        client.set_brand_website_urls(
+            1332, [" gramicci.com ", "", "//cdn.gramicci.jp", "https://gramicci.co.uk/"]
+        )
+        assert captured["body"] == {
+            "website_urls": [
+                "https://gramicci.com",
+                "https://cdn.gramicci.jp",
+                "https://gramicci.co.uk",
+            ]
+        }
+
+        client.search_products()  # cache was invalidated -> /brand re-fetched
+        assert brand_reads["n"] == 2
+
+
 def test_login_failure_raises() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"message": "nope"})

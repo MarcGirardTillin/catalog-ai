@@ -36,6 +36,15 @@ def _bulk_images_path(product_id: int) -> str:
     return f"/product_image/{product_id}/bulk"
 
 
+def _brand_website_urls_path(brand_id: int) -> str:
+    return f"{BRANDS_PATH}/{brand_id}/website_urls"
+
+
+def normalize_website_urls(urls: list[str]) -> list[str]:
+    """Scheme-normalize a list of brand website URLs, dropping empties."""
+    return [u for u in (_normalize_url(str(v)) for v in urls) if u]
+
+
 # Classification groups exposed for product-search filters, and how each maps
 # onto the `products_with_pagination` filter param.
 CLASSIFICATION_GROUPS = ("brands", "categories", "seasons", "suppliers", "tags")
@@ -420,6 +429,24 @@ class XanoClient:
 
     # -- reads --------------------------------------------------------------
 
+    def list_brands(self) -> list[Brand]:
+        """Fetch every brand (`GET /brand`) as canonical Brands, sorted by name.
+
+        Unlike `_brand_map` (best-effort cache used to decorate products), this
+        read backs a dedicated screen and therefore surfaces upstream failures
+        as :class:`XanoError`. Brands without a name sort last.
+        """
+        payload = self._request(BRANDS_PATH, {})
+        brands: list[Brand] = []
+        for raw in _as_list(payload):
+            if not isinstance(raw, Mapping) or raw.get("id") is None:
+                continue
+            brand = _map_brand(raw["id"], {int(raw["id"]): raw})
+            if brand is not None:
+                brands.append(brand)
+        brands.sort(key=lambda b: (b.name is None, (b.name or "").lower()))
+        return brands
+
     def search_products(
         self,
         *,
@@ -539,3 +566,14 @@ class XanoClient:
         if not urls:
             return
         self._post(_bulk_images_path(product_id), {"image_urls": urls})
+
+    def set_brand_website_urls(self, brand_id: int, urls: list[str]) -> None:
+        """Replace a brand's reference websites (`/brand/{id}/website_urls`).
+
+        URLs are scheme-normalized and empties dropped before sending. The
+        response body shape is unknown, so it is ignored (best-effort). The
+        brand cache is invalidated so subsequent product reads see the update.
+        """
+        normalized = normalize_website_urls(urls)
+        self._post(_brand_website_urls_path(brand_id), {"website_urls": normalized})
+        self._brands = None
