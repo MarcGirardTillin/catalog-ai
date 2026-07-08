@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -110,6 +110,32 @@ export const productsListProducts = <ThrowOnError extends boolean = false>(optio
     responseType: 'json',
     url: '/products',
     ...options
+});
+
+/**
+ * List Brands
+ *
+ * Return every Tillin brand with its reference websites, sorted by name.
+ */
+export const brandsListBrands = <ThrowOnError extends boolean = false>(options?: Options<BrandsListBrandsData, ThrowOnError>): RequestResult<BrandsListBrandsResponses, BrandsListBrandsErrors, ThrowOnError> => (options?.client ?? client).get<BrandsListBrandsResponses, BrandsListBrandsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/brands',
+    ...options
+});
+
+/**
+ * Update Brand Website Urls
+ *
+ * Replace a brand's reference website URLs in Tillin.
+ */
+export const brandsUpdateBrandWebsiteUrls = <ThrowOnError extends boolean = false>(options: Options<BrandsUpdateBrandWebsiteUrlsData, ThrowOnError>): RequestResult<BrandsUpdateBrandWebsiteUrlsResponses, BrandsUpdateBrandWebsiteUrlsErrors, ThrowOnError> => (options.client ?? client).put<BrandsUpdateBrandWebsiteUrlsResponses, BrandsUpdateBrandWebsiteUrlsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/brands/{brand_id}/website_urls',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

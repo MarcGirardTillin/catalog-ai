@@ -22,6 +22,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
+  import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
   import InstructionLibrary from "@/lib/components/settings/InstructionLibrary.svelte"
   import TitleTemplateBuilder, {
     parseTemplate,
@@ -37,10 +38,20 @@
   const TABS = [
     { key: "preferences", label: "Préférences" },
     { key: "enrichment", label: "Enrichissement" },
+    { key: "brands", label: "Marques" },
     { key: "account", label: "Compte" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("preferences")
+
+  // L'onglet Marques charge une liste potentiellement longue : montage
+  // paresseux à la première ouverture (puis le composant reste monté).
+  let brandsOpened = $state(false)
+
+  function selectTab(key: TabKey) {
+    tab = key
+    if (key === "brands") brandsOpened = true
+  }
 
   // --- Réglages de compte (Enrichissement + Notifications : un seul objet,
   // un seul « Enregistrer » — le PUT envoie l'AccountSettings complet). ---
@@ -218,7 +229,7 @@
               t.key
                 ? 'border-primary text-foreground'
                 : 'text-muted-foreground hover:text-foreground border-transparent'}"
-              onclick={() => (tab = t.key)}
+              onclick={() => selectTab(t.key)}
             >
               {t.label}
             </button>
@@ -344,6 +355,13 @@
           {@render saveAccountRow()}
 
           <InstructionLibrary />
+        </div>
+
+        <!-- Onglet Marques (sites web de référence par marque) -->
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "brands"}>
+          {#if brandsOpened}
+            <BrandWebsites />
+          {/if}
         </div>
 
         <!-- Onglet Compte (Tillin + notifications + mot de passe) -->

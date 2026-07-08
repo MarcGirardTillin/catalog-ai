@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Check from "@lucide/svelte/icons/check"
   import ChevronLeft from "@lucide/svelte/icons/chevron-left"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import { toast } from "svelte-sonner"
@@ -57,8 +58,24 @@
   let meta = $state("")
 
   // Per-field apply choice: key absent or `true` = written to Tillin on apply,
-  // `false` = skipped. Keys: "title" | "description" | "meta" | "images".
+  // `false` = skipped. Keys: "title" | "description" | "meta" | "images" | "weights".
   let applyFields = $state<Record<string, boolean>>({})
+
+  // `apply_fields_json` accepte aussi des sélections partielles (le type
+  // généré ne connaît que les booléens — cast local en attendant la
+  // régénération OpenAPI) :
+  // - `image_urls`: sous-ensemble des URLs de staged_images_json à appliquer
+  //   (clé absente = toutes ; ignorée si `images: false`)
+  // - `weight_variant_ids`: idem pour les poids (`weights` = master)
+  type ApplyFieldsExtended = {
+    [key: string]: boolean | string[] | number[] | null | undefined
+    image_urls?: string[]
+    weight_variant_ids?: number[]
+  }
+
+  // Sélection par image / par variante (sous le master du champ).
+  let selectedImageUrls = $state<string[]>([])
+  let selectedWeightIds = $state<number[]>([])
 
   // Recommended SEO meta length; past this we warn (soft limit). Suit le
   // réglage de compte `meta_max_length` (chargé une fois par session,
@@ -71,7 +88,27 @@
     title = data.staged_title ?? ""
     description = data.staged_description ?? ""
     meta = data.staged_meta ?? ""
-    applyFields = { ...(data.apply_fields_json ?? {}) }
+    const raw = (data.apply_fields_json ?? {}) as ApplyFieldsExtended
+    const bools: Record<string, boolean> = {}
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === "boolean") bools[key] = value
+    }
+    applyFields = bools
+    // Sélections partielles : clé absente = tout sélectionné.
+    const allUrls = ((data.staged_images_json ?? []) as { url: string }[]).map(
+      (i) => i.url,
+    )
+    const storedUrls = raw.image_urls
+    selectedImageUrls = Array.isArray(storedUrls)
+      ? allUrls.filter((u) => storedUrls.includes(u))
+      : [...allUrls]
+    const allIds = ((data.staged_weights_json ?? []) as { variant_id: number }[]).map(
+      (w) => w.variant_id,
+    )
+    const storedIds = raw.weight_variant_ids
+    selectedWeightIds = Array.isArray(storedIds)
+      ? allIds.filter((v) => storedIds.includes(v))
+      : [...allIds]
   }
 
   function isApplied(key: string): boolean {
@@ -84,11 +121,45 @@
 
   // Normalized signature: only explicitly-unchecked keys matter
   // (a key set to `true` is equivalent to an absent key).
-  function excludedKeys(fields: Record<string, boolean> | null | undefined): string {
+  function excludedKeys(fields: ApplyFieldsExtended | null | undefined): string {
     return Object.keys(fields ?? {})
       .filter((key) => fields?.[key] === false)
       .sort()
       .join(",")
+  }
+
+  function toggleImage(url: string) {
+    selectedImageUrls = selectedImageUrls.includes(url)
+      ? selectedImageUrls.filter((u) => u !== url)
+      : [...selectedImageUrls, url]
+  }
+
+  function toggleWeight(variantId: number) {
+    selectedWeightIds = selectedWeightIds.includes(variantId)
+      ? selectedWeightIds.filter((v) => v !== variantId)
+      : [...selectedWeightIds, variantId]
+  }
+
+  // Signature normalisée d'une sélection partielle : sélection complète
+  // (ou clé absente/malformée) ≡ "" ; sinon la liste retenue, dans l'ordre
+  // des éléments stagés.
+  function selectionSignature(stored: unknown, all: (string | number)[]): string {
+    if (!Array.isArray(stored)) return ""
+    const kept = all.filter((x) => (stored as (string | number)[]).includes(x))
+    return kept.length === all.length ? "" : kept.map(String).join("|")
+  }
+
+  // apply_fields_json envoyé au PATCH : booléens par champ + sélections
+  // partielles. Une sélection complète est omise (clé absente = tout).
+  function buildApplyFields(): ApplyFieldsExtended {
+    const payload: ApplyFieldsExtended = { ...applyFields }
+    const allUrls = images.map((i) => i.url)
+    const keptUrls = allUrls.filter((u) => selectedImageUrls.includes(u))
+    if (keptUrls.length < allUrls.length) payload.image_urls = keptUrls
+    const allIds = weights.map((w) => w.variant_id)
+    const keptIds = allIds.filter((v) => selectedWeightIds.includes(v))
+    if (keptIds.length < allIds.length) payload.weight_variant_ids = keptIds
+    return payload
   }
 
   $effect(() => {
@@ -159,15 +230,41 @@
       item?.status === "rejected" ||
       item?.status === "failed",
   )
+  const images = $derived(
+    (item?.staged_images_json ?? []) as { url: string; position?: number }[],
+  )
+  const weights = $derived(
+    (item?.staged_weights_json ?? []) as {
+      variant_id: number
+      weight: number
+      weight_unit: string
+    }[],
+  )
+  const storedApplyFields = $derived(
+    (item?.apply_fields_json ?? {}) as ApplyFieldsExtended,
+  )
   const dirty = $derived(
     item !== null &&
       (title !== (item.staged_title ?? "") ||
         description !== (item.staged_description ?? "") ||
         meta !== (item.staged_meta ?? "") ||
-        excludedKeys(applyFields) !== excludedKeys(item.apply_fields_json)),
-  )
-  const images = $derived(
-    (item?.staged_images_json ?? []) as { url: string; position?: number }[],
+        excludedKeys(applyFields) !== excludedKeys(storedApplyFields) ||
+        selectionSignature(
+          selectedImageUrls,
+          images.map((i) => i.url),
+        ) !==
+          selectionSignature(
+            storedApplyFields.image_urls,
+            images.map((i) => i.url),
+          ) ||
+        selectionSignature(
+          selectedWeightIds,
+          weights.map((w) => w.variant_id),
+        ) !==
+          selectionSignature(
+            storedApplyFields.weight_variant_ids,
+            weights.map((w) => w.variant_id),
+          )),
   )
 
   // Every field that actually has staged content is unchecked: nothing will
@@ -185,13 +282,14 @@
       .map(([key]) => key)
     return withContent.length > 0 && withContent.every((key) => !isApplied(key))
   })
-  const weights = $derived(
-    (item?.staged_weights_json ?? []) as {
-      variant_id: number
-      weight: number
-      weight_unit: string
-    }[],
+
+  const allImagesSelected = $derived(
+    images.length > 0 && images.every((i) => selectedImageUrls.includes(i.url)),
   )
+
+  function toggleAllImages() {
+    selectedImageUrls = allImagesSelected ? [] : images.map((i) => i.url)
+  }
 
   type Candidate = { url: string; title?: string | null; score: number }
   const resolution = $derived(
@@ -250,7 +348,9 @@
         staged_title: title || null,
         staged_description: description || null,
         staged_meta: meta || null,
-        apply_fields_json: applyFields,
+        // Le type généré ne connaît pas encore les clés de sélection
+        // partielle (image_urls, weight_variant_ids) : cast local.
+        apply_fields_json: buildApplyFields() as unknown as Record<string, boolean>,
       },
     })
     busy = false
@@ -742,18 +842,60 @@
                 <CardTitle class="font-title text-sm">Images source ({images.length})</CardTitle>
                 <CardAction>{@render applyCheckbox("images")}</CardAction>
               </CardHeader>
-              <CardContent>
+              <CardContent class="flex flex-col gap-2">
+                <div
+                  class="text-muted-foreground flex items-center justify-between text-xs"
+                  class:opacity-60={!isApplied("images")}
+                >
+                  <span>
+                    {selectedImageUrls.length}/{images.length} sélectionnée{selectedImageUrls.length >
+                    1
+                      ? "s"
+                      : ""}
+                  </span>
+                  {#if reviewable && isApplied("images")}
+                    <button
+                      type="button"
+                      class="hover:text-foreground cursor-pointer underline underline-offset-2"
+                      onclick={toggleAllImages}
+                    >
+                      {allImagesSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                    </button>
+                  {/if}
+                </div>
                 <div
                   class="grid grid-cols-2 gap-2 sm:grid-cols-3"
                   class:opacity-60={!isApplied("images")}
                 >
                   {#each images as image (image.url)}
-                    <img
-                      src={image.url}
-                      alt={`Source ${image.position ?? ""}`}
-                      loading="lazy"
-                      class="bg-muted aspect-4/5 w-full rounded-md object-cover"
-                    />
+                    {@const selected = selectedImageUrls.includes(image.url)}
+                    <button
+                      type="button"
+                      class="focus-visible:ring-ring relative cursor-pointer rounded-md outline-none focus-visible:ring-2 disabled:cursor-default"
+                      aria-pressed={selected}
+                      aria-label={`Image ${image.position ?? ""} — ${
+                        selected ? "sélectionnée" : "non sélectionnée"
+                      }`}
+                      disabled={!reviewable || !isApplied("images")}
+                      onclick={() => toggleImage(image.url)}
+                    >
+                      <img
+                        src={image.url}
+                        alt=""
+                        loading="lazy"
+                        class="bg-muted aspect-4/5 w-full rounded-md object-cover transition-opacity {selected
+                          ? ''
+                          : 'ring-muted-foreground/50 opacity-40 ring-2'}"
+                      />
+                      <span
+                        aria-hidden="true"
+                        class="absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded border shadow-sm {selected
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'bg-card/90 border-input text-transparent'}"
+                      >
+                        <Check size={14} />
+                      </span>
+                    </button>
                   {/each}
                 </div>
               </CardContent>
@@ -763,14 +905,41 @@
           {#if weights.length > 0}
             <Card>
               <CardHeader>
-                <CardTitle class="font-title text-sm">Poids proposés</CardTitle>
+                <CardTitle class="font-title flex items-center gap-2 text-sm">
+                  Poids proposés
+                  <span
+                    class="text-muted-foreground rounded-full border px-2 py-0.5 text-[10px] font-normal"
+                  >
+                    Bientôt actif
+                  </span>
+                </CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  La sélection est enregistrée ; l'écriture des poids vers Tillin arrive
+                  bientôt.
+                </CardDescription>
+                <CardAction>{@render applyCheckbox("weights")}</CardAction>
               </CardHeader>
-              <CardContent class="flex flex-col gap-1 text-xs">
+              <CardContent
+                class="flex flex-col gap-1 text-xs {isApplied('weights')
+                  ? ''
+                  : 'opacity-60'}"
+              >
                 {#each weights as row (row.variant_id)}
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="text-muted-foreground font-mono">variante {row.variant_id}</span>
+                  <label class="flex cursor-pointer items-center justify-between gap-2">
+                    <span class="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        class="accent-primary size-3.5"
+                        checked={selectedWeightIds.includes(row.variant_id)}
+                        disabled={!reviewable || !isApplied("weights")}
+                        onchange={() => toggleWeight(row.variant_id)}
+                      />
+                      <span class="text-muted-foreground font-mono">
+                        variante {row.variant_id}
+                      </span>
+                    </span>
                     <span class="font-mono font-medium">{row.weight} {row.weight_unit}</span>
-                  </div>
+                  </label>
                 {/each}
               </CardContent>
             </Card>

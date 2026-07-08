@@ -57,6 +57,38 @@ export type Brand = {
 };
 
 /**
+ * BrandPublic
+ *
+ * A Tillin brand with its reference website URLs.
+ */
+export type BrandPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Website Urls
+     */
+    website_urls?: Array<string>;
+};
+
+/**
+ * BrandWebsiteUrlsUpdate
+ *
+ * Replace a brand's reference website URLs.
+ */
+export type BrandWebsiteUrlsUpdate = {
+    /**
+     * Website Urls
+     */
+    website_urls: Array<string>;
+};
+
+/**
  * CatalogFilters
  *
  * Classification lists backing the product-search filters.
@@ -302,7 +334,7 @@ export type ItemPatchRequest = {
      * Apply Fields Json
      */
     apply_fields_json?: {
-        [key: string]: boolean;
+        [key: string]: unknown;
     } | null;
 };
 
@@ -368,7 +400,7 @@ export type ItemPublic = {
      * Apply Fields Json
      */
     apply_fields_json?: {
-        [key: string]: boolean;
+        [key: string]: unknown;
     } | null;
     /**
      * Error
@@ -1057,6 +1089,63 @@ export type ProductsListProductsResponses = {
 };
 
 export type ProductsListProductsResponse = ProductsListProductsResponses[keyof ProductsListProductsResponses];
+
+export type BrandsListBrandsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/brands';
+};
+
+export type BrandsListBrandsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BrandsListBrandsError = BrandsListBrandsErrors[keyof BrandsListBrandsErrors];
+
+export type BrandsListBrandsResponses = {
+    /**
+     * Response Brands-List Brands
+     *
+     * Successful Response
+     */
+    200: Array<BrandPublic>;
+};
+
+export type BrandsListBrandsResponse = BrandsListBrandsResponses[keyof BrandsListBrandsResponses];
+
+export type BrandsUpdateBrandWebsiteUrlsData = {
+    body: BrandWebsiteUrlsUpdate;
+    path: {
+        /**
+         * Brand Id
+         */
+        brand_id: number;
+    };
+    query?: never;
+    url: '/brands/{brand_id}/website_urls';
+};
+
+export type BrandsUpdateBrandWebsiteUrlsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BrandsUpdateBrandWebsiteUrlsError = BrandsUpdateBrandWebsiteUrlsErrors[keyof BrandsUpdateBrandWebsiteUrlsErrors];
+
+export type BrandsUpdateBrandWebsiteUrlsResponses = {
+    /**
+     * Successful Response
+     */
+    200: BrandPublic;
+};
+
+export type BrandsUpdateBrandWebsiteUrlsResponse = BrandsUpdateBrandWebsiteUrlsResponses[keyof BrandsUpdateBrandWebsiteUrlsResponses];
 
 export type CatalogGetFiltersData = {
     body?: never;

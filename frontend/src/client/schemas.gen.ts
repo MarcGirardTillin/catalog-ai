@@ -101,6 +101,59 @@ export const BrandSchema = {
     description: 'The brand a product belongs to, with its source website(s).'
 } as const;
 
+export const BrandPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        website_urls: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Website Urls'
+        }
+    },
+    type: 'object',
+    required: [
+        'id'
+    ],
+    title: 'BrandPublic',
+    description: 'A Tillin brand with its reference website URLs.'
+} as const;
+
+export const BrandWebsiteUrlsUpdateSchema = {
+    properties: {
+        website_urls: {
+            items: {
+                type: 'string',
+                maxLength: 500
+            },
+            type: 'array',
+            maxItems: 20,
+            title: 'Website Urls'
+        }
+    },
+    type: 'object',
+    required: [
+        'website_urls'
+    ],
+    title: 'BrandWebsiteUrlsUpdate',
+    description: 'Replace a brand\'s reference website URLs.'
+} as const;
+
 export const CatalogFiltersSchema = {
     properties: {
         brands: {
@@ -496,9 +549,7 @@ export const ItemPatchRequestSchema = {
         apply_fields_json: {
             anyOf: [
                 {
-                    additionalProperties: {
-                        type: 'boolean'
-                    },
+                    additionalProperties: true,
                     type: 'object'
                 },
                 {
@@ -636,9 +687,7 @@ export const ItemPublicSchema = {
         apply_fields_json: {
             anyOf: [
                 {
-                    additionalProperties: {
-                        type: 'boolean'
-                    },
+                    additionalProperties: true,
                     type: 'object'
                 },
                 {
