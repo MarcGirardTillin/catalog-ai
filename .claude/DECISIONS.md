@@ -521,3 +521,29 @@ provider returns daily billable (+quantity) for the three chart views; the UI
 draws them as inline SVG (no chart lib). Rationale for billing_day over
 auto-at-rollover: it gives Marc a window after month-end to verify before the
 figures lock — his explicit choice ("date de facturation dans les paramètres").
+
+## 2026-07-09 — Information architecture: pipeline-first navigation
+User-validated redesign. Sidebar in two sections — Pipeline (Tableau de bord,
+Imports, Produits, Enrichissements) and Configuration (Profils d'import,
+Instructions, Consommation) — URLs unchanged, only labels/breadcrumbs.
+Renames: « Jobs » -> « Enrichissements » (the activity), « Enrichissement » ->
+« Instructions » (the writing config), « Profils » -> « Profils d'import ».
+Status wording harmonized: ready_for_review = « À vérifier » everywhere;
+rejected = « Écarter/Écarté » (replaces both « Rejeter » and « Exclure »);
+final state stays contextual: « Transféré » (import = creation) vs
+« Appliqué » (enrichment = update) via a StatusBadge context prop.
+Import->Tillin product link: /product_import returns no created ids, so
+items are linked a posteriori by reference_code (Xano search, exact
+normalized match, ambiguity -> not_found) into import_item.tillin_product_id
+(migration 0014), POST /imports/{id}/link-products (idempotent). Verified
+live: 4/4 sampled refs of the real transferred L'Espion order resolved.
+Products page: tabs Catalogue / Par import (?import=ID deep link from a
+transferred import). ProductPanel side panel (first drawer of the app):
+completeness split validated by Marc — « Prêt boutique » = titre, réf,
+≥1 variante, prix (new Product.price mapped from Tillin's nested
+price.amount), catégorie, marque; « Prêt e-commerce » = ≥1 image,
+description, meta, poids; « titre harmonisé » is a non-blocking bonus.
+Photoroom actions in the panel are documented in plan.md only (détourage,
+reformatage, mannequin porté <-> à plat) — not built. Orphan /jobs/new
+removed. Bridge: « Voir / Enrichir les produits créés » on transferred
+imports closes the pipeline loop import -> enrichment.
