@@ -10,6 +10,11 @@ import type { AccountSettings } from "@/client"
 export type AccountSettingsExtended = AccountSettings & {
   client_context?: string | null
   billing_coefficient?: number
+  // Jour de facturation : la conso d'un mois est figée le billing_day du
+  // mois suivant. 1 = figé dès la bascule de mois.
+  billing_day?: number
+  // Casse appliquée au titre rendu.
+  title_case?: "none" | "upper" | "capitalize"
 }
 
 export const accountSettings = $state({

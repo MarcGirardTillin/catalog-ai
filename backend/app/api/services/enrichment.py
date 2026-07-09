@@ -15,6 +15,7 @@ from app.models import Account, EnrichmentItem, EnrichmentJob, InstructionTempla
 # Account-level defaults merged into a new job's config when absent.
 _ACCOUNT_CONFIG_DEFAULTS = (
     "title_template",
+    "title_case",
     "editorial_instructions",
     "client_context",
     "meta_max_length",

@@ -3,6 +3,7 @@
 import re
 
 from app.api.schemas import Product
+from app.api.schemas.settings import TitleCase
 
 # Tokens the template may reference. `color` is accepted but empty until the
 # canonical schema carries variant color options (TODO plan).
@@ -36,7 +37,20 @@ def _drop_brand_if_already_in_title(values: dict[str, str]) -> None:
         values["brand"] = ""
 
 
-def apply_title_template(product: Product, template: str) -> str:
+def _apply_case(text: str, case: TitleCase) -> str:
+    """Case the rendered title. `capitalize` upper-cases the first letter of
+    each word but leaves the rest untouched (preserves acronyms/brands like
+    "ARMEDANGELS"), unlike ``str.capitalize``."""
+    if case == "upper":
+        return text.upper()
+    if case == "capitalize":
+        return re.sub(r"\b\w", lambda m: m.group().upper(), text)
+    return text
+
+
+def apply_title_template(
+    product: Product, template: str, case: TitleCase = "none"
+) -> str:
     """Render a title template; unknown tokens raise, empty values collapse."""
     values = _token_values(product)
     _drop_brand_if_already_in_title(values)
@@ -48,4 +62,4 @@ def apply_title_template(product: Product, template: str) -> str:
         return values[token]
 
     rendered = re.sub(r"\{(\w+)\}", replace, template)
-    return re.sub(r"\s+", " ", rendered).strip()
+    return _apply_case(re.sub(r"\s+", " ", rendered).strip(), case)

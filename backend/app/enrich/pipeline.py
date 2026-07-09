@@ -21,6 +21,7 @@ import httpx
 from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas import Product
+from app.api.schemas.settings import TitleCase
 from app.api.services.usage import record_claude_usage
 from app.clients.claude import ClaudeClient
 from app.enrich.title import apply_title_template
@@ -68,7 +69,12 @@ class EnrichmentPipeline:
 
         # 1. Title template — pure, always runs.
         template = config.get("title_template") or DEFAULT_TITLE_TEMPLATE
-        item.staged_title = apply_title_template(product, template) or None
+        case: TitleCase = (
+            config["title_case"]
+            if config.get("title_case") in ("upper", "capitalize")
+            else "none"
+        )
+        item.staged_title = apply_title_template(product, template, case) or None
 
         # 2. Resolve the product's page on the brand site(s) + job extras.
         websites = _candidate_websites(product, config)

@@ -48,12 +48,14 @@ def test_user_preferences_defaults_and_roundtrip(auth_client: TestClient) -> Non
 def test_account_settings_roundtrip_and_job_defaults(auth_client: TestClient) -> None:
     payload: dict[str, Any] = {
         "title_template": "{title} {color}",
+        "title_case": "upper",
         "editorial_instructions": "Ton chaleureux, vouvoiement.",
         "client_context": "# Boutique\nMode responsable à Lyon.",
         "meta_max_length": 155,
         "notify_on_job_done": True,
         "notify_email": "shop@example.com",
         "billing_coefficient": 1.5,
+        "billing_day": 5,
     }
     assert auth_client.put("/settings/account", json=payload).status_code == 200
     assert auth_client.get("/settings/account").json() == payload
@@ -61,6 +63,7 @@ def test_account_settings_roundtrip_and_job_defaults(auth_client: TestClient) ->
     # New jobs inherit the account defaults…
     job = auth_client.post("/jobs", json={"selection": {"ids": [1]}}).json()
     assert job["config_json"]["title_template"] == "{title} {color}"
+    assert job["config_json"]["title_case"] == "upper"
     assert (
         job["config_json"]["editorial_instructions"] == "Ton chaleureux, vouvoiement."
     )

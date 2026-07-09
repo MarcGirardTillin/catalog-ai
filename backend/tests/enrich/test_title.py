@@ -71,3 +71,26 @@ def test_brand_substring_of_word_does_not_count() -> None:
     # "Gram" is only part of "Gramicci" — the brand is still prepended.
     product = _product("Gramicci Short", "Gram")
     assert apply_title_template(product, "{brand} {title}") == "Gram Gramicci Short"
+
+
+def test_case_none_leaves_title_untouched() -> None:
+    assert (
+        apply_title_template(PRODUCT, "{brand} {title}", "none")
+        == "Gramicci G-Short Double Navy"
+    )
+
+
+def test_case_upper() -> None:
+    assert (
+        apply_title_template(PRODUCT, "{brand} {title}", "upper")
+        == "GRAMICCI G-SHORT DOUBLE NAVY"
+    )
+
+
+def test_case_capitalize_first_letter_of_each_word_preserving_rest() -> None:
+    product = _product("polo rayé en COTON bio", "armedangels")
+    # First letter of each word upper-cased; existing caps (COTON) preserved.
+    assert (
+        apply_title_template(product, "{title}", "capitalize")
+        == "Polo Rayé En COTON Bio"
+    )

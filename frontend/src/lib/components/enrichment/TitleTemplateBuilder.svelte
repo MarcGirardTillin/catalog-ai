@@ -43,7 +43,26 @@
   let {
     tokens = $bindable(),
     separator = $bindable(),
-  }: { tokens: string[]; separator: string } = $props()
+    titleCase = $bindable(),
+  }: {
+    tokens: string[]
+    separator: string
+    titleCase: "none" | "upper" | "capitalize"
+  } = $props()
+
+  const CASE_OPTIONS = [
+    { value: "none", label: "Aucune (tel quel)" },
+    { value: "upper", label: "MAJUSCULES" },
+    { value: "capitalize", label: "Initiales En Majuscule" },
+  ] as const
+
+  /** Applique la casse choisie à l'aperçu (miroir du backend). */
+  function applyCase(text: string): string {
+    if (titleCase === "upper") return text.toUpperCase()
+    if (titleCase === "capitalize")
+      return text.replace(/\b\w/g, (c) => c.toUpperCase())
+    return text
+  }
 
   // Sample values for the live preview of the template.
   const TOKEN_SAMPLE: Record<string, string> = {
@@ -58,7 +77,7 @@
 
   const titleTemplate = $derived(tokens.map((key) => `{${key}}`).join(separator))
   const templatePreview = $derived(
-    tokens.map((key) => TOKEN_SAMPLE[key] ?? "").join(separator),
+    applyCase(tokens.map((key) => TOKEN_SAMPLE[key] ?? "").join(separator)),
   )
   const availableTokens = $derived(
     TITLE_TOKENS.filter((token) => !tokens.includes(token.key)),

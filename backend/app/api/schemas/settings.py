@@ -4,6 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# How the rendered title is cased: left as-is, UPPER CASE, or Capitalized.
+TitleCase = Literal["none", "upper", "capitalize"]
+
 
 class UserPreferences(BaseModel):
     """Per-user UI preferences (stored on user.preferences_json).
@@ -24,6 +27,8 @@ class AccountSettings(BaseModel):
 
     # Default title template for new jobs ({brand}/{title}/{season}/{color}…).
     title_template: str | None = None
+    # Casing applied to the rendered title (none | upper | capitalize).
+    title_case: TitleCase = "none"
     # Default editorial instructions handed to the copywriter for new jobs.
     editorial_instructions: str | None = None
     # Boutique context (markdown) prefixed to the copywriter's instructions.
@@ -35,6 +40,10 @@ class AccountSettings(BaseModel):
     notify_email: str | None = None
     # Billing markup applied at read time: billable = cost × coefficient.
     billing_coefficient: float = Field(1.0, ge=0)
+    # Day of the month a period is billed on: a month is billed (and its
+    # prices frozen) on this day of the FOLLOWING month. 1 = frozen as soon
+    # as the month rolls over.
+    billing_day: int = Field(1, ge=1, le=28)
 
 
 class ConnectionStatus(BaseModel):

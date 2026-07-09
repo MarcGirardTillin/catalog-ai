@@ -48,6 +48,7 @@
   // App default is {title}; the builder starts there.
   let templateTokens = $state<string[]>(["title"])
   let templateSeparator = $state(" ")
+  let titleCase = $state<"none" | "upper" | "capitalize">("none")
 
   const titleTemplate = $derived(
     templateTokens.map((key) => `{${key}}`).join(templateSeparator),
@@ -66,6 +67,10 @@
           templateSeparator = parsed.separator
         }
       }
+      const loadedCase = (data as { title_case?: string }).title_case
+      if (loadedCase === "upper" || loadedCase === "capitalize") {
+        titleCase = loadedCase
+      }
       editorialInstructions = data.editorial_instructions ?? ""
       clientContext = data.client_context ?? ""
       metaMaxLength = data.meta_max_length ?? 160
@@ -82,6 +87,7 @@
     savingAccount = true
     const ok = await saveAccountSettingsPartial({
       title_template: templateTokens.length > 0 ? titleTemplate : null,
+      title_case: titleCase,
       editorial_instructions: editorialInstructions.trim() || null,
       client_context: clientContext.trim() || null,
       meta_max_length: metaMax,
@@ -231,6 +237,7 @@
                 <TitleTemplateBuilder
                   bind:tokens={templateTokens}
                   bind:separator={templateSeparator}
+                  bind:titleCase
                 />
               {/if}
             </CardContent>
