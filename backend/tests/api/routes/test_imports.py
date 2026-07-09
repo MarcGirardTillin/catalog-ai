@@ -355,6 +355,429 @@ def test_imports_are_isolated_by_account(import_client: TestClient) -> None:
     assert import_client.get(f"/imports/{foreign_id}/file/preview").status_code == 404
 
 
+# -- review edits (PATCH item) -----------------------------------------------
+
+
+def _add_item(
+    job_id: int, payload: dict[str, Any], status: str = "ready_for_review"
+) -> int:
+    db = _db()
+    row = db.get(EnrichmentJob, job_id)
+    item = ImportItem(
+        job_id=row.id, account_id=row.account_id, status=status, payload_json=payload
+    )
+    db.add(item)
+    db.commit()
+    item_id: int = item.id
+    return item_id
+
+
+def test_patch_item_edits_payload(import_client: TestClient) -> None:
+    job = _upload(import_client)
+    item_id = _add_item(job["id"], {"supplier_ref": "REF-1", "title": "Pull"})
+
+    response = import_client.patch(
+        f"/imports/{job['id']}/items/{item_id}",
+        json={
+            "payload": {
+                "supplier_ref": "REF-1",
+                "title": "Pull marin",
+                "variants": [{"color": "Marine", "size": "M", "quantity": 2}],
+            }
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "ready_for_review"
+    assert body["payload"]["title"] == "Pull marin"
+    # Stored normalized through ImportedProduct (defaults filled in).
+    assert body["payload"]["variants"][0]["quantity"] == 2
+    assert body["payload"]["brand"] is None
+
+    db = _db()
+    assert db.get(ImportItem, item_id).payload_json["title"] == "Pull marin"
+
+
+def test_patch_item_rejects_invalid_payload(import_client: TestClient) -> None:
+    job = _upload(import_client)
+    item_id = _add_item(job["id"], {"supplier_ref": "REF-1"})
+
+    # supplier_ref is required by the frozen contract.
+    response = import_client.patch(
+        f"/imports/{job['id']}/items/{item_id}", json={"payload": {"title": "Pull"}}
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_payload"
+    # The stored payload is untouched.
+    db = _db()
+    assert db.get(ImportItem, item_id).payload_json == {"supplier_ref": "REF-1"}
+
+
+def test_patch_item_reject_and_restore(import_client: TestClient) -> None:
+    job = _upload(import_client)
+    item_id = _add_item(job["id"], {"supplier_ref": "REF-1"})
+
+    rejected = import_client.patch(
+        f"/imports/{job['id']}/items/{item_id}", json={"status": "rejected"}
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+
+    restored = import_client.patch(
+        f"/imports/{job['id']}/items/{item_id}", json={"status": "ready_for_review"}
+    )
+    assert restored.json()["status"] == "ready_for_review"
+
+    # Other statuses are not review-editable.
+    for status in ("approved", "applied", "failed", "bogus"):
+        response = import_client.patch(
+            f"/imports/{job['id']}/items/{item_id}", json={"status": status}
+        )
+        assert response.status_code == 400, status
+        assert response.json()["code"] == "invalid_status"
+
+
+def test_patch_item_cross_404s(import_client: TestClient) -> None:
+    job_a = _upload(import_client)
+    job_b = _upload(import_client)
+    item_id = _add_item(job_a["id"], {"supplier_ref": "REF-1"})
+
+    # Item exists but belongs to another job.
+    assert (
+        import_client.patch(
+            f"/imports/{job_b['id']}/items/{item_id}", json={"status": "rejected"}
+        ).status_code
+        == 404
+    )
+    # Unknown item / unknown job.
+    assert (
+        import_client.patch(
+            f"/imports/{job_a['id']}/items/99999", json={"status": "rejected"}
+        ).status_code
+        == 404
+    )
+    assert (
+        import_client.patch(
+            f"/imports/99999/items/{item_id}", json={"status": "rejected"}
+        ).status_code
+        == 404
+    )
+
+
+# -- profile selection (PUT /profile) ------------------------------------------
+
+
+def _create_profile(client: TestClient, **overrides: Any) -> int:
+    payload: dict[str, Any] = {"name": "Profil", **overrides}
+    response = client.post("/import-profiles", json=payload)
+    assert response.status_code == 201, response.text
+    profile_id: int = response.json()["id"]
+    return profile_id
+
+
+def test_put_profile_selects_and_clears(import_client: TestClient) -> None:
+    job = _upload(import_client)
+    assert job["profile_id"] is None
+    profile_id = _create_profile(import_client)
+
+    selected = import_client.put(
+        f"/imports/{job['id']}/profile", json={"profile_id": profile_id}
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["profile_id"] == profile_id
+    assert import_client.get(f"/imports/{job['id']}").json()["profile_id"] == profile_id
+
+    cleared = import_client.put(
+        f"/imports/{job['id']}/profile", json={"profile_id": None}
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["profile_id"] is None
+
+
+def test_put_profile_404_on_foreign_or_unknown_profile(
+    import_client: TestClient,
+) -> None:
+    job = _upload(import_client)
+
+    assert (
+        import_client.put(
+            f"/imports/{job['id']}/profile", json={"profile_id": 99999}
+        ).status_code
+        == 404
+    )
+
+    db = _db()
+    other = Account(name="other-shop")
+    db.add(other)
+    db.flush()
+    from app.models import ImportProfile
+
+    foreign = ImportProfile(account_id=other.id, name="Foreign", config_json={})
+    db.add(foreign)
+    db.commit()
+    assert (
+        import_client.put(
+            f"/imports/{job['id']}/profile", json={"profile_id": foreign.id}
+        ).status_code
+        == 404
+    )
+
+
+# -- CSV rendering (GET /rows, GET /csv) ---------------------------------------
+
+
+def _coefficient_profile(client: TestClient) -> int:
+    return _create_profile(
+        client,
+        name="L'Espion",
+        config={
+            "price_mode": "coefficient",
+            "coefficient": "2.8",
+            "round_up_to": "5",
+            "barcode_mode": "constructed",
+        },
+    )
+
+
+def _staged_job(client: TestClient) -> dict[str, Any]:
+    """An extracted job: document facts + one kept item + one rejected item."""
+    job = _upload(client)
+    db = _db()
+    row = db.get(EnrichmentJob, job["id"])
+    row.status = "completed"
+    row.config_json = {
+        "document": {"po_number": "PO-889", "supplier": "L'Espion"},
+    }
+    db.commit()
+    _add_item(
+        job["id"],
+        {
+            "supplier_ref": "REF-1",
+            "title": "Pull marin",
+            "variants": [
+                {
+                    "color": "Marine",
+                    "size": "M",
+                    "quantity": 2,
+                    "wholesale_price": "10.50",
+                }
+            ],
+        },
+    )
+    _add_item(
+        job["id"],
+        {"supplier_ref": "REF-REJ", "variants": [{"wholesale_price": "99"}]},
+        status="rejected",
+    )
+    return job
+
+
+def test_get_rows_applies_coefficient_and_excludes_rejected(
+    import_client: TestClient,
+) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+
+    response = import_client.get(
+        f"/imports/{job['id']}/rows", params={"profile_id": profile_id}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["columns"][0] == "id"
+    assert body["row_count"] == 1  # the rejected item never renders
+    row = dict(zip(body["columns"], body["rows"][0], strict=True))
+    # 10.50 x 2.8 = 29.4 -> rounded UP to the nearest 5 -> 30.
+    assert row["price"] == "30"
+    assert row["wholesale_price"] == "10.5"
+    assert row["reference_code"] == "REF-1"
+    assert row["variant_barcode"] == "REF-1-Marine-M"
+    # Fallback supplier comes from the extracted document.
+    assert row["supplier"] == "L'Espion"
+    assert row["quantity"] == "2"
+    assert body["warnings"] == []
+
+
+def test_get_rows_uses_selected_profile_and_requires_one(
+    import_client: TestClient,
+) -> None:
+    job = _staged_job(import_client)
+
+    # No explicit ?profile_id and none selected -> 400 profile_required.
+    missing = import_client.get(f"/imports/{job['id']}/rows")
+    assert missing.status_code == 400
+    assert missing.json()["code"] == "profile_required"
+
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/profile", json={"profile_id": profile_id})
+    selected = import_client.get(f"/imports/{job['id']}/rows")
+    assert selected.status_code == 200
+    assert selected.json()["row_count"] == 1
+
+
+def test_get_rows_invalid_profile_config_is_400(import_client: TestClient) -> None:
+    job = _staged_job(import_client)
+    # coefficient mode without a coefficient -> render_rows raises ValueError.
+    profile_id = _create_profile(
+        import_client, config={"price_mode": "coefficient", "coefficient": None}
+    )
+
+    response = import_client.get(
+        f"/imports/{job['id']}/rows", params={"profile_id": profile_id}
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_profile"
+
+
+def test_get_csv_downloads_named_attachment(import_client: TestClient) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+
+    response = import_client.get(
+        f"/imports/{job['id']}/csv", params={"profile_id": profile_id}
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="import_l-espion_po-889.csv"'
+    )
+    lines = response.text.strip().split("\n")
+    assert lines[0].startswith("id,title,")
+    assert len(lines) == 2  # header + the single kept variant
+    assert ",REF-1-Marine-M," in lines[1]
+    assert ",30," in lines[1]
+
+
+def test_get_csv_file_name_falls_back_to_job_id(import_client: TestClient) -> None:
+    job = _upload(import_client)
+    _add_item(job["id"], {"supplier_ref": "R1", "variants": [{"retail_price": "25"}]})
+    profile_id = _create_profile(import_client)
+
+    response = import_client.get(
+        f"/imports/{job['id']}/csv", params={"profile_id": profile_id}
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers["content-disposition"]
+        == f'attachment; filename="import_{job["id"]}.csv"'
+    )
+
+
+# -- transfer (POST /transfer) --------------------------------------------------
+
+
+class _FakeXano:
+    """Records product_import calls (never touches the network)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def product_import(
+        self, *, file_name: str, csv_bytes: bytes, location_id: int
+    ) -> Any:
+        self.calls.append(
+            {
+                "file_name": file_name,
+                "csv_bytes": csv_bytes,
+                "location_id": location_id,
+            }
+        )
+        return {"ok": True}
+
+
+@pytest.fixture
+def fake_xano() -> Generator[_FakeXano]:
+    from app.api.deps import get_xano_client
+
+    fake = _FakeXano()
+    app.dependency_overrides[get_xano_client] = lambda: fake
+    yield fake
+    app.dependency_overrides.pop(get_xano_client, None)
+
+
+def test_transfer_pushes_csv_and_applies_items(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/profile", json={"profile_id": profile_id})
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer", json={"location_id": 7}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"ok": True, "row_count": 1}
+
+    # The Xano client received the rendered CSV under the computed name.
+    assert len(fake_xano.calls) == 1
+    call = fake_xano.calls[0]
+    assert call["file_name"] == "import_l-espion_po-889.csv"
+    assert call["location_id"] == 7
+    csv_text = call["csv_bytes"].decode("utf-8")
+    assert csv_text.startswith("id,title,")
+    assert ",REF-1-Marine-M," in csv_text
+
+    # Kept items become applied; rejected ones stay rejected.
+    db = _db()
+    statuses = {
+        item.payload_json["supplier_ref"]: item.status
+        for item in db.query(ImportItem).filter(ImportItem.job_id == job["id"])
+    }
+    assert statuses == {"REF-1": "applied", "REF-REJ": "rejected"}
+
+    # The transfer facts are recorded on the job.
+    transfer = db.get(EnrichmentJob, job["id"]).config_json["transfer"]
+    assert transfer["location_id"] == 7
+    assert transfer["row_count"] == 1
+    assert transfer["transferred_at"]  # ISO timestamp
+
+
+def test_transfer_accepts_explicit_profile_id(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 3, "profile_id": profile_id},
+    )
+    assert response.status_code == 200
+    assert fake_xano.calls[0]["location_id"] == 3
+
+
+def test_transfer_nothing_to_transfer(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _upload(import_client)
+    _add_item(job["id"], {"supplier_ref": "R1", "variants": [{}]}, status="rejected")
+    profile_id = _create_profile(import_client)
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 7, "profile_id": profile_id},
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "nothing_to_transfer"
+    assert fake_xano.calls == []
+    # Nothing was marked applied and no transfer was recorded.
+    db = _db()
+    assert db.get(EnrichmentJob, job["id"]).config_json.get("transfer") is None
+
+
+def test_transfer_requires_profile(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _staged_job(import_client)
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer", json={"location_id": 7}
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "profile_required"
+    assert fake_xano.calls == []
+
+
 def test_jobs_list_excludes_import_jobs(import_client: TestClient) -> None:
     imported = _upload(import_client)
     created = import_client.post(

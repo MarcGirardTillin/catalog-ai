@@ -31,6 +31,8 @@ class ImportJobPublic(BaseModel):
     # Document-level facts read from the file (purchase orders mostly).
     po_number: str | None = None
     supplier: str | None = None
+    # Selected import profile (config_json["profile_id"]), None when unset.
+    profile_id: int | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     created_at: datetime
@@ -63,3 +65,39 @@ class ImportItemPublic(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     created_at: datetime
+
+
+class ImportItemUpdate(BaseModel):
+    """Review edits: a corrected payload and/or a reject/restore status."""
+
+    # Validated against ImportedProduct before being stored.
+    payload: dict[str, Any] | None = None
+    # Only "ready_for_review" (restore) and "rejected" are accepted.
+    status: str | None = None
+
+
+class ImportProfileSelection(BaseModel):
+    """PUT /imports/{id}/profile body — null clears the selection."""
+
+    profile_id: int | None
+
+
+class ImportRenderPreview(BaseModel):
+    """JSON preview of the rendered Tillin import CSV."""
+
+    columns: list[str]
+    rows: list[list[str]]
+    warnings: list[str] = Field(default_factory=list)
+    row_count: int = 0
+
+
+class ImportTransferRequest(BaseModel):
+    """POST /imports/{id}/transfer body."""
+
+    location_id: int
+    profile_id: int | None = None
+
+
+class ImportTransferResult(BaseModel):
+    ok: bool = True
+    row_count: int = 0

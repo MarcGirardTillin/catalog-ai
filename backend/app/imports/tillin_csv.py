@@ -53,7 +53,9 @@ def format_decimal(value: Decimal) -> str:
     """Plain decimal string, trailing zeros stripped ("39.90" -> "39.9")."""
     normalized = value.normalize()
     # normalize() can produce exponent notation for round numbers (1E+3).
-    if normalized.as_tuple().exponent > 0:
+    # (exponent is typed int | Literal["n","N","F"]; finite values are ints.)
+    exponent = normalized.as_tuple().exponent
+    if isinstance(exponent, int) and exponent > 0:
         normalized = normalized.quantize(Decimal(1))
     return str(normalized)
 
@@ -106,9 +108,7 @@ def render_rows(
             continue
         title = product.title or product.supplier_ref
         brand = (
-            config.brand_value
-            if config.brand_mode == "fixed"
-            else product.brand or ""
+            config.brand_value if config.brand_mode == "fixed" else product.brand or ""
         )
         supplier = config.supplier_label or fallback_supplier or ""
         season = config.season_label or product.season or ""

@@ -386,6 +386,102 @@ def test_set_brand_website_urls_normalizes_and_invalidates_cache() -> None:
         assert brand_reads["n"] == 2
 
 
+def test_product_import_posts_multipart_csv() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        captured["request"] = request
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        result = client.product_import(
+            file_name="import_l-espion_po-889.csv",
+            csv_bytes=b"id,title\n,Pull marin\n",
+            location_id=7,
+        )
+
+    assert result == {"ok": True}
+    request = captured["request"]
+    assert request.url.path.endswith("/product_import")
+    assert request.headers["Authorization"] == "Bearer jwt-token"
+    assert request.headers["Content-Type"].startswith("multipart/form-data")
+    body = request.content
+    # The CSV travels as the `file_import` part with its computed name...
+    assert b'name="file_import"' in body
+    assert b'filename="import_l-espion_po-889.csv"' in body
+    assert b"Content-Type: text/csv" in body
+    assert b"id,title\n,Pull marin\n" in body
+    # ...and the target location as a plain form field.
+    assert b'name="location_id"' in body
+    assert b"\r\n\r\n7\r\n" in body
+
+
+def test_product_import_retries_on_401_and_raises_on_error() -> None:
+    login_count = {"n": 0}
+    state = {"reject_next": True}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            login_count["n"] += 1
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        if state["reject_next"]:
+            state["reject_next"] = False
+            return httpx.Response(401)
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.product_import(file_name="a.csv", csv_bytes=b"x", location_id=1)
+    # First attempt 401 -> re-login -> retry succeeded.
+    assert login_count["n"] == 2
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        return httpx.Response(500)
+
+    with _client(httpx.MockTransport(failing)) as client:
+        with pytest.raises(XanoError) as exc_info:
+            client.product_import(file_name="a.csv", csv_bytes=b"x", location_id=1)
+    assert exc_info.value.status_code == 502
+
+
+def test_list_locations_filters_third_party_and_sorts() -> None:
+    company = {
+        "locations": [
+            {"id": 3, "title": "Zeta Store", "origin": "tillin"},
+            {"id": 5, "title": "Marketplace", "origin": "Third-Party"},
+            {"id": 6, "title": "Feed", "origin": "third_party"},
+            {"id": 1, "name": "Alpha Shop"},  # `name` shape, no origin
+            {"id": None, "title": "ignored"},
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        return httpx.Response(200, json={"company_all_informations": company})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        locations = client.list_locations()
+
+    assert locations == [
+        {"id": 1, "title": "Alpha Shop"},
+        {"id": 3, "title": "Zeta Store"},
+    ]
+
+
+def test_list_locations_empty_when_payload_malformed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        return httpx.Response(200, json={"unexpected": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        assert client.list_locations() == []
+
+
 def test_login_failure_raises() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"message": "nope"})

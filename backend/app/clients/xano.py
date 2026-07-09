@@ -26,6 +26,7 @@ PRODUCT_PATH = "/product"
 BRANDS_PATH = "/brand"
 CLASSIFICATION_PATH = "/get_all_informations"
 LOGIN_PATH = "/auth/login"
+PRODUCT_IMPORT_PATH = "/product_import"
 
 
 def _enrich_path(product_id: int) -> str:
@@ -390,6 +391,51 @@ class XanoClient:
         except httpx.HTTPError as exc:
             raise XanoError("Xano is unreachable", code="xano_unavailable") from exc
 
+    def _post_multipart(
+        self,
+        path: str,
+        *,
+        files: Mapping[str, tuple[str, bytes, str]],
+        data: Mapping[str, str],
+    ) -> Any:
+        """POST multipart/form-data with bearer auth; re-login once on 401."""
+        if self._token is None:
+            self._login()
+        response = self._do_post_multipart(path, files=files, data=data)
+        if response.status_code == 401:
+            self._login()
+            response = self._do_post_multipart(path, files=files, data=data)
+        if response.status_code >= 400:
+            raise XanoError(
+                "Xano returned an error response",
+                detail={"upstream_status": response.status_code},
+            )
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
+    def _do_post_multipart(
+        self,
+        path: str,
+        *,
+        files: Mapping[str, tuple[str, bytes, str]],
+        data: Mapping[str, str],
+    ) -> httpx.Response:
+        try:
+            return self._client.post(
+                path,
+                files=dict(files),
+                data=dict(data),
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+        except httpx.TimeoutException as exc:
+            raise XanoError(
+                "Xano request timed out", code="xano_timeout", status_code=504
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise XanoError("Xano is unreachable", code="xano_unavailable") from exc
+
     def _brand_map(self) -> dict[int, Mapping[str, Any]]:
         """Lazily load and cache the `{brand_id: brand}` map from `/brand`.
 
@@ -531,6 +577,34 @@ class XanoClient:
             result[group] = options
         return result
 
+    def list_locations(self) -> list[dict[str, Any]]:
+        """Tillin-owned locations `{id, title}`, sorted by title.
+
+        Sourced from `/get_all_informations` (`company_all_informations.
+        locations`). Locations whose `origin` looks third-party (marketplace
+        feeds synced from elsewhere) are excluded: they must never receive a
+        product import.
+        """
+        payload = self._request(CLASSIFICATION_PATH, {})
+        company = (
+            payload.get("company_all_informations")
+            if isinstance(payload, Mapping)
+            else None
+        )
+        locations: list[dict[str, Any]] = []
+        if not isinstance(company, Mapping):
+            return locations
+        for raw in _as_list(company.get("locations")):
+            if not isinstance(raw, Mapping) or raw.get("id") is None:
+                continue
+            origin = str(raw.get("origin") or "").lower().replace("-", "_")
+            if "third" in origin:
+                continue
+            title = _first(raw, "title", "name")
+            locations.append({"id": int(raw["id"]), "title": str(title or "")})
+        locations.sort(key=lambda location: str(location["title"]).lower())
+        return locations
+
     # -- writes (enrichment apply) -----------------------------------------
 
     def enrich_product(
@@ -581,3 +655,18 @@ class XanoClient:
             {"brand_id": brand_id, "website_urls": normalized},
         )
         self._brands = None
+
+    def product_import(
+        self, *, file_name: str, csv_bytes: bytes, location_id: int
+    ) -> Any:
+        """Upload a Tillin import CSV to a location (`POST /product_import`).
+
+        Multipart write: the CSV travels as the `file_import` part, the target
+        location as a form field. Returns the raw upstream payload (shape
+        unknown — callers only rely on success/failure).
+        """
+        return self._post_multipart(
+            PRODUCT_IMPORT_PATH,
+            files={"file_import": (file_name, csv_bytes, "text/csv")},
+            data={"location_id": str(location_id)},
+        )
