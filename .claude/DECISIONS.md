@@ -455,3 +455,29 @@ Live validation on real files: LTDC Excel -> 19 products / 184 variants /
 EANs (expected — profile territory, I2). Operational note: the org's Claude
 rate limit is 4,000 output tokens/min — one big file consumes minutes of
 quota; consider a tier bump before production import volume.
+
+## 2026-07-09 — Import sprint I2: profiles, review grid, CSV + direct Xano transfer
+Import profiles are data-driven per (account, supplier) — `import_profile`
+table (migration 0011), frozen rule shapes in
+`app/api/schemas/import_profiles.py`: price retail_as_is | coefficient
+(wholesale x coef rounded UP to round_up_to, default 5 — Barbara Bui
+440 x 2.8 -> 1235 verified against the real file), barcode ean | constructed
+(REF-COLOR-SIZE), brand as_extracted | fixed, supplier/season labels,
+gender/category defaults, tax_rate, status. ONE rendering engine
+(`app/imports/tillin_csv.py`, 30-column template frozen against
+everyday-tasks fixtures) feeds the JSON preview, the CSV download AND the
+transfer — never divergent implementations. Direct transfer to Tillin:
+`POST /imports/{id}/transfer` renders the CSV and posts it to Xano
+`POST /product_import` (multipart `file_import` + `location_id`; user
+confirmed contract 2026-07-09); locations come from `get_all_informations`
+filtered of third-party origins (`GET /locations`). CSV download stays as
+the backup path. Review: PATCH item payload validated against
+ImportedProduct, statuses limited to ready_for_review/rejected; rejected +
+failed items never reach the CSV; items become `applied` after transfer
+(then read-only in the UI). Document-level extraction also captures
+po_number + supplier (never guessed), used for auto-suggesting the profile
+and naming the CSV (`import_{supplier}_{po}.csv`). Extraction schema stays
+union-free; the change was validated with a live API call (PO-2026-0442 /
+L'Espion correctly read). Source-file preview shipped alongside: inline PDF
++ client-side CSV preview pre-upload, server-parsed preview + original file
+download on the detail page (`GET /file`, `GET /file/preview`).
