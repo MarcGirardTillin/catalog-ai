@@ -188,7 +188,7 @@ It is a **dedicated sprint**, not Phase 5 of enrichment: it has its own pipeline
 - `/settings/import-profiles` — manage convention profiles.
 
 ### Import sprint phasing
-- **I1 — parse & extract:** upload → worker parses PDF/Excel/CSV → normalized products staged. Real fixtures live in `everyday-tasks/` (user-provided, 2026-07-09):
+- **I1 — parse & extract — SHIPPED 2026-07-09:** upload → worker parses PDF/Excel/CSV → normalized products staged (with usage metering M1 wired in). Validated live: LTDC Excel → 19 products / 184 variants / 184 EANs cross-check-verified; L'Espion PDF (Paul Smith) → 36 products / 88 variants via Claude doc/vision. Real fixtures live in `everyday-tasks/` (user-provided, 2026-07-09):
   - `everyday-tasks/integration LEspion/pdfs traites/Confirmation12610566.pdf` (L'Espion order PDF)
   - `everyday-tasks/integration LEspion/pdfs traites/ORDER_PJLESPION--EURL-SAMANTA_2026-02-04_19026798.pdf` (L'Espion order PDF, larger)
   - `everyday-tasks/integration LEspion/pdfs traites/2026-06-30-19037114-Y-s.xlsx` (L'Espion Excel)

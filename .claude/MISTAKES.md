@@ -98,3 +98,19 @@ reloaded on an earlier model edit, then went stale). Fix: fully restart the
 uvicorn process; don't trust `--reload` to have applied route/router changes.
 Prevention: after backend router changes, verify with
 `curl /openapi.json | grep <path>` before testing in the UI; restart if missing.
+
+## 2026-07-09 — Mocked transports can't catch live-API schema limits (structured outputs)
+
+The import extractor's JSON schema used `anyOf`-nullable on every field (31
+union-typed parameters). All 21 unit tests passed against httpx.MockTransport —
+then the FIRST live call failed with a 400: the structured-outputs API caps
+union-typed parameters at 16 per schema ("exponential compilation cost").
+Root cause: a mock validates our parsing of the response, never the API's
+validation of our request. Fix: union-free wire format (all fields required
+strings, "" = absent, mapped back to None post-call) + a guard test that
+counts unions in the schema (must be ZERO). Lesson: any feature talking to a
+real external API needs ONE live smoke call before being declared done —
+budget a few cents for it. Same live run also surfaced max_tokens truncation
+(186 variants > 16K output tokens; thinking enabled by default on Sonnet 5
+eating the budget) and a thousands-separator price bug ('1,143.00') that no
+synthetic fixture contained.

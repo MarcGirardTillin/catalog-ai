@@ -425,3 +425,33 @@ first-open load, client-side name search, inline one-URL-per-line editing,
 optimistic row update. The PUT's upstream write shape (body key) is assumed
 from the endpoint name and must be confirmed against real Xano on first live
 use.
+
+## 2026-07-09 — Import sprint I1: supplier-file parse & LLM extraction shipped
+
+Frozen contract in backend/app/imports/schema.py (main-thread owned): grain =
+product per supplier reference, color × size as variant axes, Decimal prices,
+per-field confidence; parsers produce RawDocument (pdf passthrough / tabular
+raw cells), extraction returns ExtractionResult with token usage. Extraction
+is Claude structured outputs with a UNION-FREE schema ("" = absent — the live
+API caps union parameters at 16; see MISTAKES) — thinking disabled (mechanical
+transcription; Sonnet 5 defaults to adaptive thinking which ate the output
+budget), max_tokens 32K (~100 output tokens per variant; 16K truncated a
+186-variant order), explicit 600s request timeout. Anti-hallucination:
+tabular sources cross-check every EAN and price against the raw cells
+(unverifiable value -> null + warning + confidence 0; verified -> 1.0); PDFs
+validate EAN-13 check digits. Price parsing handles both separator
+conventions incl. thousands separators ("1,143.00" — found by the live run).
+Plumbing: enrichment_job.job_type + import_item + usage_event (migration
+0010), POST /imports (multipart, UPLOAD_DIR uuid storage), import runner as
+background task with injectable parse/extractor, GET /jobs excludes imports.
+Metering M1 live: usage_event rows written for enrichment copy calls AND
+import extractions (input+output tokens, provider/model/source/job).
+Frontend: Imports nav + list (jobs-style table), dropzone upload page, detail
+page with 2.5s polling, read-only product table (expandable variants, low-
+confidence ambre < 0.7, "n sans EAN" badges) — editable review grid is I2.
+Live validation on real files: LTDC Excel -> 19 products / 184 variants /
+184 EANs verified at confidence 1.0 (~31K in / 26K out tokens); L'Espion PDF
+(Paul Smith) -> 36 products / 88 variants, brand+colors+sizes+qty+prices, no
+EANs (expected — profile territory, I2). Operational note: the org's Claude
+rate limit is 4,000 output tokens/min — one big file consumes minutes of
+quota; consider a tier bump before production import volume.
