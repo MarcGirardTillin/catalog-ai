@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Query, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Form, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select, update
@@ -31,6 +31,7 @@ from app.api.schemas.imports import (
     ImportJobCounts,
     ImportJobPublic,
     ImportJobTotals,
+    ImportLocationSelection,
     ImportProfileSelection,
     ImportRenderPreview,
     ImportTransferRequest,
@@ -132,6 +133,7 @@ def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
         po_number=document.get("po_number"),
         supplier=document.get("supplier"),
         profile_id=config.get("profile_id"),
+        location_id=config.get("location_id"),
         warnings=[str(w) for w in config.get("warnings") or []],
         error=config.get("error"),
         created_at=job.created_at,
@@ -157,6 +159,7 @@ def create_import(
     current_user: CurrentUserDep,
     background: BackgroundTasks,
     run_import: ImportRunnerDep,
+    location_id: Annotated[int | None, Form()] = None,
 ) -> ImportJobPublic:
     """Upload a supplier file and start extracting products in the background."""
     original_name = file.filename or ""
@@ -186,7 +189,7 @@ def create_import(
         account_id=account_id,
         job_type="import",
         selection_json={"file_name": original_name, "file_path": str(stored_path)},
-        config_json={},
+        config_json={"location_id": location_id} if location_id is not None else {},
     )
     db.add(job)
     db.commit()
@@ -402,6 +405,27 @@ def set_import_profile(
     return _to_public(db, job)
 
 
+@router.put("/{import_id}/location", response_model=ImportJobPublic)
+def set_import_location(
+    import_id: int,
+    body: ImportLocationSelection,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ImportJobPublic:
+    """Select (or clear, with null) the Tillin location targeted by this import."""
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    config = dict(job.config_json or {})
+    if body.location_id is None:
+        config.pop("location_id", None)
+    else:
+        config["location_id"] = body.location_id
+    job.config_json = config  # reassigned: plain JSON columns don't track mutation
+    db.commit()
+    db.refresh(job)
+    return _to_public(db, job)
+
+
 def _resolve_render(
     db: Session, job: EnrichmentJob, profile_id_param: int | None
 ) -> tuple[list[list[str]], list[str]]:
@@ -506,6 +530,17 @@ def transfer_import(
     """
     account_id = resolve_account_id(db, current_user)
     job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    location_id = (
+        body.location_id
+        if body.location_id is not None
+        else (job.config_json or {}).get("location_id")
+    )
+    if location_id is None:
+        raise AppException(
+            status_code=400,
+            code="location_required",
+            message="Select a Tillin location before transferring",
+        )
     rows, _warnings = _resolve_render(db, job, body.profile_id)
     if not rows:
         raise AppException(
@@ -516,7 +551,7 @@ def transfer_import(
     xano.product_import(
         file_name=_csv_file_name(job),
         csv_bytes=render_csv(rows).encode("utf-8"),
-        location_id=body.location_id,
+        location_id=int(location_id),
     )
     db.execute(
         update(ImportItem)
@@ -529,7 +564,7 @@ def transfer_import(
     job.config_json = {
         **(job.config_json or {}),
         "transfer": {
-            "location_id": body.location_id,
+            "location_id": int(location_id),
             "row_count": len(rows),
             "transferred_at": datetime.now(UTC).isoformat(),
         },

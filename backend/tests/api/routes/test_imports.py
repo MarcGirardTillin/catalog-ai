@@ -523,6 +523,58 @@ def test_put_profile_404_on_foreign_or_unknown_profile(
     )
 
 
+# -- location selection (upload form field + PUT /location) --------------------
+
+
+def test_upload_with_location_id_stores_it(import_client: TestClient) -> None:
+    response = import_client.post(
+        "/imports",
+        files={"file": ("commande.pdf", b"%PDF-1.4 fake")},
+        data={"location_id": "7"},
+    )
+    assert response.status_code == 201, response.text
+    job = response.json()
+    assert job["location_id"] == 7
+    assert import_client.get(f"/imports/{job['id']}").json()["location_id"] == 7
+
+    db = _db()
+    assert db.get(EnrichmentJob, job["id"]).config_json == {"location_id": 7}
+
+
+def test_upload_without_location_id_is_null(import_client: TestClient) -> None:
+    job = _upload(import_client)
+    assert job["location_id"] is None
+    assert import_client.get(f"/imports/{job['id']}").json()["location_id"] is None
+
+
+def test_put_location_sets_and_clears(import_client: TestClient) -> None:
+    job = _upload(import_client)
+
+    selected = import_client.put(
+        f"/imports/{job['id']}/location", json={"location_id": 4}
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["location_id"] == 4
+    assert import_client.get(f"/imports/{job['id']}").json()["location_id"] == 4
+
+    cleared = import_client.put(
+        f"/imports/{job['id']}/location", json={"location_id": None}
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["location_id"] is None
+    db = _db()
+    assert "location_id" not in db.get(EnrichmentJob, job["id"]).config_json
+
+
+def test_put_location_404_on_unknown_job(import_client: TestClient) -> None:
+    assert (
+        import_client.put(
+            "/imports/99999/location", json={"location_id": 4}
+        ).status_code
+        == 404
+    )
+
+
 # -- CSV rendering (GET /rows, GET /csv) ---------------------------------------
 
 
@@ -744,6 +796,54 @@ def test_transfer_accepts_explicit_profile_id(
     )
     assert response.status_code == 200
     assert fake_xano.calls[0]["location_id"] == 3
+
+
+def test_transfer_falls_back_to_job_location(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/profile", json={"profile_id": profile_id})
+    import_client.put(f"/imports/{job['id']}/location", json={"location_id": 11})
+
+    response = import_client.post(f"/imports/{job['id']}/transfer", json={})
+    assert response.status_code == 200, response.text
+    assert fake_xano.calls[0]["location_id"] == 11
+    db = _db()
+    assert db.get(EnrichmentJob, job["id"]).config_json["transfer"]["location_id"] == 11
+
+
+def test_transfer_body_location_overrides_job_location(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/location", json={"location_id": 11})
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 3, "profile_id": profile_id},
+    )
+    assert response.status_code == 200
+    assert fake_xano.calls[0]["location_id"] == 3
+    db = _db()
+    assert db.get(EnrichmentJob, job["id"]).config_json["transfer"]["location_id"] == 3
+    # The job's own selection is untouched.
+    assert db.get(EnrichmentJob, job["id"]).config_json["location_id"] == 11
+
+
+def test_transfer_requires_a_location(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer", json={"profile_id": profile_id}
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "location_required"
+    assert fake_xano.calls == []
 
 
 def test_transfer_nothing_to_transfer(

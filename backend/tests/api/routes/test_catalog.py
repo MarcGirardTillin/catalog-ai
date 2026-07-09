@@ -15,6 +15,7 @@ Handler = Callable[[httpx.Request], httpx.Response]
 COMPANY = {
     "brands": [{"id": 1, "title": "Alpha"}],
     "categories": [{"id": 5, "title": "Shoes", "parent_id": 0}],
+    "compositions": [{"id": 11, "title": "Coton", "active": True, "isVisible": True}],
     "seasons": [{"id": 8, "title": "SS25"}],
     "suppliers": [{"id": 3, "name": "ACME"}],
     "tags": [{"id": 7, "title": "New"}],
@@ -67,3 +68,4 @@ def test_filters_returns_classification(
     assert body["brands"] == [{"id": 1, "title": "Alpha", "parent_id": None}]
     assert body["categories"][0]["parent_id"] == 0
     assert body["suppliers"][0]["title"] == "ACME"
+    assert body["compositions"] == [{"id": 11, "title": "Coton", "parent_id": None}]

@@ -16,6 +16,7 @@ class CatalogFilters(BaseModel):
 
     brands: list[FilterOption] = []
     categories: list[FilterOption] = []
+    compositions: list[FilterOption] = []
     seasons: list[FilterOption] = []
     suppliers: list[FilterOption] = []
     tags: list[FilterOption] = []

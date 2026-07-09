@@ -48,7 +48,14 @@ def normalize_website_urls(urls: list[str]) -> list[str]:
 
 # Classification groups exposed for product-search filters, and how each maps
 # onto the `products_with_pagination` filter param.
-CLASSIFICATION_GROUPS = ("brands", "categories", "seasons", "suppliers", "tags")
+CLASSIFICATION_GROUPS = (
+    "brands",
+    "categories",
+    "compositions",
+    "seasons",
+    "suppliers",
+    "tags",
+)
 
 logger = logging.getLogger(__name__)
 

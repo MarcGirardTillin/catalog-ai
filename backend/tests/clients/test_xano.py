@@ -147,6 +147,10 @@ def test_get_classification_normalizes_groups() -> None:
     company = {
         "brands": [{"id": 2, "title": "Zed"}, {"id": 1, "title": "Alpha"}],
         "categories": [{"id": 5, "title": "Shoes", "parent_id": 0}],
+        "compositions": [
+            {"id": 12, "title": "Laine", "active": True, "isVisible": True},
+            {"id": 11, "title": "Coton", "active": True, "isVisible": True},
+        ],
         "seasons": [{"id": 9, "title": None}, {"id": 8, "title": "SS25"}],
         "suppliers": [{"id": 3, "name": "ACME"}],  # suppliers use `name`
         "tags": [{"id": 7, "title": "New"}],
@@ -166,6 +170,11 @@ def test_get_classification_normalizes_groups() -> None:
     assert filters["suppliers"][0]["title"] == "ACME"
     # The season with title=None is dropped.
     assert [s["title"] for s in filters["seasons"]] == ["SS25"]
+    # Compositions: normalized to {id, title} options, sorted by title.
+    assert filters["compositions"] == [
+        {"id": 11, "title": "Coton"},
+        {"id": 12, "title": "Laine"},
+    ]
 
 
 def test_brand_map_failure_is_non_fatal() -> None:

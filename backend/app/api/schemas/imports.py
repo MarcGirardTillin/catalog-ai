@@ -33,6 +33,8 @@ class ImportJobPublic(BaseModel):
     supplier: str | None = None
     # Selected import profile (config_json["profile_id"]), None when unset.
     profile_id: int | None = None
+    # Target Tillin location (config_json["location_id"]), None when unset.
+    location_id: int | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     created_at: datetime
@@ -82,6 +84,12 @@ class ImportProfileSelection(BaseModel):
     profile_id: int | None
 
 
+class ImportLocationSelection(BaseModel):
+    """PUT /imports/{id}/location body — null clears the selection."""
+
+    location_id: int | None
+
+
 class ImportRenderPreview(BaseModel):
     """JSON preview of the rendered Tillin import CSV."""
 
@@ -92,9 +100,13 @@ class ImportRenderPreview(BaseModel):
 
 
 class ImportTransferRequest(BaseModel):
-    """POST /imports/{id}/transfer body."""
+    """POST /imports/{id}/transfer body.
 
-    location_id: int
+    A null location falls back to the job's selected location
+    (config_json["location_id"]); missing both is a 400 `location_required`.
+    """
+
+    location_id: int | None = None
     profile_id: int | None = None
 
 
