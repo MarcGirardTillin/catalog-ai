@@ -6,8 +6,15 @@
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
-  import { createImport } from "@/lib/api/imports"
+  import { onMount } from "svelte"
+
+  import {
+    createImport,
+    listLocations,
+    type LocationPublic,
+  } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
+  import { Label } from "@/lib/components/ui/label"
   import {
     Card,
     CardContent,
@@ -31,6 +38,18 @@
   let dragging = $state(false)
   let submitting = $state(false)
   let fileInput = $state<HTMLInputElement | null>(null)
+
+  // Magasin de destination : optionnel au dépôt (modifiable ensuite sur la
+  // page de l'import). Pré-sélectionné s'il n'y a qu'un seul magasin.
+  let locations = $state<LocationPublic[] | null>(null)
+  let selectedLocationId = $state("")
+
+  onMount(() => {
+    listLocations().then(({ data }) => {
+      locations = data ?? []
+      if (data && data.length === 1) selectedLocationId = String(data[0].id)
+    })
+  })
 
   // Aperçu avant envoi : PDF via le lecteur du navigateur, CSV parsé côté
   // client ; l'Excel n'est prévisualisable qu'après l'import (parse serveur).
@@ -104,7 +123,10 @@
   async function onSubmit() {
     if (!file || submitting) return
     submitting = true
-    const { data, error } = await createImport(file)
+    const { data, error } = await createImport(
+      file,
+      selectedLocationId === "" ? undefined : Number(selectedLocationId),
+    )
     submitting = false
     if (error || !data) {
       toast.error("Import impossible. Vérifiez le fichier et réessayez.")
@@ -219,6 +241,27 @@
                   page de l'import.
                 </p>
               {/if}
+            {/if}
+
+            {#if locations !== null && locations.length > 0}
+              <div class="flex flex-col gap-1.5 sm:max-w-80">
+                <Label for="import-location">Magasin de destination</Label>
+                <select
+                  id="import-location"
+                  class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+                  disabled={submitting}
+                  bind:value={selectedLocationId}
+                >
+                  <option value="">À choisir plus tard</option>
+                  {#each locations as location (location.id)}
+                    <option value={String(location.id)}>{location.title}</option>
+                  {/each}
+                </select>
+                <p class="text-muted-foreground text-xs">
+                  Modifiable ensuite sur la page de l'import, avant le transfert
+                  vers Tillin.
+                </p>
+              </div>
             {/if}
 
             <Button

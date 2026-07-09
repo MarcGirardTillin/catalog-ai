@@ -5,11 +5,18 @@
   import Eye from "@lucide/svelte/icons/eye"
   import EyeOff from "@lucide/svelte/icons/eye-off"
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+  import Pencil from "@lucide/svelte/icons/pencil"
+  import Plus from "@lucide/svelte/icons/plus"
   import Send from "@lucide/svelte/icons/send"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { navigate } from "svelte5-router"
   import { toast } from "svelte-sonner"
 
+  import {
+    loadCatalogFilters,
+    optionTitles,
+    type CatalogFiltersData,
+  } from "@/lib/api/catalogFilters"
   import {
     getImportCsv,
     getImportFile,
@@ -20,6 +27,7 @@
     patchImportItem,
     previewImportFile,
     readImport,
+    setImportLocation,
     setImportProfile,
     transferImport,
     type ImportFilePreview,
@@ -39,6 +47,7 @@
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
+  import ImportProfileForm from "@/lib/components/app/ImportProfileForm.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import { formatDuration } from "@/lib/format"
@@ -161,6 +170,67 @@
     rowsPreview = null
     rowsOpen = false
     toast.success(next === null ? "Profil retiré" : "Profil appliqué")
+  }
+
+  const selectedProfile = $derived(
+    (profiles ?? []).find((p) => p.id === selectedProfileId) ?? null,
+  )
+
+  // --- Création/édition de profil sans quitter la review (panneau inline) ---
+  let profileFormMode = $state<null | "edit" | "new">(null)
+
+  async function onProfileSaved(saved: ImportProfilePublic, isNew: boolean) {
+    profileFormMode = null
+    // Recharge la liste des profils (source de vérité serveur).
+    const { data } = await listImportProfiles()
+    if (data) {
+      profiles = data
+    } else if (isNew) {
+      profiles = [...(profiles ?? []), saved]
+    } else {
+      profiles = (profiles ?? []).map((p) => (p.id === saved.id ? saved : p))
+    }
+    if (isNew) {
+      // Sélection automatique du profil créé pour ce job (il reste bien sûr
+      // disponible pour les prochains imports du même fournisseur).
+      const { data: updated, error } = await setImportProfile(Number(id), saved.id)
+      if (error || !updated) {
+        toast.error("Profil créé, mais impossible de l'associer au job.")
+      } else {
+        job = updated
+        selectedProfileId = saved.id
+      }
+    }
+    // L'aperçu CSV dépend du profil : on l'invalide.
+    rowsPreview = null
+    rowsOpen = false
+  }
+
+  // --- Référentiel de classification (datalists de la grille de review).
+  // Échec silencieux : les champs restent de simples champs texte. ---
+  let catalogFilters = $state<CatalogFiltersData | null>(null)
+  $effect(() => {
+    loadCatalogFilters().then((data) => {
+      catalogFilters = data
+    })
+  })
+
+  // --- Magasin (location) du job : affiché et modifiable dans la synthèse,
+  // pré-sélectionné dans le panneau de transfert. ---
+  let settingLocation = $state(false)
+
+  async function changeLocation(event: Event) {
+    const raw = (event.currentTarget as HTMLSelectElement).value
+    const next = raw === "" ? null : Number(raw)
+    settingLocation = true
+    const { data, error } = await setImportLocation(Number(id), next)
+    settingLocation = false
+    if (error || !data) {
+      toast.error("Impossible de changer le magasin.")
+      return
+    }
+    job = data
+    toast.success(next === null ? "Magasin retiré" : "Magasin mis à jour")
   }
 
   // --- Review : brouillons d'édition par item (buffer local, Enregistrer
@@ -361,9 +431,18 @@
     URL.revokeObjectURL(url)
   }
 
+  // Chargées au montage : le magasin du job est affiché dans la synthèse.
+  $effect(() => {
+    loadLocations()
+  })
+
   function toggleTransfer() {
     transferOpen = !transferOpen
-    if (transferOpen && locations === null && !locationsLoading) loadLocations()
+    if (transferOpen) {
+      if (locations === null && !locationsLoading) loadLocations()
+      // Pré-sélectionne le magasin du job (modifiable avant confirmation).
+      if (job?.location_id != null) selectedLocationId = String(job.location_id)
+    }
   }
 
   async function loadLocations() {
@@ -372,7 +451,7 @@
     const { data, error } = await listLocations()
     locationsLoading = false
     if (error || !data) {
-      locationsError = "Impossible de charger les emplacements."
+      locationsError = "Impossible de charger les magasins."
       return
     }
     locations = data
@@ -470,16 +549,60 @@
   }
 
   // Champs produit éditables dans la ligne dépliée (mode review).
-  const EDIT_FIELDS: { key: DraftTextField; label: string }[] = [
+  // `datalist` : suggestion depuis le référentiel Tillin, saisie libre
+  // conservée (les valeurs extraites ne matchent pas toujours le référentiel).
+  type ReviewDatalist = "brands" | "categories" | "seasons" | "compositions"
+  const EDIT_FIELDS: {
+    key: DraftTextField
+    label: string
+    datalist?: ReviewDatalist
+    kind?: "gender"
+  }[] = [
     { key: "title", label: "Titre" },
-    { key: "brand", label: "Marque" },
-    { key: "category", label: "Catégorie" },
-    { key: "season", label: "Saison" },
-    { key: "gender", label: "Genre" },
-    { key: "composition", label: "Composition" },
+    { key: "brand", label: "Marque", datalist: "brands" },
+    { key: "category", label: "Catégorie", datalist: "categories" },
+    { key: "season", label: "Saison", datalist: "seasons" },
+    { key: "gender", label: "Genre", kind: "gender" },
+    { key: "composition", label: "Composition", datalist: "compositions" },
     { key: "hs_code", label: "Code SH" },
     { key: "manufacturing_country", label: "Pays de fabrication" },
   ]
+
+  const GENDER_OPTIONS = ["Homme", "Femme", "Unisexe"]
+
+  /** Id du datalist pour un champ, ou undefined si référentiel indisponible. */
+  function datalistId(list: ReviewDatalist | undefined): string | undefined {
+    if (!list || !catalogFilters) return undefined
+    return `review-dl-${list}`
+  }
+
+  // --- Prix de vente calculé par le profil (mode coefficient uniquement).
+  // Aperçu local : le calcul est appliqué dans le CSV / transfert, les
+  // données extraites ne sont pas modifiées. ---
+  const coefficientConfig = $derived.by(() => {
+    const config = selectedProfile?.config
+    if (!config || config.price_mode !== "coefficient") return null
+    const coefficient = Number(config.coefficient)
+    if (!Number.isFinite(coefficient) || coefficient <= 0) return null
+    const step = Number(config.round_up_to)
+    return {
+      coefficient,
+      step: Number.isFinite(step) && step > 0 ? step : 0,
+    }
+  })
+
+  /** Prix de gros × coefficient, arrondi au multiple supérieur de round_up_to. */
+  function profilePrice(wholesale: string | null): string {
+    if (!coefficientConfig || wholesale == null) return "—"
+    const w = Number(wholesale.trim().replace(",", "."))
+    if (!Number.isFinite(w) || wholesale.trim() === "") return "—"
+    const raw = w * coefficientConfig.coefficient
+    const value =
+      coefficientConfig.step > 0
+        ? Math.ceil(raw / coefficientConfig.step) * coefficientConfig.step
+        : raw
+    return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })
+  }
 
   /** Confiance basse (< 0,7) sur un champ extrait → mise en évidence ambre. */
   function lowConfidence(confidence: Record<string, number>, field: string): boolean {
@@ -636,33 +759,115 @@
                 <p class="text-destructive text-xs" role="alert">{job.error}</p>
               {/if}
 
-              <!-- Profil d'import : règles d'export Tillin appliquées au job. -->
+              <!-- Profil d'import : règles d'export Tillin appliquées au job.
+                   Modifiable/créable directement pendant la review. -->
               {#if profiles !== null}
                 <div class="border-border flex flex-col gap-1.5 border-t pt-3">
                   <Label for="import-profile">Profil d'import</Label>
                   {#if profiles.length === 0}
                     <p class="text-muted-foreground text-xs">
-                      Aucun profil d'import — créez-en un dans Paramètres →
-                      Profils d'import pour générer l'export Tillin.
+                      Aucun profil d'import — créez-en un pour générer l'export
+                      Tillin. Il sera réutilisé pour les prochains imports de ce
+                      fournisseur.
                     </p>
                   {:else}
-                    <select
-                      id="import-profile"
-                      class="{selectClass} sm:max-w-80"
-                      disabled={settingProfile}
-                      value={selectedProfileId == null ? "" : String(selectedProfileId)}
-                      onchange={changeProfile}
-                    >
-                      <option value="">Aucun profil</option>
-                      {#each profiles as profile (profile.id)}
-                        <option value={String(profile.id)}>{profile.name}</option>
-                      {/each}
-                    </select>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <select
+                        id="import-profile"
+                        class="{selectClass} sm:max-w-80"
+                        disabled={settingProfile}
+                        value={selectedProfileId == null ? "" : String(selectedProfileId)}
+                        onchange={changeProfile}
+                      >
+                        <option value="">Aucun profil</option>
+                        {#each profiles as profile (profile.id)}
+                          <option value={String(profile.id)}>{profile.name}</option>
+                        {/each}
+                      </select>
+                      {#if selectedProfile !== null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-expanded={profileFormMode === "edit"}
+                          onclick={() =>
+                            (profileFormMode = profileFormMode === "edit" ? null : "edit")}
+                        >
+                          <Pencil size={14} aria-hidden="true" />
+                          Modifier le profil
+                        </Button>
+                      {/if}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-expanded={profileFormMode === "new"}
+                        onclick={() =>
+                          (profileFormMode = profileFormMode === "new" ? null : "new")}
+                      >
+                        <Plus size={14} aria-hidden="true" />
+                        Nouveau profil
+                      </Button>
+                    </div>
                     <p class="text-muted-foreground text-xs">
                       Le profil définit les règles de transformation (prix,
                       codes-barres, marque…) de l'export Tillin.
                     </p>
                   {/if}
+                  {#if profiles.length === 0 && profileFormMode !== "new"}
+                    <div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => (profileFormMode = "new")}
+                      >
+                        <Plus size={14} aria-hidden="true" />
+                        Nouveau profil
+                      </Button>
+                    </div>
+                  {/if}
+
+                  {#if profileFormMode !== null}
+                    <div class="border-border mt-1.5 flex flex-col gap-3 rounded-md border p-3">
+                      <p class="text-sm font-medium">
+                        {profileFormMode === "new"
+                          ? "Nouveau profil"
+                          : `Modifier « ${selectedProfile?.name ?? ""} »`}
+                      </p>
+                      {#key `${profileFormMode}-${selectedProfileId}`}
+                        <ImportProfileForm
+                          profile={profileFormMode === "edit" ? selectedProfile : null}
+                          prefill={profileFormMode === "new" && job.supplier
+                            ? { supplier_match: job.supplier, supplier_label: job.supplier }
+                            : undefined}
+                          onSaved={onProfileSaved}
+                          onCancel={() => (profileFormMode = null)}
+                        />
+                      {/key}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+
+              <!-- Magasin de destination : corrigeable après l'extraction,
+                   utilisé par défaut pour le transfert vers Tillin. -->
+              {#if locations !== null && locations.length > 0}
+                <div class="border-border flex flex-col gap-1.5 border-t pt-3">
+                  <Label for="job-location">Magasin de destination</Label>
+                  <select
+                    id="job-location"
+                    class="{selectClass} sm:max-w-80"
+                    disabled={settingLocation}
+                    value={job.location_id == null ? "" : String(job.location_id)}
+                    onchange={changeLocation}
+                  >
+                    <option value="">À choisir plus tard</option>
+                    {#each locations as location (location.id)}
+                      <option value={String(location.id)}>{location.title}</option>
+                    {/each}
+                  </select>
+                  <p class="text-muted-foreground text-xs">
+                    Pré-sélectionné lors du transfert vers Tillin — corrigez ici
+                    en cas d'erreur au dépôt.
+                  </p>
                 </div>
               {/if}
 
@@ -864,11 +1069,30 @@
                                       <Label for="item-{item.id}-{field.key}" class="text-xs">
                                         {field.label}
                                       </Label>
-                                      <Input
-                                        id="item-{item.id}-{field.key}"
-                                        class="h-8 text-xs"
-                                        bind:value={drafts[item.id][field.key]}
-                                      />
+                                      {#if field.kind === "gender"}
+                                        <select
+                                          id="item-{item.id}-{field.key}"
+                                          class="{selectClass} h-8 text-xs"
+                                          bind:value={drafts[item.id][field.key]}
+                                        >
+                                          <option value="">—</option>
+                                          {#if drafts[item.id][field.key] !== "" && !GENDER_OPTIONS.includes(drafts[item.id][field.key])}
+                                            <option value={drafts[item.id][field.key]}>
+                                              {drafts[item.id][field.key]} (extrait)
+                                            </option>
+                                          {/if}
+                                          {#each GENDER_OPTIONS as gender (gender)}
+                                            <option value={gender}>{gender}</option>
+                                          {/each}
+                                        </select>
+                                      {:else}
+                                        <Input
+                                          id="item-{item.id}-{field.key}"
+                                          class="h-8 text-xs"
+                                          list={datalistId(field.datalist)}
+                                          bind:value={drafts[item.id][field.key]}
+                                        />
+                                      {/if}
                                     </div>
                                   {/each}
                                 </div>
@@ -883,6 +1107,11 @@
                                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
                                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
                                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix conseillé</th>
+                                        {#if coefficientConfig}
+                                          <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
+                                            Prix vente (profil)
+                                          </th>
+                                        {/if}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -933,11 +1162,24 @@
                                               bind:value={drafts[item.id].variants[vIndex].retail_price}
                                             />
                                           </td>
+                                          {#if coefficientConfig}
+                                            <td class="text-muted-foreground px-2 py-1 text-right whitespace-nowrap italic tabular-nums">
+                                              {profilePrice(drafts[item.id].variants[vIndex].wholesale_price)}
+                                            </td>
+                                          {/if}
                                         </tr>
                                       {/each}
                                     </tbody>
                                   </table>
                                 </div>
+
+                                {#if coefficientConfig}
+                                  <p class="text-muted-foreground text-xs">
+                                    Prix vente (profil) : calculé par le profil —
+                                    appliqué dans le CSV / transfert, les données
+                                    extraites ne sont pas modifiées.
+                                  </p>
+                                {/if}
 
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                   {#if isRejected}
@@ -1002,6 +1244,11 @@
                                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
                                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
                                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
+                                        {#if coefficientConfig}
+                                          <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
+                                            Prix vente (profil)
+                                          </th>
+                                        {/if}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1045,11 +1292,24 @@
                                           >
                                             {formatPrice(variant.retail_price)}
                                           </td>
+                                          {#if coefficientConfig}
+                                            <td class="text-muted-foreground px-2 py-1.5 text-right italic tabular-nums">
+                                              {profilePrice(variant.wholesale_price)}
+                                            </td>
+                                          {/if}
                                         </tr>
                                       {/each}
                                     </tbody>
                                   </table>
                                 </div>
+
+                                {#if coefficientConfig}
+                                  <p class="text-muted-foreground text-xs">
+                                    Prix vente (profil) : calculé par le profil —
+                                    appliqué dans le CSV / transfert, les données
+                                    extraites ne sont pas modifiées.
+                                  </p>
+                                {/if}
 
                                 {#if isApplied}
                                   <p class="text-muted-foreground text-xs">
@@ -1185,11 +1445,11 @@
                       <Skeleton class="h-9 w-full sm:max-w-80" />
                     {:else if locations.length === 0}
                       <p class="text-muted-foreground text-xs">
-                        Aucun emplacement disponible dans Tillin.
+                        Aucun magasin disponible dans Tillin.
                       </p>
                     {:else}
                       <div class="flex flex-col gap-1.5 sm:max-w-80">
-                        <Label for="transfer-location">Emplacement</Label>
+                        <Label for="transfer-location">Magasin</Label>
                         <select
                           id="transfer-location"
                           class={selectClass}
@@ -1201,8 +1461,8 @@
                         </select>
                       </div>
                       <p class="text-muted-foreground text-xs">
-                        Les produits non exclus seront créés dans Tillin sur cet
-                        emplacement.
+                        Les produits non exclus seront créés dans Tillin sur ce
+                        magasin.
                       </p>
                     {/if}
                     <div class="flex items-center justify-end gap-2">
@@ -1225,6 +1485,31 @@
               </CardContent>
             </Card>
           {/if}
+        {/if}
+
+        <!-- Datalists du référentiel Tillin pour la grille de review
+             (suggestions, saisie libre conservée). -->
+        {#if catalogFilters}
+          <datalist id="review-dl-brands">
+            {#each optionTitles(catalogFilters.brands) as title (title)}
+              <option value={title}></option>
+            {/each}
+          </datalist>
+          <datalist id="review-dl-categories">
+            {#each optionTitles(catalogFilters.categories) as title (title)}
+              <option value={title}></option>
+            {/each}
+          </datalist>
+          <datalist id="review-dl-seasons">
+            {#each optionTitles(catalogFilters.seasons) as title (title)}
+              <option value={title}></option>
+            {/each}
+          </datalist>
+          <datalist id="review-dl-compositions">
+            {#each optionTitles(catalogFilters.compositions) as title (title)}
+              <option value={title}></option>
+            {/each}
+          </datalist>
         {/if}
       </div>
     </AppShell>

@@ -8,6 +8,7 @@
   import Menu from "@lucide/svelte/icons/menu"
   import Package from "@lucide/svelte/icons/package"
   import Settings from "@lucide/svelte/icons/settings"
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal"
   import X from "@lucide/svelte/icons/x"
   import { listen, navigate } from "svelte5-router"
 
@@ -80,6 +81,12 @@
       href: "/imports",
       icon: FileUp,
       isActive: (path) => path.startsWith("/imports"),
+    },
+    {
+      label: "Profils",
+      href: "/profiles",
+      icon: SlidersHorizontal,
+      isActive: (path) => path.startsWith("/profiles"),
     },
   ]
 

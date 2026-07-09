@@ -39,6 +39,8 @@ export type ImportJobPublic = {
   duration_seconds: number | null
   // Profil d'import associé au job (règles d'export Tillin), null si aucun.
   profile_id: number | null
+  // Magasin (location Tillin) de destination du job, null si non choisi.
+  location_id: number | null
 }
 
 // --- Profils d'import (règles de transformation vers le CSV Tillin) ---
@@ -153,9 +155,10 @@ export type Paginated<T> = {
 // renvoie `{ data, error }` (throwOnError = false par défaut).
 
 /** Upload multipart : axios sérialise le FormData et pose le boundary lui-même. */
-export function createImport(file: File) {
+export function createImport(file: File, locationId?: number) {
   const body = new FormData()
   body.append("file", file)
+  if (locationId != null) body.append("location_id", String(locationId))
   return client.post<{ 201: ImportJobPublic }, unknown>({
     responseType: "json",
     url: "/imports",
@@ -263,6 +266,16 @@ export function setImportProfile(id: number, profileId: number | null) {
   })
 }
 
+/** Associe (ou détache avec null) le magasin de destination du job. */
+export function setImportLocation(id: number, locationId: number | null) {
+  return client.put<{ 200: ImportJobPublic }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/location`,
+    body: { location_id: locationId },
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
 // --- Export Tillin (aperçu, CSV, transfert) ---
 
 export function getImportRows(id: number, profileId?: number) {
@@ -289,9 +302,11 @@ export function listLocations() {
   })
 }
 
+/** Transfert vers Tillin. `location_id` absent → le backend utilise la
+ * location du job (400 `location_required` s'il n'y en a pas). */
 export function transferImport(
   id: number,
-  body: { location_id: number; profile_id?: number },
+  body: { location_id?: number; profile_id?: number },
 ) {
   return client.post<{ 200: TransferResult }, unknown>({
     responseType: "json",

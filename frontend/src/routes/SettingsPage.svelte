@@ -23,7 +23,6 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
-  import ImportProfiles from "@/lib/components/settings/ImportProfiles.svelte"
   import InstructionLibrary from "@/lib/components/settings/InstructionLibrary.svelte"
   import TitleTemplateBuilder, {
     parseTemplate,
@@ -40,21 +39,19 @@
     { key: "preferences", label: "Préférences" },
     { key: "enrichment", label: "Enrichissement" },
     { key: "brands", label: "Marques" },
-    { key: "import-profiles", label: "Profils d'import" },
     { key: "account", label: "Compte" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("preferences")
 
-  // Les onglets Marques et Profils d'import chargent des listes : montage
-  // paresseux à la première ouverture (puis le composant reste monté).
+  // L'onglet Marques charge des listes : montage paresseux à la première
+  // ouverture (puis le composant reste monté).
+  // Les profils d'import ont leur propre page (/profiles).
   let brandsOpened = $state(false)
-  let importProfilesOpened = $state(false)
 
   function selectTab(key: TabKey) {
     tab = key
     if (key === "brands") brandsOpened = true
-    if (key === "import-profiles") importProfilesOpened = true
   }
 
   // --- Réglages de compte (Enrichissement + Notifications : un seul objet,
@@ -365,13 +362,6 @@
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "brands"}>
           {#if brandsOpened}
             <BrandWebsites />
-          {/if}
-        </div>
-
-        <!-- Onglet Profils d'import (règles d'export vers Tillin) -->
-        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "import-profiles"}>
-          {#if importProfilesOpened}
-            <ImportProfiles />
           {/if}
         </div>
 
