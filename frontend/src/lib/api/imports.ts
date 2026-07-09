@@ -37,6 +37,59 @@ export type ImportJobPublic = {
   started_at: string | null
   finished_at: string | null
   duration_seconds: number | null
+  // Profil d'import associé au job (règles d'export Tillin), null si aucun.
+  profile_id: number | null
+}
+
+// --- Profils d'import (règles de transformation vers le CSV Tillin) ---
+
+// Les décimaux (coefficient, arrondi, TVA) voyagent en chaînes JSON.
+export type ImportProfileConfig = {
+  price_mode: "retail_as_is" | "coefficient"
+  coefficient: string | null
+  round_up_to: string
+  barcode_mode: "ean" | "constructed"
+  brand_mode: "as_extracted" | "fixed"
+  brand_value: string
+  supplier_label: string
+  season_label: string
+  gender_default: string
+  category_default: string
+  tax_rate: string
+  status: string
+}
+
+export type ImportProfilePublic = {
+  id: number
+  name: string
+  supplier_match: string
+  config: ImportProfileConfig
+  created_at: string
+  updated_at: string
+}
+
+export type ImportProfileCreate = {
+  name: string
+  supplier_match: string
+  config: ImportProfileConfig
+}
+
+// Aperçu des lignes du CSV Tillin généré pour un job + profil.
+export type ImportRowsPreview = {
+  columns: string[]
+  rows: string[][]
+  warnings: string[]
+  row_count: number
+}
+
+export type LocationPublic = {
+  id: number
+  title: string
+}
+
+export type TransferResult = {
+  ok: boolean
+  row_count: number
 }
 
 export type ImportedVariant = {
@@ -149,5 +202,101 @@ export function listImportItems(
     responseType: "json",
     url: `/imports/${id}/items`,
     query,
+  })
+}
+
+// --- CRUD des profils d'import ---
+
+export function listImportProfiles() {
+  return client.get<{ 200: ImportProfilePublic[] }, unknown>({
+    responseType: "json",
+    url: "/import-profiles",
+  })
+}
+
+export function createImportProfile(body: ImportProfileCreate) {
+  return client.post<{ 201: ImportProfilePublic }, unknown>({
+    responseType: "json",
+    url: "/import-profiles",
+    body,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+export function updateImportProfile(id: number, body: Partial<ImportProfileCreate>) {
+  return client.patch<{ 200: ImportProfilePublic }, unknown>({
+    responseType: "json",
+    url: `/import-profiles/${id}`,
+    body,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+export function deleteImportProfile(id: number) {
+  return client.delete<{ 204: unknown }, unknown>({
+    url: `/import-profiles/${id}`,
+  })
+}
+
+// --- Review des items (édition du payload, exclusion/réintégration) ---
+
+export function patchImportItem(
+  jobId: number,
+  itemId: number,
+  body: { payload?: ImportedProduct; status?: "ready_for_review" | "rejected" },
+) {
+  return client.patch<{ 200: ImportItemPublic }, unknown>({
+    responseType: "json",
+    url: `/imports/${jobId}/items/${itemId}`,
+    body,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+/** Associe (ou détache avec null) un profil d'import au job. */
+export function setImportProfile(id: number, profileId: number | null) {
+  return client.put<{ 200: ImportJobPublic }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/profile`,
+    body: { profile_id: profileId },
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+// --- Export Tillin (aperçu, CSV, transfert) ---
+
+export function getImportRows(id: number, profileId?: number) {
+  return client.get<{ 200: ImportRowsPreview }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/rows`,
+    query: profileId != null ? { profile_id: profileId } : undefined,
+  })
+}
+
+/** CSV Tillin généré, en blob (l'auth passe par les cookies axios). */
+export function getImportCsv(id: number, profileId?: number) {
+  return client.get<{ 200: Blob }, unknown>({
+    responseType: "blob",
+    url: `/imports/${id}/csv`,
+    query: profileId != null ? { profile_id: profileId } : undefined,
+  })
+}
+
+export function listLocations() {
+  return client.get<{ 200: LocationPublic[] }, unknown>({
+    responseType: "json",
+    url: "/locations",
+  })
+}
+
+export function transferImport(
+  id: number,
+  body: { location_id: number; profile_id?: number },
+) {
+  return client.post<{ 200: TransferResult }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/transfer`,
+    body,
+    headers: { "Content-Type": "application/json" },
   })
 }

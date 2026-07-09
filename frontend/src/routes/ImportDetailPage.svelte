@@ -5,21 +5,36 @@
   import Eye from "@lucide/svelte/icons/eye"
   import EyeOff from "@lucide/svelte/icons/eye-off"
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+  import Send from "@lucide/svelte/icons/send"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { navigate } from "svelte5-router"
+  import { toast } from "svelte-sonner"
 
   import {
+    getImportCsv,
     getImportFile,
+    getImportRows,
     listImportItems,
+    listImportProfiles,
+    listLocations,
+    patchImportItem,
     previewImportFile,
     readImport,
+    setImportProfile,
+    transferImport,
     type ImportFilePreview,
     type ImportItemPublic,
     type ImportJobPublic,
+    type ImportProfilePublic,
+    type ImportRowsPreview,
+    type ImportedProduct,
     type ImportedVariant,
+    type LocationPublic,
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
+  import { Input } from "@/lib/components/ui/input"
+  import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -93,6 +108,299 @@
   })
 
   const running = $derived(job?.status === "pending" || job?.status === "processing")
+  const completed = $derived(job?.status === "completed")
+
+  // --- Profil d'import associé au job ---
+  const selectClass =
+    "border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+
+  let profiles = $state<ImportProfilePublic[] | null>(null)
+  let selectedProfileId = $state<number | null>(null)
+  let settingProfile = $state(false)
+  // Pré-sélection faite une seule fois (job.profile_id, sinon correspondance
+  // fournisseur ≈ supplier_match en minuscules).
+  let profileInitDone = false
+
+  $effect(() => {
+    listImportProfiles().then(({ data }) => {
+      profiles = data ?? []
+    })
+  })
+
+  $effect(() => {
+    if (profileInitDone || !job || profiles === null) return
+    profileInitDone = true
+    if (job.profile_id != null) {
+      selectedProfileId = job.profile_id
+      return
+    }
+    const supplier = (job.supplier ?? "").trim().toLowerCase()
+    if (supplier === "") return
+    const match = profiles.find((p) => {
+      const needle = p.supplier_match.trim().toLowerCase()
+      return needle !== "" && (supplier.includes(needle) || needle.includes(supplier))
+    })
+    if (match) selectedProfileId = match.id
+  })
+
+  async function changeProfile(event: Event) {
+    const raw = (event.currentTarget as HTMLSelectElement).value
+    const next = raw === "" ? null : Number(raw)
+    const previous = selectedProfileId
+    selectedProfileId = next
+    settingProfile = true
+    const { data, error } = await setImportProfile(Number(id), next)
+    settingProfile = false
+    if (error || !data) {
+      selectedProfileId = previous
+      toast.error("Impossible d'associer le profil.")
+      return
+    }
+    job = data
+    // L'aperçu CSV dépend du profil : on l'invalide.
+    rowsPreview = null
+    rowsOpen = false
+    toast.success(next === null ? "Profil retiré" : "Profil appliqué")
+  }
+
+  // --- Review : brouillons d'édition par item (buffer local, Enregistrer
+  // envoie le payload complet en PATCH) ---
+  type VariantDraft = {
+    color: string
+    size: string
+    ean: string
+    quantity: string
+    wholesale_price: string
+    retail_price: string
+  }
+  type ProductDraft = {
+    title: string
+    brand: string
+    category: string
+    season: string
+    gender: string
+    composition: string
+    hs_code: string
+    manufacturing_country: string
+    variants: VariantDraft[]
+  }
+  type DraftTextField = Exclude<keyof ProductDraft, "variants">
+
+  let drafts = $state<Record<number, ProductDraft>>({})
+  let savingItemId = $state<number | null>(null)
+  let statusItemId = $state<number | null>(null)
+
+  function makeDraft(product: ImportedProduct): ProductDraft {
+    return {
+      title: product.title ?? "",
+      brand: product.brand ?? "",
+      category: product.category ?? "",
+      season: product.season ?? "",
+      gender: product.gender ?? "",
+      composition: product.composition ?? "",
+      hs_code: product.hs_code ?? "",
+      manufacturing_country: product.manufacturing_country ?? "",
+      variants: product.variants.map((v) => ({
+        color: v.color ?? "",
+        size: v.size ?? "",
+        ean: v.ean ?? "",
+        quantity: v.quantity == null ? "" : String(v.quantity),
+        wholesale_price: v.wholesale_price ?? "",
+        retail_price: v.retail_price ?? "",
+      })),
+    }
+  }
+
+  /** Reconstruit un ImportedProduct complet (champs vides → null), en
+   * conservant supplier_ref, images, SKU et scores de confiance. */
+  function draftToPayload(original: ImportedProduct, draft: ProductDraft): ImportedProduct {
+    const clean = (value: string): string | null => {
+      const trimmed = value.trim()
+      return trimmed === "" ? null : trimmed
+    }
+    return {
+      ...original,
+      title: clean(draft.title),
+      brand: clean(draft.brand),
+      category: clean(draft.category),
+      season: clean(draft.season),
+      gender: clean(draft.gender),
+      composition: clean(draft.composition),
+      hs_code: clean(draft.hs_code),
+      manufacturing_country: clean(draft.manufacturing_country),
+      variants: original.variants.map((variant, index) => {
+        const v = draft.variants[index]
+        if (!v) return variant
+        const quantity = v.quantity.trim()
+        return {
+          ...variant,
+          color: clean(v.color),
+          size: clean(v.size),
+          ean: clean(v.ean),
+          quantity: quantity === "" ? null : Number(quantity),
+          wholesale_price: clean(v.wholesale_price),
+          retail_price: clean(v.retail_price),
+        }
+      }),
+    }
+  }
+
+  /** Item éditable : job terminé et item pas encore transféré vers Tillin. */
+  function isEditable(item: ImportItemPublic): boolean {
+    return completed && item.status !== "applied"
+  }
+
+  async function refreshJob() {
+    const { data } = await readImport(Number(id))
+    if (data) job = data
+  }
+
+  async function saveItem(item: ImportItemPublic) {
+    const draft = drafts[item.id]
+    if (!draft || savingItemId !== null) return
+    for (const v of draft.variants) {
+      const quantity = v.quantity.trim()
+      if (quantity !== "" && !Number.isFinite(Number(quantity))) {
+        toast.error("Quantité invalide : entrez un nombre.")
+        return
+      }
+    }
+    savingItemId = item.id
+    const { data, error } = await patchImportItem(Number(id), item.id, {
+      payload: draftToPayload(item.payload, draft),
+    })
+    savingItemId = null
+    if (error || !data) {
+      toast.error("Enregistrement impossible.")
+      return
+    }
+    items = (items ?? []).map((i) => (i.id === data.id ? data : i))
+    drafts[item.id] = makeDraft(data.payload)
+    rowsPreview = null
+    rowsOpen = false
+    toast.success("Produit enregistré")
+    refreshJob()
+  }
+
+  function cancelItem(item: ImportItemPublic) {
+    drafts[item.id] = makeDraft(item.payload)
+  }
+
+  async function setItemStatus(item: ImportItemPublic, status: "ready_for_review" | "rejected") {
+    if (statusItemId !== null) return
+    statusItemId = item.id
+    const { data, error } = await patchImportItem(Number(id), item.id, { status })
+    statusItemId = null
+    if (error || !data) {
+      toast.error("Mise à jour du statut impossible.")
+      return
+    }
+    items = (items ?? []).map((i) => (i.id === data.id ? data : i))
+    rowsPreview = null
+    rowsOpen = false
+    toast.success(status === "rejected" ? "Produit exclu de l'export" : "Produit réintégré")
+    refreshJob()
+  }
+
+  // --- Export Tillin (aperçu des lignes, CSV, transfert) ---
+  let rowsOpen = $state(false)
+  let rowsLoading = $state(false)
+  let rowsError = $state<string | null>(null)
+  let rowsPreview = $state<ImportRowsPreview | null>(null)
+  let csvDownloading = $state(false)
+
+  let transferOpen = $state(false)
+  let locations = $state<LocationPublic[] | null>(null)
+  let locationsLoading = $state(false)
+  let locationsError = $state<string | null>(null)
+  let selectedLocationId = $state("")
+  let transferring = $state(false)
+  let transferred = $state(false)
+
+  async function toggleCsvPreview() {
+    if (rowsOpen) {
+      rowsOpen = false
+      return
+    }
+    rowsOpen = true
+    if (rowsPreview || rowsLoading) return
+    rowsLoading = true
+    rowsError = null
+    const { data, error } = await getImportRows(Number(id), selectedProfileId ?? undefined)
+    rowsLoading = false
+    if (error || !data) {
+      rowsError = "Impossible de générer l'aperçu CSV."
+      return
+    }
+    rowsPreview = data
+  }
+
+  async function downloadCsv() {
+    if (csvDownloading) return
+    csvDownloading = true
+    const result = await getImportCsv(Number(id), selectedProfileId ?? undefined)
+    csvDownloading = false
+    if (result.error || !result.data) {
+      toast.error("Téléchargement du CSV impossible.")
+      return
+    }
+    // Nom depuis Content-Disposition si le header est accessible.
+    let fileName = `import_${id}.csv`
+    const headers = (result as { response?: { headers?: Record<string, unknown> } })
+      .response?.headers
+    const disposition = headers?.["content-disposition"]
+    if (typeof disposition === "string") {
+      const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+      if (match?.[1]) fileName = decodeURIComponent(match[1])
+    }
+    const url = URL.createObjectURL(result.data)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = fileName
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function toggleTransfer() {
+    transferOpen = !transferOpen
+    if (transferOpen && locations === null && !locationsLoading) loadLocations()
+  }
+
+  async function loadLocations() {
+    locationsLoading = true
+    locationsError = null
+    const { data, error } = await listLocations()
+    locationsLoading = false
+    if (error || !data) {
+      locationsError = "Impossible de charger les emplacements."
+      return
+    }
+    locations = data
+    if (data.length > 0 && selectedLocationId === "") {
+      selectedLocationId = String(data[0].id)
+    }
+  }
+
+  async function confirmTransfer() {
+    if (selectedLocationId === "" || transferring) return
+    transferring = true
+    const { data, error } = await transferImport(Number(id), {
+      location_id: Number(selectedLocationId),
+      ...(selectedProfileId != null ? { profile_id: selectedProfileId } : {}),
+    })
+    transferring = false
+    if (error || !data || !data.ok) {
+      toast.error("Transfert vers Tillin impossible.")
+      return
+    }
+    transferOpen = false
+    transferred = true
+    toast.success(
+      `${data.row_count} ligne${data.row_count > 1 ? "s" : ""} transférée${data.row_count > 1 ? "s" : ""} vers Tillin`,
+    )
+    // Recharge job + items : les items passent au statut « applied ».
+    await load()
+  }
 
   // Fichier source : prévisualisation (PDF via blob, tabulaire via parse
   // serveur, chargée au premier dépliage) et re-téléchargement.
@@ -147,12 +455,31 @@
     URL.revokeObjectURL(url)
   }
 
-  function toggleExpanded(itemId: number) {
+  function toggleExpanded(item: ImportItemPublic) {
     const next = new Set(expanded)
-    if (next.has(itemId)) next.delete(itemId)
-    else next.add(itemId)
+    if (next.has(item.id)) {
+      next.delete(item.id)
+    } else {
+      next.add(item.id)
+      // Prépare le brouillon d'édition au premier dépliage.
+      if (isEditable(item) && !drafts[item.id]) {
+        drafts[item.id] = makeDraft(item.payload)
+      }
+    }
     expanded = next
   }
+
+  // Champs produit éditables dans la ligne dépliée (mode review).
+  const EDIT_FIELDS: { key: DraftTextField; label: string }[] = [
+    { key: "title", label: "Titre" },
+    { key: "brand", label: "Marque" },
+    { key: "category", label: "Catégorie" },
+    { key: "season", label: "Saison" },
+    { key: "gender", label: "Genre" },
+    { key: "composition", label: "Composition" },
+    { key: "hs_code", label: "Code SH" },
+    { key: "manufacturing_country", label: "Pays de fabrication" },
+  ]
 
   /** Confiance basse (< 0,7) sur un champ extrait → mise en évidence ambre. */
   function lowConfidence(confidence: Record<string, number>, field: string): boolean {
@@ -309,6 +636,36 @@
                 <p class="text-destructive text-xs" role="alert">{job.error}</p>
               {/if}
 
+              <!-- Profil d'import : règles d'export Tillin appliquées au job. -->
+              {#if profiles !== null}
+                <div class="border-border flex flex-col gap-1.5 border-t pt-3">
+                  <Label for="import-profile">Profil d'import</Label>
+                  {#if profiles.length === 0}
+                    <p class="text-muted-foreground text-xs">
+                      Aucun profil d'import — créez-en un dans Paramètres →
+                      Profils d'import pour générer l'export Tillin.
+                    </p>
+                  {:else}
+                    <select
+                      id="import-profile"
+                      class="{selectClass} sm:max-w-80"
+                      disabled={settingProfile}
+                      value={selectedProfileId == null ? "" : String(selectedProfileId)}
+                      onchange={changeProfile}
+                    >
+                      <option value="">Aucun profil</option>
+                      {#each profiles as profile (profile.id)}
+                        <option value={String(profile.id)}>{profile.name}</option>
+                      {/each}
+                    </select>
+                    <p class="text-muted-foreground text-xs">
+                      Le profil définit les règles de transformation (prix,
+                      codes-barres, marque…) de l'export Tillin.
+                    </p>
+                  {/if}
+                </div>
+              {/if}
+
               <!-- Fichier source : aperçu à la demande + re-téléchargement. -->
               <div class="border-border flex flex-col gap-3 border-t pt-3">
                 <div class="flex flex-wrap items-center justify-between gap-2">
@@ -388,9 +745,13 @@
                       {@const product = item.payload}
                       {@const isOpen = expanded.has(item.id)}
                       {@const noEan = missingEanCount(product.variants)}
+                      {@const isRejected = item.status === "rejected"}
+                      {@const isApplied = item.status === "applied"}
                       <tr
-                        class="border-border hover:bg-muted/50 cursor-pointer border-b transition-colors"
-                        onclick={() => toggleExpanded(item.id)}
+                        class="border-border hover:bg-muted/50 cursor-pointer border-b transition-colors {isRejected
+                          ? 'opacity-50'
+                          : ''}"
+                        onclick={() => toggleExpanded(item)}
                       >
                         <td class="px-2 {cellPad}">
                           <button
@@ -402,7 +763,7 @@
                               : `Déplier ${product.supplier_ref}`}
                             onclick={(e) => {
                               e.stopPropagation()
-                              toggleExpanded(item.id)
+                              toggleExpanded(item)
                             }}
                           >
                             {#if isOpen}
@@ -445,6 +806,19 @@
                         </td>
                         <td class="px-3 {cellPad}">
                           <div class="flex items-center gap-1.5 whitespace-nowrap">
+                            {#if isRejected}
+                              <span
+                                class="text-muted-foreground border-border rounded-full border px-2 py-0.5 text-[11px]"
+                              >
+                                Exclu
+                              </span>
+                            {:else if isApplied}
+                              <span
+                                class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
+                              >
+                                Transféré
+                              </span>
+                            {/if}
                             {#if noEan > 0}
                               <span
                                 class="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[11px]"
@@ -482,87 +856,212 @@
                                 <p class="text-destructive text-xs">{item.error}</p>
                               {/if}
 
-                              {#if PRODUCT_FIELDS.some(({ key }) => product[key])}
-                                <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs sm:grid-cols-3">
-                                  {#each PRODUCT_FIELDS as { key, label } (key)}
-                                    {#if product[key]}
-                                      <div>
-                                        <dt class="text-muted-foreground">{label}</dt>
-                                        <dd
-                                          class={lowConfidence(product.confidence, key)
-                                            ? "text-warning-foreground"
-                                            : ""}
-                                        >
-                                          {product[key]}
-                                        </dd>
-                                      </div>
-                                    {/if}
+                              {#if isEditable(item) && drafts[item.id]}
+                                <!-- Mode review : édition locale (buffer), Enregistrer envoie le payload complet. -->
+                                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                  {#each EDIT_FIELDS as field (field.key)}
+                                    <div class="flex flex-col gap-1">
+                                      <Label for="item-{item.id}-{field.key}" class="text-xs">
+                                        {field.label}
+                                      </Label>
+                                      <Input
+                                        id="item-{item.id}-{field.key}"
+                                        class="h-8 text-xs"
+                                        bind:value={drafts[item.id][field.key]}
+                                      />
+                                    </div>
                                   {/each}
-                                </dl>
-                              {/if}
+                                </div>
 
-                              <div class="overflow-x-auto">
-                                <table class="w-full min-w-lg text-xs">
-                                  <thead>
-                                    <tr class="border-border border-b">
-                                      <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
-                                      <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
-                                      <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
-                                      <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
-                                      <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
-                                      <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {#each product.variants as variant, index (index)}
-                                      <tr class="border-border/50 border-b last:border-b-0">
-                                        <td
-                                          class="px-2 py-1.5 {lowConfidence(variant.confidence, 'color')
-                                            ? 'text-warning-foreground'
-                                            : ''}"
-                                        >
-                                          {variant.color ?? "—"}
-                                        </td>
-                                        <td
-                                          class="px-2 py-1.5 {lowConfidence(variant.confidence, 'size')
-                                            ? 'text-warning-foreground'
-                                            : ''}"
-                                        >
-                                          {variant.size ?? "—"}
-                                        </td>
-                                        <td
-                                          class="px-2 py-1.5 font-mono {lowConfidence(variant.confidence, 'ean')
-                                            ? 'text-warning-foreground'
-                                            : ''}"
-                                        >
-                                          {variant.ean ?? "—"}
-                                        </td>
-                                        <td class="px-2 py-1.5 text-right tabular-nums">
-                                          {variant.quantity ?? "—"}
-                                        </td>
-                                        <td
-                                          class="px-2 py-1.5 text-right tabular-nums {lowConfidence(variant.confidence, 'wholesale_price')
-                                            ? 'text-warning-foreground'
-                                            : ''}"
-                                        >
-                                          {formatPrice(variant.wholesale_price)}
-                                        </td>
-                                        <td
-                                          class="px-2 py-1.5 text-right tabular-nums {lowConfidence(variant.confidence, 'retail_price')
-                                            ? 'text-warning-foreground'
-                                            : ''}"
-                                        >
-                                          {formatPrice(variant.retail_price)}
-                                        </td>
+                                <div class="overflow-x-auto">
+                                  <table class="w-full min-w-2xl text-xs">
+                                    <thead>
+                                      <tr class="border-border border-b">
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix conseillé</th>
                                       </tr>
-                                    {/each}
-                                  </tbody>
-                                </table>
-                              </div>
+                                    </thead>
+                                    <tbody>
+                                      {#each drafts[item.id].variants as _draftVariant, vIndex (vIndex)}
+                                        <tr class="border-border/50 border-b last:border-b-0">
+                                          <td class="px-1 py-1">
+                                            <Input
+                                              class="h-8 min-w-24 text-xs"
+                                              aria-label="Couleur de la variante {vIndex + 1}"
+                                              bind:value={drafts[item.id].variants[vIndex].color}
+                                            />
+                                          </td>
+                                          <td class="px-1 py-1">
+                                            <Input
+                                              class="h-8 min-w-16 text-xs"
+                                              aria-label="Taille de la variante {vIndex + 1}"
+                                              bind:value={drafts[item.id].variants[vIndex].size}
+                                            />
+                                          </td>
+                                          <td class="px-1 py-1">
+                                            <Input
+                                              class="h-8 min-w-36 font-mono text-xs"
+                                              aria-label="EAN de la variante {vIndex + 1}"
+                                              bind:value={drafts[item.id].variants[vIndex].ean}
+                                            />
+                                          </td>
+                                          <td class="px-1 py-1">
+                                            <Input
+                                              class="h-8 min-w-14 text-xs"
+                                              inputmode="numeric"
+                                              aria-label="Quantité de la variante {vIndex + 1}"
+                                              bind:value={drafts[item.id].variants[vIndex].quantity}
+                                            />
+                                          </td>
+                                          <td class="px-1 py-1">
+                                            <Input
+                                              class="h-8 min-w-20 text-xs"
+                                              inputmode="decimal"
+                                              aria-label="Prix de gros de la variante {vIndex + 1}"
+                                              bind:value={drafts[item.id].variants[vIndex].wholesale_price}
+                                            />
+                                          </td>
+                                          <td class="px-1 py-1">
+                                            <Input
+                                              class="h-8 min-w-20 text-xs"
+                                              inputmode="decimal"
+                                              aria-label="Prix conseillé de la variante {vIndex + 1}"
+                                              bind:value={drafts[item.id].variants[vIndex].retail_price}
+                                            />
+                                          </td>
+                                        </tr>
+                                      {/each}
+                                    </tbody>
+                                  </table>
+                                </div>
 
-                              <p class="text-muted-foreground text-xs">
-                                Lecture seule — l'édition arrive avec l'étape de review.
-                              </p>
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                  {#if isRejected}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={statusItemId === item.id}
+                                      onclick={() => setItemStatus(item, "ready_for_review")}
+                                    >
+                                      {statusItemId === item.id ? "…" : "Réintégrer"}
+                                    </Button>
+                                  {:else}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={statusItemId === item.id}
+                                      onclick={() => setItemStatus(item, "rejected")}
+                                    >
+                                      {statusItemId === item.id ? "…" : "Exclure"}
+                                    </Button>
+                                  {/if}
+                                  <div class="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm" onclick={() => cancelItem(item)}>
+                                      Annuler
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      disabled={savingItemId === item.id}
+                                      onclick={() => saveItem(item)}
+                                    >
+                                      {savingItemId === item.id ? "Enregistrement…" : "Enregistrer"}
+                                    </Button>
+                                  </div>
+                                </div>
+                              {:else}
+                                {#if PRODUCT_FIELDS.some(({ key }) => product[key])}
+                                  <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs sm:grid-cols-3">
+                                    {#each PRODUCT_FIELDS as { key, label } (key)}
+                                      {#if product[key]}
+                                        <div>
+                                          <dt class="text-muted-foreground">{label}</dt>
+                                          <dd
+                                            class={lowConfidence(product.confidence, key)
+                                              ? "text-warning-foreground"
+                                              : ""}
+                                          >
+                                            {product[key]}
+                                          </dd>
+                                        </div>
+                                      {/if}
+                                    {/each}
+                                  </dl>
+                                {/if}
+
+                                <div class="overflow-x-auto">
+                                  <table class="w-full min-w-lg text-xs">
+                                    <thead>
+                                      <tr class="border-border border-b">
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
+                                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {#each product.variants as variant, index (index)}
+                                        <tr class="border-border/50 border-b last:border-b-0">
+                                          <td
+                                            class="px-2 py-1.5 {lowConfidence(variant.confidence, 'color')
+                                              ? 'text-warning-foreground'
+                                              : ''}"
+                                          >
+                                            {variant.color ?? "—"}
+                                          </td>
+                                          <td
+                                            class="px-2 py-1.5 {lowConfidence(variant.confidence, 'size')
+                                              ? 'text-warning-foreground'
+                                              : ''}"
+                                          >
+                                            {variant.size ?? "—"}
+                                          </td>
+                                          <td
+                                            class="px-2 py-1.5 font-mono {lowConfidence(variant.confidence, 'ean')
+                                              ? 'text-warning-foreground'
+                                              : ''}"
+                                          >
+                                            {variant.ean ?? "—"}
+                                          </td>
+                                          <td class="px-2 py-1.5 text-right tabular-nums">
+                                            {variant.quantity ?? "—"}
+                                          </td>
+                                          <td
+                                            class="px-2 py-1.5 text-right tabular-nums {lowConfidence(variant.confidence, 'wholesale_price')
+                                              ? 'text-warning-foreground'
+                                              : ''}"
+                                          >
+                                            {formatPrice(variant.wholesale_price)}
+                                          </td>
+                                          <td
+                                            class="px-2 py-1.5 text-right tabular-nums {lowConfidence(variant.confidence, 'retail_price')
+                                              ? 'text-warning-foreground'
+                                              : ''}"
+                                          >
+                                            {formatPrice(variant.retail_price)}
+                                          </td>
+                                        </tr>
+                                      {/each}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {#if isApplied}
+                                  <p class="text-muted-foreground text-xs">
+                                    Produit transféré vers Tillin — lecture seule.
+                                  </p>
+                                {:else if !completed}
+                                  <p class="text-muted-foreground text-xs">
+                                    Lecture seule — l'édition sera disponible une fois
+                                    l'analyse terminée.
+                                  </p>
+                                {/if}
+                              {/if}
                             </div>
                           </td>
                         </tr>
@@ -602,6 +1101,129 @@
                 </div>
               {/if}
             </div>
+          {/if}
+
+          <!-- Export Tillin : aperçu des lignes générées, CSV et transfert. -->
+          {#if completed && selectedProfileId != null}
+            <h2 class="font-title mt-1 text-sm font-bold">Export Tillin</h2>
+            <Card>
+              <CardContent class="flex flex-col gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onclick={toggleCsvPreview}>
+                    {#if rowsLoading}
+                      <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                    {:else if rowsOpen}
+                      <EyeOff size={14} aria-hidden="true" />
+                    {:else}
+                      <Eye size={14} aria-hidden="true" />
+                    {/if}
+                    {rowsOpen ? "Masquer l'aperçu" : "Aperçu CSV"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={csvDownloading}
+                    onclick={downloadCsv}
+                  >
+                    {#if csvDownloading}
+                      <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                    {:else}
+                      <Download size={14} aria-hidden="true" />
+                    {/if}
+                    Télécharger le CSV
+                  </Button>
+                  <Button size="sm" onclick={toggleTransfer}>
+                    <Send size={14} aria-hidden="true" />
+                    Transférer vers Tillin
+                  </Button>
+                  {#if transferred}
+                    <span
+                      class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
+                    >
+                      Transfert effectué
+                    </span>
+                  {/if}
+                </div>
+
+                {#if rowsOpen}
+                  {#if rowsError}
+                    <p class="text-destructive text-xs" role="alert">{rowsError}</p>
+                  {:else if rowsLoading}
+                    <Skeleton class="h-40 w-full" />
+                  {:else if rowsPreview}
+                    {#if rowsPreview.warnings.length > 0}
+                      <ul class="flex flex-col gap-0.5">
+                        {#each rowsPreview.warnings as warning (warning)}
+                          <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
+                            <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
+                            {warning}
+                          </li>
+                        {/each}
+                      </ul>
+                    {/if}
+                    <FilePreviewTable
+                      sheets={[{ rows: [rowsPreview.columns, ...rowsPreview.rows] }]}
+                    />
+                    <p class="text-muted-foreground text-xs">
+                      {rowsPreview.row_count}
+                      ligne{rowsPreview.row_count > 1 ? "s" : ""} dans le CSV généré.
+                    </p>
+                  {/if}
+                {/if}
+
+                {#if transferOpen}
+                  <div class="border-border flex flex-col gap-3 rounded-md border p-3">
+                    <p class="text-sm font-medium">Transférer vers Tillin</p>
+                    {#if locationsError}
+                      <div class="flex flex-col items-start gap-2">
+                        <p class="text-destructive text-xs" role="alert">{locationsError}</p>
+                        <Button variant="secondary" size="sm" onclick={loadLocations}>
+                          Réessayer
+                        </Button>
+                      </div>
+                    {:else if locations === null}
+                      <Skeleton class="h-9 w-full sm:max-w-80" />
+                    {:else if locations.length === 0}
+                      <p class="text-muted-foreground text-xs">
+                        Aucun emplacement disponible dans Tillin.
+                      </p>
+                    {:else}
+                      <div class="flex flex-col gap-1.5 sm:max-w-80">
+                        <Label for="transfer-location">Emplacement</Label>
+                        <select
+                          id="transfer-location"
+                          class={selectClass}
+                          bind:value={selectedLocationId}
+                        >
+                          {#each locations as location (location.id)}
+                            <option value={String(location.id)}>{location.title}</option>
+                          {/each}
+                        </select>
+                      </div>
+                      <p class="text-muted-foreground text-xs">
+                        Les produits non exclus seront créés dans Tillin sur cet
+                        emplacement.
+                      </p>
+                    {/if}
+                    <div class="flex items-center justify-end gap-2">
+                      <Button variant="ghost" size="sm" onclick={() => (transferOpen = false)}>
+                        Annuler
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={transferring || selectedLocationId === ""}
+                        onclick={confirmTransfer}
+                      >
+                        {#if transferring}
+                          <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                        {/if}
+                        {transferring ? "Transfert…" : "Confirmer le transfert"}
+                      </Button>
+                    </div>
+                  </div>
+                {/if}
+              </CardContent>
+            </Card>
           {/if}
         {/if}
       </div>
