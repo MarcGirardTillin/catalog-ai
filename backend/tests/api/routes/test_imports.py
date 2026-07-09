@@ -719,10 +719,13 @@ def test_get_csv_file_name_falls_back_to_job_id(import_client: TestClient) -> No
 
 
 class _FakeXano:
-    """Records product_import calls (never touches the network)."""
+    """Records product_import/search calls (never touches the network)."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        # Canned search results, keyed by the normalized (strip+lower) query.
+        self.search_results: dict[str, list[Any]] = {}
+        self.search_calls: list[str] = []
 
     def product_import(
         self, *, file_name: str, csv_bytes: bytes, location_id: int
@@ -735,6 +738,15 @@ class _FakeXano:
             }
         )
         return {"ok": True}
+
+    def search_products(
+        self, *, text: str | None = None, page: int = 1, per_page: int = 20, **_: Any
+    ) -> Any:
+        from app.clients.xano import ProductPage
+
+        self.search_calls.append(text or "")
+        items = self.search_results.get((text or "").strip().lower(), [])
+        return ProductPage(items=items, total=len(items), page=page, per_page=per_page)
 
 
 @pytest.fixture
@@ -876,6 +888,205 @@ def test_transfer_requires_profile(
     assert response.status_code == 400
     assert response.json()["code"] == "profile_required"
     assert fake_xano.calls == []
+
+
+# -- link-back (POST /link-products) + products view (GET /products) -----------
+
+
+def _tillin_product(product_id: int, reference_code: str | None) -> Any:
+    from app.api.schemas import Product
+
+    return Product(id=product_id, reference_code=reference_code)
+
+
+def _transferred_job(client: TestClient, refs: list[str]) -> dict[str, Any]:
+    """A job already transferred to Tillin, with one applied item per ref."""
+    job = _upload(client)
+    db = _db()
+    row = db.get(EnrichmentJob, job["id"])
+    row.config_json = {"transfer": {"location_id": 7, "row_count": len(refs)}}
+    db.commit()
+    for ref in refs:
+        _add_item(job["id"], {"supplier_ref": ref}, status="applied")
+    return job
+
+
+def test_link_products_requires_a_transfer(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _upload(import_client)
+    _add_item(job["id"], {"supplier_ref": "REF-1"}, status="applied")
+
+    response = import_client.post(f"/imports/{job['id']}/link-products")
+    assert response.status_code == 400
+    assert response.json()["code"] == "not_transferred"
+    assert fake_xano.search_calls == []
+
+
+def test_link_products_resolves_by_reference_code(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _transferred_job(import_client, ["REF-1", "REF-2"])
+    fake_xano.search_results = {
+        # A fuzzy extra hit must not confuse the exact-reference match.
+        "ref-1": [_tillin_product(101, "REF-1"), _tillin_product(999, "REF-10")],
+        "ref-2": [],  # transferred but not searchable yet
+    }
+
+    response = import_client.post(f"/imports/{job['id']}/link-products")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "linked": 1,
+        "already_linked": 0,
+        "not_found": ["REF-2"],
+    }
+    assert fake_xano.search_calls == ["REF-1", "REF-2"]
+
+    db = _db()
+    by_ref = {
+        item.payload_json["supplier_ref"]: item.tillin_product_id
+        for item in db.query(ImportItem).filter(ImportItem.job_id == job["id"])
+    }
+    assert by_ref == {"REF-1": 101, "REF-2": None}
+
+    # The items listing exposes the stored link.
+    items = import_client.get(f"/imports/{job['id']}/items").json()["items"]
+    assert [i["tillin_product_id"] for i in items] == [101, None]
+
+
+def test_link_products_is_idempotent(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _transferred_job(import_client, ["REF-1"])
+    fake_xano.search_results = {"ref-1": [_tillin_product(101, "REF-1")]}
+
+    first = import_client.post(f"/imports/{job['id']}/link-products").json()
+    assert first == {"linked": 1, "already_linked": 0, "not_found": []}
+
+    second = import_client.post(f"/imports/{job['id']}/link-products").json()
+    assert second == {"linked": 0, "already_linked": 1, "not_found": []}
+    # Already linked -> no second search.
+    assert fake_xano.search_calls == ["REF-1"]
+
+
+def test_link_products_tolerates_case_and_spaces(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _transferred_job(import_client, ["REF-1"])
+    # Tillin stored the reference with different case and stray spaces.
+    fake_xano.search_results = {"ref-1": [_tillin_product(101, "  ref-1 ")]}
+
+    response = import_client.post(f"/imports/{job['id']}/link-products")
+    assert response.json()["linked"] == 1
+    db = _db()
+    item = db.query(ImportItem).filter(ImportItem.job_id == job["id"]).one()
+    assert item.tillin_product_id == 101
+
+
+def test_link_products_ambiguous_reference_is_not_found(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _transferred_job(import_client, ["REF-1", "REF-2"])
+    fake_xano.search_results = {
+        # Two DISTINCT products share the exact reference -> unresolved.
+        "ref-1": [_tillin_product(101, "REF-1"), _tillin_product(102, "REF-1")],
+        # The same product returned twice is not ambiguous.
+        "ref-2": [_tillin_product(201, "REF-2"), _tillin_product(201, "REF-2")],
+    }
+
+    body = import_client.post(f"/imports/{job['id']}/link-products").json()
+    assert body == {"linked": 1, "already_linked": 0, "not_found": ["REF-1"]}
+
+
+def test_link_products_only_considers_applied_items(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    job = _transferred_job(import_client, ["REF-1"])
+    _add_item(job["id"], {"supplier_ref": "REF-REJ"}, status="rejected")
+    _add_item(job["id"], {"supplier_ref": "REF-RFR"}, status="ready_for_review")
+    fake_xano.search_results = {"ref-1": [_tillin_product(101, "REF-1")]}
+
+    body = import_client.post(f"/imports/{job['id']}/link-products").json()
+    assert body == {"linked": 1, "already_linked": 0, "not_found": []}
+    assert fake_xano.search_calls == ["REF-1"]
+
+
+def test_link_products_404_on_unknown_or_foreign_import(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    assert import_client.post("/imports/99999/link-products").status_code == 404
+
+    db = _db()
+    other = Account(name="other-shop")
+    db.add(other)
+    db.flush()
+    foreign = EnrichmentJob(
+        account_id=other.id,
+        job_type="import",
+        selection_json={"file_name": "x.pdf", "file_path": "/nope/x.pdf"},
+        config_json={"transfer": {"location_id": 1, "row_count": 1}},
+    )
+    db.add(foreign)
+    db.commit()
+    response = import_client.post(f"/imports/{foreign.id}/link-products")
+    assert response.status_code == 404
+    assert fake_xano.search_calls == []
+
+
+def test_import_products_view_builds_lines_from_payloads(
+    import_client: TestClient,
+) -> None:
+    job = _upload(import_client, name="commande.pdf")
+    linked_id = _add_item(
+        job["id"],
+        {
+            "supplier_ref": "REF-1",
+            "title": "Pull marin",
+            "brand": "L'Espion",
+            "image_urls": ["https://cdn/img-1.jpg", "https://cdn/img-2.jpg"],
+            "variants": [{"size": "S"}, {"size": "M"}],
+        },
+        status="applied",
+    )
+    unlinked_id = _add_item(job["id"], {"supplier_ref": "REF-2"}, status="applied")
+    review_id = _add_item(
+        job["id"], {"supplier_ref": "REF-3"}, status="ready_for_review"
+    )
+    _add_item(job["id"], {"supplier_ref": "REF-REJ"}, status="rejected")
+    _add_item(job["id"], {"supplier_ref": "REF-KO"}, status="failed")
+    db = _db()
+    db.get(ImportItem, linked_id).tillin_product_id = 101
+    db.commit()
+
+    response = import_client.get(f"/imports/{job['id']}/products")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["import_id"] == job["id"]
+    assert body["file_name"] == "commande.pdf"
+    # Rejected/failed items are excluded; the rest is sorted by id.
+    assert [line["item_id"] for line in body["items"]] == [
+        linked_id,
+        unlinked_id,
+        review_id,
+    ]
+    first = body["items"][0]
+    assert first == {
+        "item_id": linked_id,
+        "status": "applied",
+        "supplier_ref": "REF-1",
+        "title": "Pull marin",
+        "brand": "L'Espion",
+        "image_url": "https://cdn/img-1.jpg",
+        "variant_count": 2,
+        "tillin_product_id": 101,
+    }
+    assert body["items"][1]["image_url"] is None
+    assert body["items"][1]["variant_count"] == 0
+    # Counters cover the applied items only (the review one doesn't count).
+    assert body["linked_count"] == 1
+    assert body["unlinked_count"] == 1
+
+    assert import_client.get("/imports/99999/products").status_code == 404
 
 
 def test_jobs_list_excludes_import_jobs(import_client: TestClient) -> None:

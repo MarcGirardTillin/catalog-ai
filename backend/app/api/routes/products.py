@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import XanoDep, get_current_user
+from app.api.exceptions import AppException
 from app.api.schemas import PaginatedResponse, Product
 
 router = APIRouter(
@@ -53,3 +54,14 @@ def list_products(
         page_size=per_page,
         total_pages=total_pages,
     )
+
+
+@router.get("/{product_id}", response_model=Product)
+def read_product(product_id: int, xano: XanoDep) -> Product:
+    """Return one product's full detail from the Tillin catalog."""
+    product = xano.get_product(product_id)
+    if product is None:
+        raise AppException(
+            status_code=404, code="not_found", message="Product not found"
+        )
+    return product

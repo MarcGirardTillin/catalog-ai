@@ -31,7 +31,10 @@ from app.api.schemas.imports import (
     ImportJobCounts,
     ImportJobPublic,
     ImportJobTotals,
+    ImportLinkResult,
     ImportLocationSelection,
+    ImportProductLine,
+    ImportProducts,
     ImportProfileSelection,
     ImportRenderPreview,
     ImportTransferRequest,
@@ -67,6 +70,8 @@ PREVIEW_MAX_CELL_CHARS = 200
 EDITABLE_ITEM_STATUSES = ("ready_for_review", "rejected")
 # Items excluded from rendering/transfer (never reach the Tillin CSV).
 EXCLUDED_RENDER_STATUSES = ("rejected", "failed")
+# Statuses shown in the per-import products view (kept items only).
+PRODUCTS_VIEW_STATUSES = ("applied", "ready_for_review", "approved")
 
 
 def _job_counts(db: Session, job_id: int) -> ImportJobCounts:
@@ -332,6 +337,7 @@ def _item_public(item: ImportItem) -> ImportItemPublic:
     return ImportItemPublic(
         id=item.id,
         status=item.status,
+        tillin_product_id=item.tillin_product_id,
         payload=item.payload_json or {},
         warnings=[str(w) for w in item.warnings_json or []],
         error=item.error,
@@ -571,3 +577,109 @@ def transfer_import(
     }
     db.commit()
     return ImportTransferResult(ok=True, row_count=len(rows))
+
+
+@router.post("/{import_id}/link-products", response_model=ImportLinkResult)
+def link_import_products(
+    import_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    xano: XanoDep,
+) -> ImportLinkResult:
+    """Resolve applied items to Tillin product ids by `reference_code`.
+
+    `/product_import` returns no ids, so after a transfer each applied item is
+    linked back by searching its `supplier_ref` and matching the product whose
+    `reference_code` equals it (strip + case-insensitive). Idempotent: already
+    linked items are only counted, unresolved refs land in `not_found`.
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    if "transfer" not in (job.config_json or {}):
+        raise AppException(
+            status_code=400,
+            code="not_transferred",
+            message="This import has not been transferred to Tillin yet",
+        )
+    items = db.scalars(
+        select(ImportItem)
+        .where(ImportItem.job_id == job.id, ImportItem.status == "applied")
+        .order_by(ImportItem.id)
+    ).all()
+    result = ImportLinkResult()
+    for item in items:
+        if item.tillin_product_id is not None:
+            result.already_linked += 1
+            continue
+        supplier_ref = str((item.payload_json or {}).get("supplier_ref") or "")
+        wanted = supplier_ref.strip().lower()
+        if not wanted:
+            result.not_found.append(supplier_ref)
+            continue
+        page = xano.search_products(text=supplier_ref, per_page=5)
+        # Exact reference matches only (the search itself is fuzzy). Several
+        # hits are fine as long as they all point at ONE product; genuinely
+        # ambiguous references (distinct products) stay unresolved.
+        matched_ids = {
+            product.id
+            for product in page.items
+            if (product.reference_code or "").strip().lower() == wanted
+        }
+        if len(matched_ids) == 1:
+            item.tillin_product_id = matched_ids.pop()
+            result.linked += 1
+        else:
+            result.not_found.append(supplier_ref)
+    db.commit()
+    return result
+
+
+@router.get("/{import_id}/products", response_model=ImportProducts)
+def list_import_products(
+    import_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> ImportProducts:
+    """Per-import products view, built from the staged payloads (local only).
+
+    Rejected/failed items are excluded. The linked/unlinked counters cover the
+    `applied` items only — they are the ones expected to exist in Tillin.
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    items = db.scalars(
+        select(ImportItem)
+        .where(
+            ImportItem.job_id == job.id,
+            ImportItem.status.in_(PRODUCTS_VIEW_STATUSES),
+        )
+        .order_by(ImportItem.id)
+    ).all()
+    lines: list[ImportProductLine] = []
+    linked_count = 0
+    unlinked_count = 0
+    for item in items:
+        payload = item.payload_json or {}
+        image_urls = payload.get("image_urls") or []
+        lines.append(
+            ImportProductLine(
+                item_id=item.id,
+                status=item.status,
+                supplier_ref=str(payload.get("supplier_ref") or ""),
+                title=payload.get("title"),
+                brand=payload.get("brand"),
+                image_url=str(image_urls[0]) if image_urls else None,
+                variant_count=len(payload.get("variants") or []),
+                tillin_product_id=item.tillin_product_id,
+            )
+        )
+        if item.status == "applied":
+            if item.tillin_product_id is not None:
+                linked_count += 1
+            else:
+                unlinked_count += 1
+    return ImportProducts(
+        import_id=job.id,
+        file_name=str((job.selection_json or {}).get("file_name") or ""),
+        items=lines,
+        linked_count=linked_count,
+        unlinked_count=unlinked_count,
+    )

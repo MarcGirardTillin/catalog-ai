@@ -1,6 +1,8 @@
-"""Tests for the GET /products search path (auth + Xano dependency mocked)."""
+"""Tests for the /products routes (auth + Xano dependency mocked)."""
 
 from collections.abc import Callable, Iterator
+from decimal import Decimal
+from typing import Any
 
 import httpx
 import pytest
@@ -107,6 +109,65 @@ def test_no_filters_is_allowed(
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
+
+
+def _detail_handler(detail: dict[str, Any] | None) -> Handler:
+    """Handler for GET /product/{id}: detail body or upstream 404."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/get_all_informations"):
+            return httpx.Response(200, json={"company_all_informations": {}})
+        if "/product/" in request.url.path:
+            if detail is None:
+                return httpx.Response(404)
+            return httpx.Response(200, json=detail)
+        return httpx.Response(404)
+
+    return handler
+
+
+def test_get_product_requires_authentication(client: TestClient) -> None:
+    assert client.get("/products/101").status_code == 401
+
+
+def test_get_product_maps_detail(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    override_xano(
+        _detail_handler(
+            {
+                "id": 101,
+                "title": "Veste",
+                "product_reference_code": "AW25-VM01",
+                "product_variants": [
+                    {"id": 1, "sku": "VM01-S", "price": {"amount": "89.90"}},
+                    {"id": 2, "sku": "VM01-M"},
+                ],
+            }
+        )
+    )
+
+    response = auth_client.get("/products/101")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == 101
+    assert body["reference_code"] == "AW25-VM01"
+    # Nested `price.amount` mapped onto variant and product prices.
+    assert Decimal(body["price"]) == Decimal("89.90")
+    assert Decimal(body["variants"][0]["price"]) == Decimal("89.90")
+    assert body["variants"][1]["price"] is None
+
+
+def test_get_product_404_when_absent(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    override_xano(_detail_handler(None))
+
+    response = auth_client.get("/products/9999")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
 
 
 def test_upstream_error_surfaces_as_502(

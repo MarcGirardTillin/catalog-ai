@@ -1,5 +1,6 @@
 """Unit tests for the Xano client: login auth + Tillin -> canonical mapping."""
 
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -22,6 +23,8 @@ TILLIN_PRODUCT = {
             "barcode": "3600000000001",
             "weight": 0.8,
             "weight_unit": "1",
+            # Retail price nested as `price.amount` (the live Tillin shape).
+            "price": {"amount": "89.90", "currency": "EUR"},
             "product_image": {"src": "https://cdn.tillin/vm01-1.jpg", "position": 1},
         },
         {
@@ -121,6 +124,10 @@ def test_search_maps_payload_and_sends_filters() -> None:
     assert product.category == "Vestes"
     assert [v.sku for v in product.variants] == ["VM01-S", "VM01-M"]
     assert product.variants[0].barcode == "3600000000001"
+    # Nested `price.amount` -> variant price; product price = first priced variant.
+    assert product.variants[0].price == Decimal("89.90")
+    assert product.variants[1].price is None
+    assert product.price == Decimal("89.90")
     # Images come from variants; the shared src is de-duplicated.
     assert [image.url for image in product.images] == ["https://cdn.tillin/vm01-1.jpg"]
     # Brand id resolved to name + website via the /brand map.
@@ -222,6 +229,9 @@ def test_get_product_returns_detail_and_404_is_none() -> None:
     with _client(_store(detail=TILLIN_PRODUCT)) as client:
         product = client.get_product(1911)
     assert product is not None and product.id == 1911
+    # The detail shape carries the same nested `price.amount` mapping.
+    assert product.price == Decimal("89.90")
+    assert [v.price for v in product.variants] == [Decimal("89.90"), None]
 
     with _client(_store(detail=None)) as client:
         assert client.get_product(9999) is None
