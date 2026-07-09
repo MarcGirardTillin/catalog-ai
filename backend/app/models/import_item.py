@@ -24,6 +24,10 @@ class ImportItem(Base):
     job_id: Mapped[int] = mapped_column(ForeignKey("enrichment_job.id"), index=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("account.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="ready_for_review")
+    # Tillin product id once the transferred item is linked back to the
+    # created product (resolved by reference_code — /product_import returns
+    # no ids). Xano-side id: no FK.
+    tillin_product_id: Mapped[int | None] = mapped_column(default=None)
     # ImportedProduct.model_dump(mode="json") — the extracted product.
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     # Product-level extraction warnings surfaced in the review UI.

@@ -13,6 +13,7 @@ contract lives in one place.
 
 import logging
 from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -144,6 +145,18 @@ def _as_list(value: Any) -> list[Any]:
     return [value]
 
 
+def _variant_price(raw: Mapping[str, Any]) -> Decimal | None:
+    """Retail price of a variant: Tillin nests it as `price.amount`."""
+    price = raw.get("price")
+    amount = price.get("amount") if isinstance(price, Mapping) else price
+    if amount is None or isinstance(amount, Mapping):
+        return None
+    try:
+        return Decimal(str(amount))
+    except InvalidOperation:
+        return None
+
+
 def _map_variant(raw: Mapping[str, Any]) -> ProductVariant:
     return ProductVariant(
         id=_first(raw, "id", "variant_id"),
@@ -151,6 +164,7 @@ def _map_variant(raw: Mapping[str, Any]) -> ProductVariant:
         barcode=_first(raw, "barcode"),
         weight=_first(raw, "weight"),
         weight_unit=_first(raw, "weight_unit"),
+        price=_variant_price(raw),
     )
 
 
@@ -257,6 +271,9 @@ def _map_product(
     variants_raw = [
         v for v in _as_list(raw.get("product_variants")) if isinstance(v, Mapping)
     ]
+    variants = [_map_variant(v) for v in variants_raw]
+    # Product-level retail price: the first variant that carries one.
+    price = next((v.price for v in variants if v.price is not None), None)
     return Product(
         id=_first(raw, "id", "product_id"),
         title=_first(raw, "title", "title_label"),
@@ -265,7 +282,8 @@ def _map_product(
         category=_map_category(raw, categories),
         description=_first(raw, "description", "body_html"),
         meta_description=_first(raw, "meta_description"),
-        variants=[_map_variant(v) for v in variants_raw],
+        price=price,
+        variants=variants,
         images=_collect_images(raw),
     )
 

@@ -62,11 +62,42 @@ class ImportFilePreview(BaseModel):
 class ImportItemPublic(BaseModel):
     id: int
     status: str
+    # Tillin product id once linked back after transfer (by reference_code).
+    tillin_product_id: int | None = None
     # ImportedProduct.model_dump(mode="json") — see app/imports/schema.py.
     payload: dict[str, Any]
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     created_at: datetime
+
+
+class ImportLinkResult(BaseModel):
+    """POST /imports/{id}/link-products outcome (resolution by reference)."""
+
+    linked: int = 0
+    already_linked: int = 0
+    not_found: list[str] = Field(default_factory=list)  # unresolved refs
+
+
+class ImportProductLine(BaseModel):
+    """One row of the « Par import » products view (local data only)."""
+
+    item_id: int
+    status: str
+    supplier_ref: str
+    title: str | None = None
+    brand: str | None = None
+    image_url: str | None = None
+    variant_count: int = 0
+    tillin_product_id: int | None = None
+
+
+class ImportProducts(BaseModel):
+    import_id: int
+    file_name: str
+    items: list[ImportProductLine] = Field(default_factory=list)
+    linked_count: int = 0
+    unlinked_count: int = 0
 
 
 class ImportItemUpdate(BaseModel):

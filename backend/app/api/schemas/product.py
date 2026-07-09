@@ -6,6 +6,8 @@ future `destinations/` adapters translate them onto their own targets. Keep this
 free of any Tillin-specific field name.
 """
 
+from decimal import Decimal
+
 from pydantic import BaseModel, Field
 
 
@@ -17,6 +19,8 @@ class ProductVariant(BaseModel):
     barcode: str | None = None
     weight: float | None = None
     weight_unit: str | None = None
+    # Retail price of the variant (destination-side, nested `price.amount`).
+    price: Decimal | None = None
 
 
 class ProductImage(BaseModel):
@@ -48,5 +52,8 @@ class Product(BaseModel):
     # Current destination-side copy, shown as before/after context in review.
     description: str | None = None
     meta_description: str | None = None
+    # Retail price (denormalized on the destination side); best-effort mapped,
+    # None when the source payload carries no readable price.
+    price: Decimal | None = None
     variants: list[ProductVariant] = Field(default_factory=list)
     images: list[ProductImage] = Field(default_factory=list)
