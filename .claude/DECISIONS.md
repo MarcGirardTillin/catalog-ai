@@ -481,3 +481,23 @@ union-free; the change was validated with a live API call (PO-2026-0442 /
 L'Espion correctly read). Source-file preview shipped alongside: inline PDF
 + client-side CSV preview pre-upload, server-parsed preview + original file
 download on the detail page (`GET /file`, `GET /file/preview`).
+
+## 2026-07-09 — Usage metering M2/M3 + Enrichment workspace
+Billing brick shipped: `usage_price` table (migration 0012) holds the unit
+price per (provider, model NULL=provider-wide fallback, metric); cost is
+NEVER stored on usage_event — computed at read time so repricing stays
+possible. billable = cost x account `billing_coefficient` (AccountSettings).
+Endpoints: /usage/summary (monthly, per-model lines, unpriced lines counted),
+/usage/by-job (import file_name / "Job #n" labels, sorted by cost),
+/usage/export (invoice CSV with TOTAL row), CRUD /usage/prices. UI
+« Consommation » page: month picker, cost/billable/token cards, per-model +
+per-job tables, editable price grid (token prices entered per MILLION,
+stored per unit), coefficient field, CSV export, dashboard tile.
+Enrichment moved OUT of Paramètres into its own sidebar workspace
+(user decision: it's a feature, not a preference): tabs Instructions
+(library + search), Contexte boutique, Modèle de titre; components live
+under lib/components/enrichment/. Cross-page AccountSettings writes go
+through saveAccountSettingsPartial (GET->merge->PUT) so pages never
+clobber each other's fields. Priorities reshuffled (user, 2026-07-09):
+I3 direct Xano creation moved to the END of the plan — the live-validated
+/product_import CSV transfer covers the need.
