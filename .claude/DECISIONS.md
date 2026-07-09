@@ -501,3 +501,23 @@ through saveAccountSettingsPartial (GET->merge->PUT) so pages never
 clobber each other's fields. Priorities reshuffled (user, 2026-07-09):
 I3 direct Xano creation moved to the END of the plan — the live-validated
 /product_import CSV transfer covers the need.
+
+## 2026-07-09 — Title casing + monthly price freeze
+Title casing: AccountSettings.title_case (none|upper|capitalize), snapshotted
+into each job's config, applied in apply_title_template. `capitalize`
+upper-cases the first letter of every word but leaves the rest untouched
+(preserves acronyms/brands like COTON/ARMEDANGELS), unlike str.capitalize.
+Price freeze (billing correctness): AccountSettings.billing_day (1..28,
+default 1) = the day of the FOLLOWING month a period is billed on (July billed
+on billing_day of August). A month is frozen once today >= its billing date.
+On first read of a frozen month, an immutable UsageBillingSnapshot (migration
+0013) pins the prices + coefficient; summary/by-job/export/timeseries then use
+the frozen prices (usage_event quantities stay immutable, so recomputed costs
+are stable). Current/future months keep the live grid. Safety net:
+POST /usage/snapshot re-freezes from the current grid (400 not_frozen on a
+non-billed month). `_now()` is an injectable module-level clock so freeze tests
+are deterministic. New endpoint GET /usage/timeseries?group_by=none|model|
+provider returns daily billable (+quantity) for the three chart views; the UI
+draws them as inline SVG (no chart lib). Rationale for billing_day over
+auto-at-rollover: it gives Marc a window after month-end to verify before the
+figures lock — his explicit choice ("date de facturation dans les paramètres").
