@@ -112,8 +112,8 @@ def render_rows(
         )
         supplier = config.supplier_label or fallback_supplier or ""
         season = config.season_label or product.season or ""
-        gender = product.gender or config.gender_default
-        category = product.category or config.category_default
+        gender = product.gender or ""
+        category = product.category or ""
         image_url = product.image_urls[0] if product.image_urls else ""
 
         for variant in product.variants:

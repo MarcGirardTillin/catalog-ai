@@ -47,6 +47,7 @@
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
+  import ReferenceSelect from "@/lib/components/app/ReferenceSelect.svelte"
   import ImportProfileForm from "@/lib/components/app/ImportProfileForm.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
@@ -549,31 +550,31 @@
   }
 
   // Champs produit éditables dans la ligne dépliée (mode review).
-  // `datalist` : suggestion depuis le référentiel Tillin, saisie libre
-  // conservée (les valeurs extraites ne matchent pas toujours le référentiel).
-  type ReviewDatalist = "brands" | "categories" | "seasons" | "compositions"
+  // `referential` : select harmonisé sur le référentiel Tillin — la valeur
+  // extraite est injectée en option si elle n'y figure pas (jamais perdue).
+  type ReviewReferential = "brands" | "categories" | "seasons" | "compositions"
   const EDIT_FIELDS: {
     key: DraftTextField
     label: string
-    datalist?: ReviewDatalist
+    referential?: ReviewReferential
     kind?: "gender"
   }[] = [
     { key: "title", label: "Titre" },
-    { key: "brand", label: "Marque", datalist: "brands" },
-    { key: "category", label: "Catégorie", datalist: "categories" },
-    { key: "season", label: "Saison", datalist: "seasons" },
+    { key: "brand", label: "Marque", referential: "brands" },
+    { key: "category", label: "Catégorie", referential: "categories" },
+    { key: "season", label: "Saison", referential: "seasons" },
     { key: "gender", label: "Genre", kind: "gender" },
-    { key: "composition", label: "Composition", datalist: "compositions" },
+    { key: "composition", label: "Composition", referential: "compositions" },
     { key: "hs_code", label: "Code SH" },
     { key: "manufacturing_country", label: "Pays de fabrication" },
   ]
 
   const GENDER_OPTIONS = ["Homme", "Femme", "Unisexe"]
 
-  /** Id du datalist pour un champ, ou undefined si référentiel indisponible. */
-  function datalistId(list: ReviewDatalist | undefined): string | undefined {
-    if (!list || !catalogFilters) return undefined
-    return `review-dl-${list}`
+  /** Titres du référentiel pour un champ ([] = repli en champ texte). */
+  function referentialTitles(list: ReviewReferential | undefined): string[] {
+    if (!list || !catalogFilters) return []
+    return optionTitles(catalogFilters[list])
   }
 
   // --- Prix de vente calculé par le profil (mode coefficient uniquement).
@@ -1085,11 +1086,17 @@
                                             <option value={gender}>{gender}</option>
                                           {/each}
                                         </select>
+                                      {:else if field.referential}
+                                        <ReferenceSelect
+                                          id="item-{item.id}-{field.key}"
+                                          compact
+                                          options={referentialTitles(field.referential)}
+                                          bind:value={drafts[item.id][field.key]}
+                                        />
                                       {:else}
                                         <Input
                                           id="item-{item.id}-{field.key}"
                                           class="h-8 text-xs"
-                                          list={datalistId(field.datalist)}
                                           bind:value={drafts[item.id][field.key]}
                                         />
                                       {/if}
@@ -1487,30 +1494,6 @@
           {/if}
         {/if}
 
-        <!-- Datalists du référentiel Tillin pour la grille de review
-             (suggestions, saisie libre conservée). -->
-        {#if catalogFilters}
-          <datalist id="review-dl-brands">
-            {#each optionTitles(catalogFilters.brands) as title (title)}
-              <option value={title}></option>
-            {/each}
-          </datalist>
-          <datalist id="review-dl-categories">
-            {#each optionTitles(catalogFilters.categories) as title (title)}
-              <option value={title}></option>
-            {/each}
-          </datalist>
-          <datalist id="review-dl-seasons">
-            {#each optionTitles(catalogFilters.seasons) as title (title)}
-              <option value={title}></option>
-            {/each}
-          </datalist>
-          <datalist id="review-dl-compositions">
-            {#each optionTitles(catalogFilters.compositions) as title (title)}
-              <option value={title}></option>
-            {/each}
-          </datalist>
-        {/if}
       </div>
     </AppShell>
   {/snippet}

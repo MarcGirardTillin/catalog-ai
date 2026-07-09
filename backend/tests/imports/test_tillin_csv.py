@@ -34,7 +34,6 @@ def _lespion_config() -> ImportProfileConfig:
         barcode_mode="constructed",
         supplier_label="L'ESPION",
         season_label="HIVER 2026",
-        gender_default="Femme",
     )
 
 
@@ -43,6 +42,9 @@ def _barbara_bui() -> ImportedProduct:
         supplier_ref="J1103GAH",
         title="Manteau",
         brand="BARBARA BUI",
+        # Gender is a per-product fact (edited in the review grid), no longer
+        # a profile default.
+        gender="Femme",
         composition="90% Laine 10% Cachemire",
         variants=[
             ImportedVariant(

@@ -17,6 +17,7 @@
     optionTitles,
     type CatalogFiltersData,
   } from "@/lib/api/catalogFilters"
+  import ReferenceSelect from "@/lib/components/app/ReferenceSelect.svelte"
   import {
     createImportProfile,
     updateImportProfile,
@@ -76,8 +77,6 @@
         brand_value: c.brand_value,
         supplier_label: c.supplier_label,
         season_label: c.season_label,
-        gender_default: c.gender_default,
-        category_default: c.category_default,
         tax_rate: c.tax_rate,
         status: c.status,
       }
@@ -93,8 +92,6 @@
       brand_value: "",
       supplier_label: prefill?.supplier_label ?? "",
       season_label: "",
-      gender_default: "",
-      category_default: "",
       tax_rate: "20",
       status: "active",
     }
@@ -122,8 +119,6 @@
       brand_value: form.brand_mode === "fixed" ? form.brand_value.trim() : "",
       supplier_label: form.supplier_label.trim(),
       season_label: form.season_label.trim(),
-      gender_default: form.gender_default.trim(),
-      category_default: form.category_default.trim(),
       tax_rate: form.tax_rate.trim(),
       status: form.status.trim(),
     }
@@ -232,10 +227,11 @@
         <option value="fixed">Valeur fixe</option>
       </select>
       {#if form.brand_mode === "fixed"}
-        <Input
-          aria-label="Marque fixe"
+        <ReferenceSelect
+          ariaLabel="Marque fixe"
           placeholder="Ex. Garcia"
-          list={filters?.brands?.length ? `${uid}-dl-brands` : undefined}
+          options={optionTitles(filters?.brands ?? [])}
+          emptyLabel="Choisir une marque…"
           bind:value={form.brand_value}
         />
       {/if}
@@ -247,10 +243,11 @@
   <div class="grid gap-3 sm:grid-cols-2">
     <div class="flex flex-col gap-1.5">
       <Label for="{uid}-supplier-label">Libellé fournisseur</Label>
-      <Input
+      <ReferenceSelect
         id="{uid}-supplier-label"
         placeholder="Ex. L'Espion"
-        list={filters?.suppliers?.length ? `${uid}-dl-suppliers` : undefined}
+        options={optionTitles(filters?.suppliers ?? [])}
+        emptyLabel="Fournisseur du document"
         bind:value={form.supplier_label}
       />
       <p class="text-muted-foreground text-xs">
@@ -259,32 +256,12 @@
     </div>
     <div class="flex flex-col gap-1.5">
       <Label for="{uid}-season-label">Libellé saison</Label>
-      <Input
+      <ReferenceSelect
         id="{uid}-season-label"
         placeholder="Ex. H26"
-        list={filters?.seasons?.length ? `${uid}-dl-seasons` : undefined}
+        options={optionTitles(filters?.seasons ?? [])}
+        emptyLabel="Saison du document"
         bind:value={form.season_label}
-      />
-    </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-gender-default">Genre par défaut</Label>
-      <select id="{uid}-gender-default" class={selectClass} bind:value={form.gender_default}>
-        <option value="">—</option>
-        <option value="Homme">Homme</option>
-        <option value="Femme">Femme</option>
-        <option value="Unisexe">Unisexe</option>
-      </select>
-      <p class="text-muted-foreground text-xs">
-        Utilisé quand le genre n'a pas été extrait du document.
-      </p>
-    </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-category-default">Catégorie par défaut</Label>
-      <Input
-        id="{uid}-category-default"
-        placeholder="Ex. Vêtements"
-        list={filters?.categories?.length ? `${uid}-dl-categories` : undefined}
-        bind:value={form.category_default}
       />
     </div>
     <div class="flex flex-col gap-1.5">
@@ -314,27 +291,3 @@
     </Button>
   </div>
 </form>
-
-<!-- Datalists du référentiel (saisie libre conservée). -->
-{#if filters}
-  <datalist id="{uid}-dl-brands">
-    {#each optionTitles(filters.brands) as title (title)}
-      <option value={title}></option>
-    {/each}
-  </datalist>
-  <datalist id="{uid}-dl-suppliers">
-    {#each optionTitles(filters.suppliers) as title (title)}
-      <option value={title}></option>
-    {/each}
-  </datalist>
-  <datalist id="{uid}-dl-seasons">
-    {#each optionTitles(filters.seasons) as title (title)}
-      <option value={title}></option>
-    {/each}
-  </datalist>
-  <datalist id="{uid}-dl-categories">
-    {#each optionTitles(filters.categories) as title (title)}
-      <option value={title}></option>
-    {/each}
-  </datalist>
-{/if}

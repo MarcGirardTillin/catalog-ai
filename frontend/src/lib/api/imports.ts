@@ -55,8 +55,6 @@ export type ImportProfileConfig = {
   brand_value: string
   supplier_label: string
   season_label: string
-  gender_default: string
-  category_default: string
   tax_rate: string
   status: string
 }

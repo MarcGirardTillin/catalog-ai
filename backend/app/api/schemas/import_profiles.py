@@ -46,10 +46,11 @@ class ImportProfileConfig(BaseModel):
 
     supplier_label: str = ""  # CSV `supplier` column ("" = extracted supplier)
     season_label: str = ""  # CSV `season` column ("" = extracted season)
-    gender_default: str = ""  # used when the product has no extracted gender
-    category_default: str = ""  # used when the product has no category
     tax_rate: str = "20"  # CSV `tax_rate` column
     status: str = "active"  # CSV `status` column
+    # NOTE: gender/category defaults were removed on user request (2026-07-09):
+    # those are per-product review-grid edits, not supplier conventions.
+    # Stored configs may still carry the old keys — pydantic ignores them.
 
 
 class ImportProfilePublic(BaseModel):
