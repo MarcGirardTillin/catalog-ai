@@ -53,6 +53,7 @@ def test_account_settings_roundtrip_and_job_defaults(auth_client: TestClient) ->
         "meta_max_length": 155,
         "notify_on_job_done": True,
         "notify_email": "shop@example.com",
+        "billing_coefficient": 1.5,
     }
     assert auth_client.put("/settings/account", json=payload).status_code == 200
     assert auth_client.get("/settings/account").json() == payload

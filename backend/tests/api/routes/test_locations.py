@@ -15,8 +15,9 @@ InstallXano = Callable[[Handler], None]
 
 COMPANY = {
     "locations": [
-        {"id": 3, "title": "Zeta Store", "origin": "tillin"},
-        {"id": 5, "title": "Marketplace", "origin": "Third-Party"},
+        # `origin.third_party` non-empty = marketplace feed, excluded.
+        {"id": 3, "title": "Zeta Store", "origin": {"third_party": ""}},
+        {"id": 5, "title": "Marketplace", "origin": {"third_party": "shopify"}},
         {"id": 1, "title": "Alpha Shop"},
     ]
 }

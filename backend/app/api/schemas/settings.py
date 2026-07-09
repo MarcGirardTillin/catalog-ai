@@ -33,6 +33,8 @@ class AccountSettings(BaseModel):
     # Notifications (UI placeholder until the Brevo integration lands).
     notify_on_job_done: bool = False
     notify_email: str | None = None
+    # Billing markup applied at read time: billable = cost × coefficient.
+    billing_coefficient: float = Field(1.0, ge=0)
 
 
 class ConnectionStatus(BaseModel):

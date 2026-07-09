@@ -17,6 +17,7 @@ from app.api.routes import (
     settings,
     stats,
     system,
+    usage,
 )
 
 api_router = APIRouter()
@@ -34,3 +35,4 @@ api_router.include_router(items.router)
 api_router.include_router(stats.router)
 api_router.include_router(settings.router)
 api_router.include_router(instructions.router)
+api_router.include_router(usage.router)
