@@ -457,13 +457,27 @@ def test_product_import_retries_on_401_and_raises_on_error() -> None:
 
 
 def test_list_locations_filters_third_party_and_sorts() -> None:
+    # `origin` is an OBJECT {shop_domain, third_party, ...} in the live payload,
+    # NOT a string — a non-empty third_party marks a marketplace feed.
     company = {
         "locations": [
-            {"id": 3, "title": "Zeta Store", "origin": "tillin"},
-            {"id": 5, "title": "Marketplace", "origin": "Third-Party"},
-            {"id": 6, "title": "Feed", "origin": "third_party"},
-            {"id": 1, "name": "Alpha Shop"},  # `name` shape, no origin
-            {"id": None, "title": "ignored"},
+            {
+                "id": 3,
+                "name": "Zeta Store",
+                "origin": {"shop_domain": "", "third_party": ""},
+            },
+            {
+                "id": 5,
+                "name": "Marketplace",
+                "origin": {"shop_domain": "x.myshopify.com", "third_party": "Shopify"},
+            },
+            {
+                "id": 6,
+                "name": "Feed",
+                "origin": {"shop_domain": "y", "third_party": "Prestashop"},
+            },
+            {"id": 1, "name": "Alpha Shop"},  # no origin at all
+            {"id": None, "name": "ignored"},
         ]
     }
 

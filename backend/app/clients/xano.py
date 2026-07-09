@@ -604,10 +604,13 @@ class XanoClient:
         for raw in _as_list(company.get("locations")):
             if not isinstance(raw, Mapping) or raw.get("id") is None:
                 continue
-            origin = str(raw.get("origin") or "").lower().replace("-", "_")
-            if "third" in origin:
+            # `origin` is an object {shop_domain, third_party, ...}: a non-empty
+            # `third_party` marks a marketplace feed (Shopify/Prestashop) that
+            # must never receive a product import; own stores leave it blank.
+            origin = raw.get("origin")
+            if isinstance(origin, Mapping) and str(origin.get("third_party") or ""):
                 continue
-            title = _first(raw, "title", "name")
+            title = _first(raw, "name", "title")
             locations.append({"id": int(raw["id"]), "title": str(title or "")})
         locations.sort(key=lambda location: str(location["title"]).lower())
         return locations
