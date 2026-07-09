@@ -10,6 +10,20 @@ export function formatDuration(seconds: number): string {
   return `${m} min ${String(rem).padStart(2, "0")} s`
 }
 
+/** "412 o", "12,4 Ko", "3,2 Mo" — French binary-ish sizes (base 1000, fr units). */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1000) return `${bytes} o`
+  const units = ["Ko", "Mo", "Go"]
+  let value = bytes
+  let unit = "o"
+  for (const u of units) {
+    value /= 1000
+    unit = u
+    if (value < 1000) break
+  }
+  return `${value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} ${unit}`
+}
+
 /** French relative date: "à l'instant", "il y a 5 min", "il y a 2 h", "hier", else short date. */
 export function formatRelativeDate(iso: string): string {
   const date = new Date(iso)

@@ -64,6 +64,21 @@ export const AccountSettingsSchema = {
     description: 'Boutique-level enrichment defaults (stored on account.settings_json).'
 } as const;
 
+export const Body_imports_create_importSchema = {
+    properties: {
+        file: {
+            type: 'string',
+            contentMediaType: 'application/octet-stream',
+            title: 'File'
+        }
+    },
+    type: 'object',
+    required: [
+        'file'
+    ],
+    title: 'Body_imports-create_import'
+} as const;
+
 export const BrandSchema = {
     properties: {
         id: {
@@ -384,6 +399,164 @@ export const HealthResponseSchema = {
     ],
     title: 'HealthResponse',
     description: 'Response returned by the healthcheck endpoint.'
+} as const;
+
+export const ImportItemPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        payload: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Payload'
+        },
+        warnings: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Warnings'
+        },
+        error: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'status',
+        'payload',
+        'created_at'
+    ],
+    title: 'ImportItemPublic'
+} as const;
+
+export const ImportJobCountsSchema = {
+    properties: {
+        total: {
+            type: 'integer',
+            title: 'Total',
+            default: 0
+        },
+        ready_for_review: {
+            type: 'integer',
+            title: 'Ready For Review',
+            default: 0
+        },
+        failed: {
+            type: 'integer',
+            title: 'Failed',
+            default: 0
+        }
+    },
+    type: 'object',
+    title: 'ImportJobCounts'
+} as const;
+
+export const ImportJobPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        file_name: {
+            type: 'string',
+            title: 'File Name'
+        },
+        counts: {
+            $ref: '#/components/schemas/ImportJobCounts'
+        },
+        warnings: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Warnings'
+        },
+        error: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        },
+        duration_seconds: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Duration Seconds'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'status',
+        'file_name',
+        'counts',
+        'created_at'
+    ],
+    title: 'ImportJobPublic'
 } as const;
 
 export const InstructionCreateSchema = {
@@ -973,6 +1146,80 @@ export const LoginRequestSchema = {
     ],
     title: 'LoginRequest',
     description: 'Credentials submitted to the login endpoint.'
+} as const;
+
+export const PaginatedResponse_ImportItemPublic_Schema = {
+    properties: {
+        items: {
+            items: {
+                $ref: '#/components/schemas/ImportItemPublic'
+            },
+            type: 'array',
+            title: 'Items'
+        },
+        total: {
+            type: 'integer',
+            title: 'Total'
+        },
+        page: {
+            type: 'integer',
+            title: 'Page'
+        },
+        page_size: {
+            type: 'integer',
+            title: 'Page Size'
+        },
+        total_pages: {
+            type: 'integer',
+            title: 'Total Pages'
+        }
+    },
+    type: 'object',
+    required: [
+        'items',
+        'total',
+        'page',
+        'page_size',
+        'total_pages'
+    ],
+    title: 'PaginatedResponse[ImportItemPublic]'
+} as const;
+
+export const PaginatedResponse_ImportJobPublic_Schema = {
+    properties: {
+        items: {
+            items: {
+                $ref: '#/components/schemas/ImportJobPublic'
+            },
+            type: 'array',
+            title: 'Items'
+        },
+        total: {
+            type: 'integer',
+            title: 'Total'
+        },
+        page: {
+            type: 'integer',
+            title: 'Page'
+        },
+        page_size: {
+            type: 'integer',
+            title: 'Page Size'
+        },
+        total_pages: {
+            type: 'integer',
+            title: 'Total Pages'
+        }
+    },
+    type: 'object',
+    required: [
+        'items',
+        'total',
+        'page',
+        'page_size',
+        'total_pages'
+    ],
+    title: 'PaginatedResponse[ImportJobPublic]'
 } as const;
 
 export const PaginatedResponse_ItemPublic_Schema = {

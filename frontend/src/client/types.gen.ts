@@ -37,6 +37,16 @@ export type AccountSettings = {
 };
 
 /**
+ * Body_imports-create_import
+ */
+export type BodyImportsCreateImport = {
+    /**
+     * File
+     */
+    file: Blob | File;
+};
+
+/**
  * Brand
  *
  * The brand a product belongs to, with its source website(s).
@@ -236,6 +246,99 @@ export type HealthResponse = {
      * Database
      */
     database: 'up';
+};
+
+/**
+ * ImportItemPublic
+ */
+export type ImportItemPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Payload
+     */
+    payload: {
+        [key: string]: unknown;
+    };
+    /**
+     * Warnings
+     */
+    warnings?: Array<string>;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * ImportJobCounts
+ */
+export type ImportJobCounts = {
+    /**
+     * Total
+     */
+    total?: number;
+    /**
+     * Ready For Review
+     */
+    ready_for_review?: number;
+    /**
+     * Failed
+     */
+    failed?: number;
+};
+
+/**
+ * ImportJobPublic
+ */
+export type ImportJobPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * File Name
+     */
+    file_name: string;
+    counts: ImportJobCounts;
+    /**
+     * Warnings
+     */
+    warnings?: Array<string>;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds?: number | null;
 };
 
 /**
@@ -564,6 +667,58 @@ export type LoginRequest = {
      * Password
      */
     password: string;
+};
+
+/**
+ * PaginatedResponse[ImportItemPublic]
+ */
+export type PaginatedResponseImportItemPublic = {
+    /**
+     * Items
+     */
+    items: Array<ImportItemPublic>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+    /**
+     * Total Pages
+     */
+    total_pages: number;
+};
+
+/**
+ * PaginatedResponse[ImportJobPublic]
+ */
+export type PaginatedResponseImportJobPublic = {
+    /**
+     * Items
+     */
+    items: Array<ImportJobPublic>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+    /**
+     * Total Pages
+     */
+    total_pages: number;
 };
 
 /**
@@ -1333,6 +1488,134 @@ export type JobsListJobItemsResponses = {
 };
 
 export type JobsListJobItemsResponse = JobsListJobItemsResponses[keyof JobsListJobItemsResponses];
+
+export type ImportsListImportsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/imports';
+};
+
+export type ImportsListImportsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsListImportsError = ImportsListImportsErrors[keyof ImportsListImportsErrors];
+
+export type ImportsListImportsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaginatedResponseImportJobPublic;
+};
+
+export type ImportsListImportsResponse = ImportsListImportsResponses[keyof ImportsListImportsResponses];
+
+export type ImportsCreateImportData = {
+    body: BodyImportsCreateImport;
+    path?: never;
+    query?: never;
+    url: '/imports';
+};
+
+export type ImportsCreateImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsCreateImportError = ImportsCreateImportErrors[keyof ImportsCreateImportErrors];
+
+export type ImportsCreateImportResponses = {
+    /**
+     * Successful Response
+     */
+    201: ImportJobPublic;
+};
+
+export type ImportsCreateImportResponse = ImportsCreateImportResponses[keyof ImportsCreateImportResponses];
+
+export type ImportsReadImportData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}';
+};
+
+export type ImportsReadImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsReadImportError = ImportsReadImportErrors[keyof ImportsReadImportErrors];
+
+export type ImportsReadImportResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportJobPublic;
+};
+
+export type ImportsReadImportResponse = ImportsReadImportResponses[keyof ImportsReadImportResponses];
+
+export type ImportsListImportItemsData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/imports/{import_id}/items';
+};
+
+export type ImportsListImportItemsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsListImportItemsError = ImportsListImportItemsErrors[keyof ImportsListImportItemsErrors];
+
+export type ImportsListImportItemsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaginatedResponseImportItemPublic;
+};
+
+export type ImportsListImportItemsResponse = ImportsListImportItemsResponses[keyof ImportsListImportItemsResponses];
 
 export type ItemsReadItemData = {
     body?: never;

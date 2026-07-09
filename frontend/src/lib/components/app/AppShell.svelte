@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Component, Snippet } from "svelte"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
+  import FileUp from "@lucide/svelte/icons/file-up"
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard"
   import ListChecks from "@lucide/svelte/icons/list-checks"
   import LogOut from "@lucide/svelte/icons/log-out"
@@ -73,6 +74,12 @@
       icon: ListChecks,
       // /jobs, /jobs/new, /jobs/:id et /items/:id relèvent tous des jobs.
       isActive: (path) => path.startsWith("/jobs") || path.startsWith("/items"),
+    },
+    {
+      label: "Imports",
+      href: "/imports",
+      icon: FileUp,
+      isActive: (path) => path.startsWith("/imports"),
     },
   ]
 

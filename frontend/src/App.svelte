@@ -10,6 +10,9 @@
   import { frontendEnv } from "./lib/env"
   import AppErrorFallback from "@/lib/components/app/AppErrorFallback.svelte"
   import HomePage from "./routes/HomePage.svelte"
+  import ImportDetailPage from "./routes/ImportDetailPage.svelte"
+  import ImportNewPage from "./routes/ImportNewPage.svelte"
+  import ImportsListPage from "./routes/ImportsListPage.svelte"
   import ItemReviewPage from "./routes/ItemReviewPage.svelte"
   import JobDetailPage from "./routes/JobDetailPage.svelte"
   import JobNewPage from "./routes/JobNewPage.svelte"
@@ -50,6 +53,13 @@
           {/snippet}
         </Route>
         <Route path="/jobs" component={JobsListPage} {appName} />
+        <Route path="/imports/new" component={ImportNewPage} {appName} />
+        <Route path="/imports/:id">
+          {#snippet children(params)}
+            <ImportDetailPage {appName} id={params.id} />
+          {/snippet}
+        </Route>
+        <Route path="/imports" component={ImportsListPage} {appName} />
         <Route path="/settings" component={SettingsPage} {appName} />
         <Route path="/items/:id">
           {#snippet children(params)}
