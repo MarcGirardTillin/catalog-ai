@@ -58,49 +58,61 @@
     isActive: (path: string) => boolean
   }
 
-  const NAV_ITEMS: NavItem[] = [
+  // Navigation en deux sections : le flux quotidien (Pipeline) et les
+  // réglages durables (Configuration). Les routes ne changent pas.
+  const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     {
-      label: "Tableau de bord",
-      href: "/",
-      icon: LayoutDashboard,
-      isActive: (path) => path === "/",
+      title: "Pipeline",
+      items: [
+        {
+          label: "Tableau de bord",
+          href: "/",
+          icon: LayoutDashboard,
+          isActive: (path) => path === "/",
+        },
+        {
+          label: "Imports",
+          href: "/imports",
+          icon: FileUp,
+          isActive: (path) => path.startsWith("/imports"),
+        },
+        {
+          label: "Produits",
+          href: "/products",
+          icon: Package,
+          isActive: (path) => path.startsWith("/products"),
+        },
+        {
+          label: "Enrichissements",
+          href: "/jobs",
+          icon: ListChecks,
+          // /jobs, /jobs/:id et /items/:id relèvent tous des enrichissements.
+          isActive: (path) => path.startsWith("/jobs") || path.startsWith("/items"),
+        },
+      ],
     },
     {
-      label: "Produits",
-      href: "/products",
-      icon: Package,
-      isActive: (path) => path.startsWith("/products"),
-    },
-    {
-      label: "Jobs",
-      href: "/jobs",
-      icon: ListChecks,
-      // /jobs, /jobs/new, /jobs/:id et /items/:id relèvent tous des jobs.
-      isActive: (path) => path.startsWith("/jobs") || path.startsWith("/items"),
-    },
-    {
-      label: "Imports",
-      href: "/imports",
-      icon: FileUp,
-      isActive: (path) => path.startsWith("/imports"),
-    },
-    {
-      label: "Profils",
-      href: "/profiles",
-      icon: SlidersHorizontal,
-      isActive: (path) => path.startsWith("/profiles"),
-    },
-    {
-      label: "Enrichissement",
-      href: "/enrichment",
-      icon: WandSparkles,
-      isActive: (path) => path.startsWith("/enrichment"),
-    },
-    {
-      label: "Consommation",
-      href: "/usage",
-      icon: ChartColumn,
-      isActive: (path) => path.startsWith("/usage"),
+      title: "Configuration",
+      items: [
+        {
+          label: "Profils d'import",
+          href: "/profiles",
+          icon: SlidersHorizontal,
+          isActive: (path) => path.startsWith("/profiles"),
+        },
+        {
+          label: "Instructions",
+          href: "/enrichment",
+          icon: WandSparkles,
+          isActive: (path) => path.startsWith("/enrichment"),
+        },
+        {
+          label: "Consommation",
+          href: "/usage",
+          icon: ChartColumn,
+          isActive: (path) => path.startsWith("/usage"),
+        },
+      ],
     },
   ]
 
@@ -138,20 +150,27 @@
     {appName}
   </button>
 
-  <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-2" aria-label="Navigation principale">
-    {#each NAV_ITEMS as item (item.href)}
-      {@const active = item.isActive(pathname)}
-      <button
-        type="button"
-        class="flex h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors {active
-          ? 'bg-accent text-accent-foreground font-medium'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-        aria-current={active ? "page" : undefined}
-        onclick={() => go(item.href)}
-      >
-        <item.icon size={16} class="shrink-0" />
-        {item.label}
-      </button>
+  <nav class="flex flex-1 flex-col gap-3 overflow-y-auto p-2" aria-label="Navigation principale">
+    {#each NAV_GROUPS as group (group.title)}
+      <div class="flex flex-col gap-1">
+        <p class="text-muted-foreground px-2.5 pt-1 text-[10px] font-medium tracking-wider uppercase">
+          {group.title}
+        </p>
+        {#each group.items as item (item.href)}
+          {@const active = item.isActive(pathname)}
+          <button
+            type="button"
+            class="flex h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors {active
+              ? 'bg-accent text-accent-foreground font-medium'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+            aria-current={active ? "page" : undefined}
+            onclick={() => go(item.href)}
+          >
+            <item.icon size={16} class="shrink-0" />
+            {item.label}
+          </button>
+        {/each}
+      </div>
     {/each}
   </nav>
 

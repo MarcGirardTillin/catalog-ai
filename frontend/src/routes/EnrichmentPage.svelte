@@ -113,9 +113,9 @@
 
 <RequireAuth>
   {#snippet children(user)}
-    <AppShell {appName} {user} breadcrumbs={[{ label: "Enrichissement" }]}>
+    <AppShell {appName} {user} breadcrumbs={[{ label: "Instructions" }]}>
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
-        <h1 class="font-title text-lg font-bold">Enrichissement</h1>
+        <h1 class="font-title text-lg font-bold">Instructions</h1>
 
         <!-- Barre d'onglets sobre (pas de composant tabs dans ui/). -->
         <div

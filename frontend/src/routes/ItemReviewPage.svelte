@@ -377,7 +377,7 @@
       toast.error("Action impossible.")
       return
     }
-    toast.success(decision === "approve" ? "Item validé" : "Item rejeté")
+    toast.success(decision === "approve" ? "Item validé" : "Item écarté")
     continueReview(data.job_id)
   }
 
@@ -502,9 +502,9 @@
 
   // Fil d'Ariane : tant que l'item n'est pas chargé, on ne connaît pas le job.
   const breadcrumbs = $derived.by((): { label: string; href?: string }[] => {
-    if (!item) return [{ label: "Jobs", href: "/jobs" }]
+    if (!item) return [{ label: "Enrichissements", href: "/jobs" }]
     return [
-      { label: "Jobs", href: "/jobs" },
+      { label: "Enrichissements", href: "/jobs" },
       { label: `Job #${item.job_id}`, href: `/jobs/${item.job_id}` },
       { label: `Produit #${item.tillin_product_id}` },
     ]
@@ -546,7 +546,7 @@
         {#if errorMessage && item === null}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
           <Button variant="secondary" class="w-full sm:w-auto" onclick={() => navigate("/jobs")}>
-            Retour aux jobs
+            Retour aux enrichissements
           </Button>
         {:else if item === null}
           <Skeleton class="h-24 w-full" />
@@ -973,7 +973,7 @@
                     disabled={busy}
                     onclick={requestReject}
                   >
-                    {confirmingReject ? "Confirmer le rejet" : "Rejeter"}
+                    {confirmingReject ? "Confirmer" : "Écarter"}
                     {@render kbd("R")}
                   </Button>
                   <Button

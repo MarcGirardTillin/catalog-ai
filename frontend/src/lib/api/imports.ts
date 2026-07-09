@@ -313,3 +313,48 @@ export function transferImport(
     headers: { "Content-Type": "application/json" },
   })
 }
+
+// --- Pont import → produits Tillin (liaison et lecture des produits créés) ---
+
+export type LinkProductsResult = {
+  linked: number
+  already_linked: number
+  not_found: string[]
+}
+
+export type ImportProductItem = {
+  item_id: number
+  status: string
+  supplier_ref: string
+  title: string | null
+  brand: string | null
+  image_url: string | null
+  variant_count: number
+  // Id du produit Tillin créé par le transfert, null tant que non relié.
+  tillin_product_id: number | null
+}
+
+export type ImportProductsResponse = {
+  import_id: number
+  file_name: string
+  items: ImportProductItem[]
+  linked_count: number
+  unlinked_count: number
+}
+
+/** Relie les items transférés aux produits Tillin (résolution par référence).
+ * 400 `{code:"not_transferred"}` si l'import n'a pas encore été transféré. */
+export function linkImportProducts(id: number) {
+  return client.post<{ 200: LinkProductsResult }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/link-products`,
+  })
+}
+
+/** Produits de l'import avec leur liaison Tillin (onglet « Par import »). */
+export function getImportProducts(id: number) {
+  return client.get<{ 200: ImportProductsResponse }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/products`,
+  })
+}

@@ -16,7 +16,6 @@
   import ImportsListPage from "./routes/ImportsListPage.svelte"
   import ItemReviewPage from "./routes/ItemReviewPage.svelte"
   import JobDetailPage from "./routes/JobDetailPage.svelte"
-  import JobNewPage from "./routes/JobNewPage.svelte"
   import JobsListPage from "./routes/JobsListPage.svelte"
   import LoginPage from "./routes/LoginPage.svelte"
   import MaintenancePage from "./routes/MaintenancePage.svelte"
@@ -49,7 +48,6 @@
         <Route path="/" component={HomePage} {appName} />
         <Route path="/login" component={LoginPage} {appName} />
         <Route path="/products" component={ProductSearchPage} {appName} />
-        <Route path="/jobs/new" component={JobNewPage} {appName} />
         <Route path="/jobs/:id">
           {#snippet children(params)}
             <JobDetailPage {appName} id={params.id} />

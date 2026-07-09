@@ -109,7 +109,7 @@
 
 <RequireAuth>
   {#snippet children(user)}
-    <AppShell {appName} {user} breadcrumbs={[{ label: "Profils" }]}>
+    <AppShell {appName} {user} breadcrumbs={[{ label: "Profils d'import" }]}>
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Profils d'import</h1>

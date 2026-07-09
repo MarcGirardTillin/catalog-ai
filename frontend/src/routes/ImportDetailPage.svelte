@@ -17,10 +17,13 @@
     optionTitles,
     type CatalogFiltersData,
   } from "@/lib/api/catalogFilters"
+  import { jobsCreateEnrichmentJob } from "@/client"
   import {
     getImportCsv,
     getImportFile,
+    getImportProducts,
     getImportRows,
+    linkImportProducts,
     listImportItems,
     listImportProfiles,
     listLocations,
@@ -369,7 +372,7 @@
     items = (items ?? []).map((i) => (i.id === data.id ? data : i))
     rowsPreview = null
     rowsOpen = false
-    toast.success(status === "rejected" ? "Produit exclu de l'export" : "Produit réintégré")
+    toast.success(status === "rejected" ? "Produit écarté de l'export" : "Produit réintégré")
     refreshJob()
   }
 
@@ -480,6 +483,64 @@
     )
     // Recharge job + items : les items passent au statut « applied ».
     await load()
+  }
+
+  // --- Pont import → enrichissement : une fois le transfert fait, on peut
+  // voir les produits créés dans Tillin ou lancer directement un job
+  // d'enrichissement sur eux (liaison à la volée si nécessaire). ---
+  let enriching = $state(false)
+
+  // Des items « Transféré » sur la page courante, ou transfert fait à l'instant.
+  const hasTransferred = $derived(
+    transferred || (items ?? []).some((i) => i.status === "applied"),
+  )
+
+  async function enrichCreatedProducts() {
+    if (enriching) return
+    enriching = true
+    let { data, error } = await getImportProducts(Number(id))
+    if (error || !data) {
+      enriching = false
+      toast.error("Impossible de lire les produits de l'import.")
+      return
+    }
+    if (data.unlinked_count > 0) {
+      const linkResult = await linkImportProducts(Number(id))
+      if (linkResult.error || !linkResult.data) {
+        enriching = false
+        const code = (linkResult.error as { code?: string } | null)?.code
+        toast.error(
+          code === "not_transferred"
+            ? "Cet import n'a pas encore été transféré vers Tillin."
+            : "Liaison aux produits Tillin impossible.",
+        )
+        return
+      }
+      const refreshed = await getImportProducts(Number(id))
+      if (refreshed.data) data = refreshed.data
+    }
+    const ids = data.items
+      .map((i) => i.tillin_product_id)
+      .filter((v): v is number => v != null)
+    if (ids.length === 0) {
+      enriching = false
+      toast.error(
+        "Aucun produit Tillin relié à cet import — impossible de lancer l'enrichissement.",
+      )
+      return
+    }
+    const { data: jobData, error: jobError } = await jobsCreateEnrichmentJob({
+      body: { selection: { ids } },
+    })
+    enriching = false
+    if (jobError || !jobData) {
+      toast.error("Création de l'enrichissement impossible.")
+      return
+    }
+    toast.success(
+      `Enrichissement #${jobData.id} créé (${ids.length} produit${ids.length > 1 ? "s" : ""})`,
+    )
+    navigate(`/jobs/${jobData.id}`)
   }
 
   // Fichier source : prévisualisation (PDF via blob, tabulaire via parse
@@ -1016,7 +1077,7 @@
                               <span
                                 class="text-muted-foreground border-border rounded-full border px-2 py-0.5 text-[11px]"
                               >
-                                Exclu
+                                Écarté
                               </span>
                             {:else if isApplied}
                               <span
@@ -1205,7 +1266,7 @@
                                       disabled={statusItemId === item.id}
                                       onclick={() => setItemStatus(item, "rejected")}
                                     >
-                                      {statusItemId === item.id ? "…" : "Exclure"}
+                                      {statusItemId === item.id ? "…" : "Écarter"}
                                     </Button>
                                   {/if}
                                   <div class="flex items-center gap-2">
@@ -1412,6 +1473,31 @@
                   {/if}
                 </div>
 
+                {#if hasTransferred}
+                  <!-- Pont vers la suite du pipeline : produits créés dans Tillin. -->
+                  <div class="border-border flex flex-col gap-2 border-t pt-3">
+                    <p class="text-muted-foreground text-xs">
+                      Les produits de cet import ont été créés dans Tillin —
+                      poursuivez le pipeline.
+                    </p>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => navigate(`/products?import=${id}`)}
+                      >
+                        Voir les produits créés
+                      </Button>
+                      <Button size="sm" disabled={enriching} onclick={enrichCreatedProducts}>
+                        {#if enriching}
+                          <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                        {/if}
+                        {enriching ? "Préparation…" : "Enrichir les produits créés"}
+                      </Button>
+                    </div>
+                  </div>
+                {/if}
+
                 {#if rowsOpen}
                   {#if rowsError}
                     <p class="text-destructive text-xs" role="alert">{rowsError}</p>
@@ -1468,7 +1554,7 @@
                         </select>
                       </div>
                       <p class="text-muted-foreground text-xs">
-                        Les produits non exclus seront créés dans Tillin sur ce
+                        Les produits non écartés seront créés dans Tillin sur ce
                         magasin.
                       </p>
                     {/if}

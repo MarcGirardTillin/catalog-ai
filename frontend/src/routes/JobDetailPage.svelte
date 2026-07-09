@@ -111,10 +111,10 @@
   const COUNT_LABELS: [keyof Omit<typeof counts, "total">, string][] = [
     ["pending", "En attente"],
     ["processing", "En cours"],
-    ["ready_for_review", "À valider"],
+    ["ready_for_review", "À vérifier"],
     ["approved", "Validés"],
     ["applied", "Appliqués"],
-    ["rejected", "Rejetés"],
+    ["rejected", "Écartés"],
     ["failed", "Échecs"],
   ]
 </script>
@@ -124,13 +124,13 @@
     <AppShell
       {appName}
       {user}
-      breadcrumbs={[{ label: "Jobs", href: "/jobs" }, { label: `Job #${id}` }]}
+      breadcrumbs={[{ label: "Enrichissements", href: "/jobs" }, { label: `Job #${id}` }]}
     >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
           <Button variant="secondary" class="w-full sm:w-auto" onclick={() => navigate("/jobs")}>
-            Retour aux jobs
+            Retour aux enrichissements
           </Button>
         {:else if job === null}
           <Skeleton class="h-24 w-full" />

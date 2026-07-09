@@ -6,6 +6,7 @@
 
   import { jobsListJobs, statsDashboardStats } from "@/client"
   import type { DashboardStats, JobPublic } from "@/client"
+  import { listImports } from "@/lib/api/imports"
   import { getUsageSummary } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
@@ -22,6 +23,9 @@
   let errorMessage = $state<string | null>(null)
   // Facturable du mois courant, déjà formaté en EUR ("—" tant que non chargé).
   let usageBillable = $state("—")
+  // Somme des produits « À vérifier » sur la première page d'imports
+  // (pas d'endpoint dédié — approximation raisonnable sur les plus récents).
+  let importsToReview = $state("—")
 
   $effect(() => {
     statsDashboardStats().then(({ data, error }) => {
@@ -33,6 +37,14 @@
     })
     jobsListJobs({ query: { page_size: 5 } }).then(({ data }) => {
       recentJobs = data?.items ?? []
+    })
+    listImports({ page: 1 }).then(({ data }) => {
+      if (!data) return
+      const count = data.items.reduce(
+        (sum, imp) => sum + (imp.counts.ready_for_review ?? 0),
+        0,
+      )
+      importsToReview = String(count)
     })
     // Consommation du mois courant (facturable) — tuile optionnelle.
     const now = new Date()
@@ -53,8 +65,8 @@
     if (!stats) return null
     return [
       { label: "Produits enrichis", value: String(stats.applied_items ?? 0) },
-      { label: "À valider", value: String(stats.ready_items ?? 0) },
-      { label: "Jobs en cours", value: String(stats.running_jobs ?? 0) },
+      { label: "À vérifier", value: String(stats.ready_items ?? 0) },
+      { label: "Enrichissements en cours", value: String(stats.running_jobs ?? 0) },
       {
         label: "Temps moyen / produit",
         value: stats.avg_item_seconds != null ? formatDuration(stats.avg_item_seconds) : "—",
@@ -85,7 +97,7 @@
             </Button>
             <Button size="sm" onclick={() => navigate("/products")}>
               <Plus size={14} />
-              Nouveau job
+              Nouvel enrichissement
             </Button>
           </div>
         </div>
@@ -108,13 +120,13 @@
                 <Sparkles size={28} class="text-muted-foreground" aria-hidden="true" />
               </span>
               <p class="text-muted-foreground text-sm">
-                Aucun enrichissement pour l'instant — lancez votre premier job
+                Aucun enrichissement pour l'instant — lancez le premier depuis les produits
               </p>
               <Button onclick={() => navigate("/products")}>Rechercher des produits</Button>
             </CardContent>
           </Card>
         {:else if tiles}
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {#each tiles as tile (tile.label)}
               <Card size="sm">
                 <CardContent class="flex flex-col gap-1 py-4">
@@ -125,6 +137,22 @@
                 </CardContent>
               </Card>
             {/each}
+            <!-- Tuile Imports : produits d'import à vérifier, lien /imports -->
+            <button
+              type="button"
+              class="cursor-pointer text-left"
+              aria-label="Voir les imports à vérifier"
+              onclick={() => navigate("/imports")}
+            >
+              <Card class="hover:ring-primary/40 h-full transition-shadow" size="sm">
+                <CardContent class="flex flex-col gap-1 py-4">
+                  <span class="text-muted-foreground text-xs">Imports à vérifier</span>
+                  <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
+                    {importsToReview}
+                  </span>
+                </CardContent>
+              </Card>
+            </button>
             <!-- Tuile Consommation : facturable du mois courant, lien /usage -->
             <button
               type="button"
@@ -149,7 +177,7 @@
 
           <!-- Recent jobs -->
           <div class="mt-1 flex items-center justify-between gap-2">
-            <h2 class="font-title text-sm font-bold">Jobs récents</h2>
+            <h2 class="font-title text-sm font-bold">Enrichissements récents</h2>
             <a
               href="/jobs"
               class="text-primary text-xs underline-offset-2 hover:underline"
@@ -158,7 +186,7 @@
                 navigate("/jobs")
               }}
             >
-              Voir tous les jobs →
+              Voir tous les enrichissements →
             </a>
           </div>
           {#if recentJobs === null}
@@ -167,7 +195,7 @@
           {:else if recentJobs.length === 0}
             <Card size="sm">
               <CardContent class="text-muted-foreground py-4 text-center text-xs">
-                Aucun job récent.
+                Aucun enrichissement récent.
               </CardContent>
             </Card>
           {:else}

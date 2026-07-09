@@ -23,7 +23,7 @@
   $effect(() => {
     jobsListJobs({ query: { page_size: 50 } }).then(({ data, error }) => {
       if (error || !data) {
-        errorMessage = "Impossible de charger les jobs."
+        errorMessage = "Impossible de charger les enrichissements."
         return
       }
       jobs = data.items
@@ -53,11 +53,11 @@
 
 <RequireAuth>
   {#snippet children(user)}
-    <AppShell {appName} {user} breadcrumbs={[{ label: "Jobs" }]}>
+    <AppShell {appName} {user} breadcrumbs={[{ label: "Enrichissements" }]}>
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
-          <h1 class="font-title text-lg font-bold">Jobs d'enrichissement</h1>
-          <Button size="sm" onclick={() => navigate("/products")}>Nouveau job</Button>
+          <h1 class="font-title text-lg font-bold">Enrichissements</h1>
+          <Button size="sm" onclick={() => navigate("/products")}>Nouvel enrichissement</Button>
         </div>
 
         {#if errorMessage}
@@ -70,7 +70,7 @@
           <Card>
             <CardContent class="flex flex-col items-center gap-3 py-8 text-center">
               <p class="text-muted-foreground text-sm">
-                Aucun job — créez le premier depuis la recherche produits.
+                Aucun enrichissement — créez le premier depuis la recherche produits.
               </p>
               <Button onclick={() => navigate("/products")}>Rechercher des produits</Button>
             </CardContent>
@@ -95,7 +95,7 @@
                     <tr
                       role="link"
                       tabindex="0"
-                      aria-label={`Ouvrir le job #${job.id}`}
+                      aria-label={`Ouvrir l'enrichissement #${job.id}`}
                       class="border-border hover:bg-muted/50 focus-visible:bg-muted/50 cursor-pointer border-b outline-none transition-colors last:border-b-0"
                       onclick={() => openJob(job.id)}
                       onkeydown={(e) => onRowKeydown(e, job.id)}

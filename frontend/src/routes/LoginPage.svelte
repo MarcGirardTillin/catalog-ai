@@ -38,7 +38,7 @@
           : "Connexion impossible. Réessayez."
       return
     }
-    navigate("/jobs/new")
+    navigate("/")
   }
 </script>
 

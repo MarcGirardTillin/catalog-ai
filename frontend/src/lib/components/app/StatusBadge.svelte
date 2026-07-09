@@ -4,21 +4,28 @@
     // Item statuses.
     pending: { label: "En attente", badge: "bg-draft text-draft-foreground", dot: "bg-draft-dot" },
     processing: { label: "En cours", badge: "bg-info text-info-foreground", dot: "bg-info-dot" },
-    ready_for_review: { label: "À valider", badge: "bg-warning text-warning-foreground", dot: "bg-warning-dot" },
+    ready_for_review: { label: "À vérifier", badge: "bg-warning text-warning-foreground", dot: "bg-warning-dot" },
     approved: { label: "Validé", badge: "bg-success text-success-foreground", dot: "bg-success-dot" },
     applied: { label: "Appliqué", badge: "bg-success text-success-foreground", dot: "bg-success-dot" },
-    rejected: { label: "Rejeté", badge: "bg-destructive/10 text-destructive", dot: "bg-destructive-dot" },
+    rejected: { label: "Écarté", badge: "bg-destructive/10 text-destructive", dot: "bg-destructive-dot" },
     failed: { label: "Échec", badge: "bg-destructive/10 text-destructive", dot: "bg-destructive-dot" },
     // Job statuses (pending/processing/failed shared above).
     completed: { label: "Terminé", badge: "bg-success text-success-foreground", dot: "bg-success-dot" },
     partial: { label: "Partiel", badge: "bg-warning text-warning-foreground", dot: "bg-warning-dot" },
   }
 
-  let { status }: { status: string } = $props()
+  // `context="import"` : l'état final `applied` se lit « Transféré » côté
+  // imports (produit créé dans Tillin) vs « Appliqué » côté enrichissements.
+  let { status, context }: { status: string; context?: "import" | "enrichment" } = $props()
 
-  const style = $derived(
-    STYLES[status] ?? { label: status, badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground" },
-  )
+  const style = $derived.by(() => {
+    const base =
+      STYLES[status] ?? { label: status, badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground" }
+    if (status === "applied" && context === "import") {
+      return { ...base, label: "Transféré" }
+    }
+    return base
+  })
 </script>
 
 <span
