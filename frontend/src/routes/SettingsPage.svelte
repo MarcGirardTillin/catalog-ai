@@ -5,7 +5,6 @@
     authUpdatePassword,
     settingsReadAccountSettings,
     settingsReadConnectionStatus,
-    settingsUpdateAccountSettings,
   } from "@/client"
   import type { ConnectionStatus } from "@/client"
   import { Button } from "@/lib/components/ui/button"
@@ -18,26 +17,21 @@
   } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
-  import { Separator } from "@/lib/components/ui/separator"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
-  import InstructionLibrary from "@/lib/components/settings/InstructionLibrary.svelte"
-  import TitleTemplateBuilder, {
-    parseTemplate,
-  } from "@/lib/components/settings/TitleTemplateBuilder.svelte"
-  import { accountSettings } from "@/lib/accountSettings.svelte"
-  import type { AccountSettingsExtended } from "@/lib/accountSettings.svelte"
+  import { saveAccountSettingsPartial } from "@/lib/accountSettings.svelte"
   import { prefs, savePreferences } from "@/lib/preferences.svelte"
 
   let { appName }: { appName: string } = $props()
 
   // --- Onglets (état local ; les panneaux restent montés pour conserver
   // les saisies en cours quand on change d'onglet). ---
+  // L'enrichissement (instructions, contexte boutique, modèle de titre)
+  // a sa propre page : /enrichment.
   const TABS = [
     { key: "preferences", label: "Préférences" },
-    { key: "enrichment", label: "Enrichissement" },
     { key: "brands", label: "Marques" },
     { key: "account", label: "Compte" },
   ] as const
@@ -54,23 +48,12 @@
     if (key === "brands") brandsOpened = true
   }
 
-  // --- Réglages de compte (Enrichissement + Notifications : un seul objet,
-  // un seul « Enregistrer » — le PUT envoie l'AccountSettings complet). ---
+  // --- Réglages de compte (Notifications ; la sauvegarde partielle
+  // préserve les champs gérés par les pages Enrichissement et Consommation). ---
   let accountLoaded = $state(false)
   let savingAccount = $state(false)
-  let editorialInstructions = $state("")
-  let clientContext = $state("")
-  let metaMaxLength = $state(160)
   let notifyOnJobDone = $state(false)
   let notifyEmail = $state("")
-
-  // App default is {title}; the builder starts there.
-  let templateTokens = $state<string[]>(["title"])
-  let templateSeparator = $state(" ")
-
-  const titleTemplate = $derived(
-    templateTokens.map((key) => `{${key}}`).join(templateSeparator),
-  )
 
   // --- Connexion Tillin (lecture seule) ---
   let connection = $state<ConnectionStatus | null>(null)
@@ -88,17 +71,6 @@
         toast.error("Impossible de charger les réglages du compte.")
         return
       }
-      if (data.title_template) {
-        const parsed = parseTemplate(data.title_template)
-        if (parsed) {
-          templateTokens = parsed.tokens
-          templateSeparator = parsed.separator
-        }
-      }
-      editorialInstructions = data.editorial_instructions ?? ""
-      // `client_context` n'est pas encore dans le type généré (cast local).
-      clientContext = (data as AccountSettingsExtended).client_context ?? ""
-      metaMaxLength = data.meta_max_length ?? 160
       notifyOnJobDone = data.notify_on_job_done ?? false
       notifyEmail = data.notify_email ?? ""
       accountLoaded = true
@@ -109,28 +81,16 @@
   })
 
   async function saveAccount() {
-    const metaMax = Number(metaMaxLength)
-    if (!Number.isFinite(metaMax) || metaMax < 50 || metaMax > 320) {
-      toast.error("La longueur max de la meta doit être entre 50 et 320.")
-      return
-    }
     savingAccount = true
-    const body: AccountSettingsExtended = {
-      title_template: templateTokens.length > 0 ? titleTemplate : null,
-      editorial_instructions: editorialInstructions.trim() || null,
-      client_context: clientContext.trim() || null,
-      meta_max_length: metaMax,
+    const ok = await saveAccountSettingsPartial({
       notify_on_job_done: notifyOnJobDone,
       notify_email: notifyEmail.trim() || null,
-    }
-    const { error } = await settingsUpdateAccountSettings({ body })
+    })
     savingAccount = false
-    if (error) {
+    if (!ok) {
       toast.error("Enregistrement impossible.")
       return
     }
-    // Répercute la valeur sur le store partagé (compteur meta en review).
-    accountSettings.meta_max_length = metaMax
     toast.success("Réglages enregistrés")
   }
 
@@ -199,8 +159,9 @@
   </div>
 {/snippet}
 
-<!-- Bouton Enregistrer commun aux onglets Enrichissement et Compte
-     (le PUT envoie l'objet AccountSettings complet dans les deux cas). -->
+<!-- Bouton Enregistrer des réglages de compte (sauvegarde partielle :
+     les défauts d'enrichissement et le coefficient de facturation sont
+     préservés). -->
 {#snippet saveAccountRow()}
   <div class="flex justify-end">
     <Button disabled={!accountLoaded || savingAccount} onclick={saveAccount}>
@@ -293,69 +254,6 @@
               </div>
             </CardContent>
           </Card>
-        </div>
-
-        <!-- Onglet Enrichissement (défauts niveau compte + bibliothèque) -->
-        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "enrichment"}>
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle class="font-title text-sm">Défauts d'enrichissement</CardTitle>
-              <CardDescription class="text-muted-foreground text-xs">
-                Ces défauts s'appliquent aux nouveaux jobs ; chaque job peut les surcharger.
-              </CardDescription>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-4">
-              {#if !accountLoaded}
-                <Skeleton class="h-9 w-full" />
-                <Skeleton class="h-20 w-full" />
-              {:else}
-                <TitleTemplateBuilder
-                  bind:tokens={templateTokens}
-                  bind:separator={templateSeparator}
-                />
-                <div class="flex flex-col gap-1.5">
-                  <Label for="editorial-instructions">
-                    Instructions éditoriales par défaut
-                  </Label>
-                  <textarea
-                    id="editorial-instructions"
-                    rows="3"
-                    class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-60 w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-                    placeholder="Ex. Ton chaleureux, vouvoiement, mettre en avant la durabilité…"
-                    bind:value={editorialInstructions}
-                  ></textarea>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="client-context">Contexte boutique</Label>
-                  <textarea
-                    id="client-context"
-                    rows="4"
-                    class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-80 min-h-24 w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-                    placeholder="Règles de la boutique injectées dans chaque génération : positionnement, public cible, vocabulaire à privilégier ou à éviter… (markdown accepté)"
-                    bind:value={clientContext}
-                  ></textarea>
-                  <p class="text-muted-foreground text-xs">
-                    Ce texte (markdown) est ajouté au contexte de chaque génération.
-                  </p>
-                </div>
-                <div class="flex flex-col gap-1.5 sm:max-w-56">
-                  <Label for="meta-max">Longueur max de la meta description</Label>
-                  <input
-                    id="meta-max"
-                    type="number"
-                    min="50"
-                    max="320"
-                    class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-                    bind:value={metaMaxLength}
-                  />
-                </div>
-              {/if}
-            </CardContent>
-          </Card>
-
-          {@render saveAccountRow()}
-
-          <InstructionLibrary />
         </div>
 
         <!-- Onglet Marques (sites web de référence par marque) -->

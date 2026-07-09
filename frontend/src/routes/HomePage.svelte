@@ -6,6 +6,7 @@
 
   import { jobsListJobs, statsDashboardStats } from "@/client"
   import type { DashboardStats, JobPublic } from "@/client"
+  import { getUsageSummary } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
@@ -19,6 +20,8 @@
   let stats = $state<DashboardStats | null>(null)
   let recentJobs = $state<JobPublic[] | null>(null)
   let errorMessage = $state<string | null>(null)
+  // Facturable du mois courant, déjà formaté en EUR ("—" tant que non chargé).
+  let usageBillable = $state("—")
 
   $effect(() => {
     statsDashboardStats().then(({ data, error }) => {
@@ -30,6 +33,19 @@
     })
     jobsListJobs({ query: { page_size: 5 } }).then(({ data }) => {
       recentJobs = data?.items ?? []
+    })
+    // Consommation du mois courant (facturable) — tuile optionnelle.
+    const now = new Date()
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    getUsageSummary(month).then(({ data, error }) => {
+      if (error || !data) return
+      const billable = Number(data.totals.billable)
+      usageBillable = Number.isFinite(billable)
+        ? billable.toLocaleString("fr-FR", {
+            style: "currency",
+            currency: data.currency || "EUR",
+          })
+        : "—"
     })
   })
 
@@ -98,7 +114,7 @@
             </CardContent>
           </Card>
         {:else if tiles}
-          <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {#each tiles as tile (tile.label)}
               <Card size="sm">
                 <CardContent class="flex flex-col gap-1 py-4">
@@ -109,6 +125,22 @@
                 </CardContent>
               </Card>
             {/each}
+            <!-- Tuile Consommation : facturable du mois courant, lien /usage -->
+            <button
+              type="button"
+              class="cursor-pointer text-left"
+              aria-label="Voir la consommation du mois"
+              onclick={() => navigate("/usage")}
+            >
+              <Card class="hover:ring-primary/40 h-full transition-shadow" size="sm">
+                <CardContent class="flex flex-col gap-1 py-4">
+                  <span class="text-muted-foreground text-xs">Consommation du mois</span>
+                  <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
+                    {usageBillable}
+                  </span>
+                </CardContent>
+              </Card>
+            </button>
           </div>
           <p class="text-muted-foreground text-xs">
             Résolution automatique

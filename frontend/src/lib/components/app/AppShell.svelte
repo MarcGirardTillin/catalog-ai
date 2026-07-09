@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Component, Snippet } from "svelte"
+  import ChartColumn from "@lucide/svelte/icons/chart-column"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import FileUp from "@lucide/svelte/icons/file-up"
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard"
@@ -9,6 +10,7 @@
   import Package from "@lucide/svelte/icons/package"
   import Settings from "@lucide/svelte/icons/settings"
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal"
+  import WandSparkles from "@lucide/svelte/icons/wand-sparkles"
   import X from "@lucide/svelte/icons/x"
   import { listen, navigate } from "svelte5-router"
 
@@ -87,6 +89,18 @@
       href: "/profiles",
       icon: SlidersHorizontal,
       isActive: (path) => path.startsWith("/profiles"),
+    },
+    {
+      label: "Enrichissement",
+      href: "/enrichment",
+      icon: WandSparkles,
+      isActive: (path) => path.startsWith("/enrichment"),
+    },
+    {
+      label: "Consommation",
+      href: "/usage",
+      icon: ChartColumn,
+      isActive: (path) => path.startsWith("/usage"),
     },
   ]
 

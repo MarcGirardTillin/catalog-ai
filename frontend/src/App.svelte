@@ -9,6 +9,7 @@
 
   import { frontendEnv } from "./lib/env"
   import AppErrorFallback from "@/lib/components/app/AppErrorFallback.svelte"
+  import EnrichmentPage from "./routes/EnrichmentPage.svelte"
   import HomePage from "./routes/HomePage.svelte"
   import ImportDetailPage from "./routes/ImportDetailPage.svelte"
   import ImportNewPage from "./routes/ImportNewPage.svelte"
@@ -23,6 +24,7 @@
   import ProductSearchPage from "./routes/ProductSearchPage.svelte"
   import ProfilesPage from "./routes/ProfilesPage.svelte"
   import SettingsPage from "./routes/SettingsPage.svelte"
+  import UsagePage from "./routes/UsagePage.svelte"
 
   const appName = frontendEnv.appName() || "Techlab starter"
   const maintenanceEnabled = frontendEnv.maintenanceEnabled()
@@ -62,6 +64,8 @@
         </Route>
         <Route path="/imports" component={ImportsListPage} {appName} />
         <Route path="/profiles" component={ProfilesPage} {appName} />
+        <Route path="/enrichment" component={EnrichmentPage} {appName} />
+        <Route path="/usage" component={UsagePage} {appName} />
         <Route path="/settings" component={SettingsPage} {appName} />
         <Route path="/items/:id">
           {#snippet children(params)}

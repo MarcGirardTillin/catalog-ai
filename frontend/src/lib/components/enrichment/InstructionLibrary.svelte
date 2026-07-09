@@ -4,6 +4,7 @@
   // catégories par défaut permettent au backend de l'appliquer automatiquement.
   import NotebookPen from "@lucide/svelte/icons/notebook-pen"
   import Plus from "@lucide/svelte/icons/plus"
+  import Search from "@lucide/svelte/icons/search"
   import { onMount } from "svelte"
   import { toast } from "svelte-sonner"
 
@@ -30,6 +31,15 @@
 
   let instructions = $state<InstructionPublic[] | null>(null)
   let loadFailed = $state(false)
+
+  // Recherche par nom : la bibliothèque peut dépasser 30 instructions.
+  let search = $state("")
+  const filteredInstructions = $derived.by(() => {
+    if (instructions === null) return []
+    const needle = search.trim().toLowerCase()
+    if (needle === "") return instructions
+    return instructions.filter((i) => i.name.toLowerCase().includes(needle))
+  })
 
   // Formulaire inline créer/modifier : editingId === null → création.
   let formOpen = $state(false)
@@ -159,8 +169,27 @@
           </p>
         </div>
       {:else if instructions.length > 0}
+        <div class="relative sm:max-w-72">
+          <Search
+            size={14}
+            class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            class="pl-8"
+            placeholder="Rechercher une instruction…"
+            aria-label="Rechercher une instruction par nom"
+            bind:value={search}
+          />
+        </div>
+        {#if filteredInstructions.length === 0}
+          <p class="text-muted-foreground py-2 text-sm">
+            Aucune instruction ne correspond à « {search.trim()} ».
+          </p>
+        {/if}
         <ul class="flex flex-col">
-          {#each instructions as instruction, index (instruction.id)}
+          {#each filteredInstructions as instruction, index (instruction.id)}
             {#if index > 0}
               <Separator />
             {/if}
