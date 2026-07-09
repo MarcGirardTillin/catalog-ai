@@ -14,11 +14,23 @@ export type ImportJobCounts = {
   failed: number
 }
 
+// Cumuls sur toutes les variantes extraites (quantité absente = 1 unité ;
+// montants = quantité × prix unitaire, en chaînes décimales JSON).
+export type ImportJobTotals = {
+  quantity: number
+  wholesale_amount: string | null
+  retail_amount: string | null
+}
+
 export type ImportJobPublic = {
   id: number
   status: ImportJobStatus
   file_name: string
   counts: ImportJobCounts
+  totals: ImportJobTotals
+  // Infos lues sur le document lui-même (bons de commande surtout).
+  po_number: string | null
+  supplier: string | null
   warnings: string[]
   error: string | null
   created_at: string
@@ -63,6 +75,19 @@ export type ImportItemPublic = {
   created_at: string
 }
 
+export type ImportFilePreviewSheet = {
+  sheet: string | null
+  rows: string[][]
+  total_rows: number
+  truncated: boolean
+}
+
+export type ImportFilePreview = {
+  kind: "pdf" | "tabular"
+  file_name: string
+  sheets: ImportFilePreviewSheet[]
+}
+
 export type Paginated<T> = {
   items: T[]
   total: number
@@ -97,6 +122,22 @@ export function readImport(id: number) {
   return client.get<{ 200: ImportJobPublic }, unknown>({
     responseType: "json",
     url: `/imports/${id}`,
+  })
+}
+
+/** Fichier source original, en blob (l'auth passe par les cookies axios). */
+export function getImportFile(id: number) {
+  return client.get<{ 200: Blob }, unknown>({
+    responseType: "blob",
+    url: `/imports/${id}/file`,
+  })
+}
+
+/** Premières lignes parsées d'un fichier tabulaire (xlsx/csv). */
+export function previewImportFile(id: number) {
+  return client.get<{ 200: ImportFilePreview }, unknown>({
+    responseType: "json",
+    url: `/imports/${id}/file/preview`,
   })
 }
 

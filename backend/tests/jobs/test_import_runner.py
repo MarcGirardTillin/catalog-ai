@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import app.jobs.import_runner as import_runner
 from app.imports.schema import (
+    DocumentInfo,
     ExtractionResult,
     ExtractionUsage,
     ImportedProduct,
@@ -80,6 +81,7 @@ def test_run_import_job_stages_items_usage_and_warnings(
     ]
     result = ExtractionResult(
         products=products,
+        document=DocumentInfo(po_number="PO-889", supplier="L'Espion"),
         warnings=["ligne 12 ignorée"],
         usage=[
             ExtractionUsage(model="claude-test-1", input_tokens=1000, output_tokens=200)
@@ -105,6 +107,10 @@ def test_run_import_job_stages_items_usage_and_warnings(
     assert fresh.finished_at is not None
     assert fresh.finished_at >= fresh.started_at
     assert fresh.config_json["warnings"] == ["ligne 12 ignorée"]
+    assert fresh.config_json["document"] == {
+        "po_number": "PO-889",
+        "supplier": "L'Espion",
+    }
     assert "error" not in fresh.config_json
 
     items = runner_db.query(ImportItem).order_by(ImportItem.id).all()

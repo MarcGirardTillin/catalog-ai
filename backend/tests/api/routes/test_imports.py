@@ -1,6 +1,7 @@
 """Tests for the supplier-file import routes (/imports)."""
 
 from collections.abc import Generator
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +142,10 @@ def test_import_detail_surfaces_warnings_error_and_counts(
     db = _db()
     row = db.get(EnrichmentJob, job["id"])
     row.status = "completed"
-    row.config_json = {"warnings": ["colonne prix ambiguë"]}
+    row.config_json = {
+        "warnings": ["colonne prix ambiguë"],
+        "document": {"po_number": "PO-889", "supplier": "L'Espion"},
+    }
     db.add_all(
         [
             ImportItem(
@@ -163,6 +167,8 @@ def test_import_detail_surfaces_warnings_error_and_counts(
     detail = import_client.get(f"/imports/{job['id']}").json()
     assert detail["counts"] == {"total": 2, "ready_for_review": 1, "failed": 1}
     assert detail["warnings"] == ["colonne prix ambiguë"]
+    assert detail["po_number"] == "PO-889"
+    assert detail["supplier"] == "L'Espion"
 
     row.config_json = {"error": "ValueError: unreadable"}
     db.commit()
@@ -207,6 +213,122 @@ def test_list_import_items(import_client: TestClient) -> None:
     assert import_client.get("/imports/99999/items").status_code == 404
 
 
+def test_import_detail_totals_sum_quantity_and_amounts(
+    import_client: TestClient,
+) -> None:
+    job = _upload(import_client)
+    assert job["totals"] == {
+        "quantity": 0,
+        "wholesale_amount": None,
+        "retail_amount": None,
+    }
+    # Not extracted yet: no document-level facts either.
+    assert job["po_number"] is None
+    assert job["supplier"] is None
+
+    db = _db()
+    row = db.get(EnrichmentJob, job["id"])
+    db.add_all(
+        [
+            ImportItem(
+                job_id=row.id,
+                account_id=row.account_id,
+                payload_json={
+                    "supplier_ref": "REF-1",
+                    "variants": [
+                        # 2 x 10.50 gros / 2 x 25 conseillé
+                        {
+                            "quantity": 2,
+                            "wholesale_price": "10.50",
+                            "retail_price": "25",
+                        },
+                        # quantité absente -> 1 unité ; pas de prix conseillé
+                        {
+                            "quantity": None,
+                            "wholesale_price": "4.25",
+                            "retail_price": None,
+                        },
+                    ],
+                },
+            ),
+            ImportItem(
+                job_id=row.id,
+                account_id=row.account_id,
+                payload_json={
+                    "supplier_ref": "REF-2",
+                    "variants": [
+                        {"quantity": 3, "wholesale_price": None, "retail_price": None}
+                    ],
+                },
+            ),
+        ]
+    )
+    db.commit()
+
+    totals = import_client.get(f"/imports/{job['id']}").json()["totals"]
+    assert totals["quantity"] == 6
+    assert Decimal(totals["wholesale_amount"]) == Decimal("25.25")
+    assert Decimal(totals["retail_amount"]) == Decimal("50")
+
+
+def test_download_import_file_streams_original_bytes(
+    import_client: TestClient,
+) -> None:
+    job = _upload(import_client, name="Commande L'Espion.pdf", data=b"%PDF-1.4 espion")
+
+    response = import_client.get(f"/imports/{job['id']}/file")
+    assert response.status_code == 200
+    assert response.content == b"%PDF-1.4 espion"
+    assert response.headers["content-type"].startswith("application/pdf")
+    # Inline: the browser previews instead of forcing a download.
+    assert response.headers["content-disposition"].startswith("inline")
+
+    csv_job = _upload(import_client, name="commande.csv", data=b"ref;ean\nR1;123\n")
+    csv_response = import_client.get(f"/imports/{csv_job['id']}/file")
+    assert csv_response.headers["content-type"].startswith("text/csv")
+    assert csv_response.content == b"ref;ean\nR1;123\n"
+
+    assert import_client.get("/imports/99999/file").status_code == 404
+
+
+def test_download_import_file_404_when_file_gone_from_disk(
+    import_client: TestClient, upload_dir: Path
+) -> None:
+    job = _upload(import_client)
+    next(upload_dir.iterdir()).unlink()
+
+    response = import_client.get(f"/imports/{job['id']}/file")
+    assert response.status_code == 404
+    assert response.json()["code"] == "file_not_found"
+    assert import_client.get(f"/imports/{job['id']}/file/preview").status_code == 404
+
+
+def test_preview_tabular_file_returns_first_rows(import_client: TestClient) -> None:
+    data = "ref;ean\n" + "".join(f"R{i};36078{i}\n" for i in range(150))
+    job = _upload(import_client, name="commande.csv", data=data.encode())
+
+    response = import_client.get(f"/imports/{job['id']}/file/preview")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "tabular"
+    assert body["file_name"] == "commande.csv"
+    sheet = body["sheets"][0]
+    assert sheet["rows"][0] == ["ref", "ean"]
+    assert sheet["rows"][1] == ["R0", "360780"]
+    assert len(sheet["rows"]) == 100  # capped
+    assert sheet["total_rows"] == 151
+    assert sheet["truncated"] is True
+
+
+def test_preview_pdf_file_returns_pdf_kind_without_rows(
+    import_client: TestClient,
+) -> None:
+    job = _upload(import_client, name="commande.pdf", data=b"%PDF-1.4 fake")
+
+    body = import_client.get(f"/imports/{job['id']}/file/preview").json()
+    assert body == {"kind": "pdf", "file_name": "commande.pdf", "sheets": []}
+
+
 def test_imports_are_isolated_by_account(import_client: TestClient) -> None:
     # A job owned by ANOTHER account must be invisible here.
     db = _db()
@@ -229,6 +351,8 @@ def test_imports_are_isolated_by_account(import_client: TestClient) -> None:
     assert [job["id"] for job in listing["items"]] == [mine["id"]]
     assert import_client.get(f"/imports/{foreign_id}").status_code == 404
     assert import_client.get(f"/imports/{foreign_id}/items").status_code == 404
+    assert import_client.get(f"/imports/{foreign_id}/file").status_code == 404
+    assert import_client.get(f"/imports/{foreign_id}/file/preview").status_code == 404
 
 
 def test_jobs_list_excludes_import_jobs(import_client: TestClient) -> None:

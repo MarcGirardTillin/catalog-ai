@@ -92,8 +92,19 @@ class ExtractionUsage(BaseModel):
     output_tokens: int = 0
 
 
+class DocumentInfo(BaseModel):
+    """Document-level facts, read once per file (purchase orders mostly).
+
+    Never guessed: only filled when printed in the document itself.
+    """
+
+    po_number: str | None = None  # purchase-order number ("PO", "commande n°")
+    supplier: str | None = None  # issuing supplier or brand name
+
+
 class ExtractionResult(BaseModel):
     products: list[ImportedProduct]
+    document: DocumentInfo = Field(default_factory=DocumentInfo)
     warnings: list[str] = Field(default_factory=list)  # surfaced in review
     usage: list[ExtractionUsage] = Field(default_factory=list)
 

@@ -109,13 +109,17 @@ def _process(
         record_claude_usage(
             db, account_id=job.account_id, usage=usage, source="import", job_id=job.id
         )
+    config_updates: dict[str, object] = {}
     if result.warnings:
         # Document-level warnings live on the job (config_json — no dedicated
         # column), surfaced by the /imports routes.
-        job.config_json = {
-            **(job.config_json or {}),
-            "warnings": [str(w) for w in result.warnings],
-        }
+        config_updates["warnings"] = [str(w) for w in result.warnings]
+    document_info = result.document.model_dump(exclude_none=True)
+    if document_info:
+        # PO number / supplier read once per file (purchase orders).
+        config_updates["document"] = document_info
+    if config_updates:
+        job.config_json = {**(job.config_json or {}), **config_updates}
     # 0 extracted products is a valid (empty) outcome, not a failure.
     job.status = "completed"
     job.finished_at = datetime.now(UTC)

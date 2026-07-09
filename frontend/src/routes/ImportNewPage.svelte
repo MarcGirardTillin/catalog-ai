@@ -16,7 +16,9 @@
     CardTitle,
   } from "@/lib/components/ui/card"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
+  import { parseCsvPreview, readTextWithFallback } from "@/lib/csv-preview"
   import { formatFileSize } from "@/lib/format"
 
   let { appName }: { appName: string } = $props()
@@ -29,6 +31,31 @@
   let dragging = $state(false)
   let submitting = $state(false)
   let fileInput = $state<HTMLInputElement | null>(null)
+
+  // Aperçu avant envoi : PDF via le lecteur du navigateur, CSV parsé côté
+  // client ; l'Excel n'est prévisualisable qu'après l'import (parse serveur).
+  let pdfPreviewUrl = $state<string | null>(null)
+  let csvPreviewRows = $state<string[][] | null>(null)
+
+  function resetPreview() {
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl)
+    pdfPreviewUrl = null
+    csvPreviewRows = null
+  }
+
+  $effect(() => () => resetPreview())
+
+  async function buildPreview(candidate: File) {
+    resetPreview()
+    const name = candidate.name.toLowerCase()
+    if (name.endsWith(".pdf")) {
+      pdfPreviewUrl = URL.createObjectURL(candidate)
+    } else if (name.endsWith(".csv")) {
+      const text = await readTextWithFallback(candidate)
+      // Le fichier a pu être retiré pendant la lecture asynchrone.
+      if (file === candidate) csvPreviewRows = parseCsvPreview(text, 50)
+    }
+  }
 
   function validate(candidate: File): string | null {
     const name = candidate.name.toLowerCase()
@@ -47,10 +74,12 @@
     if (problem) {
       errorMessage = problem
       file = null
+      resetPreview()
       return
     }
     errorMessage = null
     file = candidate
+    void buildPreview(candidate)
   }
 
   function onInputChange(event: Event) {
@@ -69,6 +98,7 @@
   function clearFile() {
     file = null
     errorMessage = null
+    resetPreview()
   }
 
   async function onSubmit() {
@@ -165,6 +195,30 @@
                   <X size={16} />
                 </button>
               </div>
+
+              {#if pdfPreviewUrl}
+                <iframe
+                  src={pdfPreviewUrl}
+                  title="Aperçu de {file.name}"
+                  class="border-border h-96 w-full rounded-md border"
+                ></iframe>
+              {:else if csvPreviewRows}
+                {#if csvPreviewRows.length === 0}
+                  <p class="text-muted-foreground text-xs">
+                    Le fichier semble vide — vérifiez son contenu avant de lancer l'analyse.
+                  </p>
+                {:else}
+                  <FilePreviewTable sheets={[{ rows: csvPreviewRows }]} />
+                  <p class="text-muted-foreground text-xs">
+                    Aperçu des 50 premières lignes.
+                  </p>
+                {/if}
+              {:else if file.name.toLowerCase().endsWith(".xlsx")}
+                <p class="text-muted-foreground text-xs">
+                  Aperçu indisponible pour Excel avant l'analyse — il sera consultable sur la
+                  page de l'import.
+                </p>
+              {/if}
             {/if}
 
             <Button

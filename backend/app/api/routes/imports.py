@@ -6,18 +6,27 @@ name only lives in `selection_json["file_name"]`), then the background runner
 parses/extracts it and stages `import_item` rows for review.
 """
 
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUserDep, ImportRunnerDep, SessionDep
 from app.api.exceptions import AppException
 from app.api.schemas import PaginatedResponse
-from app.api.schemas.imports import ImportItemPublic, ImportJobCounts, ImportJobPublic
+from app.api.schemas.imports import (
+    ImportFilePreview,
+    ImportFilePreviewSheet,
+    ImportItemPublic,
+    ImportJobCounts,
+    ImportJobPublic,
+    ImportJobTotals,
+)
 from app.api.services.accounts import resolve_account_id
 from app.core.config import settings
 from app.models import EnrichmentJob, ImportItem
@@ -26,6 +35,16 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 
 ALLOWED_EXTENSIONS = (".pdf", ".xlsx", ".csv")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+
+MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".csv": "text/csv",
+}
+# Preview caps: enough to eyeball the source, small enough to stay snappy.
+PREVIEW_MAX_ROWS = 100
+PREVIEW_MAX_COLS = 30
+PREVIEW_MAX_CELL_CHARS = 200
 
 
 def _job_counts(db: Session, job_id: int) -> ImportJobCounts:
@@ -46,8 +65,40 @@ def _job_counts(db: Session, job_id: int) -> ImportJobCounts:
     )
 
 
+def _job_totals(db: Session, job_id: int) -> ImportJobTotals:
+    """Sum quantities and order amounts over every staged variant."""
+    payloads = db.scalars(
+        select(ImportItem.payload_json).where(ImportItem.job_id == job_id)
+    ).all()
+    quantity = 0
+    wholesale: Decimal | None = None
+    retail: Decimal | None = None
+    for payload in payloads:
+        for variant in (payload or {}).get("variants") or []:
+            # A variant line without an explicit quantity counts as 1 unit.
+            raw_qty = variant.get("quantity")
+            qty = 1 if raw_qty is None else int(raw_qty)
+            quantity += qty
+            for key, running in (("wholesale_price", "w"), ("retail_price", "r")):
+                raw = variant.get(key)
+                if raw is None:
+                    continue
+                try:
+                    amount = qty * Decimal(str(raw))
+                except InvalidOperation:
+                    continue
+                if running == "w":
+                    wholesale = (wholesale or Decimal(0)) + amount
+                else:
+                    retail = (retail or Decimal(0)) + amount
+    return ImportJobTotals(
+        quantity=quantity, wholesale_amount=wholesale, retail_amount=retail
+    )
+
+
 def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
     config = job.config_json or {}
+    document = config.get("document") or {}
     duration: float | None = None
     if job.started_at is not None and job.finished_at is not None:
         duration = (job.finished_at - job.started_at).total_seconds()
@@ -56,6 +107,9 @@ def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
         status=job.status,
         file_name=str((job.selection_json or {}).get("file_name") or ""),
         counts=_job_counts(db, job.id),
+        totals=_job_totals(db, job.id),
+        po_number=document.get("po_number"),
+        supplier=document.get("supplier"),
         warnings=[str(w) for w in config.get("warnings") or []],
         error=config.get("error"),
         created_at=job.created_at,
@@ -155,6 +209,69 @@ def read_import(
 ) -> ImportJobPublic:
     account_id = resolve_account_id(db, current_user)
     return _to_public(db, _get_import_job(db, account_id=account_id, job_id=import_id))
+
+
+def _get_stored_file(db: Session, *, account_id: int, job_id: int) -> tuple[Path, str]:
+    """Resolve the on-disk stored file for an import, or 404."""
+    job = _get_import_job(db, account_id=account_id, job_id=job_id)
+    selection = job.selection_json or {}
+    path = Path(str(selection.get("file_path") or ""))
+    if not path.name or not path.is_file():
+        raise AppException(
+            status_code=404,
+            code="file_not_found",
+            message="Le fichier source de cet import n'est plus disponible",
+        )
+    file_name = str(selection.get("file_name") or path.name)
+    return path, file_name
+
+
+@router.get("/{import_id}/file", response_class=FileResponse)
+def download_import_file(
+    import_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> FileResponse:
+    """Stream the original uploaded file (inline, for preview or download)."""
+    account_id = resolve_account_id(db, current_user)
+    path, file_name = _get_stored_file(db, account_id=account_id, job_id=import_id)
+    return FileResponse(
+        path,
+        media_type=MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream"),
+        filename=file_name,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/{import_id}/file/preview", response_model=ImportFilePreview)
+def preview_import_file(
+    import_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> ImportFilePreview:
+    """First rows of a tabular source file; PDFs are previewed via /file."""
+    account_id = resolve_account_id(db, current_user)
+    path, file_name = _get_stored_file(db, account_id=account_id, job_id=import_id)
+    if path.suffix.lower() == ".pdf":
+        return ImportFilePreview(kind="pdf", file_name=file_name)
+
+    from app.imports.parsers import parse_file
+
+    try:
+        document = parse_file(path.read_bytes(), file_name)
+    except ValueError as exc:
+        raise AppException(
+            status_code=422, code="unreadable_file", message=str(exc)
+        ) from exc
+    sheets = [
+        ImportFilePreviewSheet(
+            sheet=table.sheet,
+            rows=[
+                [str(cell)[:PREVIEW_MAX_CELL_CHARS] for cell in row[:PREVIEW_MAX_COLS]]
+                for row in table.rows[:PREVIEW_MAX_ROWS]
+            ],
+            total_rows=len(table.rows),
+            truncated=len(table.rows) > PREVIEW_MAX_ROWS,
+        )
+        for table in document.tables
+    ]
+    return ImportFilePreview(kind="tabular", file_name=file_name, sheets=sheets)
 
 
 @router.get("/{import_id}/items", response_model=PaginatedResponse[ImportItemPublic])

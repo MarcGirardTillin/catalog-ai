@@ -26,6 +26,7 @@ from app.clients.base import ExternalServiceError, NotConfiguredError
 from app.core.config import settings
 from app.imports.schema import (
     Confidence,
+    DocumentInfo,
     ExtractionResult,
     ExtractionUsage,
     Extractor,
@@ -65,7 +66,11 @@ SYSTEM_PROMPT = (
     "- brand et category uniquement si elles figurent littéralement dans "
     "le document — ne les déduis jamais.\n"
     "- Pour chaque champ, fournis une auto-évaluation de confiance entre "
-    "0 et 1 (mets 0 pour un champ vide)."
+    "0 et 1 (mets 0 pour un champ vide).\n"
+    "- Au niveau du document : po_number = numéro du bon de commande "
+    "(« PO », « commande n° », « order no. »…) et supplier = nom du "
+    "fournisseur ou de la marque qui émet le document, uniquement s'ils y "
+    'figurent littéralement (chaîne vide "" sinon).'
 )
 
 _USER_PROMPT = (
@@ -135,8 +140,13 @@ _PRODUCT_SCHEMA: dict[str, Any] = {
 
 EXTRACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
-    "properties": {"products": {"type": "array", "items": _PRODUCT_SCHEMA}},
-    "required": ["products"],
+    "properties": {
+        "products": {"type": "array", "items": _PRODUCT_SCHEMA},
+        # Document-level facts (purchase orders): "" = absent, like the rest.
+        "po_number": {"type": "string"},
+        "supplier": {"type": "string"},
+    },
+    "required": ["products", "po_number", "supplier"],
     "additionalProperties": False,
 }
 
@@ -173,6 +183,8 @@ class _RawProduct(BaseModel):
 
 class _RawExtraction(BaseModel):
     products: list[_RawProduct]
+    po_number: str = ""
+    supplier: str = ""
 
 
 # ---- normalization helpers (cross-check) ----
@@ -310,7 +322,14 @@ class ClaudeExtractor:
                 output_tokens=response.usage.output_tokens,
             )
         ]
-        return ExtractionResult(products=products, warnings=warnings, usage=usage)
+        return ExtractionResult(
+            products=products,
+            document=DocumentInfo(
+                po_number=_opt(raw.po_number), supplier=_opt(raw.supplier)
+            ),
+            warnings=warnings,
+            usage=usage,
+        )
 
     # ---- request building ----
 

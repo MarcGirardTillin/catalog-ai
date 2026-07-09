@@ -1,12 +1,19 @@
 <script lang="ts">
   import ChevronDown from "@lucide/svelte/icons/chevron-down"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
+  import Download from "@lucide/svelte/icons/download"
+  import Eye from "@lucide/svelte/icons/eye"
+  import EyeOff from "@lucide/svelte/icons/eye-off"
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { navigate } from "svelte5-router"
 
   import {
+    getImportFile,
     listImportItems,
+    previewImportFile,
     readImport,
+    type ImportFilePreview,
     type ImportItemPublic,
     type ImportJobPublic,
     type ImportedVariant,
@@ -16,6 +23,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import { formatDuration } from "@/lib/format"
@@ -85,6 +93,59 @@
   })
 
   const running = $derived(job?.status === "pending" || job?.status === "processing")
+
+  // Fichier source : prévisualisation (PDF via blob, tabulaire via parse
+  // serveur, chargée au premier dépliage) et re-téléchargement.
+  const isPdf = $derived((job?.file_name ?? "").toLowerCase().endsWith(".pdf"))
+  let previewOpen = $state(false)
+  let previewLoading = $state(false)
+  let previewError = $state<string | null>(null)
+  let filePreview = $state<ImportFilePreview | null>(null)
+  let filePdfUrl = $state<string | null>(null)
+  let downloading = $state(false)
+
+  $effect(() => () => {
+    if (filePdfUrl) URL.revokeObjectURL(filePdfUrl)
+  })
+
+  async function togglePreview() {
+    if (previewOpen) {
+      previewOpen = false
+      return
+    }
+    previewOpen = true
+    if (filePreview || filePdfUrl || previewLoading) return
+    previewLoading = true
+    previewError = null
+    if (isPdf) {
+      const { data, error } = await getImportFile(Number(id))
+      if (error || !data) previewError = "Le fichier source n'est plus disponible."
+      else filePdfUrl = URL.createObjectURL(data)
+    } else {
+      const { data, error } = await previewImportFile(Number(id))
+      if (error || !data) previewError = "Le fichier source n'est plus disponible."
+      else filePreview = data
+    }
+    previewLoading = false
+  }
+
+  async function downloadFile() {
+    if (!job || downloading) return
+    downloading = true
+    const { data, error } = await getImportFile(Number(id))
+    downloading = false
+    if (error || !data) {
+      previewError = "Le fichier source n'est plus disponible."
+      previewOpen = true
+      return
+    }
+    const url = URL.createObjectURL(data)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = job.file_name || `import-${id}`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
 
   function toggleExpanded(itemId: number) {
     const next = new Set(expanded)
@@ -171,6 +232,18 @@
           <Card>
             <CardContent class="flex flex-col gap-3">
               <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
+                {#if job.po_number}
+                  <div>
+                    <dt class="text-muted-foreground">N° de commande (PO)</dt>
+                    <dd class="font-mono font-medium">{job.po_number}</dd>
+                  </div>
+                {/if}
+                {#if job.supplier}
+                  <div>
+                    <dt class="text-muted-foreground">Fournisseur</dt>
+                    <dd class="font-medium">{job.supplier}</dd>
+                  </div>
+                {/if}
                 <div>
                   <dt class="text-muted-foreground">Produits extraits</dt>
                   <dd class="font-mono font-medium">{job.counts.total}</dd>
@@ -189,6 +262,28 @@
                   <div>
                     <dt class="text-muted-foreground">{timing.label}</dt>
                     <dd class="font-mono font-medium">{timing.value}</dd>
+                  </div>
+                {/if}
+                {#if job.totals.quantity > 0}
+                  <div>
+                    <dt class="text-muted-foreground">Quantité totale</dt>
+                    <dd class="font-mono font-medium">{job.totals.quantity}</dd>
+                  </div>
+                {/if}
+                {#if job.totals.wholesale_amount != null}
+                  <div>
+                    <dt class="text-muted-foreground">Total prix de gros</dt>
+                    <dd class="font-mono font-medium">
+                      {formatPrice(job.totals.wholesale_amount)}
+                    </dd>
+                  </div>
+                {/if}
+                {#if job.totals.retail_amount != null}
+                  <div>
+                    <dt class="text-muted-foreground">Total prix conseillé</dt>
+                    <dd class="font-mono font-medium">
+                      {formatPrice(job.totals.retail_amount)}
+                    </dd>
                   </div>
                 {/if}
               </dl>
@@ -213,6 +308,51 @@
               {#if job.error}
                 <p class="text-destructive text-xs" role="alert">{job.error}</p>
               {/if}
+
+              <!-- Fichier source : aperçu à la demande + re-téléchargement. -->
+              <div class="border-border flex flex-col gap-3 border-t pt-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-muted-foreground text-xs">
+                    Fichier source : <span class="text-foreground font-medium">{job.file_name}</span>
+                  </p>
+                  <div class="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onclick={togglePreview}>
+                      {#if previewLoading}
+                        <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                      {:else if previewOpen}
+                        <EyeOff size={14} aria-hidden="true" />
+                      {:else}
+                        <Eye size={14} aria-hidden="true" />
+                      {/if}
+                      {previewOpen ? "Masquer l'aperçu" : "Prévisualiser"}
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={downloading} onclick={downloadFile}>
+                      {#if downloading}
+                        <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                      {:else}
+                        <Download size={14} aria-hidden="true" />
+                      {/if}
+                      Télécharger
+                    </Button>
+                  </div>
+                </div>
+
+                {#if previewOpen}
+                  {#if previewError}
+                    <p class="text-destructive text-xs" role="alert">{previewError}</p>
+                  {:else if previewLoading}
+                    <Skeleton class="h-40 w-full" />
+                  {:else if filePdfUrl}
+                    <iframe
+                      src={filePdfUrl}
+                      title="Aperçu de {job.file_name}"
+                      class="border-border h-128 w-full rounded-md border"
+                    ></iframe>
+                  {:else if filePreview}
+                    <FilePreviewTable sheets={filePreview.sheets} />
+                  {/if}
+                {/if}
+              </div>
             </CardContent>
           </Card>
 

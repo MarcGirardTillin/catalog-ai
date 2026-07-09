@@ -88,8 +88,12 @@ def _payload(
     ean: str = VALID_EAN,
     wholesale: str = "39.9",
     retail: str = "89",
+    po_number: str = "PO-12345",
+    supplier: str = "L'Espion",
 ) -> dict[str, Any]:
     return {
+        "po_number": po_number,
+        "supplier": supplier,
         "products": [
             {
                 "supplier_ref": "REF001",
@@ -109,7 +113,7 @@ def _payload(
                     }
                 ],
             }
-        ]
+        ],
     }
 
 
@@ -123,6 +127,9 @@ def test_tabular_extraction_maps_and_verifies_values() -> None:
     result = _extractor(handler)(_tabular_document())
 
     assert result.warnings == []
+    # Document-level facts (purchase order header).
+    assert result.document.po_number == "PO-12345"
+    assert result.document.supplier == "L'Espion"
     product = result.products[0]
     assert product.supplier_ref == "REF001"
     assert product.title == "Robe fleurie"
@@ -154,6 +161,16 @@ def test_tabular_extraction_maps_and_verifies_values() -> None:
     text = body["messages"][0]["content"][0]["text"]
     assert "Feuille : Commande" in text
     assert VALID_EAN in text
+
+
+def test_document_info_empty_strings_map_to_none() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        payload = _payload(po_number="", supplier="  ")
+        return httpx.Response(200, json=_api_response(payload))
+
+    result = _extractor(handler)(_tabular_document())
+    assert result.document.po_number is None
+    assert result.document.supplier is None
 
 
 def test_tabular_cross_check_removes_unverifiable_values() -> None:
