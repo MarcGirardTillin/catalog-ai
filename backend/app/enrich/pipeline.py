@@ -18,9 +18,10 @@ from collections.abc import Callable
 from typing import Any
 
 import httpx
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas import Product
+from app.api.services.usage import record_claude_usage
 from app.clients.claude import ClaudeClient
 from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
@@ -57,7 +58,7 @@ class EnrichmentPipeline:
         self._http = http_client
         self._claude = claude
 
-    def __call__(self, db: Session, item: EnrichmentItem) -> None:  # noqa: ARG002
+    def __call__(self, db: Session, item: EnrichmentItem) -> None:
         product = self._read_product(item.tillin_product_id)
         if product is None:
             raise LookupError(
@@ -89,7 +90,7 @@ class EnrichmentPipeline:
         self._stage_source(item, product, source_product)
 
         # 4. Copy generation — optional (needs an API key).
-        self._stage_copy(item, product, source_product, config)
+        self._stage_copy(db, item, product, source_product, config)
 
     def stage_from_url(self, item: EnrichmentItem, url: str) -> None:
         """Manually (re)resolve an item from a specific source-page URL.
@@ -113,7 +114,7 @@ class EnrichmentPipeline:
         item.source_method = "manual"
         item.match_score = score_product_match(product, source_product)
         self._stage_source(item, product, source_product)
-        self._stage_copy(item, product, source_product, config)
+        self._stage_copy(object_session(item), item, product, source_product, config)
 
     def _stage_source(
         self,
@@ -138,6 +139,7 @@ class EnrichmentPipeline:
 
     def _stage_copy(
         self,
+        db: Session | None,
         item: EnrichmentItem,
         product: Product,
         source_product: dict[str, Any] | None,
@@ -157,6 +159,17 @@ class EnrichmentPipeline:
         )
         item.staged_description = copy.description_fr
         item.staged_meta = copy.meta_description_fr
+        # Metering (M1): one input_tokens + one output_tokens event per call,
+        # committed alongside the staged result by the caller.
+        if db is not None and copy.usage is not None:
+            record_claude_usage(
+                db,
+                account_id=item.account_id,
+                usage=copy.usage,
+                source="enrichment",
+                job_id=item.job_id,
+                item_id=item.id,
+            )
 
 
 def _candidate_websites(product: Product, config: dict[str, Any]) -> list[str]:

@@ -1,0 +1,125 @@
+"""Import job processor: parse the uploaded supplier file, extract products,
+stage one `import_item` per product.
+
+Runs as a background task right after `POST /imports` (same in-process model
+as `app.jobs.runner`), with its own session. The parsing/extraction module
+(`app.imports`, built separately) is only imported lazily inside the default
+factories, so this runner stays importable — and testable with fakes — while
+that module is still under construction.
+
+Timestamps use Python wall-clock time (`datetime.now(UTC)`), NOT `func.now()`:
+Postgres' now() is the transaction start time, which would collapse the
+started/finished window to ~0s (see `app.jobs.queue._utcnow`).
+"""
+
+import logging
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from sqlalchemy.orm import Session
+
+from app.api.services.usage import record_claude_usage
+from app.core.config import settings
+from app.core.db import SessionLocal
+from app.models import EnrichmentJob, ImportItem
+
+if TYPE_CHECKING:
+    from app.imports.schema import ExtractionResult, RawDocument
+
+logger = logging.getLogger(__name__)
+
+# Injection points (tests pass fakes; production uses the lazy defaults).
+ParseFile = Callable[[bytes, str], "RawDocument"]
+Extractor = Callable[["RawDocument"], "ExtractionResult"]
+BuildExtractor = Callable[[], Extractor]
+
+
+def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
+    from app.imports.parsers import parse_file
+
+    return parse_file(data, filename)
+
+
+def _default_build_extractor() -> Extractor:
+    from app.imports.extract import build_extractor
+
+    return build_extractor(settings.ANTHROPIC_API_KEY)
+
+
+def run_import_job(
+    job_id: int,
+    *,
+    parse_file: ParseFile | None = None,
+    build_extractor: BuildExtractor | None = None,
+) -> None:
+    """Process one import job to completion (background task entrypoint)."""
+    parse = parse_file or _default_parse_file
+    build = build_extractor or _default_build_extractor
+    db = SessionLocal()
+    try:
+        job = db.get(EnrichmentJob, job_id)
+        if job is None or job.job_type != "import":
+            logger.warning("import runner: job %s not found or not an import", job_id)
+            return
+        job.status = "processing"
+        job.started_at = datetime.now(UTC)
+        db.commit()
+        try:
+            _process(db, job, parse, build)
+        except Exception as exc:  # noqa: BLE001 — the job row carries the error
+            db.rollback()
+            logger.exception("import job %s failed", job_id)
+            job.status = "failed"
+            job.config_json = {
+                **(job.config_json or {}),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            job.finished_at = datetime.now(UTC)
+            db.commit()
+    finally:
+        db.close()
+
+
+def _process(
+    db: Session, job: EnrichmentJob, parse: ParseFile, build: BuildExtractor
+) -> None:
+    """Parse -> extract -> stage items + usage; commit once at the end."""
+    file_path = str(job.selection_json.get("file_path") or "")
+    if not file_path:
+        raise ValueError("import job has no selection_json['file_path']")
+    file_name = str(job.selection_json.get("file_name") or Path(file_path).name)
+    data = Path(file_path).read_bytes()
+
+    document = parse(data, file_name)
+    extractor = build()
+    result = extractor(document)
+
+    for product in result.products:
+        db.add(
+            ImportItem(
+                job_id=job.id,
+                account_id=job.account_id,
+                status="ready_for_review",
+                payload_json=product.model_dump(mode="json"),
+            )
+        )
+    for usage in result.usage:
+        record_claude_usage(
+            db, account_id=job.account_id, usage=usage, source="import", job_id=job.id
+        )
+    if result.warnings:
+        # Document-level warnings live on the job (config_json — no dedicated
+        # column), surfaced by the /imports routes.
+        job.config_json = {
+            **(job.config_json or {}),
+            "warnings": [str(w) for w in result.warnings],
+        }
+    # 0 extracted products is a valid (empty) outcome, not a failure.
+    job.status = "completed"
+    job.finished_at = datetime.now(UTC)
+    db.commit()
+    logger.info(
+        "import job %s completed: %s product(s) staged", job.id, len(result.products)
+    )

@@ -41,9 +41,19 @@ def _system_prompt(meta_max_length: int) -> str:
     )
 
 
+class ClaudeUsage(BaseModel):
+    """Token usage of one Claude call (feeds the usage metering brick, M1)."""
+
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 class CopyResult(BaseModel):
     description_fr: str
     meta_description_fr: str
+    # Filled by the client from the API response; None on fakes/legacy paths.
+    usage: ClaudeUsage | None = None
 
 
 class ClaudeClient:
@@ -106,8 +116,14 @@ class ClaudeClient:
             (block.text for block in response.content if block.type == "text"), ""
         )
         try:
-            return CopyResult.model_validate_json(text)
+            result = CopyResult.model_validate_json(text)
         except ValidationError as exc:
             raise ExternalServiceError(
                 "claude", "Claude returned an unparseable copy payload"
             ) from exc
+        result.usage = ClaudeUsage(
+            model=response.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+        return result

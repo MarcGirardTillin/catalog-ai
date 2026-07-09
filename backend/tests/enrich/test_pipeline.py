@@ -6,9 +6,10 @@ import httpx
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import Brand, Product, ProductVariant
+from app.clients.claude import ClaudeUsage, CopyResult
 from app.enrich.pipeline import EnrichmentPipeline
 from app.jobs.worker import process_one
-from app.models import Account, EnrichmentItem, EnrichmentJob
+from app.models import Account, EnrichmentItem, EnrichmentJob, UsageEvent
 
 SITE = "https://gramicci.example"
 
@@ -111,12 +112,13 @@ class _FakeClaude:
                 "meta_max_length": meta_max_length,
             }
         )
-
-        class _Copy:
-            description_fr = "Un short robuste et léger."
-            meta_description_fr = "Short Gramicci G-Short — confort et style."
-
-        return _Copy()
+        return CopyResult(
+            description_fr="Un short robuste et léger.",
+            meta_description_fr="Short Gramicci G-Short — confort et style.",
+            usage=ClaudeUsage(
+                model="claude-test-1", input_tokens=321, output_tokens=87
+            ),
+        )
 
 
 def test_pipeline_stages_title_weights_images_and_copy(
@@ -156,6 +158,21 @@ def test_pipeline_stages_title_weights_images_and_copy(
     # The copywriter saw both canonical and source-page facts.
     assert claude.calls[0]["ctx"]["brand"] == "Gramicci"
     assert "source_description_html" in claude.calls[0]["ctx"]
+
+    # Metering (M1): the Claude call left one event per token metric.
+    events = db.query(UsageEvent).order_by(UsageEvent.id).all()
+    assert [(e.metric, e.quantity) for e in events] == [
+        ("input_tokens", 321),
+        ("output_tokens", 87),
+    ]
+    assert all(
+        (e.source, e.provider, e.model) == ("enrichment", "claude", "claude-test-1")
+        for e in events
+    )
+    assert all(
+        (e.account_id, e.job_id, e.item_id) == (item.account_id, item.job_id, item.id)
+        for e in events
+    )
     db.close()
 
 

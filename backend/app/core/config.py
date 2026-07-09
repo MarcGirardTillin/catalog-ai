@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LOG_FORMAT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 REPO_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE_PATH = REPO_ROOT / ".env"
 
 
@@ -73,6 +74,9 @@ class Settings(BaseSettings):
     # datasource (sent as the `X-Data-Source` header on every call).
     XANO_DATA_SOURCE: str = ""
     XANO_TIMEOUT_SECONDS: float = 30.0
+
+    # Where uploaded supplier files (imports) are stored. Created on demand.
+    UPLOAD_DIR: str = str(BACKEND_DIR / "var" / "uploads")
 
     # External service clients (all optional: empty key = integration disabled).
     ANTHROPIC_API_KEY: str = ""

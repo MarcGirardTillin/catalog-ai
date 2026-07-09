@@ -88,7 +88,11 @@ def list_jobs(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedResponse[JobPublic]:
     account_id = resolve_account_id(db, current_user)
-    base = select(EnrichmentJob).where(EnrichmentJob.account_id == account_id)
+    # Import jobs have their own screen (/imports) — keep them out of Jobs.
+    base = select(EnrichmentJob).where(
+        EnrichmentJob.account_id == account_id,
+        EnrichmentJob.job_type == "enrichment",
+    )
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = (
         db.execute(

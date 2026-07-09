@@ -33,6 +33,12 @@ class EnrichmentJob(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("account.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    # "enrichment" (catalog enrichment run) or "import" (supplier file import).
+    # Import jobs reference their uploaded file in selection_json:
+    # {"file_name": str, "file_path": str}.
+    job_type: Mapped[str] = mapped_column(
+        String(20), default="enrichment", server_default="enrichment"
+    )
     # {"ids": [...]} or {"tag": "..."} — the product selection as submitted.
     selection_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     # Transform toggles, templates, ai/scrape/source settings (plan: config_json).

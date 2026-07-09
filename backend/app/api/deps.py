@@ -70,6 +70,19 @@ def get_job_runner() -> JobRunner:
 JobRunnerDep = Annotated[JobRunner, Depends(get_job_runner)]
 
 
+# Background import runner (same pattern: overridden with a no-op/spy in tests).
+ImportRunner = Callable[[int], None]
+
+
+def get_import_runner() -> ImportRunner:
+    from app.jobs.import_runner import run_import_job
+
+    return run_import_job
+
+
+ImportRunnerDep = Annotated[ImportRunner, Depends(get_import_runner)]
+
+
 def get_enrichment_pipeline() -> "EnrichmentPipeline":
     """Return the process-wide enrichment pipeline (manual re-resolve, etc.)."""
     from app.jobs.runner import get_pipeline
