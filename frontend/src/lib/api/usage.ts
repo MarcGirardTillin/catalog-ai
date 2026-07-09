@@ -26,6 +26,34 @@ export type UsageSummary = {
   totals: { cost: string; billable: string }
   // Nombre de (provider, model, metric) consommés sans tarif dans la grille.
   unpriced_count: number
+  // Figement : true si le mois est facturé (tarifs figés à cette date).
+  frozen: boolean
+  // Date à laquelle le mois est/sera facturé ("YYYY-MM-DD").
+  billing_date: string
+  // Horodatage du figement effectif, ou null si pas encore figé.
+  frozen_at: string | null
+}
+
+// --- Série temporelle quotidienne (pour les graphiques) ---
+
+export type UsageTimeseriesGroupBy = "none" | "model" | "provider"
+
+export type UsageTimeseriesPoint = {
+  date: string // "YYYY-MM-DD"
+  amount: string // facturable en EUR (chaîne décimale)
+  quantity: number
+}
+
+export type UsageTimeseriesSeries = {
+  key: string
+  points: UsageTimeseriesPoint[]
+}
+
+export type UsageTimeseries = {
+  month: string
+  group_by: UsageTimeseriesGroupBy
+  currency: string
+  series: UsageTimeseriesSeries[]
 }
 
 export type UsageJobMetric = {
@@ -83,6 +111,30 @@ export function getUsageByJob(month: string) {
   return client.get<{ 200: UsageByJob }, unknown>({
     responseType: "json",
     url: "/usage/by-job",
+    query: { month },
+  })
+}
+
+/** Série temporelle quotidienne du facturable, regroupée ou non. */
+export function getUsageTimeseries(
+  month: string,
+  groupBy: UsageTimeseriesGroupBy,
+) {
+  return client.get<{ 200: UsageTimeseries }, unknown>({
+    responseType: "json",
+    url: "/usage/timeseries",
+    query: { month, group_by: groupBy },
+  })
+}
+
+/**
+ * Re-figement d'un mois déjà facturé avec les tarifs actuels.
+ * 400 {code:"not_frozen"} si le mois n'est pas encore facturé.
+ */
+export function refreezeUsageMonth(month: string) {
+  return client.post<{ 200: UsageSummary }, { code?: string }>({
+    responseType: "json",
+    url: "/usage/snapshot",
     query: { month },
   })
 }

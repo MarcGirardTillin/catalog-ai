@@ -21,6 +21,7 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
+  import type { AccountSettingsExtended } from "@/lib/accountSettings.svelte"
   import { saveAccountSettingsPartial } from "@/lib/accountSettings.svelte"
   import { prefs, savePreferences } from "@/lib/preferences.svelte"
 
@@ -54,6 +55,9 @@
   let savingAccount = $state(false)
   let notifyOnJobDone = $state(false)
   let notifyEmail = $state("")
+  // Jour de facturation (1..28) : la conso d'un mois est figée ce jour du
+  // mois suivant. Stocké dans AccountSettings (extension locale du type).
+  let billingDay = $state(1)
 
   // --- Connexion Tillin (lecture seule) ---
   let connection = $state<ConnectionStatus | null>(null)
@@ -73,6 +77,7 @@
       }
       notifyOnJobDone = data.notify_on_job_done ?? false
       notifyEmail = data.notify_email ?? ""
+      billingDay = (data as AccountSettingsExtended).billing_day ?? 1
       accountLoaded = true
     })
     settingsReadConnectionStatus().then(({ data }) => {
@@ -81,16 +86,23 @@
   })
 
   async function saveAccount() {
+    const day = Math.round(Number(billingDay))
+    if (!Number.isFinite(day) || day < 1 || day > 28) {
+      toast.error("Le jour de facturation doit être compris entre 1 et 28.")
+      return
+    }
     savingAccount = true
     const ok = await saveAccountSettingsPartial({
       notify_on_job_done: notifyOnJobDone,
       notify_email: notifyEmail.trim() || null,
+      billing_day: day,
     })
     savingAccount = false
     if (!ok) {
       toast.error("Enregistrement impossible.")
       return
     }
+    billingDay = day
     toast.success("Réglages enregistrés")
   }
 
@@ -297,6 +309,38 @@
                   <span class="text-muted-foreground">Connexion Tillin non configurée</span>
                 {/if}
               </div>
+            </CardContent>
+          </Card>
+
+          <!-- Facturation (jour de figement ; même bouton Enregistrer) -->
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">Facturation</CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                La consommation d'un mois est facturée (et ses tarifs figés) ce
+                jour du mois suivant.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-4">
+              {#if !accountLoaded}
+                <Skeleton class="h-9 w-40" />
+              {:else}
+                <div class="flex flex-col gap-1.5 sm:max-w-40">
+                  <Label for="billing-day">Jour de facturation</Label>
+                  <Input
+                    id="billing-day"
+                    type="number"
+                    min="1"
+                    max="28"
+                    step="1"
+                    inputmode="numeric"
+                    bind:value={billingDay}
+                  />
+                  <p class="text-muted-foreground text-xs">
+                    Entre 1 et 28 (jour du mois suivant).
+                  </p>
+                </div>
+              {/if}
             </CardContent>
           </Card>
 

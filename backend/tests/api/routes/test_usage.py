@@ -1,6 +1,6 @@
 """Tests for the usage reporting routes (/usage): prices, summary, by-job, CSV."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -8,8 +8,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
 from app.api.deps import get_db
+from app.api.routes import usage as usage_module
 from app.main import app
-from app.models import Account, EnrichmentJob, UsageEvent, UsagePrice
+from app.models import (
+    Account,
+    EnrichmentJob,
+    UsageBillingSnapshot,
+    UsageEvent,
+    UsagePrice,
+)
 
 
 def _db() -> Any:
@@ -383,3 +390,159 @@ def test_invalid_month_returns_422(auth_client: TestClient) -> None:
             response = auth_client.get(f"{path}?month={bad}")
             assert response.status_code == 422, (path, bad)
             assert response.json()["code"] == "invalid_month"
+
+
+# --- Billing freeze / snapshots -------------------------------------------
+
+
+def test_billing_date_and_is_frozen() -> None:
+    # billing_day applied to the FOLLOWING month.
+    assert usage_module._billing_date(1, 2026, 7) == date(2026, 8, 1)
+    assert usage_module._billing_date(5, 2026, 7) == date(2026, 8, 5)
+    # December rolls into January of the next year.
+    assert usage_module._billing_date(1, 2026, 12) == date(2027, 1, 1)
+    assert usage_module._billing_date(5, 2026, 12) == date(2027, 1, 5)
+
+    bill = date(2026, 8, 1)
+    assert usage_module._is_frozen(bill, date(2026, 8, 1)) is True  # on the day
+    assert usage_module._is_frozen(bill, date(2026, 8, 2)) is True  # after
+    assert usage_module._is_frozen(bill, date(2026, 7, 31)) is False  # before
+
+
+def test_summary_frozen_month_pins_prices(
+    auth_client: TestClient, monkeypatch: Any
+) -> None:
+    # Pretend "today" is 2026-08-15: 2026-06 is billed (2026-07-01), 2026-08 is
+    # the live current month.
+    monkeypatch.setattr(usage_module, "_now", lambda: datetime(2026, 8, 15, tzinfo=UTC))
+    account_id = _account_id(auth_client)
+    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+    _seed_event(
+        account_id=account_id,
+        metric="input_tokens",
+        quantity=1000,
+        created_at=datetime(2026, 6, 10, tzinfo=UTC),
+    )
+
+    body = auth_client.get("/usage/summary?month=2026-06").json()
+    assert body["frozen"] is True
+    assert body["billing_date"] == "2026-07-01"
+    assert body["frozen_at"] is not None
+    assert body["totals"]["cost"] == "0.0010"
+
+    db = _db()
+    snaps = db.scalars(
+        select(UsageBillingSnapshot).where(UsageBillingSnapshot.period == "2026-06")
+    ).all()
+    assert len(snaps) == 1
+
+    # Change the current price: the frozen month keeps the OLD cost.
+    prices = auth_client.get("/usage/prices").json()
+    patch = auth_client.patch(
+        f"/usage/prices/{prices[0]['id']}", json={"unit_price": "0.001"}
+    )
+    assert patch.status_code == 200
+    again = auth_client.get("/usage/summary?month=2026-06").json()
+    assert again["totals"]["cost"] == "0.0010"  # pinned, not repriced
+    snaps_after = db.scalars(
+        select(UsageBillingSnapshot).where(UsageBillingSnapshot.period == "2026-06")
+    ).all()
+    assert len(snaps_after) == 1  # no duplicate snapshot on re-read
+
+    # The current month is never frozen and creates no snapshot.
+    current = auth_client.get("/usage/summary?month=2026-08").json()
+    assert current["frozen"] is False
+    assert current["frozen_at"] is None
+    assert current["billing_date"] == "2026-09-01"
+    assert (
+        db.scalars(
+            select(UsageBillingSnapshot).where(UsageBillingSnapshot.period == "2026-08")
+        ).all()
+        == []
+    )
+
+
+def test_snapshot_refreeze_and_not_frozen(
+    auth_client: TestClient, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(usage_module, "_now", lambda: datetime(2026, 8, 15, tzinfo=UTC))
+    account_id = _account_id(auth_client)
+    # No price configured at closing time: the metric is unpriced.
+    _seed_event(
+        account_id=account_id,
+        metric="input_tokens",
+        quantity=1000,
+        created_at=datetime(2026, 6, 10, tzinfo=UTC),
+    )
+    first = auth_client.get("/usage/summary?month=2026-06").json()
+    assert first["frozen"] is True
+    assert first["unpriced_count"] == 1
+    assert first["totals"]["cost"] == "0.0000"
+
+    # Correct the missing price, then re-freeze from the current grid.
+    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000002")
+    refrozen = auth_client.post("/usage/snapshot?month=2026-06")
+    assert refrozen.status_code == 200
+    body = refrozen.json()
+    assert body["frozen"] is True
+    assert body["unpriced_count"] == 0
+    assert body["totals"]["cost"] == "0.0020"  # 1000 × 0.000002
+
+    # A current/future month cannot be frozen.
+    bad = auth_client.post("/usage/snapshot?month=2026-08")
+    assert bad.status_code == 400
+    assert bad.json()["code"] == "not_frozen"
+
+
+def test_timeseries_group_by_and_empty_days(
+    auth_client: TestClient, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(usage_module, "_now", lambda: datetime(2026, 8, 15, tzinfo=UTC))
+    account_id = _account_id(auth_client)
+    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+    put = auth_client.put("/settings/account", json={"billing_coefficient": 2.0})
+    assert put.status_code == 200
+
+    _seed_event(
+        account_id=account_id,
+        provider="claude",
+        model="model-a",
+        metric="input_tokens",
+        quantity=1000,
+        created_at=datetime(2026, 6, 3, 12, tzinfo=UTC),
+    )
+    _seed_event(
+        account_id=account_id,
+        provider="claude",
+        model="model-b",
+        metric="input_tokens",
+        quantity=2000,
+        created_at=datetime(2026, 6, 10, 9, tzinfo=UTC),
+    )
+
+    # group_by=none: a single "total" series, every June day present.
+    ts = auth_client.get("/usage/timeseries?month=2026-06&group_by=none").json()
+    assert ts["group_by"] == "none"
+    assert ts["currency"] == "EUR"
+    assert [s["key"] for s in ts["series"]] == ["total"]
+    total = ts["series"][0]
+    assert len(total["points"]) == 30  # all 30 days of June
+    by_date = {p["date"]: p for p in total["points"]}
+    # amount is billable = quantity × unit_price × coefficient (2.0).
+    assert by_date["2026-06-03"]["amount"] == "0.0020"
+    assert by_date["2026-06-03"]["quantity"] == 1000
+    assert by_date["2026-06-10"]["amount"] == "0.0040"
+    assert by_date["2026-06-10"]["quantity"] == 2000
+    # Idle day is zeroed, not dropped.
+    assert by_date["2026-06-01"]["amount"] == "0.0000"
+    assert by_date["2026-06-01"]["quantity"] == 0
+
+    # group_by=model: one series per model, sorted by key.
+    ts_model = auth_client.get("/usage/timeseries?month=2026-06&group_by=model").json()
+    assert [s["key"] for s in ts_model["series"]] == ["model-a", "model-b"]
+
+    # group_by=provider: one series per provider.
+    ts_prov = auth_client.get(
+        "/usage/timeseries?month=2026-06&group_by=provider"
+    ).json()
+    assert [s["key"] for s in ts_prov["series"]] == ["claude"]

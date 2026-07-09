@@ -57,6 +57,29 @@ class UsageSummary(BaseModel):
     lines: list[UsageSummaryLine]
     totals: UsageTotals
     unpriced_count: int
+    # Billing/freeze status of the month (see usage_billing_snapshot).
+    frozen: bool = False  # True once the month has been billed (prices pinned)
+    billing_date: str  # "YYYY-MM-DD": the day this month is/was billed
+    frozen_at: datetime | None = None  # when the snapshot was taken
+
+
+class UsageTimeseriesPoint(BaseModel):
+    date: str  # "YYYY-MM-DD"
+    amount: str  # billable (EUR), Decimal serialized; "0" when unpriced
+    quantity: int  # raw metric quantity summed for this series/day
+
+
+class UsageTimeseriesSeries(BaseModel):
+    # "total" for group_by=none; a model name or provider name otherwise.
+    key: str
+    points: list[UsageTimeseriesPoint]
+
+
+class UsageTimeseries(BaseModel):
+    month: str
+    group_by: str  # "none" | "model" | "provider"
+    currency: str
+    series: list[UsageTimeseriesSeries]
 
 
 class UsageJobMetric(BaseModel):

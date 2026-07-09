@@ -6,6 +6,7 @@ from app.models.import_profile import ImportProfile
 from app.models.instruction import InstructionTemplate
 from app.models.usage import UsageEvent
 from app.models.usage_price import UsagePrice
+from app.models.usage_snapshot import UsageBillingSnapshot
 from app.models.user import User
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "ImportItem",
     "ImportProfile",
     "InstructionTemplate",
+    "UsageBillingSnapshot",
     "UsageEvent",
     "UsagePrice",
     "User",
