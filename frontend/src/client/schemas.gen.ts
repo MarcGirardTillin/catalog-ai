@@ -13,6 +13,16 @@ export const AccountSettingsSchema = {
             ],
             title: 'Title Template'
         },
+        title_case: {
+            type: 'string',
+            enum: [
+                'none',
+                'upper',
+                'capitalize'
+            ],
+            title: 'Title Case',
+            default: 'none'
+        },
         editorial_instructions: {
             anyOf: [
                 {
@@ -57,6 +67,19 @@ export const AccountSettingsSchema = {
                 }
             ],
             title: 'Notify Email'
+        },
+        billing_coefficient: {
+            type: 'number',
+            minimum: 0,
+            title: 'Billing Coefficient',
+            default: 1
+        },
+        billing_day: {
+            type: 'integer',
+            maximum: 28,
+            minimum: 1,
+            title: 'Billing Day',
+            default: 1
         }
     },
     type: 'object',
@@ -70,6 +93,17 @@ export const Body_imports_create_importSchema = {
             type: 'string',
             contentMediaType: 'application/octet-stream',
             title: 'File'
+        },
+        location_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Location Id'
         }
     },
     type: 'object',
@@ -77,6 +111,25 @@ export const Body_imports_create_importSchema = {
         'file'
     ],
     title: 'Body_imports-create_import'
+} as const;
+
+export const Body_products_upload_product_imagesSchema = {
+    properties: {
+        files: {
+            items: {
+                type: 'string',
+                contentMediaType: 'application/octet-stream'
+            },
+            type: 'array',
+            title: 'Files',
+            description: 'Image files to upload'
+        }
+    },
+    type: 'object',
+    required: [
+        'files'
+    ],
+    title: 'Body_products-upload_product_images'
 } as const;
 
 export const BrandSchema = {
@@ -185,6 +238,14 @@ export const CatalogFiltersSchema = {
             },
             type: 'array',
             title: 'Categories',
+            default: []
+        },
+        compositions: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Compositions',
             default: []
         },
         seasons: {
@@ -401,6 +462,74 @@ export const HealthResponseSchema = {
     description: 'Response returned by the healthcheck endpoint.'
 } as const;
 
+export const ImportFilePreviewSchema = {
+    properties: {
+        kind: {
+            type: 'string',
+            enum: [
+                'pdf',
+                'tabular'
+            ],
+            title: 'Kind'
+        },
+        file_name: {
+            type: 'string',
+            title: 'File Name'
+        },
+        sheets: {
+            items: {
+                $ref: '#/components/schemas/ImportFilePreviewSheet'
+            },
+            type: 'array',
+            title: 'Sheets'
+        }
+    },
+    type: 'object',
+    required: [
+        'kind',
+        'file_name'
+    ],
+    title: 'ImportFilePreview'
+} as const;
+
+export const ImportFilePreviewSheetSchema = {
+    properties: {
+        sheet: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Sheet'
+        },
+        rows: {
+            items: {
+                items: {
+                    type: 'string'
+                },
+                type: 'array'
+            },
+            type: 'array',
+            title: 'Rows'
+        },
+        total_rows: {
+            type: 'integer',
+            title: 'Total Rows',
+            default: 0
+        },
+        truncated: {
+            type: 'boolean',
+            title: 'Truncated',
+            default: false
+        }
+    },
+    type: 'object',
+    title: 'ImportFilePreviewSheet'
+} as const;
+
 export const ImportItemPublicSchema = {
     properties: {
         id: {
@@ -410,6 +539,17 @@ export const ImportItemPublicSchema = {
         status: {
             type: 'string',
             title: 'Status'
+        },
+        tillin_product_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Tillin Product Id'
         },
         payload: {
             additionalProperties: true,
@@ -450,6 +590,37 @@ export const ImportItemPublicSchema = {
     title: 'ImportItemPublic'
 } as const;
 
+export const ImportItemUpdateSchema = {
+    properties: {
+        payload: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Payload'
+        },
+        status: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    title: 'ImportItemUpdate',
+    description: 'Review edits: a corrected payload and/or a reject/restore status.'
+} as const;
+
 export const ImportJobCountsSchema = {
     properties: {
         total: {
@@ -488,6 +659,53 @@ export const ImportJobPublicSchema = {
         },
         counts: {
             $ref: '#/components/schemas/ImportJobCounts'
+        },
+        totals: {
+            $ref: '#/components/schemas/ImportJobTotals'
+        },
+        po_number: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Po Number'
+        },
+        supplier: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Supplier'
+        },
+        profile_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Profile Id'
+        },
+        location_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Location Id'
         },
         warnings: {
             items: {
@@ -557,6 +775,583 @@ export const ImportJobPublicSchema = {
         'created_at'
     ],
     title: 'ImportJobPublic'
+} as const;
+
+export const ImportJobTotalsSchema = {
+    properties: {
+        quantity: {
+            type: 'integer',
+            title: 'Quantity',
+            default: 0
+        },
+        wholesale_amount: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wholesale Amount'
+        },
+        retail_amount: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Retail Amount'
+        }
+    },
+    type: 'object',
+    title: 'ImportJobTotals',
+    description: 'Aggregates over every extracted variant (a missing quantity counts\nas 1 unit; amounts are quantity x unit price, None when no price at all).'
+} as const;
+
+export const ImportLinkResultSchema = {
+    properties: {
+        linked: {
+            type: 'integer',
+            title: 'Linked',
+            default: 0
+        },
+        already_linked: {
+            type: 'integer',
+            title: 'Already Linked',
+            default: 0
+        },
+        not_found: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Not Found'
+        }
+    },
+    type: 'object',
+    title: 'ImportLinkResult',
+    description: 'POST /imports/{id}/link-products outcome (resolution by reference).'
+} as const;
+
+export const ImportLocationSelectionSchema = {
+    properties: {
+        location_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Location Id'
+        }
+    },
+    type: 'object',
+    required: [
+        'location_id'
+    ],
+    title: 'ImportLocationSelection',
+    description: 'PUT /imports/{id}/location body — null clears the selection.'
+} as const;
+
+export const ImportProductLineSchema = {
+    properties: {
+        item_id: {
+            type: 'integer',
+            title: 'Item Id'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        supplier_ref: {
+            type: 'string',
+            title: 'Supplier Ref'
+        },
+        title: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Title'
+        },
+        brand: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Brand'
+        },
+        image_url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Image Url'
+        },
+        variant_count: {
+            type: 'integer',
+            title: 'Variant Count',
+            default: 0
+        },
+        tillin_product_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Tillin Product Id'
+        }
+    },
+    type: 'object',
+    required: [
+        'item_id',
+        'status',
+        'supplier_ref'
+    ],
+    title: 'ImportProductLine',
+    description: 'One row of the « Par import » products view (local data only).'
+} as const;
+
+export const ImportProductsSchema = {
+    properties: {
+        import_id: {
+            type: 'integer',
+            title: 'Import Id'
+        },
+        file_name: {
+            type: 'string',
+            title: 'File Name'
+        },
+        items: {
+            items: {
+                $ref: '#/components/schemas/ImportProductLine'
+            },
+            type: 'array',
+            title: 'Items'
+        },
+        linked_count: {
+            type: 'integer',
+            title: 'Linked Count',
+            default: 0
+        },
+        unlinked_count: {
+            type: 'integer',
+            title: 'Unlinked Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: [
+        'import_id',
+        'file_name'
+    ],
+    title: 'ImportProducts'
+} as const;
+
+export const ImportProfileConfig_InputSchema = {
+    properties: {
+        price_mode: {
+            type: 'string',
+            enum: [
+                'retail_as_is',
+                'coefficient'
+            ],
+            title: 'Price Mode',
+            default: 'retail_as_is'
+        },
+        coefficient: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Coefficient'
+        },
+        round_up_to: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                }
+            ],
+            title: 'Round Up To',
+            default: '5'
+        },
+        barcode_mode: {
+            type: 'string',
+            enum: [
+                'ean',
+                'constructed'
+            ],
+            title: 'Barcode Mode',
+            default: 'ean'
+        },
+        brand_mode: {
+            type: 'string',
+            enum: [
+                'as_extracted',
+                'fixed'
+            ],
+            title: 'Brand Mode',
+            default: 'as_extracted'
+        },
+        brand_value: {
+            type: 'string',
+            title: 'Brand Value',
+            default: ''
+        },
+        supplier_label: {
+            type: 'string',
+            title: 'Supplier Label',
+            default: ''
+        },
+        season_label: {
+            type: 'string',
+            title: 'Season Label',
+            default: ''
+        },
+        tax_rate: {
+            type: 'string',
+            title: 'Tax Rate',
+            default: '20'
+        },
+        status: {
+            type: 'string',
+            title: 'Status',
+            default: 'active'
+        }
+    },
+    type: 'object',
+    title: 'ImportProfileConfig',
+    description: 'Frozen convention shapes; every field has a safe default.'
+} as const;
+
+export const ImportProfileConfig_OutputSchema = {
+    properties: {
+        price_mode: {
+            type: 'string',
+            enum: [
+                'retail_as_is',
+                'coefficient'
+            ],
+            title: 'Price Mode',
+            default: 'retail_as_is'
+        },
+        coefficient: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Coefficient'
+        },
+        round_up_to: {
+            type: 'string',
+            pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$',
+            title: 'Round Up To',
+            default: '5'
+        },
+        barcode_mode: {
+            type: 'string',
+            enum: [
+                'ean',
+                'constructed'
+            ],
+            title: 'Barcode Mode',
+            default: 'ean'
+        },
+        brand_mode: {
+            type: 'string',
+            enum: [
+                'as_extracted',
+                'fixed'
+            ],
+            title: 'Brand Mode',
+            default: 'as_extracted'
+        },
+        brand_value: {
+            type: 'string',
+            title: 'Brand Value',
+            default: ''
+        },
+        supplier_label: {
+            type: 'string',
+            title: 'Supplier Label',
+            default: ''
+        },
+        season_label: {
+            type: 'string',
+            title: 'Season Label',
+            default: ''
+        },
+        tax_rate: {
+            type: 'string',
+            title: 'Tax Rate',
+            default: '20'
+        },
+        status: {
+            type: 'string',
+            title: 'Status',
+            default: 'active'
+        }
+    },
+    type: 'object',
+    title: 'ImportProfileConfig',
+    description: 'Frozen convention shapes; every field has a safe default.'
+} as const;
+
+export const ImportProfileCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 120,
+            minLength: 1,
+            title: 'Name'
+        },
+        supplier_match: {
+            type: 'string',
+            maxLength: 120,
+            title: 'Supplier Match',
+            default: ''
+        },
+        config: {
+            $ref: '#/components/schemas/ImportProfileConfig-Input'
+        }
+    },
+    type: 'object',
+    required: [
+        'name'
+    ],
+    title: 'ImportProfileCreate'
+} as const;
+
+export const ImportProfilePublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        supplier_match: {
+            type: 'string',
+            title: 'Supplier Match'
+        },
+        config: {
+            $ref: '#/components/schemas/ImportProfileConfig-Output'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'name',
+        'supplier_match',
+        'config',
+        'created_at',
+        'updated_at'
+    ],
+    title: 'ImportProfilePublic'
+} as const;
+
+export const ImportProfileSelectionSchema = {
+    properties: {
+        profile_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Profile Id'
+        }
+    },
+    type: 'object',
+    required: [
+        'profile_id'
+    ],
+    title: 'ImportProfileSelection',
+    description: 'PUT /imports/{id}/profile body — null clears the selection.'
+} as const;
+
+export const ImportProfileUpdateSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 120,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        supplier_match: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 120
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Supplier Match'
+        },
+        config: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/ImportProfileConfig-Input'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    title: 'ImportProfileUpdate'
+} as const;
+
+export const ImportRenderPreviewSchema = {
+    properties: {
+        columns: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Columns'
+        },
+        rows: {
+            items: {
+                items: {
+                    type: 'string'
+                },
+                type: 'array'
+            },
+            type: 'array',
+            title: 'Rows'
+        },
+        warnings: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Warnings'
+        },
+        row_count: {
+            type: 'integer',
+            title: 'Row Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: [
+        'columns',
+        'rows'
+    ],
+    title: 'ImportRenderPreview',
+    description: 'JSON preview of the rendered Tillin import CSV.'
+} as const;
+
+export const ImportTransferRequestSchema = {
+    properties: {
+        location_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Location Id'
+        },
+        profile_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Profile Id'
+        }
+    },
+    type: 'object',
+    title: 'ImportTransferRequest',
+    description: 'POST /imports/{id}/transfer body.\n\nA null location falls back to the job\'s selected location\n(config_json["location_id"]); missing both is a 400 `location_required`.'
+} as const;
+
+export const ImportTransferResultSchema = {
+    properties: {
+        ok: {
+            type: 'boolean',
+            title: 'Ok',
+            default: true
+        },
+        row_count: {
+            type: 'integer',
+            title: 'Row Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    title: 'ImportTransferResult'
 } as const;
 
 export const InstructionCreateSchema = {
@@ -1127,6 +1922,26 @@ export const JobSelectionSchema = {
     description: 'Product selection: explicit Tillin ids or a tag (exactly one).'
 } as const;
 
+export const LocationPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        title: {
+            type: 'string',
+            title: 'Title'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'title'
+    ],
+    title: 'LocationPublic',
+    description: 'A Tillin boutique location a CSV import can be transferred to.'
+} as const;
+
 export const LoginRequestSchema = {
     properties: {
         email: {
@@ -1426,6 +2241,35 @@ export const ProductSchema = {
             ],
             title: 'Department'
         },
+        composition: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Composition'
+        },
+        manufacturing_country: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Manufacturing Country'
+        },
+        tags: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Tags'
+        },
         description: {
             anyOf: [
                 {
@@ -1447,6 +2291,18 @@ export const ProductSchema = {
                 }
             ],
             title: 'Meta Description'
+        },
+        price: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Price'
         },
         variants: {
             items: {
@@ -1497,6 +2353,28 @@ export const ProductImageSchema = {
     description: 'An image associated with a product.'
 } as const;
 
+export const ProductImagesUploadResultSchema = {
+    properties: {
+        created: {
+            type: 'integer',
+            title: 'Created'
+        },
+        images: {
+            items: {
+                $ref: '#/components/schemas/ProductImage'
+            },
+            type: 'array',
+            title: 'Images'
+        }
+    },
+    type: 'object',
+    required: [
+        'created'
+    ],
+    title: 'ProductImagesUploadResult',
+    description: 'Outcome of uploading images to a product: the newly created images.'
+} as const;
+
 export const ProductVariantSchema = {
     properties: {
         id: {
@@ -1532,6 +2410,28 @@ export const ProductVariantSchema = {
             ],
             title: 'Barcode'
         },
+        color: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color'
+        },
+        size: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Size'
+        },
         weight: {
             anyOf: [
                 {
@@ -1553,11 +2453,582 @@ export const ProductVariantSchema = {
                 }
             ],
             title: 'Weight Unit'
+        },
+        price: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Price'
+        },
+        wholesale_price: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wholesale Price'
         }
     },
     type: 'object',
     title: 'ProductVariant',
     description: 'A single sellable variant (style x color x size) of a product.'
+} as const;
+
+export const UsageByJobSchema = {
+    properties: {
+        month: {
+            type: 'string',
+            title: 'Month'
+        },
+        jobs: {
+            items: {
+                $ref: '#/components/schemas/UsageJobLine'
+            },
+            type: 'array',
+            title: 'Jobs'
+        }
+    },
+    type: 'object',
+    required: [
+        'month',
+        'jobs'
+    ],
+    title: 'UsageByJob'
+} as const;
+
+export const UsageJobLineSchema = {
+    properties: {
+        job_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Job Id'
+        },
+        job_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Job Type'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        input_tokens: {
+            type: 'integer',
+            title: 'Input Tokens'
+        },
+        output_tokens: {
+            type: 'integer',
+            title: 'Output Tokens'
+        },
+        other_metrics: {
+            items: {
+                $ref: '#/components/schemas/UsageJobMetric'
+            },
+            type: 'array',
+            title: 'Other Metrics'
+        },
+        cost: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Cost'
+        },
+        billable: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Billable'
+        }
+    },
+    type: 'object',
+    required: [
+        'job_id',
+        'job_type',
+        'label',
+        'created_at',
+        'input_tokens',
+        'output_tokens',
+        'other_metrics',
+        'cost',
+        'billable'
+    ],
+    title: 'UsageJobLine'
+} as const;
+
+export const UsageJobMetricSchema = {
+    properties: {
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        metric: {
+            type: 'string',
+            title: 'Metric'
+        },
+        quantity: {
+            type: 'integer',
+            title: 'Quantity'
+        }
+    },
+    type: 'object',
+    required: [
+        'provider',
+        'metric',
+        'quantity'
+    ],
+    title: 'UsageJobMetric'
+} as const;
+
+export const UsagePriceCreateSchema = {
+    properties: {
+        provider: {
+            type: 'string',
+            maxLength: 20,
+            minLength: 1,
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 80
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        metric: {
+            type: 'string',
+            maxLength: 30,
+            minLength: 1,
+            title: 'Metric'
+        },
+        unit_price: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                }
+            ],
+            title: 'Unit Price'
+        },
+        currency: {
+            type: 'string',
+            maxLength: 3,
+            minLength: 3,
+            title: 'Currency',
+            default: 'EUR'
+        }
+    },
+    type: 'object',
+    required: [
+        'provider',
+        'metric',
+        'unit_price'
+    ],
+    title: 'UsagePriceCreate'
+} as const;
+
+export const UsagePricePublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        metric: {
+            type: 'string',
+            title: 'Metric'
+        },
+        unit_price: {
+            type: 'string',
+            title: 'Unit Price'
+        },
+        currency: {
+            type: 'string',
+            title: 'Currency'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'provider',
+        'model',
+        'metric',
+        'unit_price',
+        'currency'
+    ],
+    title: 'UsagePricePublic'
+} as const;
+
+export const UsagePriceUpdateSchema = {
+    properties: {
+        provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 20,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 80
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        metric: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 30,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Metric'
+        },
+        unit_price: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Unit Price'
+        },
+        currency: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 3,
+                    minLength: 3
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Currency'
+        }
+    },
+    type: 'object',
+    title: 'UsagePriceUpdate'
+} as const;
+
+export const UsageSummarySchema = {
+    properties: {
+        month: {
+            type: 'string',
+            title: 'Month'
+        },
+        currency: {
+            type: 'string',
+            title: 'Currency'
+        },
+        coefficient: {
+            type: 'number',
+            title: 'Coefficient'
+        },
+        lines: {
+            items: {
+                $ref: '#/components/schemas/UsageSummaryLine'
+            },
+            type: 'array',
+            title: 'Lines'
+        },
+        totals: {
+            $ref: '#/components/schemas/UsageTotals'
+        },
+        unpriced_count: {
+            type: 'integer',
+            title: 'Unpriced Count'
+        },
+        frozen: {
+            type: 'boolean',
+            title: 'Frozen',
+            default: false
+        },
+        billing_date: {
+            type: 'string',
+            title: 'Billing Date'
+        },
+        frozen_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Frozen At'
+        }
+    },
+    type: 'object',
+    required: [
+        'month',
+        'currency',
+        'coefficient',
+        'lines',
+        'totals',
+        'unpriced_count',
+        'billing_date'
+    ],
+    title: 'UsageSummary'
+} as const;
+
+export const UsageSummaryLineSchema = {
+    properties: {
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        metric: {
+            type: 'string',
+            title: 'Metric'
+        },
+        quantity: {
+            type: 'integer',
+            title: 'Quantity'
+        },
+        unit_price: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Unit Price'
+        },
+        cost: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Cost'
+        },
+        billable: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Billable'
+        }
+    },
+    type: 'object',
+    required: [
+        'provider',
+        'model',
+        'metric',
+        'quantity',
+        'unit_price',
+        'cost',
+        'billable'
+    ],
+    title: 'UsageSummaryLine'
+} as const;
+
+export const UsageTimeseriesSchema = {
+    properties: {
+        month: {
+            type: 'string',
+            title: 'Month'
+        },
+        group_by: {
+            type: 'string',
+            title: 'Group By'
+        },
+        currency: {
+            type: 'string',
+            title: 'Currency'
+        },
+        series: {
+            items: {
+                $ref: '#/components/schemas/UsageTimeseriesSeries'
+            },
+            type: 'array',
+            title: 'Series'
+        }
+    },
+    type: 'object',
+    required: [
+        'month',
+        'group_by',
+        'currency',
+        'series'
+    ],
+    title: 'UsageTimeseries'
+} as const;
+
+export const UsageTimeseriesPointSchema = {
+    properties: {
+        date: {
+            type: 'string',
+            title: 'Date'
+        },
+        amount: {
+            type: 'string',
+            title: 'Amount'
+        },
+        quantity: {
+            type: 'integer',
+            title: 'Quantity'
+        }
+    },
+    type: 'object',
+    required: [
+        'date',
+        'amount',
+        'quantity'
+    ],
+    title: 'UsageTimeseriesPoint'
+} as const;
+
+export const UsageTimeseriesSeriesSchema = {
+    properties: {
+        key: {
+            type: 'string',
+            title: 'Key'
+        },
+        points: {
+            items: {
+                $ref: '#/components/schemas/UsageTimeseriesPoint'
+            },
+            type: 'array',
+            title: 'Points'
+        }
+    },
+    type: 'object',
+    required: [
+        'key',
+        'points'
+    ],
+    title: 'UsageTimeseriesSeries'
+} as const;
+
+export const UsageTotalsSchema = {
+    properties: {
+        cost: {
+            type: 'string',
+            title: 'Cost'
+        },
+        billable: {
+            type: 'string',
+            title: 'Billable'
+        }
+    },
+    type: 'object',
+    required: [
+        'cost',
+        'billable'
+    ],
+    title: 'UsageTotals'
 } as const;
 
 export const UserPreferencesSchema = {

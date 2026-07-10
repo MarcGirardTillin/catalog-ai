@@ -1,15 +1,23 @@
 <script lang="ts">
-  // Panneau latéral produit : fiche Tillin (complétude, images, infos) ouverte
-  // depuis les listes de produits. Pas de composant sheet/drawer dans ui/ —
-  // overlay + <aside> fixe à droite, sobre et autonome.
+  // Panneau latéral produit : fiche Tillin (images, infos, variantes,
+  // complétude) ouverte depuis les listes de produits. Pas de composant
+  // sheet/drawer dans ui/ — overlay + <aside> fixe à droite, sobre et autonome.
+  import Camera from "@lucide/svelte/icons/camera"
   import Check from "@lucide/svelte/icons/check"
   import ImageIcon from "@lucide/svelte/icons/image"
   import Sparkles from "@lucide/svelte/icons/sparkles"
+  import Upload from "@lucide/svelte/icons/upload"
   import X from "@lucide/svelte/icons/x"
+  import { untrack } from "svelte"
+  import { toast } from "svelte-sonner"
   import { fade, fly } from "svelte/transition"
 
   import { settingsReadAccountSettings } from "@/client"
-  import { getProduct, type ProductDetail } from "@/lib/api/products"
+  import {
+    getProduct,
+    uploadProductImages,
+    type ProductDetail,
+  } from "@/lib/api/products"
   import { Button } from "@/lib/components/ui/button"
   import { Skeleton } from "@/lib/components/ui/skeleton"
 
@@ -43,27 +51,98 @@
   let titleTemplate = $state<string | null>(null)
   let templateLoaded = $state(false)
 
+  // Images ajoutées localement (upload disque ou capture photo). Elles sont
+  // seulement mises en attente et prévisualisées ici : la persistance vers
+  // Tillin sera branchée avec la phase imagerie/Photoroom.
+  type StagedImage = { id: string; url: string; name: string; file: File }
+  let stagedImages = $state<StagedImage[]>([])
+  let savingImages = $state(false)
+  let fileInput: HTMLInputElement | undefined = $state()
+  let cameraInput: HTMLInputElement | undefined = $state()
+
+  function clearStaged() {
+    for (const image of stagedImages) URL.revokeObjectURL(image.url)
+    stagedImages = []
+  }
+
+  // Réagit au changement de produit uniquement (productId). Le reste écrit —
+  // et `clearStaged` LIT `stagedImages` en le remettant à zéro — donc on
+  // l'exécute hors suivi (untrack) pour ne pas boucler l'effet.
   $effect(() => {
     const id = productId
-    product = null
-    errorMessage = null
-    if (id == null) return
-    loading = true
-    getProduct(id).then(({ data, error }) => {
-      loading = false
-      if (error || !data) {
-        errorMessage = "Impossible de charger le produit."
-        return
-      }
-      product = data
-      if (!templateLoaded) {
-        templateLoaded = true
-        settingsReadAccountSettings().then(({ data: settings }) => {
-          titleTemplate = settings?.title_template ?? null
-        })
-      }
+    untrack(() => {
+      product = null
+      errorMessage = null
+      clearStaged()
+      if (id == null) return
+      loading = true
+      getProduct(id).then(({ data, error }) => {
+        loading = false
+        if (error || !data) {
+          errorMessage = "Impossible de charger le produit."
+          return
+        }
+        product = data
+        if (!templateLoaded) {
+          templateLoaded = true
+          settingsReadAccountSettings().then(({ data: settings }) => {
+            titleTemplate = settings?.title_template ?? null
+          })
+        }
+      })
     })
   })
+
+  // Libère les object-URLs restantes quand le panneau est démonté.
+  $effect(() => () => clearStaged())
+
+  function onFilesPicked(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    for (const file of Array.from(input.files ?? [])) {
+      stagedImages.push({
+        id: crypto.randomUUID(),
+        url: URL.createObjectURL(file),
+        name: file.name,
+        file,
+      })
+    }
+    input.value = "" // autorise re-sélectionner le même fichier
+  }
+
+  function removeStaged(id: string) {
+    const index = stagedImages.findIndex((image) => image.id === id)
+    if (index >= 0) {
+      URL.revokeObjectURL(stagedImages[index].url)
+      stagedImages.splice(index, 1)
+    }
+  }
+
+  // Envoie les images en attente à Tillin (import dans le stockage Xano), puis
+  // recharge la fiche pour afficher les visuels fraîchement hébergés.
+  async function saveImages() {
+    const id = productId
+    if (id == null || stagedImages.length === 0) return
+    savingImages = true
+    const { data, error } = await uploadProductImages(
+      id,
+      stagedImages.map((image) => image.file),
+    )
+    savingImages = false
+    if (error || !data) {
+      toast.error("Échec de l'enregistrement des images.")
+      return
+    }
+    if (data.created === 0) {
+      // Le backend a répondu mais Tillin n'a créé aucune image : on garde les
+      // images en attente pour ne pas perdre la sélection de l'utilisateur.
+      toast.error("Aucune image enregistrée par Tillin — réessayez.")
+      return
+    }
+    toast.success(`${data.created} image(s) enregistrée(s)`)
+    clearStaged()
+    const reload = await getProduct(id)
+    if (reload.data) product = reload.data
+  }
 
   function onKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -125,12 +204,13 @@
   })
 
   function formatPrice(raw: string | null | undefined): string {
-    if (raw == null || raw.trim() === "") return "inconnu"
-    const value = Number.parseFloat(raw)
-    if (Number.isNaN(value)) return raw
+    if (raw == null || String(raw).trim() === "") return "—"
+    const value = Number.parseFloat(String(raw))
+    if (Number.isNaN(value)) return String(raw)
     return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })
   }
 
+  // Infos de classification (catégorie, saison, rayon, composition, pays).
   const infos = $derived.by(() => {
     const p = product
     if (!p) return []
@@ -138,8 +218,14 @@
       { label: "Catégorie", value: hasText(p.category) ? p.category : "—" },
       { label: "Saison", value: hasText(p.season) ? p.season : "—" },
       { label: "Rayon", value: hasText(p.department) ? p.department : "—" },
-      { label: "Variantes", value: String((p.variants ?? []).length) },
-      { label: "Prix", value: formatPrice(p.price) },
+      {
+        label: "Composition",
+        value: hasText(p.composition) ? p.composition : "—",
+      },
+      {
+        label: "Pays de fabrication",
+        value: hasText(p.manufacturing_country) ? p.manufacturing_country : "—",
+      },
     ]
   })
 </script>
@@ -186,8 +272,8 @@
     role="dialog"
     aria-modal="true"
     aria-label="Détail du produit"
-    class="border-border bg-background absolute inset-y-0 right-0 flex h-full w-full flex-col overflow-y-auto border-l sm:w-[28rem]"
-    transition:fly={{ x: 448, duration: 200, opacity: 1 }}
+    class="border-border bg-background absolute inset-y-0 right-0 flex h-full w-full flex-col overflow-y-auto border-l sm:w-[36rem]"
+    transition:fly={{ x: 576, duration: 200, opacity: 1 }}
   >
     <div
       class="border-border bg-background sticky top-0 z-10 flex items-start justify-between gap-2 border-b p-4"
@@ -254,34 +340,16 @@
       {:else if errorMessage}
         <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
       {:else if loading || product === null}
-        <Skeleton class="h-20 w-full" />
         <Skeleton class="h-40 w-full" />
         <Skeleton class="h-24 w-full" />
+        <Skeleton class="h-20 w-full" />
       {:else}
-        <!-- Complétude -->
-        <div class="flex flex-col gap-4">
-          {@render completenessBlock("Prêt boutique", shopCriteria)}
-          {@render completenessBlock("Prêt e-commerce", ecomCriteria)}
-          <div class="text-muted-foreground flex items-center gap-1.5 text-xs">
-            {#if harmonized === true}
-              <Check size={13} class="text-success-dot shrink-0" aria-hidden="true" />
-              Titre harmonisé (modèle du compte)
-            {:else if harmonized === false}
-              <X size={13} class="shrink-0" aria-hidden="true" />
-              Titre non harmonisé avec le modèle du compte
-            {:else}
-              <span aria-hidden="true">—</span>
-              Titre harmonisé : non évalué
-            {/if}
-          </div>
-        </div>
-
-        <!-- Galerie -->
+        <!-- Galerie + ajout d'images (upload / capture) -->
         <div class="flex flex-col gap-2">
           <h3 class="text-sm font-medium">
-            Images ({(product.images ?? []).length})
+            Images ({(product.images ?? []).length + stagedImages.length})
           </h3>
-          {#if (product.images ?? []).length > 0}
+          {#if (product.images ?? []).length > 0 || stagedImages.length > 0}
             <div class="grid grid-cols-3 gap-2">
               {#each product.images ?? [] as image (image.url)}
                 <img
@@ -291,6 +359,28 @@
                   class="bg-muted aspect-4/5 w-full rounded-md object-cover"
                 />
               {/each}
+              {#each stagedImages as image (image.id)}
+                <div class="relative">
+                  <img
+                    src={image.url}
+                    alt={image.name}
+                    class="bg-muted ring-primary/40 aspect-4/5 w-full rounded-md object-cover ring-2"
+                  />
+                  <span
+                    class="bg-primary/90 text-primary-foreground absolute bottom-1 left-1 rounded px-1 text-[10px]"
+                  >
+                    à enregistrer
+                  </span>
+                  <button
+                    type="button"
+                    class="bg-background/90 text-foreground hover:bg-background absolute top-1 right-1 rounded-full p-0.5 shadow-sm"
+                    aria-label="Retirer l'image"
+                    onclick={() => removeStaged(image.id)}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              {/each}
             </div>
           {:else}
             <p class="text-muted-foreground flex items-center gap-1.5 text-xs italic">
@@ -298,9 +388,86 @@
               Aucune image
             </p>
           {/if}
+
+          <!-- Deux entrées : disque (multiple) et appareil photo (capture). -->
+          <input
+            bind:this={fileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            class="hidden"
+            onchange={onFilesPicked}
+          />
+          <input
+            bind:this={cameraInput}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            class="hidden"
+            onchange={onFilesPicked}
+          />
+          <div class="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={savingImages}
+              onclick={() => fileInput?.click()}
+            >
+              <Upload size={14} aria-hidden="true" />
+              Ajouter des images
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={savingImages}
+              onclick={() => cameraInput?.click()}
+            >
+              <Camera size={14} aria-hidden="true" />
+              Prendre une photo
+            </Button>
+            {#if stagedImages.length > 0}
+              <Button size="sm" disabled={savingImages} onclick={saveImages}>
+                {savingImages
+                  ? "Enregistrement…"
+                  : `Enregistrer ${stagedImages.length} image${stagedImages.length > 1 ? "s" : ""}`}
+              </Button>
+            {/if}
+          </div>
+          {#if stagedImages.length > 0}
+            <p class="text-muted-foreground text-xs">
+              Ces images sont en attente ; « Enregistrer » les importe dans Tillin
+              (stockage Xano) et les attache au produit.
+            </p>
+          {/if}
         </div>
 
-        <!-- Infos -->
+        <!-- Description -->
+        <div class="flex flex-col gap-1.5">
+          <h3 class="text-sm font-medium">Description</h3>
+          {#if hasText(product.description)}
+            <p class="text-muted-foreground text-xs whitespace-pre-line">
+              {product.description}
+            </p>
+          {:else}
+            <p class="text-muted-foreground text-xs italic">Aucune description</p>
+          {/if}
+        </div>
+
+        <!-- Meta description -->
+        <div class="flex flex-col gap-1.5">
+          <h3 class="text-sm font-medium">Meta description</h3>
+          {#if hasText(product.meta_description)}
+            <p class="text-muted-foreground text-xs whitespace-pre-line">
+              {product.meta_description}
+            </p>
+          {:else}
+            <p class="text-muted-foreground text-xs italic">
+              Aucune meta description
+            </p>
+          {/if}
+        </div>
+
+        <!-- Infos de classification -->
         <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
           {#each infos as info (info.label)}
             <div>
@@ -309,6 +476,63 @@
             </div>
           {/each}
         </dl>
+
+        <!-- Tags -->
+        {#if (product.tags ?? []).length > 0}
+          <div class="flex flex-col gap-1.5">
+            <h3 class="text-sm font-medium">Tags</h3>
+            <div class="flex flex-wrap gap-1.5">
+              {#each product.tags ?? [] as tag (tag)}
+                <span
+                  class="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[11px]"
+                >
+                  {tag}
+                </span>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <!-- Variantes -->
+        <div class="flex flex-col gap-2">
+          <h3 class="text-sm font-medium">
+            Variantes ({(product.variants ?? []).length})
+          </h3>
+          {#if (product.variants ?? []).length > 0}
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="text-muted-foreground border-border border-b text-left">
+                    <th class="py-1.5 pr-2 font-medium">Taille</th>
+                    <th class="py-1.5 pr-2 font-medium">Couleur</th>
+                    <th class="py-1.5 pr-2 font-medium">EAN</th>
+                    <th class="py-1.5 pr-2 font-medium">SKU</th>
+                    <th class="py-1.5 pr-2 text-right font-medium">Achat</th>
+                    <th class="py-1.5 text-right font-medium">Vente</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each product.variants ?? [] as variant, index (variant.id ?? index)}
+                    <tr class="border-border/60 border-b last:border-0">
+                      <td class="py-1.5 pr-2">{variant.size ?? "—"}</td>
+                      <td class="py-1.5 pr-2">{variant.color ?? "—"}</td>
+                      <td class="py-1.5 pr-2 font-mono">{variant.barcode ?? "—"}</td>
+                      <td class="py-1.5 pr-2 font-mono">{variant.sku ?? "—"}</td>
+                      <td class="py-1.5 pr-2 text-right whitespace-nowrap">
+                        {formatPrice(variant.wholesale_price)}
+                      </td>
+                      <td class="py-1.5 text-right whitespace-nowrap">
+                        {formatPrice(variant.price)}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {:else}
+            <p class="text-muted-foreground text-xs italic">Aucune variante</p>
+          {/if}
+        </div>
 
         <!-- Actions -->
         {#if onEnrich && productId != null}
@@ -328,6 +552,24 @@
             <li>Reformatage des visuels</li>
             <li>Génération mannequin / à plat</li>
           </ul>
+        </div>
+
+        <!-- Complétude (en bas de panneau) -->
+        <div class="border-border mt-1 flex flex-col gap-4 border-t pt-4">
+          {@render completenessBlock("Prêt boutique", shopCriteria)}
+          {@render completenessBlock("Prêt e-commerce", ecomCriteria)}
+          <div class="text-muted-foreground flex items-center gap-1.5 text-xs">
+            {#if harmonized === true}
+              <Check size={13} class="text-success-dot shrink-0" aria-hidden="true" />
+              Titre harmonisé (modèle du compte)
+            {:else if harmonized === false}
+              <X size={13} class="shrink-0" aria-hidden="true" />
+              Titre non harmonisé avec le modèle du compte
+            {:else}
+              <span aria-hidden="true">—</span>
+              Titre harmonisé : non évalué
+            {/if}
+          </div>
         </div>
       {/if}
     </div>

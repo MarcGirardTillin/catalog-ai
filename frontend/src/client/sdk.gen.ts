@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ImportsCreateImportData, ImportsCreateImportErrors, ImportsCreateImportResponses, ImportsListImportItemsData, ImportsListImportItemsErrors, ImportsListImportItemsResponses, ImportsListImportsData, ImportsListImportsErrors, ImportsListImportsResponses, ImportsReadImportData, ImportsReadImportErrors, ImportsReadImportResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ImportProfilesCreateImportProfileData, ImportProfilesCreateImportProfileErrors, ImportProfilesCreateImportProfileResponses, ImportProfilesDeleteImportProfileData, ImportProfilesDeleteImportProfileErrors, ImportProfilesDeleteImportProfileResponses, ImportProfilesListImportProfilesData, ImportProfilesListImportProfilesErrors, ImportProfilesListImportProfilesResponses, ImportProfilesUpdateImportProfileData, ImportProfilesUpdateImportProfileErrors, ImportProfilesUpdateImportProfileResponses, ImportsCreateImportData, ImportsCreateImportErrors, ImportsCreateImportResponses, ImportsDownloadImportCsvData, ImportsDownloadImportCsvErrors, ImportsDownloadImportCsvResponses, ImportsDownloadImportFileData, ImportsDownloadImportFileErrors, ImportsDownloadImportFileResponses, ImportsLinkImportProductsData, ImportsLinkImportProductsErrors, ImportsLinkImportProductsResponses, ImportsListImportItemsData, ImportsListImportItemsErrors, ImportsListImportItemsResponses, ImportsListImportProductsData, ImportsListImportProductsErrors, ImportsListImportProductsResponses, ImportsListImportsData, ImportsListImportsErrors, ImportsListImportsResponses, ImportsPreviewImportFileData, ImportsPreviewImportFileErrors, ImportsPreviewImportFileResponses, ImportsPreviewImportRowsData, ImportsPreviewImportRowsErrors, ImportsPreviewImportRowsResponses, ImportsReadImportData, ImportsReadImportErrors, ImportsReadImportResponses, ImportsSetImportLocationData, ImportsSetImportLocationErrors, ImportsSetImportLocationResponses, ImportsSetImportProfileData, ImportsSetImportProfileErrors, ImportsSetImportProfileResponses, ImportsTransferImportData, ImportsTransferImportErrors, ImportsTransferImportResponses, ImportsUpdateImportItemData, ImportsUpdateImportItemErrors, ImportsUpdateImportItemResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, LocationsListLocationsData, LocationsListLocationsErrors, LocationsListLocationsResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, ProductsReadProductData, ProductsReadProductErrors, ProductsReadProductResponses, ProductsUploadProductImagesData, ProductsUploadProductImagesErrors, ProductsUploadProductImagesResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses, UsageCreateUsagePriceData, UsageCreateUsagePriceErrors, UsageCreateUsagePriceResponses, UsageDeleteUsagePriceData, UsageDeleteUsagePriceErrors, UsageDeleteUsagePriceResponses, UsageExportUsageCsvData, UsageExportUsageCsvErrors, UsageExportUsageCsvResponses, UsageListUsagePricesData, UsageListUsagePricesErrors, UsageListUsagePricesResponses, UsageReadUsageByJobData, UsageReadUsageByJobErrors, UsageReadUsageByJobResponses, UsageReadUsageSummaryData, UsageReadUsageSummaryErrors, UsageReadUsageSummaryResponses, UsageReadUsageTimeseriesData, UsageReadUsageTimeseriesErrors, UsageReadUsageTimeseriesResponses, UsageRefreezeSnapshotData, UsageRefreezeSnapshotErrors, UsageRefreezeSnapshotResponses, UsageUpdateUsagePriceData, UsageUpdateUsagePriceErrors, UsageUpdateUsagePriceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -110,6 +110,37 @@ export const productsListProducts = <ThrowOnError extends boolean = false>(optio
     responseType: 'json',
     url: '/products',
     ...options
+});
+
+/**
+ * Read Product
+ *
+ * Return one product's full detail from the Tillin catalog.
+ */
+export const productsReadProduct = <ThrowOnError extends boolean = false>(options: Options<ProductsReadProductData, ThrowOnError>): RequestResult<ProductsReadProductResponses, ProductsReadProductErrors, ThrowOnError> => (options.client ?? client).get<ProductsReadProductResponses, ProductsReadProductErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/products/{product_id}',
+    ...options
+});
+
+/**
+ * Upload Product Images
+ *
+ * Upload local/captured images to a product (proxied to Tillin storage).
+ *
+ * The browser posts the raw image bytes here; the backend forwards them to
+ * Tillin's bulk endpoint (multipart), which imports each into Xano storage and
+ * appends a `product_image` row. The Xano token never reaches the browser.
+ */
+export const productsUploadProductImages = <ThrowOnError extends boolean = false>(options: Options<ProductsUploadProductImagesData, ThrowOnError>): RequestResult<ProductsUploadProductImagesResponses, ProductsUploadProductImagesErrors, ThrowOnError> => (options.client ?? client).post<ProductsUploadProductImagesResponses, ProductsUploadProductImagesErrors, ThrowOnError>({
+    ...formDataBodySerializer,
+    responseType: 'json',
+    url: '/products/{product_id}/images',
+    ...options,
+    headers: {
+        'Content-Type': null,
+        ...options.headers
+    }
 });
 
 /**
@@ -240,6 +271,24 @@ export const importsReadImport = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
+ * Download Import File
+ *
+ * Stream the original uploaded file (inline, for preview or download).
+ */
+export const importsDownloadImportFile = <ThrowOnError extends boolean = false>(options: Options<ImportsDownloadImportFileData, ThrowOnError>): RequestResult<ImportsDownloadImportFileResponses, ImportsDownloadImportFileErrors, ThrowOnError> => (options.client ?? client).get<ImportsDownloadImportFileResponses, ImportsDownloadImportFileErrors, ThrowOnError>({ url: '/imports/{import_id}/file', ...options });
+
+/**
+ * Preview Import File
+ *
+ * First rows of a tabular source file; PDFs are previewed via /file.
+ */
+export const importsPreviewImportFile = <ThrowOnError extends boolean = false>(options: Options<ImportsPreviewImportFileData, ThrowOnError>): RequestResult<ImportsPreviewImportFileResponses, ImportsPreviewImportFileErrors, ThrowOnError> => (options.client ?? client).get<ImportsPreviewImportFileResponses, ImportsPreviewImportFileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/file/preview',
+    ...options
+});
+
+/**
  * List Import Items
  *
  * List the products staged by an import (review queue).
@@ -247,6 +296,172 @@ export const importsReadImport = <ThrowOnError extends boolean = false>(options:
 export const importsListImportItems = <ThrowOnError extends boolean = false>(options: Options<ImportsListImportItemsData, ThrowOnError>): RequestResult<ImportsListImportItemsResponses, ImportsListImportItemsErrors, ThrowOnError> => (options.client ?? client).get<ImportsListImportItemsResponses, ImportsListImportItemsErrors, ThrowOnError>({
     responseType: 'json',
     url: '/imports/{import_id}/items',
+    ...options
+});
+
+/**
+ * Update Import Item
+ *
+ * Review edit: correct a staged payload and/or reject/restore the item.
+ */
+export const importsUpdateImportItem = <ThrowOnError extends boolean = false>(options: Options<ImportsUpdateImportItemData, ThrowOnError>): RequestResult<ImportsUpdateImportItemResponses, ImportsUpdateImportItemErrors, ThrowOnError> => (options.client ?? client).patch<ImportsUpdateImportItemResponses, ImportsUpdateImportItemErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/items/{item_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Set Import Profile
+ *
+ * Select (or clear, with null) the profile used to render this import.
+ */
+export const importsSetImportProfile = <ThrowOnError extends boolean = false>(options: Options<ImportsSetImportProfileData, ThrowOnError>): RequestResult<ImportsSetImportProfileResponses, ImportsSetImportProfileErrors, ThrowOnError> => (options.client ?? client).put<ImportsSetImportProfileResponses, ImportsSetImportProfileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/profile',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Set Import Location
+ *
+ * Select (or clear, with null) the Tillin location targeted by this import.
+ */
+export const importsSetImportLocation = <ThrowOnError extends boolean = false>(options: Options<ImportsSetImportLocationData, ThrowOnError>): RequestResult<ImportsSetImportLocationResponses, ImportsSetImportLocationErrors, ThrowOnError> => (options.client ?? client).put<ImportsSetImportLocationResponses, ImportsSetImportLocationErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/location',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Preview Import Rows
+ *
+ * JSON preview of the Tillin import CSV (same rows as the download).
+ */
+export const importsPreviewImportRows = <ThrowOnError extends boolean = false>(options: Options<ImportsPreviewImportRowsData, ThrowOnError>): RequestResult<ImportsPreviewImportRowsResponses, ImportsPreviewImportRowsErrors, ThrowOnError> => (options.client ?? client).get<ImportsPreviewImportRowsResponses, ImportsPreviewImportRowsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/rows',
+    ...options
+});
+
+/**
+ * Download Import Csv
+ *
+ * Download the rendered Tillin import CSV.
+ */
+export const importsDownloadImportCsv = <ThrowOnError extends boolean = false>(options: Options<ImportsDownloadImportCsvData, ThrowOnError>): RequestResult<ImportsDownloadImportCsvResponses, ImportsDownloadImportCsvErrors, ThrowOnError> => (options.client ?? client).get<ImportsDownloadImportCsvResponses, ImportsDownloadImportCsvErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/csv',
+    ...options
+});
+
+/**
+ * Transfer Import
+ *
+ * Render the CSV and push it to a Tillin location (`/product_import`).
+ *
+ * Every kept (non-rejected, non-failed) item is marked `applied` and the
+ * transfer facts are recorded on the job.
+ */
+export const importsTransferImport = <ThrowOnError extends boolean = false>(options: Options<ImportsTransferImportData, ThrowOnError>): RequestResult<ImportsTransferImportResponses, ImportsTransferImportErrors, ThrowOnError> => (options.client ?? client).post<ImportsTransferImportResponses, ImportsTransferImportErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/transfer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Link Import Products
+ *
+ * Resolve applied items to Tillin product ids by `reference_code`.
+ *
+ * `/product_import` returns no ids, so after a transfer each applied item is
+ * linked back by searching its `supplier_ref` and matching the product whose
+ * `reference_code` equals it (strip + case-insensitive). Idempotent: already
+ * linked items are only counted, unresolved refs land in `not_found`.
+ */
+export const importsLinkImportProducts = <ThrowOnError extends boolean = false>(options: Options<ImportsLinkImportProductsData, ThrowOnError>): RequestResult<ImportsLinkImportProductsResponses, ImportsLinkImportProductsErrors, ThrowOnError> => (options.client ?? client).post<ImportsLinkImportProductsResponses, ImportsLinkImportProductsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/link-products',
+    ...options
+});
+
+/**
+ * List Import Products
+ *
+ * Per-import products view, built from the staged payloads (local only).
+ *
+ * Rejected/failed items are excluded. The linked/unlinked counters cover the
+ * `applied` items only — they are the ones expected to exist in Tillin.
+ */
+export const importsListImportProducts = <ThrowOnError extends boolean = false>(options: Options<ImportsListImportProductsData, ThrowOnError>): RequestResult<ImportsListImportProductsResponses, ImportsListImportProductsErrors, ThrowOnError> => (options.client ?? client).get<ImportsListImportProductsResponses, ImportsListImportProductsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imports/{import_id}/products',
+    ...options
+});
+
+/**
+ * List Import Profiles
+ */
+export const importProfilesListImportProfiles = <ThrowOnError extends boolean = false>(options?: Options<ImportProfilesListImportProfilesData, ThrowOnError>): RequestResult<ImportProfilesListImportProfilesResponses, ImportProfilesListImportProfilesErrors, ThrowOnError> => (options?.client ?? client).get<ImportProfilesListImportProfilesResponses, ImportProfilesListImportProfilesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/import-profiles',
+    ...options
+});
+
+/**
+ * Create Import Profile
+ */
+export const importProfilesCreateImportProfile = <ThrowOnError extends boolean = false>(options: Options<ImportProfilesCreateImportProfileData, ThrowOnError>): RequestResult<ImportProfilesCreateImportProfileResponses, ImportProfilesCreateImportProfileErrors, ThrowOnError> => (options.client ?? client).post<ImportProfilesCreateImportProfileResponses, ImportProfilesCreateImportProfileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/import-profiles',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Import Profile
+ */
+export const importProfilesDeleteImportProfile = <ThrowOnError extends boolean = false>(options: Options<ImportProfilesDeleteImportProfileData, ThrowOnError>): RequestResult<ImportProfilesDeleteImportProfileResponses, ImportProfilesDeleteImportProfileErrors, ThrowOnError> => (options.client ?? client).delete<ImportProfilesDeleteImportProfileResponses, ImportProfilesDeleteImportProfileErrors, ThrowOnError>({ url: '/import-profiles/{profile_id}', ...options });
+
+/**
+ * Update Import Profile
+ */
+export const importProfilesUpdateImportProfile = <ThrowOnError extends boolean = false>(options: Options<ImportProfilesUpdateImportProfileData, ThrowOnError>): RequestResult<ImportProfilesUpdateImportProfileResponses, ImportProfilesUpdateImportProfileErrors, ThrowOnError> => (options.client ?? client).patch<ImportProfilesUpdateImportProfileResponses, ImportProfilesUpdateImportProfileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/import-profiles/{profile_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Locations
+ *
+ * Return the Tillin-owned locations (no third-party), sorted by title.
+ */
+export const locationsListLocations = <ThrowOnError extends boolean = false>(options?: Options<LocationsListLocationsData, ThrowOnError>): RequestResult<LocationsListLocationsResponses, LocationsListLocationsErrors, ThrowOnError> => (options?.client ?? client).get<LocationsListLocationsResponses, LocationsListLocationsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/locations',
     ...options
 });
 
@@ -448,4 +663,107 @@ export const instructionsUpdateInstruction = <ThrowOnError extends boolean = fal
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * List Usage Prices
+ */
+export const usageListUsagePrices = <ThrowOnError extends boolean = false>(options?: Options<UsageListUsagePricesData, ThrowOnError>): RequestResult<UsageListUsagePricesResponses, UsageListUsagePricesErrors, ThrowOnError> => (options?.client ?? client).get<UsageListUsagePricesResponses, UsageListUsagePricesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/prices',
+    ...options
+});
+
+/**
+ * Create Usage Price
+ */
+export const usageCreateUsagePrice = <ThrowOnError extends boolean = false>(options: Options<UsageCreateUsagePriceData, ThrowOnError>): RequestResult<UsageCreateUsagePriceResponses, UsageCreateUsagePriceErrors, ThrowOnError> => (options.client ?? client).post<UsageCreateUsagePriceResponses, UsageCreateUsagePriceErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/prices',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Usage Price
+ */
+export const usageDeleteUsagePrice = <ThrowOnError extends boolean = false>(options: Options<UsageDeleteUsagePriceData, ThrowOnError>): RequestResult<UsageDeleteUsagePriceResponses, UsageDeleteUsagePriceErrors, ThrowOnError> => (options.client ?? client).delete<UsageDeleteUsagePriceResponses, UsageDeleteUsagePriceErrors, ThrowOnError>({ url: '/usage/prices/{price_id}', ...options });
+
+/**
+ * Update Usage Price
+ */
+export const usageUpdateUsagePrice = <ThrowOnError extends boolean = false>(options: Options<UsageUpdateUsagePriceData, ThrowOnError>): RequestResult<UsageUpdateUsagePriceResponses, UsageUpdateUsagePriceErrors, ThrowOnError> => (options.client ?? client).patch<UsageUpdateUsagePriceResponses, UsageUpdateUsagePriceErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/prices/{price_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Usage Summary
+ *
+ * Monthly consumption per (provider, model, metric), priced at read time.
+ */
+export const usageReadUsageSummary = <ThrowOnError extends boolean = false>(options?: Options<UsageReadUsageSummaryData, ThrowOnError>): RequestResult<UsageReadUsageSummaryResponses, UsageReadUsageSummaryErrors, ThrowOnError> => (options?.client ?? client).get<UsageReadUsageSummaryResponses, UsageReadUsageSummaryErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/summary',
+    ...options
+});
+
+/**
+ * Read Usage By Job
+ *
+ * Monthly consumption grouped by job (null job_id = "Hors job").
+ */
+export const usageReadUsageByJob = <ThrowOnError extends boolean = false>(options?: Options<UsageReadUsageByJobData, ThrowOnError>): RequestResult<UsageReadUsageByJobResponses, UsageReadUsageByJobErrors, ThrowOnError> => (options?.client ?? client).get<UsageReadUsageByJobResponses, UsageReadUsageByJobErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/by-job',
+    ...options
+});
+
+/**
+ * Export Usage Csv
+ *
+ * The monthly summary as a CSV attachment (comma separated, with header).
+ */
+export const usageExportUsageCsv = <ThrowOnError extends boolean = false>(options?: Options<UsageExportUsageCsvData, ThrowOnError>): RequestResult<UsageExportUsageCsvResponses, UsageExportUsageCsvErrors, ThrowOnError> => (options?.client ?? client).get<UsageExportUsageCsvResponses, UsageExportUsageCsvErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/export',
+    ...options
+});
+
+/**
+ * Refreeze Snapshot
+ *
+ * Re-freeze a billed month with the CURRENT price grid + coefficient.
+ *
+ * Safety net for the case where a price was missing at closing time: once
+ * corrected, POST here to (re)generate the snapshot. Refuses months that are
+ * not yet billed (400 not_frozen) — a current/future month must stay live.
+ */
+export const usageRefreezeSnapshot = <ThrowOnError extends boolean = false>(options: Options<UsageRefreezeSnapshotData, ThrowOnError>): RequestResult<UsageRefreezeSnapshotResponses, UsageRefreezeSnapshotErrors, ThrowOnError> => (options.client ?? client).post<UsageRefreezeSnapshotResponses, UsageRefreezeSnapshotErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/snapshot',
+    ...options
+});
+
+/**
+ * Read Usage Timeseries
+ *
+ * Daily billable series for the month, grouped by nothing/model/provider.
+ *
+ * Every day of the month is emitted (0 when idle). A series is kept only if
+ * it has at least one non-empty day, but retained series carry every day.
+ * Prices follow the same frozen/current resolution as the summary.
+ */
+export const usageReadUsageTimeseries = <ThrowOnError extends boolean = false>(options?: Options<UsageReadUsageTimeseriesData, ThrowOnError>): RequestResult<UsageReadUsageTimeseriesResponses, UsageReadUsageTimeseriesErrors, ThrowOnError> => (options?.client ?? client).get<UsageReadUsageTimeseriesResponses, UsageReadUsageTimeseriesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/usage/timeseries',
+    ...options
 });

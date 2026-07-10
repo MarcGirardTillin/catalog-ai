@@ -15,6 +15,10 @@ export type AccountSettings = {
      */
     title_template?: string | null;
     /**
+     * Title Case
+     */
+    title_case?: 'none' | 'upper' | 'capitalize';
+    /**
      * Editorial Instructions
      */
     editorial_instructions?: string | null;
@@ -34,6 +38,14 @@ export type AccountSettings = {
      * Notify Email
      */
     notify_email?: string | null;
+    /**
+     * Billing Coefficient
+     */
+    billing_coefficient?: number;
+    /**
+     * Billing Day
+     */
+    billing_day?: number;
 };
 
 /**
@@ -44,6 +56,22 @@ export type BodyImportsCreateImport = {
      * File
      */
     file: Blob | File;
+    /**
+     * Location Id
+     */
+    location_id?: number | null;
+};
+
+/**
+ * Body_products-upload_product_images
+ */
+export type BodyProductsUploadProductImages = {
+    /**
+     * Files
+     *
+     * Image files to upload
+     */
+    files: Array<Blob | File>;
 };
 
 /**
@@ -112,6 +140,10 @@ export type CatalogFilters = {
      * Categories
      */
     categories?: Array<FilterOption>;
+    /**
+     * Compositions
+     */
+    compositions?: Array<FilterOption>;
     /**
      * Seasons
      */
@@ -249,6 +281,46 @@ export type HealthResponse = {
 };
 
 /**
+ * ImportFilePreview
+ */
+export type ImportFilePreview = {
+    /**
+     * Kind
+     */
+    kind: 'pdf' | 'tabular';
+    /**
+     * File Name
+     */
+    file_name: string;
+    /**
+     * Sheets
+     */
+    sheets?: Array<ImportFilePreviewSheet>;
+};
+
+/**
+ * ImportFilePreviewSheet
+ */
+export type ImportFilePreviewSheet = {
+    /**
+     * Sheet
+     */
+    sheet?: string | null;
+    /**
+     * Rows
+     */
+    rows?: Array<Array<string>>;
+    /**
+     * Total Rows
+     */
+    total_rows?: number;
+    /**
+     * Truncated
+     */
+    truncated?: boolean;
+};
+
+/**
  * ImportItemPublic
  */
 export type ImportItemPublic = {
@@ -260,6 +332,10 @@ export type ImportItemPublic = {
      * Status
      */
     status: string;
+    /**
+     * Tillin Product Id
+     */
+    tillin_product_id?: number | null;
     /**
      * Payload
      */
@@ -278,6 +354,24 @@ export type ImportItemPublic = {
      * Created At
      */
     created_at: string;
+};
+
+/**
+ * ImportItemUpdate
+ *
+ * Review edits: a corrected payload and/or a reject/restore status.
+ */
+export type ImportItemUpdate = {
+    /**
+     * Payload
+     */
+    payload?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Status
+     */
+    status?: string | null;
 };
 
 /**
@@ -315,6 +409,23 @@ export type ImportJobPublic = {
      */
     file_name: string;
     counts: ImportJobCounts;
+    totals?: ImportJobTotals;
+    /**
+     * Po Number
+     */
+    po_number?: string | null;
+    /**
+     * Supplier
+     */
+    supplier?: string | null;
+    /**
+     * Profile Id
+     */
+    profile_id?: number | null;
+    /**
+     * Location Id
+     */
+    location_id?: number | null;
     /**
      * Warnings
      */
@@ -339,6 +450,347 @@ export type ImportJobPublic = {
      * Duration Seconds
      */
     duration_seconds?: number | null;
+};
+
+/**
+ * ImportJobTotals
+ *
+ * Aggregates over every extracted variant (a missing quantity counts
+ * as 1 unit; amounts are quantity x unit price, None when no price at all).
+ */
+export type ImportJobTotals = {
+    /**
+     * Quantity
+     */
+    quantity?: number;
+    /**
+     * Wholesale Amount
+     */
+    wholesale_amount?: string | null;
+    /**
+     * Retail Amount
+     */
+    retail_amount?: string | null;
+};
+
+/**
+ * ImportLinkResult
+ *
+ * POST /imports/{id}/link-products outcome (resolution by reference).
+ */
+export type ImportLinkResult = {
+    /**
+     * Linked
+     */
+    linked?: number;
+    /**
+     * Already Linked
+     */
+    already_linked?: number;
+    /**
+     * Not Found
+     */
+    not_found?: Array<string>;
+};
+
+/**
+ * ImportLocationSelection
+ *
+ * PUT /imports/{id}/location body — null clears the selection.
+ */
+export type ImportLocationSelection = {
+    /**
+     * Location Id
+     */
+    location_id: number | null;
+};
+
+/**
+ * ImportProductLine
+ *
+ * One row of the « Par import » products view (local data only).
+ */
+export type ImportProductLine = {
+    /**
+     * Item Id
+     */
+    item_id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Supplier Ref
+     */
+    supplier_ref: string;
+    /**
+     * Title
+     */
+    title?: string | null;
+    /**
+     * Brand
+     */
+    brand?: string | null;
+    /**
+     * Image Url
+     */
+    image_url?: string | null;
+    /**
+     * Variant Count
+     */
+    variant_count?: number;
+    /**
+     * Tillin Product Id
+     */
+    tillin_product_id?: number | null;
+};
+
+/**
+ * ImportProducts
+ */
+export type ImportProducts = {
+    /**
+     * Import Id
+     */
+    import_id: number;
+    /**
+     * File Name
+     */
+    file_name: string;
+    /**
+     * Items
+     */
+    items?: Array<ImportProductLine>;
+    /**
+     * Linked Count
+     */
+    linked_count?: number;
+    /**
+     * Unlinked Count
+     */
+    unlinked_count?: number;
+};
+
+/**
+ * ImportProfileConfig
+ *
+ * Frozen convention shapes; every field has a safe default.
+ */
+export type ImportProfileConfigInput = {
+    /**
+     * Price Mode
+     */
+    price_mode?: 'retail_as_is' | 'coefficient';
+    /**
+     * Coefficient
+     */
+    coefficient?: number | string | null;
+    /**
+     * Round Up To
+     */
+    round_up_to?: number | string;
+    /**
+     * Barcode Mode
+     */
+    barcode_mode?: 'ean' | 'constructed';
+    /**
+     * Brand Mode
+     */
+    brand_mode?: 'as_extracted' | 'fixed';
+    /**
+     * Brand Value
+     */
+    brand_value?: string;
+    /**
+     * Supplier Label
+     */
+    supplier_label?: string;
+    /**
+     * Season Label
+     */
+    season_label?: string;
+    /**
+     * Tax Rate
+     */
+    tax_rate?: string;
+    /**
+     * Status
+     */
+    status?: string;
+};
+
+/**
+ * ImportProfileConfig
+ *
+ * Frozen convention shapes; every field has a safe default.
+ */
+export type ImportProfileConfigOutput = {
+    /**
+     * Price Mode
+     */
+    price_mode?: 'retail_as_is' | 'coefficient';
+    /**
+     * Coefficient
+     */
+    coefficient?: string | null;
+    /**
+     * Round Up To
+     */
+    round_up_to?: string;
+    /**
+     * Barcode Mode
+     */
+    barcode_mode?: 'ean' | 'constructed';
+    /**
+     * Brand Mode
+     */
+    brand_mode?: 'as_extracted' | 'fixed';
+    /**
+     * Brand Value
+     */
+    brand_value?: string;
+    /**
+     * Supplier Label
+     */
+    supplier_label?: string;
+    /**
+     * Season Label
+     */
+    season_label?: string;
+    /**
+     * Tax Rate
+     */
+    tax_rate?: string;
+    /**
+     * Status
+     */
+    status?: string;
+};
+
+/**
+ * ImportProfileCreate
+ */
+export type ImportProfileCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Supplier Match
+     */
+    supplier_match?: string;
+    config?: ImportProfileConfigInput;
+};
+
+/**
+ * ImportProfilePublic
+ */
+export type ImportProfilePublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Supplier Match
+     */
+    supplier_match: string;
+    config: ImportProfileConfigOutput;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * ImportProfileSelection
+ *
+ * PUT /imports/{id}/profile body — null clears the selection.
+ */
+export type ImportProfileSelection = {
+    /**
+     * Profile Id
+     */
+    profile_id: number | null;
+};
+
+/**
+ * ImportProfileUpdate
+ */
+export type ImportProfileUpdate = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Supplier Match
+     */
+    supplier_match?: string | null;
+    config?: ImportProfileConfigInput | null;
+};
+
+/**
+ * ImportRenderPreview
+ *
+ * JSON preview of the rendered Tillin import CSV.
+ */
+export type ImportRenderPreview = {
+    /**
+     * Columns
+     */
+    columns: Array<string>;
+    /**
+     * Rows
+     */
+    rows: Array<Array<string>>;
+    /**
+     * Warnings
+     */
+    warnings?: Array<string>;
+    /**
+     * Row Count
+     */
+    row_count?: number;
+};
+
+/**
+ * ImportTransferRequest
+ *
+ * POST /imports/{id}/transfer body.
+ *
+ * A null location falls back to the job's selected location
+ * (config_json["location_id"]); missing both is a 400 `location_required`.
+ */
+export type ImportTransferRequest = {
+    /**
+     * Location Id
+     */
+    location_id?: number | null;
+    /**
+     * Profile Id
+     */
+    profile_id?: number | null;
+};
+
+/**
+ * ImportTransferResult
+ */
+export type ImportTransferResult = {
+    /**
+     * Ok
+     */
+    ok?: boolean;
+    /**
+     * Row Count
+     */
+    row_count?: number;
 };
 
 /**
@@ -654,6 +1106,22 @@ export type JobSelection = {
 };
 
 /**
+ * LocationPublic
+ *
+ * A Tillin boutique location a CSV import can be transferred to.
+ */
+export type LocationPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
  * LoginRequest
  *
  * Credentials submitted to the login endpoint.
@@ -845,6 +1313,18 @@ export type Product = {
      */
     department?: string | null;
     /**
+     * Composition
+     */
+    composition?: string | null;
+    /**
+     * Manufacturing Country
+     */
+    manufacturing_country?: string | null;
+    /**
+     * Tags
+     */
+    tags?: Array<string>;
+    /**
      * Description
      */
     description?: string | null;
@@ -852,6 +1332,10 @@ export type Product = {
      * Meta Description
      */
     meta_description?: string | null;
+    /**
+     * Price
+     */
+    price?: string | null;
     /**
      * Variants
      */
@@ -879,6 +1363,22 @@ export type ProductImage = {
 };
 
 /**
+ * ProductImagesUploadResult
+ *
+ * Outcome of uploading images to a product: the newly created images.
+ */
+export type ProductImagesUploadResult = {
+    /**
+     * Created
+     */
+    created: number;
+    /**
+     * Images
+     */
+    images?: Array<ProductImage>;
+};
+
+/**
  * ProductVariant
  *
  * A single sellable variant (style x color x size) of a product.
@@ -897,6 +1397,14 @@ export type ProductVariant = {
      */
     barcode?: string | null;
     /**
+     * Color
+     */
+    color?: string | null;
+    /**
+     * Size
+     */
+    size?: string | null;
+    /**
      * Weight
      */
     weight?: number | null;
@@ -904,6 +1412,311 @@ export type ProductVariant = {
      * Weight Unit
      */
     weight_unit?: string | null;
+    /**
+     * Price
+     */
+    price?: string | null;
+    /**
+     * Wholesale Price
+     */
+    wholesale_price?: string | null;
+};
+
+/**
+ * UsageByJob
+ */
+export type UsageByJob = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Jobs
+     */
+    jobs: Array<UsageJobLine>;
+};
+
+/**
+ * UsageJobLine
+ */
+export type UsageJobLine = {
+    /**
+     * Job Id
+     */
+    job_id: number | null;
+    /**
+     * Job Type
+     */
+    job_type: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Created At
+     */
+    created_at: string | null;
+    /**
+     * Input Tokens
+     */
+    input_tokens: number;
+    /**
+     * Output Tokens
+     */
+    output_tokens: number;
+    /**
+     * Other Metrics
+     */
+    other_metrics: Array<UsageJobMetric>;
+    /**
+     * Cost
+     */
+    cost: string | null;
+    /**
+     * Billable
+     */
+    billable: string | null;
+};
+
+/**
+ * UsageJobMetric
+ */
+export type UsageJobMetric = {
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+};
+
+/**
+ * UsagePriceCreate
+ */
+export type UsagePriceCreate = {
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model?: string | null;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Unit Price
+     */
+    unit_price: number | string;
+    /**
+     * Currency
+     */
+    currency?: string;
+};
+
+/**
+ * UsagePricePublic
+ */
+export type UsagePricePublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model: string | null;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Unit Price
+     */
+    unit_price: string;
+    /**
+     * Currency
+     */
+    currency: string;
+};
+
+/**
+ * UsagePriceUpdate
+ */
+export type UsagePriceUpdate = {
+    /**
+     * Provider
+     */
+    provider?: string | null;
+    /**
+     * Model
+     */
+    model?: string | null;
+    /**
+     * Metric
+     */
+    metric?: string | null;
+    /**
+     * Unit Price
+     */
+    unit_price?: number | string | null;
+    /**
+     * Currency
+     */
+    currency?: string | null;
+};
+
+/**
+ * UsageSummary
+ */
+export type UsageSummary = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Currency
+     */
+    currency: string;
+    /**
+     * Coefficient
+     */
+    coefficient: number;
+    /**
+     * Lines
+     */
+    lines: Array<UsageSummaryLine>;
+    totals: UsageTotals;
+    /**
+     * Unpriced Count
+     */
+    unpriced_count: number;
+    /**
+     * Frozen
+     */
+    frozen?: boolean;
+    /**
+     * Billing Date
+     */
+    billing_date: string;
+    /**
+     * Frozen At
+     */
+    frozen_at?: string | null;
+};
+
+/**
+ * UsageSummaryLine
+ */
+export type UsageSummaryLine = {
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model: string | null;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Unit Price
+     */
+    unit_price: string | null;
+    /**
+     * Cost
+     */
+    cost: string | null;
+    /**
+     * Billable
+     */
+    billable: string | null;
+};
+
+/**
+ * UsageTimeseries
+ */
+export type UsageTimeseries = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Group By
+     */
+    group_by: string;
+    /**
+     * Currency
+     */
+    currency: string;
+    /**
+     * Series
+     */
+    series: Array<UsageTimeseriesSeries>;
+};
+
+/**
+ * UsageTimeseriesPoint
+ */
+export type UsageTimeseriesPoint = {
+    /**
+     * Date
+     */
+    date: string;
+    /**
+     * Amount
+     */
+    amount: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+};
+
+/**
+ * UsageTimeseriesSeries
+ */
+export type UsageTimeseriesSeries = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Points
+     */
+    points: Array<UsageTimeseriesPoint>;
+};
+
+/**
+ * UsageTotals
+ */
+export type UsageTotals = {
+    /**
+     * Cost
+     */
+    cost: string;
+    /**
+     * Billable
+     */
+    billable: string;
 };
 
 /**
@@ -1245,6 +2058,66 @@ export type ProductsListProductsResponses = {
 
 export type ProductsListProductsResponse = ProductsListProductsResponses[keyof ProductsListProductsResponses];
 
+export type ProductsReadProductData = {
+    body?: never;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}';
+};
+
+export type ProductsReadProductErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsReadProductError = ProductsReadProductErrors[keyof ProductsReadProductErrors];
+
+export type ProductsReadProductResponses = {
+    /**
+     * Successful Response
+     */
+    200: Product;
+};
+
+export type ProductsReadProductResponse = ProductsReadProductResponses[keyof ProductsReadProductResponses];
+
+export type ProductsUploadProductImagesData = {
+    body: BodyProductsUploadProductImages;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images';
+};
+
+export type ProductsUploadProductImagesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsUploadProductImagesError = ProductsUploadProductImagesErrors[keyof ProductsUploadProductImagesErrors];
+
+export type ProductsUploadProductImagesResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProductImagesUploadResult;
+};
+
+export type ProductsUploadProductImagesResponse = ProductsUploadProductImagesResponses[keyof ProductsUploadProductImagesResponses];
+
 export type BrandsListBrandsData = {
     body?: never;
     path?: never;
@@ -1578,6 +2451,64 @@ export type ImportsReadImportResponses = {
 
 export type ImportsReadImportResponse = ImportsReadImportResponses[keyof ImportsReadImportResponses];
 
+export type ImportsDownloadImportFileData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/file';
+};
+
+export type ImportsDownloadImportFileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsDownloadImportFileError = ImportsDownloadImportFileErrors[keyof ImportsDownloadImportFileErrors];
+
+export type ImportsDownloadImportFileResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImportsPreviewImportFileData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/file/preview';
+};
+
+export type ImportsPreviewImportFileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsPreviewImportFileError = ImportsPreviewImportFileErrors[keyof ImportsPreviewImportFileErrors];
+
+export type ImportsPreviewImportFileResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportFilePreview;
+};
+
+export type ImportsPreviewImportFileResponse = ImportsPreviewImportFileResponses[keyof ImportsPreviewImportFileResponses];
+
 export type ImportsListImportItemsData = {
     body?: never;
     path: {
@@ -1616,6 +2547,397 @@ export type ImportsListImportItemsResponses = {
 };
 
 export type ImportsListImportItemsResponse = ImportsListImportItemsResponses[keyof ImportsListImportItemsResponses];
+
+export type ImportsUpdateImportItemData = {
+    body: ImportItemUpdate;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/items/{item_id}';
+};
+
+export type ImportsUpdateImportItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsUpdateImportItemError = ImportsUpdateImportItemErrors[keyof ImportsUpdateImportItemErrors];
+
+export type ImportsUpdateImportItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportItemPublic;
+};
+
+export type ImportsUpdateImportItemResponse = ImportsUpdateImportItemResponses[keyof ImportsUpdateImportItemResponses];
+
+export type ImportsSetImportProfileData = {
+    body: ImportProfileSelection;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/profile';
+};
+
+export type ImportsSetImportProfileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsSetImportProfileError = ImportsSetImportProfileErrors[keyof ImportsSetImportProfileErrors];
+
+export type ImportsSetImportProfileResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportJobPublic;
+};
+
+export type ImportsSetImportProfileResponse = ImportsSetImportProfileResponses[keyof ImportsSetImportProfileResponses];
+
+export type ImportsSetImportLocationData = {
+    body: ImportLocationSelection;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/location';
+};
+
+export type ImportsSetImportLocationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsSetImportLocationError = ImportsSetImportLocationErrors[keyof ImportsSetImportLocationErrors];
+
+export type ImportsSetImportLocationResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportJobPublic;
+};
+
+export type ImportsSetImportLocationResponse = ImportsSetImportLocationResponses[keyof ImportsSetImportLocationResponses];
+
+export type ImportsPreviewImportRowsData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: {
+        /**
+         * Profile Id
+         */
+        profile_id?: number | null;
+    };
+    url: '/imports/{import_id}/rows';
+};
+
+export type ImportsPreviewImportRowsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsPreviewImportRowsError = ImportsPreviewImportRowsErrors[keyof ImportsPreviewImportRowsErrors];
+
+export type ImportsPreviewImportRowsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportRenderPreview;
+};
+
+export type ImportsPreviewImportRowsResponse = ImportsPreviewImportRowsResponses[keyof ImportsPreviewImportRowsResponses];
+
+export type ImportsDownloadImportCsvData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: {
+        /**
+         * Profile Id
+         */
+        profile_id?: number | null;
+    };
+    url: '/imports/{import_id}/csv';
+};
+
+export type ImportsDownloadImportCsvErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsDownloadImportCsvError = ImportsDownloadImportCsvErrors[keyof ImportsDownloadImportCsvErrors];
+
+export type ImportsDownloadImportCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImportsTransferImportData = {
+    body: ImportTransferRequest;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/transfer';
+};
+
+export type ImportsTransferImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsTransferImportError = ImportsTransferImportErrors[keyof ImportsTransferImportErrors];
+
+export type ImportsTransferImportResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportTransferResult;
+};
+
+export type ImportsTransferImportResponse = ImportsTransferImportResponses[keyof ImportsTransferImportResponses];
+
+export type ImportsLinkImportProductsData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/link-products';
+};
+
+export type ImportsLinkImportProductsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsLinkImportProductsError = ImportsLinkImportProductsErrors[keyof ImportsLinkImportProductsErrors];
+
+export type ImportsLinkImportProductsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportLinkResult;
+};
+
+export type ImportsLinkImportProductsResponse = ImportsLinkImportProductsResponses[keyof ImportsLinkImportProductsResponses];
+
+export type ImportsListImportProductsData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/products';
+};
+
+export type ImportsListImportProductsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsListImportProductsError = ImportsListImportProductsErrors[keyof ImportsListImportProductsErrors];
+
+export type ImportsListImportProductsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportProducts;
+};
+
+export type ImportsListImportProductsResponse = ImportsListImportProductsResponses[keyof ImportsListImportProductsResponses];
+
+export type ImportProfilesListImportProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/import-profiles';
+};
+
+export type ImportProfilesListImportProfilesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportProfilesListImportProfilesError = ImportProfilesListImportProfilesErrors[keyof ImportProfilesListImportProfilesErrors];
+
+export type ImportProfilesListImportProfilesResponses = {
+    /**
+     * Response Import-Profiles-List Import Profiles
+     *
+     * Successful Response
+     */
+    200: Array<ImportProfilePublic>;
+};
+
+export type ImportProfilesListImportProfilesResponse = ImportProfilesListImportProfilesResponses[keyof ImportProfilesListImportProfilesResponses];
+
+export type ImportProfilesCreateImportProfileData = {
+    body: ImportProfileCreate;
+    path?: never;
+    query?: never;
+    url: '/import-profiles';
+};
+
+export type ImportProfilesCreateImportProfileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportProfilesCreateImportProfileError = ImportProfilesCreateImportProfileErrors[keyof ImportProfilesCreateImportProfileErrors];
+
+export type ImportProfilesCreateImportProfileResponses = {
+    /**
+     * Successful Response
+     */
+    201: ImportProfilePublic;
+};
+
+export type ImportProfilesCreateImportProfileResponse = ImportProfilesCreateImportProfileResponses[keyof ImportProfilesCreateImportProfileResponses];
+
+export type ImportProfilesDeleteImportProfileData = {
+    body?: never;
+    path: {
+        /**
+         * Profile Id
+         */
+        profile_id: number;
+    };
+    query?: never;
+    url: '/import-profiles/{profile_id}';
+};
+
+export type ImportProfilesDeleteImportProfileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportProfilesDeleteImportProfileError = ImportProfilesDeleteImportProfileErrors[keyof ImportProfilesDeleteImportProfileErrors];
+
+export type ImportProfilesDeleteImportProfileResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ImportProfilesDeleteImportProfileResponse = ImportProfilesDeleteImportProfileResponses[keyof ImportProfilesDeleteImportProfileResponses];
+
+export type ImportProfilesUpdateImportProfileData = {
+    body: ImportProfileUpdate;
+    path: {
+        /**
+         * Profile Id
+         */
+        profile_id: number;
+    };
+    query?: never;
+    url: '/import-profiles/{profile_id}';
+};
+
+export type ImportProfilesUpdateImportProfileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportProfilesUpdateImportProfileError = ImportProfilesUpdateImportProfileErrors[keyof ImportProfilesUpdateImportProfileErrors];
+
+export type ImportProfilesUpdateImportProfileResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportProfilePublic;
+};
+
+export type ImportProfilesUpdateImportProfileResponse = ImportProfilesUpdateImportProfileResponses[keyof ImportProfilesUpdateImportProfileResponses];
+
+export type LocationsListLocationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/locations';
+};
+
+export type LocationsListLocationsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LocationsListLocationsError = LocationsListLocationsErrors[keyof LocationsListLocationsErrors];
+
+export type LocationsListLocationsResponses = {
+    /**
+     * Response Locations-List Locations
+     *
+     * Successful Response
+     */
+    200: Array<LocationPublic>;
+};
+
+export type LocationsListLocationsResponse = LocationsListLocationsResponses[keyof LocationsListLocationsResponses];
 
 export type ItemsReadItemData = {
     body?: never;
@@ -2118,3 +3440,267 @@ export type InstructionsUpdateInstructionResponses = {
 };
 
 export type InstructionsUpdateInstructionResponse = InstructionsUpdateInstructionResponses[keyof InstructionsUpdateInstructionResponses];
+
+export type UsageListUsagePricesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/usage/prices';
+};
+
+export type UsageListUsagePricesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageListUsagePricesError = UsageListUsagePricesErrors[keyof UsageListUsagePricesErrors];
+
+export type UsageListUsagePricesResponses = {
+    /**
+     * Response Usage-List Usage Prices
+     *
+     * Successful Response
+     */
+    200: Array<UsagePricePublic>;
+};
+
+export type UsageListUsagePricesResponse = UsageListUsagePricesResponses[keyof UsageListUsagePricesResponses];
+
+export type UsageCreateUsagePriceData = {
+    body: UsagePriceCreate;
+    path?: never;
+    query?: never;
+    url: '/usage/prices';
+};
+
+export type UsageCreateUsagePriceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageCreateUsagePriceError = UsageCreateUsagePriceErrors[keyof UsageCreateUsagePriceErrors];
+
+export type UsageCreateUsagePriceResponses = {
+    /**
+     * Successful Response
+     */
+    201: UsagePricePublic;
+};
+
+export type UsageCreateUsagePriceResponse = UsageCreateUsagePriceResponses[keyof UsageCreateUsagePriceResponses];
+
+export type UsageDeleteUsagePriceData = {
+    body?: never;
+    path: {
+        /**
+         * Price Id
+         */
+        price_id: number;
+    };
+    query?: never;
+    url: '/usage/prices/{price_id}';
+};
+
+export type UsageDeleteUsagePriceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageDeleteUsagePriceError = UsageDeleteUsagePriceErrors[keyof UsageDeleteUsagePriceErrors];
+
+export type UsageDeleteUsagePriceResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type UsageDeleteUsagePriceResponse = UsageDeleteUsagePriceResponses[keyof UsageDeleteUsagePriceResponses];
+
+export type UsageUpdateUsagePriceData = {
+    body: UsagePriceUpdate;
+    path: {
+        /**
+         * Price Id
+         */
+        price_id: number;
+    };
+    query?: never;
+    url: '/usage/prices/{price_id}';
+};
+
+export type UsageUpdateUsagePriceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageUpdateUsagePriceError = UsageUpdateUsagePriceErrors[keyof UsageUpdateUsagePriceErrors];
+
+export type UsageUpdateUsagePriceResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsagePricePublic;
+};
+
+export type UsageUpdateUsagePriceResponse = UsageUpdateUsagePriceResponses[keyof UsageUpdateUsagePriceResponses];
+
+export type UsageReadUsageSummaryData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/usage/summary';
+};
+
+export type UsageReadUsageSummaryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageReadUsageSummaryError = UsageReadUsageSummaryErrors[keyof UsageReadUsageSummaryErrors];
+
+export type UsageReadUsageSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageSummary;
+};
+
+export type UsageReadUsageSummaryResponse = UsageReadUsageSummaryResponses[keyof UsageReadUsageSummaryResponses];
+
+export type UsageReadUsageByJobData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/usage/by-job';
+};
+
+export type UsageReadUsageByJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageReadUsageByJobError = UsageReadUsageByJobErrors[keyof UsageReadUsageByJobErrors];
+
+export type UsageReadUsageByJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageByJob;
+};
+
+export type UsageReadUsageByJobResponse = UsageReadUsageByJobResponses[keyof UsageReadUsageByJobResponses];
+
+export type UsageExportUsageCsvData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/usage/export';
+};
+
+export type UsageExportUsageCsvErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageExportUsageCsvError = UsageExportUsageCsvErrors[keyof UsageExportUsageCsvErrors];
+
+export type UsageExportUsageCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type UsageRefreezeSnapshotData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Month
+         */
+        month: string;
+    };
+    url: '/usage/snapshot';
+};
+
+export type UsageRefreezeSnapshotErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageRefreezeSnapshotError = UsageRefreezeSnapshotErrors[keyof UsageRefreezeSnapshotErrors];
+
+export type UsageRefreezeSnapshotResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageSummary;
+};
+
+export type UsageRefreezeSnapshotResponse = UsageRefreezeSnapshotResponses[keyof UsageRefreezeSnapshotResponses];
+
+export type UsageReadUsageTimeseriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+        /**
+         * Group By
+         */
+        group_by?: string;
+    };
+    url: '/usage/timeseries';
+};
+
+export type UsageReadUsageTimeseriesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UsageReadUsageTimeseriesError = UsageReadUsageTimeseriesErrors[keyof UsageReadUsageTimeseriesErrors];
+
+export type UsageReadUsageTimeseriesResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageTimeseries;
+};
+
+export type UsageReadUsageTimeseriesResponse = UsageReadUsageTimeseriesResponses[keyof UsageReadUsageTimeseriesResponses];
