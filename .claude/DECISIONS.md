@@ -627,3 +627,40 @@ POST↔PUT n'a été révélé QUE par le test live (mock ≠ réel, encore) —
 règle : toujours un appel réel avant de déclarer un writeback d'API externe
 terminé. Validé live sur un produit test (poids écrit sur les 7 variantes),
 valeur restaurée après.
+
+## 2026-07-10 — Sprint imagerie : architecture de l'Image Processing Service
+
+Specs consolidées dans plan.md (section « Sprint imagerie — Image Processing
+Service ») à partir d'une réflexion d'architecture apportée par Marc, validée
+puis amendée de trois réserves. Décisions durables :
+
+- **API interne en verbes métier** (`normalize_product_image`,
+  `generate_model_photo`, `generate_flat_photo` réservé) — les fournisseurs
+  sont cachés derrière des adaptateurs interchangeables (anti-corruption
+  layer). 1 interface + 1 implémentation par verbe ; PAS de moteur de routing
+  multi-providers tant qu'il n'y a qu'un fournisseur par verbe.
+- **Deux pipelines** : déterministe → **Photoroom** (~0,02 $/img) ; génératif
+  → **FASHN `product-to-model`** (~0,04 $/img, priorité fidélité vêtement).
+  FASHN supplante l'idée antérieure « Photoroom Virtual Model API ». Le code
+  local (Pillow/CV) est un provider comme un autre.
+- **Pas de nouveau broker** : la « file d'attente » = le job system existant
+  (enrichment_job/item, queue Postgres SKIP LOCKED, BackgroundTask). Le
+  volume cible (dizaines de milliers d'img/mois) tient largement dedans.
+- **Module, pas microservice** : `backend/app/imaging/` ; l'« API interne
+  stable » = les signatures Python des verbes. L'ACL rend une extraction
+  future triviale — on ne la paie pas maintenant.
+- **Stockage : pas d'object storage tiers.** Final = Xano (bulk
+  `product_image/{id}/bulk`, branche fichiers, déjà validée) ; remplacement =
+  `PUT /product_image/deactivate` (`product_image_ids: int[]`, créé par Marc
+  le 2026-07-10 — le bulk ne fait qu'AJOUTER) ; staging = disque local
+  éphémère `backend/var/imaging/`.
+- **Traçabilité par asset** : provider + version modèle + seed, portée par la
+  nouvelle table `image_asset` (qui sert aussi de suivi async pour les
+  actions à la carte et d'audit — une seule table, trois usages).
+- **Métrage au wrapper** : chaque appel Photoroom/FASHN émet des
+  `usage_event` (provider photoroom/fashn, metric images/credits) — même
+  pattern que Claude, aucun changement de schéma.
+- **Cadrage (AskUserQuestion)** : Phase A = à la carte (panneau produit)
+  d'abord — valide chaque verbe visuellement ; Phase B = batch dans le
+  pipeline d'enrichissement (déterministe seulement ; le génératif reste à la
+  carte).

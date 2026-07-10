@@ -12,8 +12,8 @@ This is a **new project, separate from the Xano repo** (new Git repository, e.g.
 - **Database:** Postgres on the same PaaS (app's own state; nothing extra on Xano).
 - **Scraping:** **Shopify JSON first → Firecrawl fallback**, with a **manual method override per run and per product** (some Shopify pages hold data outside the JSON; sometimes go straight to Firecrawl). Pluggable fetcher so a heavy anti-bot backend can be added.
 - **Anti-bot backend:** **Bright Data Web Unlocker** (chosen over Zyte) for WAF-protected sites like Farfetch / Asics — **deferred to a later phase/task**. Start with Shopify JSON + Firecrawl; the fetcher interface is built from day one so Web Unlocker plugs in without rework.
-- **Images:** **Photoroom API** (bg removal + bg color + pad to **4:5** + format/quality in one call).
-  - **Product-panel image tools (user-requested 2026-07-09, NOT built yet):** the product side panel (see IA section) reserves a disabled "Images (Photoroom)" section. Planned actions, per image: détourage (cutout), reformatage/redimensionnement (ratio/size presets), and generative: produit porté par un mannequin à partir d'un packshot à plat, et l'inverse (à plat depuis une photo portée). Every Photoroom call will be metered through `usage_event` like Claude calls (wrapper-level).
+- **Images:** two pipelines — deterministic via **Photoroom API** (bg removal + bg color + pad to **4:5** + format/quality in one call) and generative via **FASHN API** (`product-to-model`: packshot → worn by model). Fully specced in the dedicated **« Sprint imagerie — Image Processing Service »** section below (business verbs + adapters, Xano as final storage, wrapper-level metering).
+  - **Product-panel image tools (user-requested 2026-07-09, NOT built yet):** the product side panel (see IA section) reserves a disabled "Images (Photoroom)" section. Planned actions, per image: détourage (cutout), reformatage/redimensionnement (ratio/size presets), and generative: produit porté par un mannequin à partir d'un packshot à plat (FASHN), et l'inverse (à plat depuis une photo portée — deferred, no confirmed FASHN endpoint). Every Photoroom/FASHN call will be metered through `usage_event` like Claude calls (wrapper-level). → Phase A of the imagery sprint.
 - **Copy:** **Claude** default (`claude-sonnet-4-6`), provider switch to OpenAI; configurable per job/brand.
 - **Transforms (all):** description+meta, images (bg+recolor+resize 4:5), **title by template**, **image filename by template**, **variant weights on existing products**.
 - **Write mode:** stage → **review queue** → approve → apply to Tillin (Xano) → Tillin syncs to Shopify.
@@ -34,7 +34,7 @@ SvelteKit app (Railway/Render)        FastAPI backend + worker (Railway/Render) 
 /jobs/[id]/review                     1. resolve_source_url(product, method)  ───────▶  Shopify .json / suggest.json
   before/after, approve    ─POST─▶                                                        Firecrawl (fallback / full page)
                                       2. generate_copy(provider, model)        ───────▶  Claude / OpenAI
-                                      3. process_image(bg, 4:5, fmt)            ───────▶  Photoroom  → store to object storage
+                                      3. normalize_product_image(bg, 4:5, fmt)  ───────▶  Photoroom  → local staging → Xano (bulk)
                                       4. apply_title_template / map_weights
                                       5. stage result on enrichment_item (ready_for_review)
   approve item            ─POST─▶  POST /items/{id}/approve  ──────────────────────────▶  Xano: write desc/meta/title/
@@ -82,7 +82,7 @@ Chain: **brand → site(s) → search → fetch candidates → score → confide
 Port the `suggest.json` + `scoreProductMatch` logic from `functions/ai_process_image_feature/1079_import_single_shopify_product.xs` to Python, **re-rank to barcode → reference → title+color (drop Tillin SKU)**, and search across multiple URLs. Requires reading each variant's `barcode` + the product's `product_reference_code` from Xano (already in scope).
 - **`enrich/`** — pipeline steps:
   - `copy.py` — `generate_copy(provider, model, product_ctx, editorial_instructions, translate)` → `{description_fr, meta_description_fr}` (Anthropic SDK / OpenAI SDK). Verify request shape via the `claude-api` skill.
-  - `images.py` — `process_image(src, bg_color, ratio="4:5", long_edge, fmt, quality, padding, alignment, center_offset?)` via Photoroom → bytes → store to **object storage** (Cloudflare R2 / S3 / PaaS volume) → durable URL. Filename from `filename_template` (`{reference}_{color}_{position}`).
+  - `images.py` — **superseded by the « Sprint imagerie — Image Processing Service » section below** (business verbs in `backend/app/imaging/`, no third-party object storage — Xano is the durable store). Historical spec kept for the details reused by the sprint (off-center QA, formats, per-category sizing): `process_image(src, bg_color, ratio="4:5", long_edge, fmt, quality, padding, alignment, center_offset?)` via Photoroom. Filename from `filename_template` (`{reference}_{color}_{position}`).
     - **Auto-centering (default):** Photoroom cuts out the subject and **centers it by default**; we set `outputSize` to the 4:5 target (e.g. `1600x2000`), `padding` (~`"10%"`), `backgroundColor`, and `horizontalAlignment` → consistent centered product shots with uniform margins across the catalog.
     - **Off-center detection (QA flag):** from the returned cutout's alpha, `Pillow.getbbox()` → compare subject-bbox center to frame center; if offset > threshold, badge the item `off_center` in the review queue.
     - **Manual recenter (exceptions):** request the **transparent cutout** from Photoroom and **composite in Python (Pillow)** at a user-supplied `center_offset` on the 4:5 canvas → pixel-perfect, deterministic. Triggered from the review UI when auto-centering isn't right.
@@ -115,7 +115,7 @@ Talks only to FastAPI. Lightweight; no heavy client deps.
 ## Xano-side additions (minimal — delegated to Xano agents)
 Cheap glue only; no pipeline compute on Xano:
 - **`brand.website_urls`** (text **array**, Table Designer) — one *or more* source sites per brand (a brand may sell across several stores/domains) + expose in brand GET/`295_brand_POST`. The app searches all of them, plus any extra URLs the user supplies per job or per product.
-- Thin **`POST product/{id}/attach_images_from_urls`** — wraps existing `functions/ai_process_image_feature/2040_import_images_from_urls.xs` (it already does `storage.create_image` from a URL + `db.add product_image`). App uploads Photoroom output to object storage, passes those URLs here to register Tillin `product_image` rows; returns IDs for the enrich call.
+- ~~Thin `POST product/{id}/attach_images_from_urls`~~ — **OBSOLETE 2026-07-10**: superseded by **`POST /product_image/{product_id}/bulk`** (accepts `text[] image_urls` AND `file[] files` — files branch shipped & validated end-to-end via `XanoClient.upload_product_images`; response returns the created image `id`s) + **`PUT /product_image/deactivate`** (`product_image_ids: int[]`, created by Marc 2026-07-10) for replacement, since the bulk only APPENDS. No object storage needed — bytes go straight to Xano. (`.xs` export of the deactivate endpoint still to drop into `fichiers_xano/endpoints_xano/`.)
 - ~~Thin `POST product/{id}/set_variant_weights`~~ — **SHIPPED 2026-07-09** via Tillin's **`PUT /product/weight`** (body `{product_ids:[…], weight_unit:"1", weight:N}`; unit codes 1=kg/2=g/3=lb/4=oz). Note: it is **product-level** (one weight per batch of products, PUT not POST), so the destination adapter reduces the reviewer-selected per-variant proposals to a single value — boutique convention: variants share one weight → take the first selected. Client `set_product_weight`, wired in `xano_tillin.apply`. Validated live (writes to all variants of the product).
 - Confirm the product update path accepts **title**; if not, add a thin title-update endpoint. Reuse `3176 enrich` for description+meta.
 - Provision a **Xano API token / service user** for the app.
@@ -249,8 +249,145 @@ CatalogAI will be priced to Tillin's clients on consumption: AI tokens first, pl
 
 Multi-account note: today the app has a single "default" account; per-client billing becomes meaningful when client boutiques get their own accounts — the account_id dimension is in the schema from M1 so no backfill is needed.
 
+## Sprint imagerie — Image Processing Service (specced 2026-07-10)
+
+Consolidates every image-processing item scattered above (Locked decisions L15-16,
+`images.py` module spec, Xano attach endpoint, open items) into one specced sprint.
+Architecture direction brought by Marc and validated together; scoping decisions
+(à-la-carte first, replacement endpoint) settled by AskUserQuestion 2026-07-10.
+
+### Decisions (locked)
+
+- **Internal API in business verbs, not provider capabilities** — providers are
+  hidden behind interchangeable adapters (anti-corruption layer).
+- **Two pipelines, two providers:**
+  - **Deterministic** (process existing photos) → **Photoroom API**: cutout +
+    solid background + shadow + resize/ratio 4:5. ~0.02 $/img.
+  - **Generative** (product worn by a model, solid background) → **FASHN API**
+    (`product-to-model`). Absolute priority = garment fidelity (prints, textures,
+    seams, colors, proportions). ~0.04 $/img at volume. Supersedes the earlier
+    "Photoroom Virtual Model API" idea from the old future-sprints note.
+- **Local code (Pillow/CV) is a provider like any other** (crop, padding, ratios,
+  geometric harmonization, manual recenter).
+- **Queue = the existing job system** (`enrichment_job`/`enrichment_item`,
+  Postgres SKIP LOCKED queue in `jobs/queue.py`, FastAPI BackgroundTask runner) —
+  **no new broker** (Celery/Redis/…). Tens of thousands of images/month ≈
+  ~1,500/working day: the existing polling worker absorbs it.
+- **"Service" = a module** (`backend/app/imaging/`), NOT a microservice. The
+  "stable internal API" is the Python signatures of the verbs. The ACL makes a
+  later extraction trivial if scaling ever demands it.
+- **Traceability on every generated asset:** provider + model version + seed
+  (reproducibility + audit when switching providers).
+- **Storage: no third-party object storage.** Final = Xano via
+  `POST /product_image/{id}/bulk` (files branch, already wired through
+  `XanoClient.upload_product_images`, validated end-to-end). Replacement = new
+  `PUT /product_image/deactivate` (`product_image_ids: int[]`, created by Marc)
+  since the bulk only APPENDS. Staging = ephemeral local disk.
+- **Metering mandatory at the wrapper level** — every Photoroom/FASHN call emits
+  `usage_event` rows (same pattern as `record_claude_usage`); pipelines stay
+  metering-agnostic. No `usage_event` schema change needed (provider/metric are
+  free strings by design).
+- **Do NOT over-engineer:** one interface + one implementation per verb. No
+  multi-provider routing engine while there is a single provider per verb (the
+  `local` provider is not routing — it covers operations the APIs don't do).
+
+### 1. Architecture — `backend/app/imaging/`
+
+`service.py` exposes the verbs; providers live behind them.
+
+- `normalize_product_image(src, *, bg_color, ratio="4:5", output_size="1600x2000",
+  padding="10%", fmt="webp", quality=80, max_kb=200, center_offset=None)
+  -> ImagingResult` — deterministic: cutout + solid bg + shadow + pad to 4:5 +
+  format/weight. Background change is a **parameter** of this verb, not a verb.
+  Provider: Photoroom. Manual recenter / `off_center` QA flag = **local** provider
+  (Pillow composites the RGBA cutout at `center_offset`; `getbbox()` vs frame
+  center for the QA badge — reuses the historical `images.py` spec above).
+- `generate_model_photo(product_image, *, prompt=None, aspect_ratio="4:5",
+  resolution="1k", generation_mode="balanced", seed=42, num_images=1)
+  -> list[ImagingResult]` — generative, provider FASHN `product-to-model`.
+- `generate_flat_photo()` (worn → flat) — **deferred**: no confirmed FASHN
+  endpoint; reserved in the interface, not implemented.
+- `ImagingResult = {staged_path, width, height, format, trace}` with
+  `trace = {provider, model, model_version?, seed?, params}` — systematic.
+
+### 2. Adapters (`backend/app/clients/`)
+
+- `photoroom.py` **exists** (`edit_image`, POST `/v2/edit`, orphan today): adapt —
+  drive params from the verb options, optionally return the RGBA cutout, expose
+  cost in the result (1 image = 1 unit). ⚠ v2 param names to confirm with a
+  **live call** at build time (repo golden rule).
+- `fashn.py` **new**, on the `base.py` pattern (`NotConfiguredError` /
+  `ExternalServiceError`, `from_settings`, httpx.Client):
+  `run(model_name, inputs) -> prediction_id` (POST `/v1/run`),
+  `wait(prediction_id, timeout=120)` (poll GET `/v1/status/{id}` until
+  `completed`, `output: [CDN urls]`), then **download immediately to staging**
+  (CDN expiry unknown — never store the bare URL). Generation takes 10–55 s.
+  Add setting **`FASHN_API_KEY`** to `core/config.py` + `.env.example`.
+- **Metering:** clients expose cost in their result; the imaging service emits
+  via `record_usage(...)` (`backend/app/api/services/usage.py`) — provider
+  `photoroom` metric `images`, provider `fashn` metric `credits` (1k=1-3,
+  2k=2-4, 4k=3-5 credits per image by generation_mode; ×num_images;
+  face_reference +3).
+
+### 3. Persistence & storage
+
+- **New table `image_asset`** (one table, three jobs: async task tracking for
+  à-la-carte actions, provenance trace, audit):
+  `id, account_id, product_id, verb, provider, model, seed, params_json,
+  status (pending|processing|completed|failed), source_image,
+  staged_paths_json, tillin_image_ids_json, error, created_at, finished_at`.
+- **Staging:** `backend/var/imaging/` (sibling of `UPLOAD_DIR`), served by an
+  authenticated backend route for previews; purged after save or via simple TTL.
+- **Final:** `XanoClient.upload_product_images(product_id, files)` (bulk files
+  branch); **replacement** = upload then `PUT /product_image/deactivate
+  {product_image_ids}` on the originals (new `XanoClient.deactivate_product_images(ids)`;
+  the bulk response contains the created ids).
+
+### 4. Phase A — à la carte (product panel) — FIRST
+
+- Routes:
+  - `POST /products/{id}/images/normalize` — sync (Photoroom answers in seconds);
+    body: image sources + options + `replace: bool`.
+  - `POST /products/{id}/images/generate-model` → **202 + `image_asset.id`**
+    (FASHN 10–55 s: FastAPI BackgroundTask polls FASHN, writes result to staging).
+  - `GET /imaging/assets/{id}` — status + preview.
+  - `POST /imaging/assets/{id}/save` — push to Xano bulk + optional deactivate.
+- Frontend: activate the disabled "Images (Photoroom)" section of
+  `ProductPanel.svelte` → per image: « Normaliser (détourage + fond 4:5) »,
+  « Générer porté mannequin »; before/after preview in the panel; « Enregistrer »
+  = save (+ « remplacer l'originale » checkbox for normalize). Light polling in
+  the panel for the generative action.
+
+### 5. Phase B — batch (enrichment pipeline)
+
+- Replaces the Photoroom TODO in `enrich/pipeline.py`: resolved source images go
+  through `normalize_product_image`; results staged in `staged_images_json`
+  (entries enriched with the `trace`); before/after review; apply via bulk
+  **files** (no longer `add_product_images` by URLs).
+- `config_json`: block `image {bg_color, ratio:"4:5", output_size:"1600x2000",
+  padding:"10%", format:"webp"→fallback jpeg, quality:80, max_kb:200}` +
+  `filename_template` (`{reference}_{color}_{position}`) — exposed in
+  `JobOptionsPanel.svelte`.
+- The generative verb is **NOT** in the batch in Phase B (à la carte only) —
+  cost + mandatory visual validation.
+
+### Deferred / open items
+
+- `generate_flat_photo` (worn → flat) — wait for a suitable FASHN endpoint.
+- Per-category fill ratio (already noted in the historical `images.py` spec).
+- Multi-provider routing — when a second provider exists for a verb.
+- Confirm Photoroom v2 params + RGBA cutout via live call at build time.
+- Does the FASHN status response return consumed credits? Otherwise use a
+  versioned static grid.
+- Drop the `.xs` export of `PUT /product_image/deactivate` into
+  `fichiers_xano/endpoints_xano/`.
+
 ## Future / separate sprints (out of scope here)
-- **AI imagery sprint — image presentation styles:** let the user choose **flat-lay** (source selection), **on-model** (Photoroom **Virtual Model API** — flat-lay/ghost-mannequin → on-model, 12+ preset or custom brand models, poses, scene presets), and **in-scene / lifestyle** (Photoroom **AI Backgrounds** — generative scene from a text prompt). Both are Photoroom **Image Editing API Plus plan** (credits per image). Larger feature → its own sprint; the `images.py` interface should leave room for a `presentation_style` param.
+- **In-scene / lifestyle imagery:** generative scene from a text prompt (e.g.
+  Photoroom **AI Backgrounds** or a FASHN background endpoint) — a possible later
+  verb on top of the imagery sprint's service; on-model generation itself is now
+  covered by the imagery sprint (FASHN, which superseded the old "Photoroom
+  Virtual Model API" idea).
 - **Per-category consistent sizing:** the per-category fill-ratio enhancement above, if pursued.
 
 ## Verification
@@ -261,9 +398,9 @@ Multi-account note: today the app has a single "default" account; per-client bil
 
 ## Open items to confirm during build
 - Exact template strings (proposed title `{Brand} {Title}`, filename `{reference}_{color}_{position}`).
-- Resize pixels for 4:5 (proposed 1600×2000), default `padding` (proposed ~10%), and `off_center` flag threshold; confirm Photoroom param names (`outputSize`, `padding`, `horizontalAlignment`, `backgroundColor`) + that the cutout/RGBA can be returned for the Pillow manual-recenter path.
+- Resize pixels for 4:5 (proposed 1600×2000), default `padding` (proposed ~10%), and `off_center` flag threshold; Photoroom param confirmation + cutout/RGBA → moved to the imagery sprint's open items (see that section).
 - Default AI model per provider (proposed `claude-sonnet-4-6`; `claude-opus-4-8` when quality matters).
 - Output format (proposed WebP master, JPEG fallback) + target/cap weight (proposed q≈80, ≤200 KB at 1600×2000).
-- Object storage choice for processed images (Cloudflare R2 vs S3 vs PaaS volume) — cheap + durable.
+- ~~Object storage choice for processed images~~ — **RESOLVED 2026-07-10**: no third-party storage; Xano is the durable store (bulk files branch), local disk (`backend/var/imaging/`) is the ephemeral staging. See the imagery sprint section.
 - How `brand.website_url` gets populated for the existing brand catalog (bulk set vs per-brand UI).
 - Legal/ToS note for marketplace sources (Farfetch) vs brands' own sites.
