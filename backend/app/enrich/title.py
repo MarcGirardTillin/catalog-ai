@@ -5,9 +5,22 @@ import re
 from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
 
-# Tokens the template may reference. `color` is accepted but empty until the
-# canonical schema carries variant color options (TODO plan).
 TOKENS = ("brand", "title", "season", "reference", "color", "category", "department")
+
+
+def _product_color(product: Product) -> str:
+    """The product's color, read from its variants' Tillin options.
+
+    Boutique convention: one product = one colorway, so the first non-empty
+    variant color is the product color (distinct values are joined just in
+    case the data disagrees).
+    """
+    colors: list[str] = []
+    for variant in product.variants:
+        color = (variant.color or "").strip()
+        if color and color not in colors:
+            colors.append(color)
+    return " / ".join(colors)
 
 
 def _token_values(product: Product) -> dict[str, str]:
@@ -16,7 +29,7 @@ def _token_values(product: Product) -> dict[str, str]:
         "title": product.title or "",
         "season": product.season or "",
         "reference": product.reference_code or "",
-        "color": "",
+        "color": _product_color(product),
         "category": product.category or "",
         "department": product.department or "",
     }
@@ -62,4 +75,11 @@ def apply_title_template(
         return values[token]
 
     rendered = re.sub(r"\{(\w+)\}", replace, template)
-    return _apply_case(re.sub(r"\s+", " ", rendered).strip(), case)
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    # Empty tokens leave dangling separators ("XT-6 - SALOMON -" when {color}
+    # is empty): collapse doubled separators and trim them at both ends. Only
+    # space-flanked separators are touched, so "XT-6" or "Bleu/Blanc" survive.
+    rendered = re.sub(r"(\s[-|•/,])(?:\s[-|•/,])+(?=\s)", r"\1", rendered)
+    rendered = re.sub(r"(?:\s[-|•/,])+$", "", rendered)
+    rendered = re.sub(r"^(?:[-|•/,]\s)+", "", rendered)
+    return _apply_case(rendered.strip(), case)

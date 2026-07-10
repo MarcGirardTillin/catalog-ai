@@ -46,6 +46,16 @@ export function saveAsset(assetId: number, replace: boolean) {
   })
 }
 
+/** Normalise (ou rétablit) UNE image stagée d'un item d'enrichissement —
+ *  action par image de la review (les originales sont stagées par défaut). */
+export function normalizeItemImage(itemId: number, url: string, revert: boolean) {
+  return client.post<{ 200: import("@/client").ItemPublic }, unknown>({
+    responseType: "json",
+    url: `/items/${itemId}/images/normalize`,
+    body: { url, revert },
+  })
+}
+
 /** Récupère les fichiers stagés d'un asset et retourne des object-URLs
  *  (à révoquer par l'appelant via URL.revokeObjectURL). */
 export async function fetchAssetPreviews(

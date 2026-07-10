@@ -92,13 +92,25 @@ class ItemPatchRequest(BaseModel):
     apply_fields_json: dict[str, Any] | None = None
 
 
+class ItemImageNormalizeRequest(BaseModel):
+    """Per-image review action: normalize one staged image (or revert it)."""
+
+    url: str = Field(min_length=1)
+    revert: bool = False
+
+
 class ItemResolveRequest(BaseModel):
-    """Manually point an item at a specific source product page."""
+    """Manually point an item at a specific source product page.
+
+    Any http(s) URL is accepted since the Firecrawl fallback: non-Shopify
+    pages go through LLM extraction (the old validator required a Shopify
+    `/products/` URL and would have blocked e.g. salomon.com in the review).
+    """
 
     source_url: str = Field(min_length=1)
 
     @model_validator(mode="after")
-    def _looks_like_product_url(self) -> "ItemResolveRequest":
-        if "/products/" not in self.source_url:
-            raise ValueError("Expected a Shopify product URL (…/products/<handle>)")
+    def _looks_like_url(self) -> "ItemResolveRequest":
+        if not self.source_url.startswith(("http://", "https://")):
+            raise ValueError("Expected a product page URL (http/https)")
         return self

@@ -261,10 +261,11 @@ def test_resolve_item_manually_restages(auth_client: TestClient) -> None:
         item.status = "ready_for_review"
         db.commit()
 
-        # A non-product URL is rejected by the schema.
+        # Any http(s) URL is accepted since the Firecrawl fallback (non-Shopify
+        # pages are extracted); only non-URLs are rejected by the schema.
         assert (
             auth_client.post(
-                f"/items/{item_id}/resolve", json={"source_url": "https://x/foo"}
+                f"/items/{item_id}/resolve", json={"source_url": "not-a-url"}
             ).status_code
             == 422
         )
@@ -397,3 +398,97 @@ def test_apply_writes_to_destination_and_marks_applied(
         assert auth_client.post(f"/items/{item_id}/apply").status_code == 409
     finally:
         app.dependency_overrides.pop(get_xano_client, None)
+
+
+def test_normalize_item_image_per_entry_and_revert(auth_client: TestClient) -> None:
+    """Reviewer-chosen per-image normalization (originals staged by default):
+    normalize one entry, selection follows the new url, revert restores it."""
+    import httpx
+
+    from app.api.deps import get_db, get_photoroom_client
+    from app.clients.photoroom import PhotoroomClient
+    from app.main import app
+    from app.models import EnrichmentItem, ImageAsset, UsageEvent
+
+    job = _create_job(auth_client, [1911])
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).first()
+    assert item is not None
+    item.status = "ready_for_review"
+    item.staged_images_json = [
+        {"url": "https://cdn.x/1.jpg", "position": 1},
+        {"url": "https://cdn.x/2.jpg", "position": 2},
+    ]
+    item.apply_fields_json = {"image_urls": ["https://cdn.x/1.jpg"]}
+    db.commit()
+    item_id = item.id
+
+    photoroom = PhotoroomClient(
+        "pr-key",
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(200, content=b"normalized-bytes")
+        ),
+    )
+    app.dependency_overrides[get_photoroom_client] = lambda: photoroom
+    try:
+        # Unknown url -> 404.
+        missing = auth_client.post(
+            f"/items/{item_id}/images/normalize", json={"url": "https://cdn.x/9.jpg"}
+        )
+        assert missing.status_code == 404
+
+        resp = auth_client.post(
+            f"/items/{item_id}/images/normalize", json={"url": "https://cdn.x/1.jpg"}
+        )
+        assert resp.status_code == 200
+        entries = resp.json()["staged_images_json"]
+        assert entries[1] == {"url": "https://cdn.x/2.jpg", "position": 2}
+        first = entries[0]
+        assert first["source_url"] == "https://cdn.x/1.jpg"
+        assert first["position"] == 1
+        asset_id = first["asset_id"]
+        assert first["url"] == f"/imaging/assets/{asset_id}/files/0"
+        # The reviewer's partial selection follows the entry's new url.
+        assert resp.json()["apply_fields_json"]["image_urls"] == [first["url"]]
+        asset = db.get(ImageAsset, asset_id)
+        db.refresh(asset)
+        assert asset.status == "completed"
+        events = db.query(UsageEvent).filter_by(item_id=item_id).all()
+        assert [(e.provider, e.metric, e.quantity) for e in events] == [
+            ("photoroom", "images", 1)
+        ]
+
+        # Normalizing an already-normalized entry -> 409.
+        again = auth_client.post(
+            f"/items/{item_id}/images/normalize", json={"url": first["url"]}
+        )
+        assert again.status_code == 409
+
+        # Revert restores the original url (and the selection).
+        back = auth_client.post(
+            f"/items/{item_id}/images/normalize",
+            json={"url": first["url"], "revert": True},
+        )
+        assert back.status_code == 200
+        assert back.json()["staged_images_json"][0] == {
+            "url": "https://cdn.x/1.jpg",
+            "position": 1,
+        }
+        assert back.json()["apply_fields_json"]["image_urls"] == ["https://cdn.x/1.jpg"]
+
+        # Reverting a raw entry -> 409.
+        raw = auth_client.post(
+            f"/items/{item_id}/images/normalize",
+            json={"url": "https://cdn.x/2.jpg", "revert": True},
+        )
+        assert raw.status_code == 409
+
+        # Wrong item status -> 409.
+        item.status = "applied"
+        db.commit()
+        locked = auth_client.post(
+            f"/items/{item_id}/images/normalize", json={"url": "https://cdn.x/2.jpg"}
+        )
+        assert locked.status_code == 409
+    finally:
+        app.dependency_overrides.pop(get_photoroom_client, None)

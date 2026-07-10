@@ -506,7 +506,11 @@ def test_pipeline_normalizes_source_images_with_photoroom(
 ) -> None:
     db = db_session_factory()
     item = _seed_item(
-        db, PRODUCT.id, config={"image": {"bg_color": "F5F5F5", "quality": 90}}
+        db,
+        PRODUCT.id,
+        # Originals are the default since 2026-07-10; batch normalization is
+        # an explicit opt-in.
+        config={"image": {"bg_color": "F5F5F5", "quality": 90, "auto_normalize": True}},
     )
     seen: list[httpx.Request] = []
 
@@ -574,7 +578,7 @@ def test_pipeline_normalization_failure_falls_back_to_raw_url(
 ) -> None:
     """One image failing keeps its raw URL; the others stay normalized."""
     db = db_session_factory()
-    item = _seed_item(db, PRODUCT.id)
+    item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "1.jpg" in str(request.url.params["imageUrl"]):
@@ -678,7 +682,7 @@ def test_pipeline_firecrawl_fallback_end_to_end(
     """Shopify KO on a non-Shopify site → firecrawl resolves, images are
     normalized from the extracted URLs, copy sees the source description."""
     db = db_session_factory()
-    item = _seed_item(db, PRODUCT.id)
+    item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
     claude = _FakeClaude()
 
     def photoroom_handler(request: httpx.Request) -> httpx.Response:

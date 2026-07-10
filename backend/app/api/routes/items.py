@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks
 from app.api.deps import (
     CurrentUserDep,
     JobRunnerDep,
+    PhotoroomDep,
     PipelineDep,
     SessionDep,
     XanoDep,
@@ -12,6 +13,7 @@ from app.api.deps import (
 from app.api.exceptions import AppException
 from app.api.schemas import Product
 from app.api.schemas.enrichment import (
+    ItemImageNormalizeRequest,
     ItemPatchRequest,
     ItemPublic,
     ItemResolveRequest,
@@ -20,6 +22,7 @@ from app.api.services.accounts import resolve_account_id
 from app.api.services.enrichment import (
     apply_item,
     get_item,
+    normalize_item_image,
     resolve_item_from_url,
     retry_item,
     review_item,
@@ -97,6 +100,28 @@ def patch_item(
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
     item = update_staged_fields(db, item, payload.model_dump(exclude_unset=True))
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.post("/{item_id}/images/normalize", response_model=ItemPublic)
+def normalize_item_image_route(
+    item_id: int,
+    payload: ItemImageNormalizeRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    photoroom: PhotoroomDep,
+) -> ItemPublic:
+    """Normalize (or revert) one staged image, chosen by the reviewer.
+
+    The batch stages original source images; each one is normalized on demand
+    here (Photoroom, metered on the item's job). The Photoroom dependency
+    resolves first: missing key = clean 503, nothing written.
+    """
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = normalize_item_image(
+        db, item, photoroom, url=payload.url, revert=payload.revert
+    )
     return ItemPublic.model_validate(item, from_attributes=True)
 
 

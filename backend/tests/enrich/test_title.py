@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.api.schemas import Brand, Product
+from app.api.schemas import Brand, Product, ProductVariant
 from app.enrich.title import apply_title_template
 
 PRODUCT = Product(
@@ -26,8 +26,50 @@ def test_missing_values_collapse_whitespace() -> None:
     assert apply_title_template(bare, "{brand} {title} {season}") == "Chose"
 
 
-def test_color_token_is_accepted_but_empty_for_now() -> None:
-    assert apply_title_template(PRODUCT, "{title} {color}") == "G-Short Double Navy"
+def test_color_token_reads_variant_options() -> None:
+    """{color} comes from the variants' Tillin options (one colorway per
+    product by boutique convention; distinct values joined defensively)."""
+    product = PRODUCT.model_copy(
+        update={
+            "variants": [
+                ProductVariant(id=1, color="Noir", size="42"),
+                ProductVariant(id=2, color="Noir", size="43"),
+            ]
+        }
+    )
+    assert (
+        apply_title_template(product, "{title} - {brand} - {color}")
+        == "G-Short Double Navy - Gramicci - Noir"
+    )
+    two_colors = PRODUCT.model_copy(
+        update={
+            "variants": [
+                ProductVariant(id=1, color="Noir"),
+                ProductVariant(id=2, color="Blanc"),
+            ]
+        }
+    )
+    assert apply_title_template(two_colors, "{color}") == "Noir / Blanc"
+
+
+def test_empty_color_does_not_leave_dangling_separator() -> None:
+    """Marc's live case: '{title} - {brand} - {color}' with no color rendered
+    'XT-6 GORE-TEX - SALOMON -'. Dangling/doubled separators are trimmed,
+    while hyphens inside words ('XT-6') survive."""
+    product = Product(
+        id=4, title="XT-6 GORE-TEX", brand=Brand(name="Salomon"), variants=[]
+    )
+    assert (
+        apply_title_template(product, "{title} - {brand} - {color}")
+        == "XT-6 GORE-TEX - Salomon"
+    )
+    # Two adjacent empty tokens collapse the doubled separator too.
+    assert (
+        apply_title_template(product, "{title} - {season} - {color} - {brand}")
+        == "XT-6 GORE-TEX - Salomon"
+    )
+    # Leading separator from an empty leading token.
+    assert apply_title_template(product, "{color} - {title}") == "XT-6 GORE-TEX"
 
 
 def test_unknown_token_raises() -> None:

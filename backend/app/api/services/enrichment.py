@@ -1,9 +1,12 @@
 """Enrichment job/item persistence and state transitions."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    from app.clients.photoroom import PhotoroomClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -154,6 +157,87 @@ def get_item(db: Session, *, account_id: int, item_id: int) -> EnrichmentItem:
     item = db.get(EnrichmentItem, item_id)
     if item is None or item.account_id != account_id:
         raise AppException(status_code=404, code="not_found", message="Item not found")
+    return item
+
+
+def normalize_item_image(
+    db: Session,
+    item: EnrichmentItem,
+    photoroom: "PhotoroomClient",
+    *,
+    url: str,
+    revert: bool = False,
+) -> EnrichmentItem:
+    """Normalize (or revert) ONE staged image entry, chosen by the reviewer.
+
+    The batch stages the original source images (user decision 2026-07-10);
+    normalization is per image, on demand. ``revert`` restores the original
+    URL of a normalized entry. The reviewer's partial selection
+    (``apply_fields_json.image_urls``) follows the entry's new url.
+    """
+    from app.enrich.pipeline import (
+        _normalize_options,  # noqa: PLC2701 — same package family, shared options mapping
+        normalize_staged_entry,
+    )
+    from app.imaging import staging
+
+    if item.status not in ("ready_for_review", "approved"):
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message=f"Cannot edit images of an item in status '{item.status}'",
+        )
+    entries = [dict(e) for e in (item.staged_images_json or [])]
+    index = next((i for i, e in enumerate(entries) if e.get("url") == url), None)
+    if index is None:
+        raise AppException(
+            status_code=404, code="not_found", message="No staged image at this url"
+        )
+    entry = entries[index]
+    position = int(entry.get("position") or index + 1)
+
+    if revert:
+        source_url = entry.get("source_url")
+        if not source_url:
+            raise AppException(
+                status_code=409,
+                code="not_normalized",
+                message="This image is not normalized — nothing to revert",
+            )
+        if entry.get("asset_id") is not None:
+            staging.purge_asset(int(entry["asset_id"]))
+        new_entry: dict[str, Any] = {"url": source_url, "position": position}
+    else:
+        if entry.get("asset_id") is not None:
+            raise AppException(
+                status_code=409,
+                code="already_normalized",
+                message="This image is already normalized",
+            )
+        config = item.job.config_json or {}
+        normalized = normalize_staged_entry(
+            db, item, photoroom, url, position, _normalize_options(config)
+        )
+        if normalized is None:
+            raise AppException(
+                status_code=502,
+                code="normalization_failed",
+                message="Photoroom could not process this image",
+            )
+        new_entry = normalized
+
+    entries[index] = new_entry
+    item.staged_images_json = entries
+    # Keep the reviewer's partial selection pointing at the same image.
+    apply_fields = dict(item.apply_fields_json or {})
+    selected = apply_fields.get("image_urls")
+    if isinstance(selected, list) and url in selected:
+        apply_fields["image_urls"] = [
+            new_entry["url"] if u == url else u for u in selected
+        ]
+        item.apply_fields_json = apply_fields
+    db.commit()
+    db.refresh(item)
     return item
 
 

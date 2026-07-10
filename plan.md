@@ -379,6 +379,18 @@ scraping robustness stays in the infra sprint (Firecrawl fallback).
   `JobOptionsPanel.svelte`.
 - The generative verb is **NOT** in the batch in Phase B (à la carte only) —
   cost + mandatory visual validation.
+- **Reworked 2026-07-10 (user decision):** the batch stages the ORIGINAL
+  source images; normalization is chosen **per image in the review**
+  (POST /items/{id}/images/normalize, revert supported, reviewer selection
+  follows the entry). `config_json.image.auto_normalize: true` keeps the old
+  normalize-everything behavior as an opt-in. Same day fixes: Xano bulk
+  multipart must use **`files[]`** (plain `files` silently keeps only the
+  first file — root cause of "applied images never reached Tillin"),
+  `{color}` title token reads the variants' Tillin options (+ dangling
+  separator cleanup), manual resolve accepts any http(s) URL (the schema
+  still required `/products/`), and the product-panel "Enrichir" chooser
+  gained transform checkboxes + an instruction picker (instructions were
+  silently skipped when enriching from the panel).
 
 ### Deferred / open items
 

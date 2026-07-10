@@ -477,7 +477,8 @@ export const GenerateModelOptionsSchema = {
                     type: 'null'
                 }
             ],
-            title: 'Prompt'
+            title: 'Prompt',
+            default: 'studio photo, plain light neutral background'
         },
         aspect_ratio: {
             type: 'string',
@@ -1701,6 +1702,27 @@ export const InstructionUpdateSchema = {
     title: 'InstructionUpdate'
 } as const;
 
+export const ItemImageNormalizeRequestSchema = {
+    properties: {
+        url: {
+            type: 'string',
+            minLength: 1,
+            title: 'Url'
+        },
+        revert: {
+            type: 'boolean',
+            title: 'Revert',
+            default: false
+        }
+    },
+    type: 'object',
+    required: [
+        'url'
+    ],
+    title: 'ItemImageNormalizeRequest',
+    description: 'Per-image review action: normalize one staged image (or revert it).'
+} as const;
+
 export const ItemPatchRequestSchema = {
     properties: {
         staged_title: {
@@ -1991,7 +2013,7 @@ export const ItemResolveRequestSchema = {
         'source_url'
     ],
     title: 'ItemResolveRequest',
-    description: 'Manually point an item at a specific source product page.'
+    description: 'Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the Firecrawl fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review).'
 } as const;
 
 export const JobCountsSchema = {

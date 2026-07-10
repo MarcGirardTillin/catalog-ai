@@ -17,6 +17,10 @@
 
   import { type ProductImage, settingsReadAccountSettings } from "@/client"
   import {
+    listInstructions,
+    type InstructionPublic,
+  } from "@/lib/api/instructions"
+  import {
     fetchAssetPreviews,
     generateModelImage,
     type ImageAssetPublic,
@@ -58,7 +62,11 @@
     importLabel?: string | null
     fallback?: Fallback | null
     onClose: () => void
-    onEnrich?: (productId: number, transforms: EnrichTransforms) => void
+    onEnrich?: (
+      productId: number,
+      transforms: EnrichTransforms,
+      instructionId: number | null,
+    ) => void
   } = $props()
 
   let product = $state<ProductDetail | null>(null)
@@ -124,16 +132,37 @@
     !enrichCopy && !enrichTitle && !enrichWeights && !enrichImages,
   )
 
+  // Instruction éditoriale : sans choix explicite, les défauts du compte
+  // s'appliquent — c'est pour ça que « Mode Vêtement » n'était pas pris en
+  // compte depuis le panneau (aucun sélecteur ici jusqu'à présent).
+  let enrichInstructions = $state<InstructionPublic[]>([])
+  let instructionsLoaded = false
+  let enrichInstructionId = $state("")
+
+  function openEnrichChooser() {
+    enrichOpen = !enrichOpen
+    if (enrichOpen && !instructionsLoaded) {
+      instructionsLoaded = true
+      listInstructions().then(({ data }) => {
+        enrichInstructions = data ?? []
+      })
+    }
+  }
+
   function launchEnrich() {
     const id = productId
     if (id == null) return
     enrichOpen = false
-    onEnrich?.(id, {
-      copy: enrichCopy,
-      title: enrichTitle,
-      weights: enrichWeights,
-      images: enrichImages,
-    })
+    onEnrich?.(
+      id,
+      {
+        copy: enrichCopy,
+        title: enrichTitle,
+        weights: enrichWeights,
+        images: enrichImages,
+      },
+      enrichInstructionId === "" ? null : Number(enrichInstructionId),
+    )
   }
 
   function selectImagingSource(image: ProductImage) {
@@ -474,11 +503,7 @@
       <div class="flex shrink-0 items-center gap-1.5">
         {#if onEnrich && productId != null && product}
           <div class="relative">
-            <Button
-              size="sm"
-              aria-expanded={enrichOpen}
-              onclick={() => (enrichOpen = !enrichOpen)}
-            >
+            <Button size="sm" aria-expanded={enrichOpen} onclick={openEnrichChooser}>
               <Sparkles size={14} aria-hidden="true" />
               Enrichir
             </Button>
@@ -501,7 +526,21 @@
                 </label>
                 <label class="flex items-center gap-1.5 text-xs">
                   <input type="checkbox" bind:checked={enrichImages} />
-                  Images (normalisation)
+                  Images (visuels source)
+                </label>
+                <label class="flex flex-col gap-1 text-xs">
+                  Instructions éditoriales
+                  <select
+                    class="border-input bg-card text-foreground h-8 w-full rounded-md border px-2 text-xs outline-none"
+                    bind:value={enrichInstructionId}
+                  >
+                    <option value="">Automatique (défauts du compte)</option>
+                    {#each enrichInstructions as instruction (instruction.id)}
+                      <option value={String(instruction.id)}>
+                        {instruction.name}
+                      </option>
+                    {/each}
+                  </select>
                 </label>
                 <Button size="sm" disabled={enrichNone} onclick={launchEnrich}>
                   Lancer l'enrichissement

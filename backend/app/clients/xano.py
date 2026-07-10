@@ -842,13 +842,15 @@ class XanoClient:
     ) -> list[ProductImage]:
         """Upload raw image bytes to a product (`/product_image/{id}/bulk`).
 
-        The bulk endpoint accepts a repeated ``files`` multipart part, imports
+        The bulk endpoint accepts a repeated ``files[]`` multipart part — the
+        array suffix is REQUIRED: with plain ``files`` Xano keeps only the
+        first file, silently (confirmed live: 3 sent → 1 created). Imports
         each into Xano storage and appends a `product_image` row. Returns the
         created images (Xano-hosted `src`), mapped to canonical `ProductImage`.
         Only difference with `add_product_images` is the source: raw bytes here,
         external URLs there — both re-hosted server-side by Tillin.
         """
-        parts: list[tuple[str, FilePart]] = [("files", part) for part in files]
+        parts: list[tuple[str, FilePart]] = [("files[]", part) for part in files]
         if not parts:
             return []
         payload = self._post_multipart(_bulk_images_path(product_id), files=parts)

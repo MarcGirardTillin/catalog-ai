@@ -105,6 +105,66 @@ def _split_product_url(url: str) -> tuple[str, str]:
     return site, handle
 
 
+def normalize_staged_entry(
+    db: Session,
+    item: EnrichmentItem,
+    photoroom: PhotoroomClient,
+    url: str,
+    position: int,
+    options: NormalizeOptions,
+) -> dict[str, Any] | None:
+    """Normalize one source image into a staged entry; None = keep the raw URL.
+
+    Shared by the batch pipeline (``image.auto_normalize`` opt-in) and the
+    per-image review action (POST /items/{id}/images/normalize). Each run
+    leaves an ``image_asset`` trace row (completed with its staged file, or
+    failed with the error) plus the metered usage_event; the caller commits.
+    """
+    asset = ImageAsset(
+        account_id=item.account_id,
+        product_id=item.tillin_product_id,
+        verb="normalize",
+        provider="photoroom",
+        model=PHOTOROOM_MODEL,
+        status="processing",
+        source_image=url,
+        params_json={"options": asdict(options)},
+    )
+    db.add(asset)
+    db.flush()  # the staging path needs the asset id
+    try:
+        result = normalize_product_image(
+            url,
+            options=options,
+            photoroom=photoroom,
+            db=db,
+            account_id=item.account_id,
+            job_id=item.job_id,
+            item_id=item.id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "item %s: normalization failed for %s — keeping the raw URL (%s)",
+            item.id,
+            url,
+            exc,
+        )
+        asset.status = "failed"
+        asset.error = str(exc)
+        asset.finished_at = datetime.now(UTC)
+        return None
+    asset.staged_paths_json = [staging.store(asset.id, 0, result.data, result.format)]
+    asset.status = "completed"
+    asset.finished_at = datetime.now(UTC)
+    asset.params_json = {**(asset.params_json or {}), "trace": result.trace}
+    return {
+        "url": f"/imaging/assets/{asset.id}/files/0",
+        "position": position,
+        "asset_id": asset.id,
+        "source_url": url,
+    }
+
+
 class EnrichmentPipeline:
     """Stage enrichment results on one claimed item (worker `Processor`)."""
 
@@ -289,12 +349,13 @@ class EnrichmentPipeline:
         source_product: dict[str, Any],
         config: dict[str, Any],
     ) -> None:
-        """Stage the source images, Photoroom-normalized when possible.
+        """Stage the source images — ORIGINALS by default (user decision
+        2026-07-10): normalization is chosen per image in the review, via
+        POST /items/{id}/images/normalize. A job can still opt into the old
+        normalize-everything behavior with ``config_json.image.auto_normalize``.
 
         Every entry keeps a ``url`` key (review-UI contract). Normalized
-        entries add ``asset_id``/``source_url`` and point at the staged file;
-        raw fallback entries (no Photoroom, or one image failed) keep the
-        source URL only.
+        entries add ``asset_id``/``source_url`` and point at the staged file.
         """
         # Dédoublonné (ordre conservé) : l'extraction LLM Firecrawl peut
         # renvoyer la même URL deux fois, et chaque doublon coûterait une
@@ -305,74 +366,20 @@ class EnrichmentPipeline:
                 src = str(image["src"])
                 if src not in sources:
                     sources.append(src)
+        image_config = config.get("image")
+        auto_normalize = bool(
+            isinstance(image_config, dict) and image_config.get("auto_normalize")
+        )
         options = _normalize_options(config)
         entries: list[dict[str, Any]] = []
         for position, url in enumerate(sources, start=1):
             entry: dict[str, Any] | None = None
-            if self._photoroom is not None and db is not None:
-                entry = self._normalize_image(db, item, url, position, options)
+            if auto_normalize and self._photoroom is not None and db is not None:
+                entry = normalize_staged_entry(
+                    db, item, self._photoroom, url, position, options
+                )
             entries.append(entry or {"url": url, "position": position})
         item.staged_images_json = entries or None
-
-    def _normalize_image(
-        self,
-        db: Session,
-        item: EnrichmentItem,
-        url: str,
-        position: int,
-        options: NormalizeOptions,
-    ) -> dict[str, Any] | None:
-        """Normalize one source image; None = fall back to the raw URL.
-
-        Each run leaves an ``image_asset`` trace row (completed with its staged
-        file, or failed with the error) — committed by the worker alongside the
-        item's staged fields and the metered usage_event.
-        """
-        asset = ImageAsset(
-            account_id=item.account_id,
-            product_id=item.tillin_product_id,
-            verb="normalize",
-            provider="photoroom",
-            model=PHOTOROOM_MODEL,
-            status="processing",
-            source_image=url,
-            params_json={"options": asdict(options)},
-        )
-        db.add(asset)
-        db.flush()  # the staging path needs the asset id
-        try:
-            result = normalize_product_image(
-                url,
-                options=options,
-                photoroom=self._photoroom,  # type: ignore[arg-type]  # caller checked
-                db=db,
-                account_id=item.account_id,
-                job_id=item.job_id,
-                item_id=item.id,
-            )
-        except Exception as exc:
-            logger.warning(
-                "item %s: normalization failed for %s — staging the raw URL (%s)",
-                item.id,
-                url,
-                exc,
-            )
-            asset.status = "failed"
-            asset.error = str(exc)
-            asset.finished_at = datetime.now(UTC)
-            return None
-        asset.staged_paths_json = [
-            staging.store(asset.id, 0, result.data, result.format)
-        ]
-        asset.status = "completed"
-        asset.finished_at = datetime.now(UTC)
-        asset.params_json = {**(asset.params_json or {}), "trace": result.trace}
-        return {
-            "url": f"/imaging/assets/{asset.id}/files/0",
-            "position": position,
-            "asset_id": asset.id,
-            "source_url": url,
-        }
 
     def _stage_copy(
         self,

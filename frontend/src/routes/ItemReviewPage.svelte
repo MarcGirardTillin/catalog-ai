@@ -2,6 +2,9 @@
   import Check from "@lucide/svelte/icons/check"
   import ChevronLeft from "@lucide/svelte/icons/chevron-left"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+  import Scissors from "@lucide/svelte/icons/scissors"
+  import Undo2 from "@lucide/svelte/icons/undo-2"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
@@ -18,6 +21,7 @@
   } from "@/client"
   import type { ItemPublic, Product } from "@/client"
   import { client } from "@/client/client.gen"
+  import { normalizeItemImage } from "@/lib/api/imaging"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -168,6 +172,28 @@
   function imageSrc(image: { url: string; source_url?: string }): string {
     if (showOriginals && image.source_url) return image.source_url
     return imagePreviews[image.url] ?? image.url
+  }
+
+  // Normalisation par image (les originales sont stagées par défaut) :
+  // une opération à la fois, l'item rechargé porte la nouvelle entrée.
+  let normalizingUrl = $state<string | null>(null)
+
+  async function normalizeOne(image: { url: string; asset_id?: number }) {
+    const it = item
+    if (!it || normalizingUrl !== null) return
+    normalizingUrl = image.url
+    const revert = image.asset_id != null
+    const { data, error } = await normalizeItemImage(it.id, image.url, revert)
+    normalizingUrl = null
+    if (error || !data) {
+      toast.error(
+        revert
+          ? "Impossible de rétablir l'originale."
+          : "Échec de la normalisation (service Photoroom indisponible ?).",
+      )
+      return
+    }
+    hydrate(data)
   }
 
   function toggleWeight(variantId: number) {
@@ -927,42 +953,67 @@
                 >
                   {#each images as image (image.url)}
                     {@const selected = selectedImageUrls.includes(image.url)}
-                    <button
-                      type="button"
-                      class="focus-visible:ring-ring relative cursor-pointer rounded-md outline-none focus-visible:ring-2 disabled:cursor-default"
-                      aria-pressed={selected}
-                      aria-label={`Image ${image.position ?? ""} — ${
-                        selected ? "sélectionnée" : "non sélectionnée"
-                      }`}
-                      disabled={!reviewable || !isApplied("images")}
-                      onclick={() => toggleImage(image.url)}
-                    >
-                      <img
-                        src={imageSrc(image)}
-                        alt=""
-                        loading="lazy"
-                        class="bg-muted aspect-4/5 w-full rounded-md object-cover transition-opacity {selected
-                          ? ''
-                          : 'ring-muted-foreground/50 opacity-40 ring-2'}"
-                      />
-                      {#if image.asset_id != null}
-                        <span
-                          class="bg-card/90 text-muted-foreground absolute bottom-1.5 left-1.5 rounded px-1 text-[10px]"
-                        >
-                          {showOriginals && image.source_url
-                            ? "originale"
-                            : "normalisée"}
-                        </span>
-                      {/if}
-                      <span
-                        aria-hidden="true"
-                        class="absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded border shadow-sm {selected
-                          ? 'bg-primary border-primary text-primary-foreground'
-                          : 'bg-card/90 border-input text-transparent'}"
+                    {@const busy = normalizingUrl === image.url}
+                    <div class="relative">
+                      <button
+                        type="button"
+                        class="focus-visible:ring-ring relative block w-full cursor-pointer rounded-md outline-none focus-visible:ring-2 disabled:cursor-default"
+                        aria-pressed={selected}
+                        aria-label={`Image ${image.position ?? ""} — ${
+                          selected ? "sélectionnée" : "non sélectionnée"
+                        }`}
+                        disabled={!reviewable || !isApplied("images")}
+                        onclick={() => toggleImage(image.url)}
                       >
-                        <Check size={14} />
-                      </span>
-                    </button>
+                        <img
+                          src={imageSrc(image)}
+                          alt=""
+                          loading="lazy"
+                          class="bg-muted aspect-4/5 w-full rounded-md object-cover transition-opacity {selected
+                            ? ''
+                            : 'ring-muted-foreground/50 opacity-40 ring-2'}"
+                        />
+                        {#if image.asset_id != null}
+                          <span
+                            class="bg-card/90 text-muted-foreground absolute top-1.5 left-1.5 rounded px-1 text-[10px]"
+                          >
+                            {showOriginals && image.source_url
+                              ? "originale"
+                              : "normalisée"}
+                          </span>
+                        {/if}
+                        <span
+                          aria-hidden="true"
+                          class="absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded border shadow-sm {selected
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'bg-card/90 border-input text-transparent'}"
+                        >
+                          <Check size={14} />
+                        </span>
+                      </button>
+                      {#if reviewable && isApplied("images")}
+                        <button
+                          type="button"
+                          class="bg-card/90 border-input text-foreground hover:bg-card absolute right-1.5 bottom-1.5 flex cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-60"
+                          disabled={normalizingUrl !== null}
+                          onclick={() => normalizeOne(image)}
+                        >
+                          {#if busy}
+                            <LoaderCircle
+                              size={11}
+                              class="animate-spin"
+                              aria-hidden="true"
+                            />
+                          {:else if image.asset_id != null}
+                            <Undo2 size={11} aria-hidden="true" />
+                            Rétablir
+                          {:else}
+                            <Scissors size={11} aria-hidden="true" />
+                            Normaliser
+                          {/if}
+                        </button>
+                      {/if}
+                    </div>
                   {/each}
                 </div>
               </CardContent>

@@ -999,6 +999,22 @@ export type InstructionUpdate = {
 };
 
 /**
+ * ItemImageNormalizeRequest
+ *
+ * Per-image review action: normalize one staged image (or revert it).
+ */
+export type ItemImageNormalizeRequest = {
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Revert
+     */
+    revert?: boolean;
+};
+
+/**
  * ItemPatchRequest
  *
  * Editable staged fields (review-time corrections).
@@ -1126,6 +1142,10 @@ export type ItemPublic = {
  * ItemResolveRequest
  *
  * Manually point an item at a specific source product page.
+ *
+ * Any http(s) URL is accepted since the Firecrawl fallback: non-Shopify
+ * pages go through LLM extraction (the old validator required a Shopify
+ * `/products/` URL and would have blocked e.g. salomon.com in the review).
  */
 export type ItemResolveRequest = {
     /**
@@ -3430,6 +3450,36 @@ export type ItemsRetryItemRouteResponses = {
 };
 
 export type ItemsRetryItemRouteResponse = ItemsRetryItemRouteResponses[keyof ItemsRetryItemRouteResponses];
+
+export type ItemsNormalizeItemImageRouteData = {
+    body: ItemImageNormalizeRequest;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/images/normalize';
+};
+
+export type ItemsNormalizeItemImageRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsNormalizeItemImageRouteError = ItemsNormalizeItemImageRouteErrors[keyof ItemsNormalizeItemImageRouteErrors];
+
+export type ItemsNormalizeItemImageRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsNormalizeItemImageRouteResponse = ItemsNormalizeItemImageRouteResponses[keyof ItemsNormalizeItemImageRouteResponses];
 
 export type ItemsApproveItemData = {
     body?: never;

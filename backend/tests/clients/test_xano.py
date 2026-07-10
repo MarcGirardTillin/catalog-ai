@@ -346,10 +346,11 @@ def test_upload_product_images_sends_repeated_files_and_maps_response() -> None:
     request = captured["request"]
     assert request.url.path.endswith("/product_image/42/bulk")
     assert request.headers["content-type"].startswith("multipart/form-data")
-    # Both files travel under a repeated `files` part (not collapsed to one).
+    # Both files travel under a repeated `files[]` part — the array suffix is
+    # required: with plain `files` Xano keeps only the first file (seen live).
     body = request.content
     assert b"a.jpg" in body and b"b.png" in body
-    assert body.count(b'name="files"') == 2
+    assert body.count(b'name="files[]"') == 2
 
 
 def test_deactivate_product_images_puts_ids() -> None:

@@ -395,11 +395,18 @@
   async function enrichSingle(
     productId: number,
     transforms: { copy: boolean; title: boolean; weights: boolean; images: boolean },
+    instructionId: number | null,
   ) {
     const { data, error } = await jobsCreateEnrichmentJob({
-      // Le panneau laisse choisir les transformations (contrat
+      // Le panneau laisse choisir transformations + instruction (contrat
       // config_json.transforms : clé absente = activé côté backend).
-      body: { selection: { ids: [productId] }, config: { transforms } },
+      body: {
+        selection: { ids: [productId] },
+        config: {
+          transforms,
+          ...(instructionId != null ? { instruction_id: instructionId } : {}),
+        },
+      },
     })
     if (error || !data) {
       toast.error("Création de l'enrichissement impossible.")

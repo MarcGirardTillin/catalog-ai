@@ -83,7 +83,7 @@
       </label>
       <label class="flex items-center gap-1.5 text-xs">
         <input type="checkbox" bind:checked={tImages} />
-        Images (normalisation)
+        Images (visuels source)
       </label>
     </div>
   </fieldset>
