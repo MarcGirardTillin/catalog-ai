@@ -607,3 +607,23 @@ Piège rencontré (mock ≠ réel) : le premier test live renvoyait `{images: []
 pour tous les noms de champ — la branche fichiers de l'endpoint Xano échouait en
 silence (try_catch → debug.log). Corrigé côté Xano (le `filename=""` était le
 suspect). Validé end-to-end via l'UI CatalogAI par Marc.
+
+## 2026-07-09 (suite) — Écriture du poids : PUT /product/weight (niveau produit)
+
+Le writeback du poids d'enrichissement (en attente depuis Sprint B) est branché
+sur l'endpoint Tillin fourni par Marc : **`PUT /product/weight`** (PAS POST —
+POST /product/weight entre en collision avec une autre route et renvoie 400),
+body `{product_ids:[…], weight_unit:"1", weight:N}`, codes d'unité 1=kg 2=g
+3=lb 4=oz. L'endpoint est **au niveau produit** (un poids pour un lot de
+produits), alors que le pipeline calcule un poids **par variante**. Convention
+retenue avec Marc : toutes les variantes d'un produit partagent le même poids →
+on prend **la 1re proposition sélectionnée**. Nos poids sont toujours en kg →
+unité "1".
+
+Implémentation : client `set_product_weight(product_ids, weight, weight_unit)`
+(via un helper `_send_json(method, …)` généralisé pour supporter PUT en plus de
+POST), câblé dans `xano_tillin.apply` là où le TODO était posé. Le piège
+POST↔PUT n'a été révélé QUE par le test live (mock ≠ réel, encore) — d'où la
+règle : toujours un appel réel avant de déclarer un writeback d'API externe
+terminé. Validé live sur un produit test (poids écrit sur les 7 variantes),
+valeur restaurée après.

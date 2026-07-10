@@ -1,5 +1,6 @@
 """Unit tests for the Xano client: login auth + Tillin -> canonical mapping."""
 
+import json
 from decimal import Decimal
 from typing import Any
 
@@ -346,6 +347,35 @@ def test_upload_product_images_sends_repeated_files_and_maps_response() -> None:
     body = request.content
     assert b"a.jpg" in body and b"b.png" in body
     assert body.count(b'name="files"') == 2
+
+
+def test_set_product_weight_posts_ids_weight_and_unit() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        captured["request"] = request
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.set_product_weight([1911, 1912], 0.5, "1")
+
+    request = captured["request"]
+    assert request.method == "PUT"  # POST collides with another route
+    assert request.url.path.endswith("/product/weight")
+    body = json.loads(request.content)
+    assert body == {"product_ids": [1911, 1912], "weight_unit": "1", "weight": 0.5}
+
+
+def test_set_product_weight_noop_on_empty_ids() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        raise AssertionError("no request expected for empty ids")
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.set_product_weight([], 0.5)  # returns without calling
 
 
 def test_get_product_category_is_none_when_classification_unavailable() -> None:

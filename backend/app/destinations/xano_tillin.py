@@ -3,6 +3,7 @@
 Maps an approved `enrichment_item` onto Tillin's write endpoints:
 - copy (title, description, meta) → `POST /product/{id}/enrich`
 - images (URLs)                   → `POST /product_image/{id}/bulk`
+- weight                          → `POST /product/weight`
 
 Images are pushed first so a copy failure doesn't leave images orphaned mid
 apply; both are idempotent per call but the bulk endpoint *appends*, so callers
@@ -13,6 +14,10 @@ from typing import Any
 
 from app.clients.xano import XanoClient
 from app.models import EnrichmentItem
+
+# Staged weights are normalized to kg by the pipeline; map to Tillin's codes
+# (1=kg, 2=g, 3=lb, 4=oz) defensively in case that ever changes.
+_WEIGHT_UNIT_CODES = {"kg": "1", "g": "2", "lb": "3", "oz": "4"}
 
 
 def _image_urls(staged_images_json: Any) -> list[str]:
@@ -95,10 +100,21 @@ class XanoTillinDestination:
         if any(value is not None for value in copy.values()):
             self._client.enrich_product(item.tillin_product_id, **copy)
 
-        # Weights: the reviewer selection (`weights` bool + `weight_variant_ids`)
-        # is honored here, but nothing is sent yet — weights writeback needs the
-        # Xano set_variant_weights endpoint (plan infra).
+        # Weights: `/product/weight` is product-level (one weight per product),
+        # so we reduce the reviewer-selected variant proposals to a single value.
+        # Per the boutique convention, all variants share one weight → take the
+        # first selected proposal.
         if include.get("weights", True):
-            _selected_weights(
+            selected = _selected_weights(
                 item.staged_weights_json, include.get("weight_variant_ids")
             )
+            if selected:
+                first = selected[0]
+                weight = first.get("weight")
+                unit = _WEIGHT_UNIT_CODES.get(
+                    str(first.get("weight_unit", "kg")).lower(), "1"
+                )
+                if weight is not None:
+                    self._client.set_product_weight(
+                        [item.tillin_product_id], float(weight), unit
+                    )

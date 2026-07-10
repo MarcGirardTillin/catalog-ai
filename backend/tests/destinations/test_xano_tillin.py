@@ -10,12 +10,18 @@ class _FakeXano:
     def __init__(self) -> None:
         self.images: tuple[int, list[str]] | None = None
         self.enrich: dict[str, Any] | None = None
+        self.weight: tuple[list[int], float, str] | None = None
 
     def add_product_images(self, product_id: int, image_urls: list[str]) -> None:
         self.images = (product_id, image_urls)
 
     def enrich_product(self, product_id: int, **kwargs: Any) -> None:
         self.enrich = {"product_id": product_id, **kwargs}
+
+    def set_product_weight(
+        self, product_ids: list[int], weight: float, weight_unit: str = "1"
+    ) -> None:
+        self.weight = (product_ids, weight, weight_unit)
 
 
 def test_apply_pushes_images_then_copy() -> None:
@@ -146,10 +152,8 @@ def test_apply_images_false_overrides_image_urls() -> None:
     assert fake.images is None
 
 
-def test_apply_weight_selection_sends_nothing_yet() -> None:
-    # Weights writeback awaits the Xano set_variant_weights endpoint: the
-    # selection keys must be accepted without triggering any write.
-    item = EnrichmentItem(
+def _weight_item(apply_fields: dict[str, Any] | None) -> EnrichmentItem:
+    return EnrichmentItem(
         job_id=1,
         account_id=1,
         tillin_product_id=1911,
@@ -158,13 +162,44 @@ def test_apply_weight_selection_sends_nothing_yet() -> None:
             {"variant_id": 1, "weight": 0.4, "weight_unit": "kg"},
             {"variant_id": 2, "weight": 0.5, "weight_unit": "kg"},
         ],
-        apply_fields_json={"weights": True, "weight_variant_ids": [2]},
+        apply_fields_json=apply_fields,
     )
+
+
+def test_apply_weight_sends_first_selected_at_product_level() -> None:
+    # /product/weight is product-level: the first selected proposal wins
+    # (variant 2 -> 0.5 kg -> unit code "1"); no copy/image write here.
+    item = _weight_item({"weights": True, "weight_variant_ids": [2]})
     fake = _FakeXano()
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
+    assert fake.weight == ([1911], 0.5, "1")
     assert fake.images is None
     assert fake.enrich is None
+
+
+def test_apply_weight_absent_selection_uses_first_staged() -> None:
+    item = _weight_item({"title": False})  # no weight selection -> all -> first
+    fake = _FakeXano()
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.weight == ([1911], 0.4, "1")
+
+
+def test_apply_weights_false_sends_no_weight() -> None:
+    item = _weight_item({"weights": False})
+    fake = _FakeXano()
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.weight is None
+
+
+def test_apply_weight_empty_selection_sends_no_weight() -> None:
+    item = _weight_item({"weight_variant_ids": []})
+    fake = _FakeXano()
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.weight is None
 
 
 def test_selected_weights_filters_by_variant_id() -> None:

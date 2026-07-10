@@ -33,6 +33,7 @@ BRANDS_PATH = "/brand"
 CLASSIFICATION_PATH = "/get_all_informations"
 LOGIN_PATH = "/auth/login"
 PRODUCT_IMPORT_PATH = "/product_import"
+PRODUCT_WEIGHT_PATH = "/product/weight"
 
 
 def _enrich_path(product_id: int) -> str:
@@ -507,12 +508,19 @@ class XanoClient:
 
     def _post(self, path: str, body: Mapping[str, Any]) -> Any:
         """POST with bearer auth; re-login once on 401 (expired token)."""
+        return self._send_json("post", path, body)
+
+    def _put(self, path: str, body: Mapping[str, Any]) -> Any:
+        """PUT with bearer auth; re-login once on 401 (expired token)."""
+        return self._send_json("put", path, body)
+
+    def _send_json(self, method: str, path: str, body: Mapping[str, Any]) -> Any:
         if self._token is None:
             self._login()
-        response = self._do_post(path, body)
+        response = self._do_send_json(method, path, body)
         if response.status_code == 401:
             self._login()
-            response = self._do_post(path, body)
+            response = self._do_send_json(method, path, body)
         if response.status_code >= 400:
             raise XanoError(
                 "Xano returned an error response",
@@ -523,9 +531,12 @@ class XanoClient:
         except ValueError:
             return None
 
-    def _do_post(self, path: str, body: Mapping[str, Any]) -> httpx.Response:
+    def _do_send_json(
+        self, method: str, path: str, body: Mapping[str, Any]
+    ) -> httpx.Response:
         try:
-            return self._client.post(
+            return self._client.request(
+                method.upper(),
                 path,
                 json=dict(body),
                 headers={"Authorization": f"Bearer {self._token}"},
@@ -802,6 +813,24 @@ class XanoClient:
         if not urls:
             return
         self._post(_bulk_images_path(product_id), {"image_urls": urls})
+
+    def set_product_weight(
+        self, product_ids: list[int], weight: float, weight_unit: str = "1"
+    ) -> None:
+        """Set a single weight on one or more products (`POST /product/weight`).
+
+        `weight_unit` is the Tillin code: 1=kg, 2=g, 3=lb, 4=oz. The endpoint is
+        product-level (one weight per batch of products), so callers reduce
+        per-variant weights to a single value before calling.
+        """
+        ids = [int(p) for p in product_ids if p is not None]
+        if not ids:
+            return
+        # The endpoint is a PUT (POST /product/weight collides with another route).
+        self._put(
+            PRODUCT_WEIGHT_PATH,
+            {"product_ids": ids, "weight_unit": weight_unit, "weight": weight},
+        )
 
     def upload_product_images(
         self, product_id: int, files: list[FilePart]
