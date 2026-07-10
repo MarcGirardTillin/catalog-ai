@@ -16,6 +16,7 @@ import httpx
 
 from app.api.schemas import Product
 from app.clients.claude import ClaudeClient
+from app.clients.firecrawl import FirecrawlClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -68,6 +69,15 @@ def _build_photoroom() -> PhotoroomClient | None:
     return None
 
 
+def _build_firecrawl() -> FirecrawlClient | None:
+    if settings.FIRECRAWL_API_KEY:
+        return FirecrawlClient.from_settings()
+    logger.warning(
+        "FIRECRAWL_API_KEY not configured — non-Shopify scrape fallback skipped."
+    )
+    return None
+
+
 def build_pipeline(http_client: httpx.Client) -> EnrichmentPipeline:
     """Compose the enrichment pipeline from settings, degrading explicitly."""
     return EnrichmentPipeline(
@@ -75,6 +85,7 @@ def build_pipeline(http_client: httpx.Client) -> EnrichmentPipeline:
         http_client=http_client,
         claude=_build_claude(),
         photoroom=_build_photoroom(),
+        firecrawl=_build_firecrawl(),
     )
 
 
@@ -85,7 +96,11 @@ def get_pipeline() -> EnrichmentPipeline:
     """Return the process-wide pipeline, building it (and its httpx pool) once."""
     global _pipeline
     if _pipeline is None:
-        http_client = httpx.Client(timeout=20.0, headers={"User-Agent": _USER_AGENT})
+        # follow_redirects: some brand stores (e.g. salomon.com) 301/308 their
+        # suggest.json/product JSON endpoints — the chain must survive that.
+        http_client = httpx.Client(
+            timeout=20.0, headers={"User-Agent": _USER_AGENT}, follow_redirects=True
+        )
         _pipeline = build_pipeline(http_client)
     return _pipeline
 

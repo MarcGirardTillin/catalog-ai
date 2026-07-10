@@ -1,10 +1,12 @@
 """Tests for the shopify_json matcher and the source resolver."""
 
+import json
 from typing import Any
 
 import httpx
 
 from app.api.schemas import Brand, Product, ProductVariant
+from app.clients.firecrawl import FirecrawlClient
 from app.sources.resolver import resolve_source_url
 from app.sources.shopify_json import score_product_match
 
@@ -161,3 +163,214 @@ def test_resolver_aggregates_across_sites() -> None:
 
     assert result.status == "resolved"
     assert result.url == f"{SITE}/products/g-short-double-navy"
+
+
+# ---------------------------------------------------------------------------
+# Firecrawl fallback (plan Phase 3) — search + structured extraction, capped.
+# ---------------------------------------------------------------------------
+
+
+def _firecrawl_store(
+    pages: dict[str, dict[str, Any]], seen: list[httpx.Request] | None = None
+) -> FirecrawlClient:
+    """Fake Firecrawl: search returns every catalog page on the queried host,
+    scrape (JSON mode) returns the page's extracted product."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(request)
+        body = json.loads(request.content)
+        if request.url.path == "/v2/search":
+            host = body["query"].split()[0].removeprefix("site:")
+            hits = [
+                {"url": url, "title": page.get("title")}
+                for url, page in pages.items()
+                if httpx.URL(url).host == host
+            ]
+            return httpx.Response(200, json={"success": True, "data": {"web": hits}})
+        if request.url.path == "/v2/scrape":
+            page = pages.get(body["url"])
+            data: dict[str, Any] = {"metadata": {}}
+            if page is not None:
+                data["json"] = page
+            return httpx.Response(200, json={"success": True, "data": data})
+        return httpx.Response(404)
+
+    return FirecrawlClient("fc-key", transport=httpx.MockTransport(handler))
+
+
+def _forbidden_firecrawl() -> FirecrawlClient:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("firecrawl must not be called")
+
+    return FirecrawlClient("fc-key", transport=httpx.MockTransport(handler))
+
+
+NON_SHOPIFY_SITE = "https://salomon.example"
+
+EXTRACTED_MATCH = {
+    "title": "G-Short Double Navy",
+    "description": "Ref. G5FU-T081 — le short d'origine.",
+    "images": ["https://salomon.example/img/1.jpg"],
+    "reference_codes": ["G5FU-T081"],
+}
+
+EXTRACTED_DECOY = {
+    "title": "Ridge Pant Olive",
+    "description": "Un pantalon.",
+    "images": [],
+    "reference_codes": ["ZZZ-000"],
+}
+
+
+def test_auto_falls_back_to_firecrawl_and_resolves_on_reference() -> None:
+    recorded: list[int] = []
+    with (
+        _firecrawl_store(
+            {f"{NON_SHOPIFY_SITE}/fiche/g-short": EXTRACTED_MATCH}
+        ) as firecrawl,
+        # The brand site is not Shopify: suggest.json and product JSON 404.
+        httpx.Client(transport=_store({})) as client,
+    ):
+        result = resolve_source_url(
+            client,
+            PRODUCT,
+            [NON_SHOPIFY_SITE],
+            firecrawl=firecrawl,
+            usage_recorder=recorded.append,
+        )
+
+    assert result.status == "resolved"
+    assert result.url == f"{NON_SHOPIFY_SITE}/fiche/g-short"
+    assert result.score == 0.9
+    assert result.method_used == "firecrawl"
+    # The extraction is carried to the pipeline (no second paid extract) but
+    # stays out of the serialized result (resolution_json).
+    assert result.source_product is not None
+    assert result.source_product["images"] == [
+        {"src": "https://salomon.example/img/1.jpg"}
+    ]
+    assert "source_product" not in result.model_dump()
+    # Metering: one search (2 credits) then one extract (5 credits).
+    assert recorded == [2, 5]
+
+
+def test_firecrawl_needs_manual_when_no_reference_match() -> None:
+    with (
+        _firecrawl_store(
+            {f"{NON_SHOPIFY_SITE}/fiche/ridge-pant": EXTRACTED_DECOY}
+        ) as firecrawl,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        result = resolve_source_url(
+            client, PRODUCT, [NON_SHOPIFY_SITE], firecrawl=firecrawl
+        )
+
+    assert result.status == "needs_manual"
+    assert result.reason is not None and "firecrawl" in result.reason
+    assert [(c.score, c.title) for c in result.candidates] == [
+        (0.3, "Ridge Pant Olive")
+    ]
+
+
+def test_method_firecrawl_skips_shopify_entirely() -> None:
+    shopify_calls: list[httpx.Request] = []
+
+    def shopify_handler(request: httpx.Request) -> httpx.Response:
+        shopify_calls.append(request)
+        return httpx.Response(404)
+
+    with (
+        _firecrawl_store(
+            {f"{NON_SHOPIFY_SITE}/fiche/g-short": EXTRACTED_MATCH}
+        ) as firecrawl,
+        httpx.Client(transport=httpx.MockTransport(shopify_handler)) as client,
+    ):
+        result = resolve_source_url(
+            client, PRODUCT, [NON_SHOPIFY_SITE], method="firecrawl", firecrawl=firecrawl
+        )
+
+    assert result.status == "resolved"
+    assert result.method_used == "firecrawl"
+    assert shopify_calls == []
+
+
+def test_method_shopify_json_never_touches_firecrawl() -> None:
+    with (
+        _forbidden_firecrawl() as firecrawl,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        result = resolve_source_url(
+            client, PRODUCT, [SITE], method="shopify_json", firecrawl=firecrawl
+        )
+
+    assert result.status == "needs_manual"
+    assert result.method_used is None
+
+
+def test_auto_resolved_by_shopify_never_touches_firecrawl() -> None:
+    with (
+        _forbidden_firecrawl() as firecrawl,
+        httpx.Client(
+            transport=_store({"g-short-double-navy": GOOD_CANDIDATE})
+        ) as client,
+    ):
+        result = resolve_source_url(client, PRODUCT, [SITE], firecrawl=firecrawl)
+
+    assert result.status == "resolved"
+    assert result.method_used == "shopify_json"
+
+
+def test_firecrawl_extracts_are_capped_at_two() -> None:
+    """Cost control: no matter how many hits/sites, at most 2 extract calls."""
+    other_site = "https://other.example"
+    pages = {
+        f"{NON_SHOPIFY_SITE}/fiche/a": EXTRACTED_DECOY,
+        f"{NON_SHOPIFY_SITE}/fiche/b": EXTRACTED_DECOY,
+        f"{NON_SHOPIFY_SITE}/fiche/c": EXTRACTED_DECOY,
+        f"{other_site}/fiche/d": EXTRACTED_MATCH,
+    }
+    seen: list[httpx.Request] = []
+    recorded: list[int] = []
+    with (
+        _firecrawl_store(pages, seen) as firecrawl,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        result = resolve_source_url(
+            client,
+            PRODUCT,
+            [NON_SHOPIFY_SITE, other_site],
+            method="firecrawl",
+            firecrawl=firecrawl,
+            usage_recorder=recorded.append,
+        )
+
+    scrapes = [r for r in seen if r.url.path == "/v2/scrape"]
+    assert len(scrapes) == 2  # first two on-host hits only — cap holds
+    assert result.status == "needs_manual"
+    assert recorded == [2, 5, 5]
+
+
+def test_firecrawl_skips_barcode_queries_in_web_search() -> None:
+    queries: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if request.url.path == "/v2/search":
+            queries.append(body["query"])
+            return httpx.Response(200, json={"success": True, "data": {"web": []}})
+        raise AssertionError("no extract expected")
+
+    with (
+        FirecrawlClient("fc-key", transport=httpx.MockTransport(handler)) as firecrawl,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        result = resolve_source_url(
+            client, PRODUCT, [NON_SHOPIFY_SITE], method="firecrawl", firecrawl=firecrawl
+        )
+
+    assert result.status == "needs_manual"
+    assert queries == [
+        "site:salomon.example G5FU-T081",
+        "site:salomon.example Gramicci G-Short Double Navy",
+    ]

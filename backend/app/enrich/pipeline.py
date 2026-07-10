@@ -9,26 +9,30 @@ testable with mocked transports:
 - ``claude``: optional copy generator — skipped when not configured.
 - ``photoroom``: optional image normalizer — source images stay raw URLs
   when not configured (or when one normalization fails).
+- ``firecrawl``: optional scrape fallback for non-Shopify brand sites —
+  resolution stays Shopify-only when not configured.
 
 Per-job toggles live in ``config_json["transforms"]`` (``copy``/``title``/
 ``weights``/``images``); a missing key or block means "enabled" so older jobs
-keep their behavior. TODO(plan Phase 3): firecrawl/unlocker fallbacks via the
-resolver's ``method`` override.
+keep their behavior. ``config_json["scrape"]["default_method"]`` picks the
+resolution chain (auto | shopify_json | firecrawl; default auto).
 """
 
 import logging
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
-from app.api.services.usage import record_claude_usage
+from app.api.services.usage import record_claude_usage, record_usage
+from app.clients.base import ExternalServiceError
 from app.clients.claude import ClaudeClient
+from app.clients.firecrawl import EXTRACT_CREDITS, FirecrawlClient
 from app.clients.photoroom import PhotoroomClient
 from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
@@ -39,7 +43,8 @@ from app.imaging.service import (
     normalize_product_image,
 )
 from app.models import EnrichmentItem, ImageAsset
-from app.sources.resolver import resolve_source_url
+from app.sources.firecrawl_source import extract_source_product, reference_matches
+from app.sources.resolver import Method, resolve_source_url
 from app.sources.shopify_json import fetch_product, score_product_match
 
 logger = logging.getLogger(__name__)
@@ -51,6 +56,18 @@ DEFAULT_TITLE_TEMPLATE = "{title}"
 ProductReader = Callable[[int], Product | None]
 
 _TRANSFORM_KEYS = ("copy", "title", "weights", "images")
+
+_SCRAPE_METHODS: tuple[Method, ...] = ("auto", "shopify_json", "firecrawl", "unlocker")
+
+
+def _scrape_method(config: dict[str, Any]) -> Method:
+    """Per-job resolution chain: `config_json["scrape"]["default_method"]`."""
+    raw = config.get("scrape")
+    if isinstance(raw, dict):
+        method = raw.get("default_method")
+        if method in _SCRAPE_METHODS:
+            return cast(Method, method)
+    return "auto"
 
 
 def _transforms(config: dict[str, Any]) -> dict[str, bool]:
@@ -98,11 +115,13 @@ class EnrichmentPipeline:
         http_client: httpx.Client,
         claude: ClaudeClient | None = None,
         photoroom: PhotoroomClient | None = None,
+        firecrawl: FirecrawlClient | None = None,
     ) -> None:
         self._read_product = read_product
         self._http = http_client
         self._claude = claude
         self._photoroom = photoroom
+        self._firecrawl = firecrawl
 
     def __call__(self, db: Session, item: EnrichmentItem) -> None:
         product = self._read_product(item.tillin_product_id)
@@ -136,7 +155,14 @@ class EnrichmentPipeline:
 
         # 2. Resolve the product's page on the brand site(s) + job extras.
         websites = _candidate_websites(product, config)
-        resolved = resolve_source_url(self._http, product, websites)
+        resolved = resolve_source_url(
+            self._http,
+            product,
+            websites,
+            method=_scrape_method(config),
+            firecrawl=self._firecrawl,
+            usage_recorder=self._firecrawl_recorder(db, item),
+        )
         item.source_url = resolved.url
         item.source_method = resolved.method_used or resolved.status
         item.match_score = resolved.score
@@ -149,8 +175,12 @@ class EnrichmentPipeline:
         # 3. Source-dependent transforms (weights, raw source images).
         source_product: dict[str, Any] | None = None
         if resolved.status == "resolved" and resolved.url:
-            site, handle = _split_product_url(resolved.url)
-            source_product = fetch_product(self._http, site, handle)
+            if resolved.method_used == "firecrawl":
+                # Reuse the extraction the resolver already paid for.
+                source_product = resolved.source_product
+            else:
+                site, handle = _split_product_url(resolved.url)
+                source_product = fetch_product(self._http, site, handle)
         self._stage_source(db, item, product, source_product, config)
 
         # 4. Copy generation — optional (needs an API key + its toggle).
@@ -161,6 +191,7 @@ class EnrichmentPipeline:
 
         Fetches the page, re-scores the match, and re-stages weights/images/copy
         exactly as an auto-resolve would — but with ``source_method='manual'``.
+        Non-Shopify URLs fall back to Firecrawl extraction when configured.
         Raises LookupError when the URL yields no product page.
         """
         product = self._read_product(item.tillin_product_id)
@@ -169,17 +200,67 @@ class EnrichmentPipeline:
                 f"product {item.tillin_product_id} not found at the source"
             )
         config: dict[str, Any] = item.job.config_json or {}
+        db = object_session(item)
+
+        source_product: dict[str, Any] | None = None
         site, handle = _split_product_url(url)
-        source_product = fetch_product(self._http, site, handle)
+        if site:
+            try:
+                source_product = fetch_product(self._http, site, handle)
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "item %s: shopify fetch failed for %s (%s) — trying firecrawl",
+                    item.id,
+                    url,
+                    exc,
+                )
+        if source_product is not None:
+            item.match_score = score_product_match(product, source_product)
+        elif self._firecrawl is not None:
+            try:
+                source_product = extract_source_product(self._firecrawl, url)
+            except ExternalServiceError as exc:
+                logger.warning(
+                    "item %s: firecrawl extract failed for %s (%s)",
+                    item.id,
+                    url,
+                    exc,
+                )
+            else:
+                self._firecrawl_recorder(db, item)(EXTRACT_CREDITS)
+            if source_product is not None:
+                item.match_score = (
+                    0.9 if reference_matches(product, source_product) else 0.5
+                )
         if source_product is None:
             raise LookupError(f"no product page at {url}")
 
         item.source_url = url
         item.source_method = "manual"
-        item.match_score = score_product_match(product, source_product)
-        db = object_session(item)
         self._stage_source(db, item, product, source_product, config)
         self._stage_copy(db, item, product, source_product, config)
+
+    def _firecrawl_recorder(
+        self, db: Session | None, item: EnrichmentItem
+    ) -> Callable[[int], None]:
+        """Closure metering Firecrawl credits against this item's job/account."""
+
+        def record(credits: int) -> None:
+            if db is None:
+                return
+            record_usage(
+                db,
+                account_id=item.account_id,
+                source="enrichment",
+                provider="firecrawl",
+                metric="credits",
+                quantity=credits,
+                job_id=item.job_id,
+                item_id=item.id,
+                model=None,
+            )
+
+        return record
 
     def _stage_source(
         self,
@@ -215,11 +296,15 @@ class EnrichmentPipeline:
         raw fallback entries (no Photoroom, or one image failed) keep the
         source URL only.
         """
-        sources = [
-            str(image["src"])
-            for image in source_product.get("images") or []
-            if isinstance(image, dict) and image.get("src")
-        ]
+        # Dédoublonné (ordre conservé) : l'extraction LLM Firecrawl peut
+        # renvoyer la même URL deux fois, et chaque doublon coûterait une
+        # normalisation Photoroom (constaté live sur salomon.com).
+        sources: list[str] = []
+        for image in source_product.get("images") or []:
+            if isinstance(image, dict) and image.get("src"):
+                src = str(image["src"])
+                if src not in sources:
+                    sources.append(src)
         options = _normalize_options(config)
         entries: list[dict[str, Any]] = []
         for position, url in enumerate(sources, start=1):

@@ -165,6 +165,103 @@ def test_firecrawl_scrape_returns_data() -> None:
     assert data["markdown"] == "# Produit"
 
 
+def test_firecrawl_search_posts_query_and_returns_web_hits() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v2/search"
+        assert request.headers["Authorization"] == "Bearer fc-key"
+        body = json.loads(request.content)
+        assert body == {
+            "query": "site:brand.example G5FU-T081",
+            "limit": 5,
+            "sources": ["web"],
+        }
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "web": [
+                        {
+                            "url": "https://brand.example/p/1",
+                            "title": "G-Short",
+                            "description": "Le short.",
+                            "position": 1,
+                        }
+                    ]
+                },
+            },
+        )
+
+    with FirecrawlClient("fc-key", transport=httpx.MockTransport(handler)) as client:
+        hits = client.search("site:brand.example G5FU-T081")
+
+    assert hits == [
+        {
+            "url": "https://brand.example/p/1",
+            "title": "G-Short",
+            "description": "Le short.",
+            "position": 1,
+        }
+    ]
+
+
+def test_firecrawl_search_empty_and_error() -> None:
+    with FirecrawlClient(
+        "fc-key",
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(200, json={"success": True, "data": {}})
+        ),
+    ) as client:
+        assert client.search("site:x.example nothing") == []
+
+    with FirecrawlClient(
+        "fc-key", transport=httpx.MockTransport(lambda r: httpx.Response(500))
+    ) as client:
+        with pytest.raises(ExternalServiceError):
+            client.search("boom")
+
+
+def test_firecrawl_extract_product_uses_json_format() -> None:
+    extracted = {
+        "title": "G-Short Double Navy",
+        "description": "Le short d'origine.",
+        "images": ["https://brand.example/img/1.jpg"],
+        "reference_codes": ["G5FU-T081"],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v2/scrape"
+        body = json.loads(request.content)
+        assert body["url"] == "https://brand.example/p/1"
+        (fmt,) = body["formats"]
+        assert fmt["type"] == "json"
+        assert fmt["schema"]["required"] == ["title"]
+        assert "reference_codes" in fmt["schema"]["properties"]
+        assert fmt["prompt"]
+        return httpx.Response(200, json={"success": True, "data": {"json": extracted}})
+
+    with FirecrawlClient("fc-key", transport=httpx.MockTransport(handler)) as client:
+        assert client.extract_product("https://brand.example/p/1") == extracted
+
+
+def test_firecrawl_extract_product_none_when_json_absent() -> None:
+    with FirecrawlClient(
+        "fc-key",
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(
+                200, json={"success": True, "data": {"metadata": {}}}
+            )
+        ),
+    ) as client:
+        assert client.extract_product("https://brand.example/p/1") is None
+
+    with FirecrawlClient(
+        "fc-key", transport=httpx.MockTransport(lambda r: httpx.Response(429))
+    ) as client:
+        with pytest.raises(ExternalServiceError):
+            client.extract_product("https://brand.example/p/1")
+
+
 def test_firecrawl_requires_key() -> None:
     with pytest.raises(NotConfiguredError):
         FirecrawlClient("")

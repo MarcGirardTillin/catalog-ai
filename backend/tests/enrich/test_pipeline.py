@@ -1,5 +1,6 @@
 """Tests for the composed enrichment pipeline (worker processor)."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import Brand, Product, ProductVariant
 from app.clients.claude import ClaudeUsage, CopyResult
+from app.clients.firecrawl import FirecrawlClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.config import settings
 from app.enrich.pipeline import EnrichmentPipeline
@@ -617,6 +619,265 @@ def test_pipeline_without_photoroom_stages_raw_urls(
         {"url": f"{SITE}/cdn/2.jpg", "position": 2},
     ]
     assert db.query(ImageAsset).count() == 0
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# Firecrawl fallback (plan Phase 3) — non-Shopify sites, manual URLs, metering.
+# ---------------------------------------------------------------------------
+
+NON_SHOPIFY_SITE = "https://salomon.example"
+
+FIRECRAWL_PAGE = {
+    "title": "G-Short Double Navy",
+    "description": "Ref. G5FU-T081 — le short d'origine.",
+    "images": [f"{NON_SHOPIFY_SITE}/img/1.jpg", f"{NON_SHOPIFY_SITE}/img/2.jpg"],
+    "reference_codes": ["G5FU-T081"],
+}
+
+NON_SHOPIFY_PRODUCT = PRODUCT.model_copy(
+    update={"brand": Brand(id=8, name="Salomon", website_urls=[NON_SHOPIFY_SITE])}
+)
+
+
+def _firecrawl_store(pages: dict[str, dict[str, Any]]) -> FirecrawlClient:
+    """Fake Firecrawl (same shape as the resolver tests)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if request.url.path == "/v2/search":
+            host = body["query"].split()[0].removeprefix("site:")
+            hits = [
+                {"url": url, "title": page.get("title")}
+                for url, page in pages.items()
+                if httpx.URL(url).host == host
+            ]
+            return httpx.Response(200, json={"success": True, "data": {"web": hits}})
+        if request.url.path == "/v2/scrape":
+            page = pages.get(body["url"])
+            data: dict[str, Any] = {"metadata": {}}
+            if page is not None:
+                data["json"] = page
+            return httpx.Response(200, json={"success": True, "data": data})
+        return httpx.Response(404)
+
+    return FirecrawlClient("fc-key", transport=httpx.MockTransport(handler))
+
+
+def _forbidden_firecrawl() -> FirecrawlClient:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("firecrawl must not be called")
+
+    return FirecrawlClient("fc-key", transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.usefixtures("imaging_dir")
+def test_pipeline_firecrawl_fallback_end_to_end(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Shopify KO on a non-Shopify site → firecrawl resolves, images are
+    normalized from the extracted URLs, copy sees the source description."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    claude = _FakeClaude()
+
+    def photoroom_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"norm:" + str(request.url.params["imageUrl"]).encode()
+        )
+
+    with (
+        httpx.Client(transport=_store({})) as http_client,  # suggest.json empty
+        _firecrawl_store({f"{NON_SHOPIFY_SITE}/fiche/g-short": FIRECRAWL_PAGE}) as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: NON_SHOPIFY_PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+            photoroom=_photoroom(photoroom_handler),
+            firecrawl=fc,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    assert item.source_method == "firecrawl"
+    assert item.source_url == f"{NON_SHOPIFY_SITE}/fiche/g-short"
+    assert item.match_score == 0.9
+    # A scraped page carries no variant data: no weight proposals.
+    assert item.staged_weights_json is None
+    # Images were normalized straight from the extracted URLs (no refetch).
+    assets = db.query(ImageAsset).order_by(ImageAsset.id).all()
+    assert [a.source_image for a in assets] == [
+        f"{NON_SHOPIFY_SITE}/img/1.jpg",
+        f"{NON_SHOPIFY_SITE}/img/2.jpg",
+    ]
+    assert item.staged_images_json is not None
+    assert [e["source_url"] for e in item.staged_images_json] == [
+        f"{NON_SHOPIFY_SITE}/img/1.jpg",
+        f"{NON_SHOPIFY_SITE}/img/2.jpg",
+    ]
+    # The copywriter saw the extracted description as the source description.
+    assert claude.calls[0]["ctx"]["source_description_html"] == (
+        "Ref. G5FU-T081 — le short d'origine."
+    )
+    assert item.staged_description == "Un short robuste et léger."
+
+    # Metering: firecrawl credits (search=2 then extract=5) tied to job/item.
+    fc_events = [
+        e
+        for e in db.query(UsageEvent).order_by(UsageEvent.id)
+        if e.provider == "firecrawl"
+    ]
+    assert [(e.metric, e.quantity) for e in fc_events] == [
+        ("credits", 2),
+        ("credits", 5),
+    ]
+    assert all(
+        (e.source, e.account_id, e.job_id, e.item_id)
+        == ("enrichment", item.account_id, item.job_id, item.id)
+        for e in fc_events
+    )
+    db.close()
+
+
+def test_stage_from_url_non_shopify_falls_back_to_firecrawl(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    item.status = "ready_for_review"
+    db.commit()
+    url = f"{NON_SHOPIFY_SITE}/fiche/g-short"  # no /products/ segment
+
+    with (
+        httpx.Client(transport=_store({})) as http_client,
+        _firecrawl_store({url: FIRECRAWL_PAGE}) as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: NON_SHOPIFY_PRODUCT,
+            http_client=http_client,
+            firecrawl=fc,
+        )
+        pipeline.stage_from_url(item, url)
+
+    db.commit()
+    db.refresh(item)
+    assert item.source_method == "manual"
+    assert item.source_url == url
+    assert item.match_score == 0.9  # the extracted page carries the reference
+    assert item.staged_images_json == [
+        {"url": f"{NON_SHOPIFY_SITE}/img/1.jpg", "position": 1},
+        {"url": f"{NON_SHOPIFY_SITE}/img/2.jpg", "position": 2},
+    ]
+    fc_events = [e for e in db.query(UsageEvent).all() if e.provider == "firecrawl"]
+    assert [(e.metric, e.quantity, e.item_id) for e in fc_events] == [
+        ("credits", 5, item.id)
+    ]
+    db.close()
+
+
+def test_stage_images_dedupes_duplicate_source_urls(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """LLM extraction can repeat an image URL (seen live on salomon.com) —
+    each duplicate would cost a Photoroom normalization, so dedupe first."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    item.status = "ready_for_review"
+    db.commit()
+    url = f"{NON_SHOPIFY_SITE}/fiche/g-short"
+    page = {
+        **FIRECRAWL_PAGE,
+        "images": [
+            f"{NON_SHOPIFY_SITE}/img/1.jpg",
+            f"{NON_SHOPIFY_SITE}/img/1.jpg",
+            f"{NON_SHOPIFY_SITE}/img/2.jpg",
+        ],
+    }
+
+    with (
+        httpx.Client(transport=_store({})) as http_client,
+        _firecrawl_store({url: page}) as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: NON_SHOPIFY_PRODUCT,
+            http_client=http_client,
+            firecrawl=fc,
+        )
+        pipeline.stage_from_url(item, url)
+
+    db.commit()
+    db.refresh(item)
+    assert item.staged_images_json == [
+        {"url": f"{NON_SHOPIFY_SITE}/img/1.jpg", "position": 1},
+        {"url": f"{NON_SHOPIFY_SITE}/img/2.jpg", "position": 2},
+    ]
+    db.close()
+
+
+def test_stage_from_url_firecrawl_low_score_without_reference(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    url = f"{NON_SHOPIFY_SITE}/fiche/autre"
+    decoy = {**FIRECRAWL_PAGE, "reference_codes": [], "description": "Autre produit."}
+
+    with (
+        httpx.Client(transport=_store({})) as http_client,
+        _firecrawl_store({url: decoy}) as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: NON_SHOPIFY_PRODUCT,
+            http_client=http_client,
+            firecrawl=fc,
+        )
+        pipeline.stage_from_url(item, url)
+
+    assert item.match_score == 0.5
+    db.close()
+
+
+def test_stage_from_url_without_firecrawl_still_raises(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+
+    with httpx.Client(transport=_store({})) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: NON_SHOPIFY_PRODUCT, http_client=http_client
+        )
+        with pytest.raises(LookupError):
+            pipeline.stage_from_url(item, f"{NON_SHOPIFY_SITE}/fiche/g-short")
+    db.close()
+
+
+def test_scrape_method_shopify_json_never_touches_firecrawl(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """`config_json["scrape"]["default_method"] = "shopify_json"` pins the
+    chain: no firecrawl call even when resolution fails."""
+    db = db_session_factory()
+    item = _seed_item(
+        db, PRODUCT.id, config={"scrape": {"default_method": "shopify_json"}}
+    )
+
+    with (
+        httpx.Client(transport=_store({})) as http_client,
+        _forbidden_firecrawl() as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: NON_SHOPIFY_PRODUCT,
+            http_client=http_client,
+            firecrawl=fc,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.source_method == "needs_manual"
+    assert not [e for e in db.query(UsageEvent).all() if e.provider == "firecrawl"]
     db.close()
 
 
