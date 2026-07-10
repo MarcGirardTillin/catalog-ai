@@ -1,19 +1,38 @@
 """Unit test for the Tillin destination adapter (staged fields -> writes)."""
 
+from pathlib import Path
 from typing import Any
 
+import pytest
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.api.exceptions import AppException
+from app.api.schemas import ProductImage
+from app.clients.xano import FilePart
+from app.core.config import settings
 from app.destinations.xano_tillin import XanoTillinDestination, _selected_weights
-from app.models import EnrichmentItem
+from app.imaging import staging
+from app.models import Account, EnrichmentItem, EnrichmentJob, ImageAsset
 
 
 class _FakeXano:
     def __init__(self) -> None:
         self.images: tuple[int, list[str]] | None = None
+        self.uploads: tuple[int, list[FilePart]] | None = None
         self.enrich: dict[str, Any] | None = None
         self.weight: tuple[list[int], float, str] | None = None
 
     def add_product_images(self, product_id: int, image_urls: list[str]) -> None:
         self.images = (product_id, image_urls)
+
+    def upload_product_images(
+        self, product_id: int, files: list[FilePart]
+    ) -> list[ProductImage]:
+        self.uploads = (product_id, files)
+        return [
+            ProductImage(id=9000 + index, url=f"https://xano.example/{index}.webp")
+            for index in range(len(files))
+        ]
 
     def enrich_product(self, product_id: int, **kwargs: Any) -> None:
         self.enrich = {"product_id": product_id, **kwargs}
@@ -213,6 +232,128 @@ def test_selected_weights_filters_by_variant_id() -> None:
     assert _selected_weights(staged, [3, 1, 999]) == [staged[0], staged[2]]
     assert _selected_weights(staged, []) == []
     assert _selected_weights(None, [1]) == []
+
+
+# ---------------------------------------------------------------------------
+# Normalized entries (asset_id) — staged bytes uploaded via the bulk endpoint.
+# ---------------------------------------------------------------------------
+
+NORMALIZED_BYTES = b"normalized-webp-bytes"
+RAW_URL = "https://raw.example/2.jpg"
+
+
+@pytest.fixture
+def staged_db(
+    db_session_factory: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Session:
+    monkeypatch.setattr(settings, "IMAGING_DIR", str(tmp_path / "imaging"))
+    return db_session_factory()
+
+
+def _seed_normalized_item(
+    db: Session,
+    *,
+    with_file: bool = True,
+    apply_fields: dict[str, Any] | None = None,
+) -> tuple[EnrichmentItem, ImageAsset]:
+    """One approved item: entry 1 normalized (asset-backed), entry 2 raw URL."""
+    account = Account(name="default")
+    db.add(account)
+    db.flush()
+    job = EnrichmentJob(account_id=account.id, selection_json={}, config_json={})
+    db.add(job)
+    db.flush()
+    item = EnrichmentItem(
+        job_id=job.id,
+        account_id=account.id,
+        tillin_product_id=1911,
+        status="approved",
+        apply_fields_json=apply_fields,
+    )
+    asset = ImageAsset(
+        account_id=account.id,
+        product_id=1911,
+        verb="normalize",
+        provider="photoroom",
+        status="completed",
+        source_image="https://src.example/1.jpg",
+    )
+    db.add_all([item, asset])
+    db.flush()
+    if with_file:
+        asset.staged_paths_json = [staging.store(asset.id, 0, NORMALIZED_BYTES, "webp")]
+    else:
+        asset.staged_paths_json = [f"{asset.id}/0.webp"]  # purged/never written
+    item.staged_images_json = [
+        {
+            "url": f"/imaging/assets/{asset.id}/files/0",
+            "position": 1,
+            "asset_id": asset.id,
+            "source_url": "https://src.example/1.jpg",
+        },
+        {"url": RAW_URL, "position": 2},
+    ]
+    db.commit()
+    return item, asset
+
+
+def test_apply_uploads_normalized_bytes_and_adds_raw_urls(staged_db: Session) -> None:
+    item, asset = _seed_normalized_item(staged_db)
+    fake = _FakeXano()
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    # Raw entry still goes through the URL bulk; normalized one as bytes.
+    assert fake.images == (1911, [RAW_URL])
+    assert fake.uploads == (
+        1911,
+        [(f"normalize_{asset.id}_1.webp", NORMALIZED_BYTES, "image/webp")],
+    )
+    # The created Tillin image id is traced on the asset, staging is purged.
+    assert asset.tillin_image_ids_json == [9000]
+    with pytest.raises(FileNotFoundError):
+        staging.load(f"{asset.id}/0.webp")
+
+
+def test_apply_selection_keeps_only_selected_normalized_entry(
+    staged_db: Session,
+) -> None:
+    item, asset = _seed_normalized_item(staged_db)
+    item.apply_fields_json = {"image_urls": [f"/imaging/assets/{asset.id}/files/0"]}
+    staged_db.commit()
+    fake = _FakeXano()
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.images is None  # raw entry dropped by the reviewer
+    assert fake.uploads is not None
+    assert [part[0] for part in fake.uploads[1]] == [f"normalize_{asset.id}_1.webp"]
+
+
+def test_apply_selection_keeps_only_raw_entry(staged_db: Session) -> None:
+    item, asset = _seed_normalized_item(
+        staged_db, apply_fields={"image_urls": [RAW_URL]}
+    )
+    fake = _FakeXano()
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.images == (1911, [RAW_URL])
+    assert fake.uploads is None
+    # Untouched asset: staging is still there, no Tillin id recorded.
+    assert staging.load(f"{asset.id}/0.webp") == NORMALIZED_BYTES
+    assert asset.tillin_image_ids_json is None
+
+
+def test_apply_missing_staged_file_fails_before_any_write(staged_db: Session) -> None:
+    item, _asset = _seed_normalized_item(staged_db, with_file=False)
+    fake = _FakeXano()
+    with pytest.raises(AppException) as excinfo:
+        XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert excinfo.value.code == "staging_missing"
+    # Bytes are loaded before any write: nothing was pushed, not even raw URLs.
+    assert fake.images is None
+    assert fake.uploads is None
 
 
 def test_apply_without_images_only_enriches() -> None:

@@ -16,6 +16,7 @@ import httpx
 
 from app.api.schemas import Product
 from app.clients.claude import ClaudeClient
+from app.clients.photoroom import PhotoroomClient
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.enrich.pipeline import EnrichmentPipeline, ProductReader
@@ -58,12 +59,22 @@ def _build_claude() -> ClaudeClient | None:
     return None
 
 
+def _build_photoroom() -> PhotoroomClient | None:
+    if settings.PHOTOROOM_API_KEY:
+        return PhotoroomClient.from_settings()
+    logger.warning(
+        "PHOTOROOM_API_KEY not configured — source images staged as raw URLs."
+    )
+    return None
+
+
 def build_pipeline(http_client: httpx.Client) -> EnrichmentPipeline:
     """Compose the enrichment pipeline from settings, degrading explicitly."""
     return EnrichmentPipeline(
         read_product=_build_reader(),
         http_client=http_client,
         claude=_build_claude(),
+        photoroom=_build_photoroom(),
     )
 
 

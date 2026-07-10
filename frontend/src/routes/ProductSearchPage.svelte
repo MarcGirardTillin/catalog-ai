@@ -392,9 +392,14 @@
   }
 
   // Enrichissement direct depuis le panneau : job à un seul produit.
-  async function enrichSingle(productId: number) {
+  async function enrichSingle(
+    productId: number,
+    transforms: { copy: boolean; title: boolean; weights: boolean; images: boolean },
+  ) {
     const { data, error } = await jobsCreateEnrichmentJob({
-      body: { selection: { ids: [productId] } },
+      // Le panneau laisse choisir les transformations (contrat
+      // config_json.transforms : clé absente = activé côté backend).
+      body: { selection: { ids: [productId] }, config: { transforms } },
     })
     if (error || !data) {
       toast.error("Création de l'enrichissement impossible.")

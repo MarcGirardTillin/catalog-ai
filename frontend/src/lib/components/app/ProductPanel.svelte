@@ -39,6 +39,14 @@
     image_url: string | null
   }
 
+  // Transformations à lancer (contrat config_json.transforms du backend).
+  type EnrichTransforms = {
+    copy: boolean
+    title: boolean
+    weights: boolean
+    images: boolean
+  }
+
   let {
     productId,
     importLabel = null,
@@ -50,7 +58,7 @@
     importLabel?: string | null
     fallback?: Fallback | null
     onClose: () => void
-    onEnrich?: (productId: number) => void
+    onEnrich?: (productId: number, transforms: EnrichTransforms) => void
   } = $props()
 
   let product = $state<ProductDetail | null>(null)
@@ -103,11 +111,38 @@
     imgSel = null
     imagingBusy = false
     imagingVerb = null
+    enrichOpen = false
+  }
+
+  // Choix des transformations avant de lancer l'enrichissement.
+  let enrichOpen = $state(false)
+  let enrichCopy = $state(true)
+  let enrichTitle = $state(true)
+  let enrichWeights = $state(true)
+  let enrichImages = $state(true)
+  const enrichNone = $derived(
+    !enrichCopy && !enrichTitle && !enrichWeights && !enrichImages,
+  )
+
+  function launchEnrich() {
+    const id = productId
+    if (id == null) return
+    enrichOpen = false
+    onEnrich?.(id, {
+      copy: enrichCopy,
+      title: enrichTitle,
+      weights: enrichWeights,
+      images: enrichImages,
+    })
   }
 
   function selectImagingSource(image: ProductImage) {
     if (imagingBusy || savingAsset) return
-    imgSel = { url: image.url, id: image.id ?? null }
+    // Re-cliquer l'image sélectionnée la désélectionne.
+    imgSel =
+      imgSel?.url === image.url
+        ? null
+        : { url: image.url, id: image.id ?? null }
   }
 
   async function runNormalize() {
@@ -436,14 +471,54 @@
           </span>
         {/if}
       </div>
-      <button
-        type="button"
-        class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded-md p-1 transition-colors"
-        aria-label="Fermer"
-        onclick={onClose}
-      >
-        <X size={18} aria-hidden="true" />
-      </button>
+      <div class="flex shrink-0 items-center gap-1.5">
+        {#if onEnrich && productId != null && product}
+          <div class="relative">
+            <Button
+              size="sm"
+              aria-expanded={enrichOpen}
+              onclick={() => (enrichOpen = !enrichOpen)}
+            >
+              <Sparkles size={14} aria-hidden="true" />
+              Enrichir
+            </Button>
+            {#if enrichOpen}
+              <div
+                class="border-border bg-background absolute top-full right-0 z-20 mt-1 flex w-60 flex-col gap-2 rounded-md border p-3 shadow-md"
+              >
+                <p class="text-xs font-medium">Quoi enrichir ?</p>
+                <label class="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" bind:checked={enrichCopy} />
+                  Description & méta description
+                </label>
+                <label class="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" bind:checked={enrichTitle} />
+                  Titre (modèle du compte)
+                </label>
+                <label class="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" bind:checked={enrichWeights} />
+                  Poids des variantes
+                </label>
+                <label class="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" bind:checked={enrichImages} />
+                  Images (normalisation)
+                </label>
+                <Button size="sm" disabled={enrichNone} onclick={launchEnrich}>
+                  Lancer l'enrichissement
+                </Button>
+              </div>
+            {/if}
+          </div>
+        {/if}
+        <button
+          type="button"
+          class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded-md p-1 transition-colors"
+          aria-label="Fermer"
+          onclick={onClose}
+        >
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
     </div>
 
     <div class="flex flex-1 flex-col gap-5 p-4">
@@ -474,14 +549,30 @@
             Images ({(product.images ?? []).length + stagedImages.length})
           </h3>
           {#if (product.images ?? []).length > 0 || stagedImages.length > 0}
+            <p class="text-muted-foreground text-xs">
+              Cliquez une image pour la sélectionner et lui appliquer un
+              traitement.
+            </p>
             <div class="grid grid-cols-3 gap-2">
               {#each product.images ?? [] as image (image.url)}
-                <img
-                  src={image.url}
-                  alt=""
-                  loading="lazy"
-                  class="bg-muted aspect-4/5 w-full rounded-md object-cover"
-                />
+                <button
+                  type="button"
+                  class={`overflow-hidden rounded-md transition-shadow ${
+                    imgSel?.url === image.url
+                      ? "ring-primary ring-2"
+                      : "hover:ring-border hover:ring-1"
+                  }`}
+                  aria-label="Sélectionner cette image pour traitement"
+                  aria-pressed={imgSel?.url === image.url}
+                  onclick={() => selectImagingSource(image)}
+                >
+                  <img
+                    src={image.url}
+                    alt=""
+                    loading="lazy"
+                    class="bg-muted aspect-4/5 w-full object-cover"
+                  />
+                </button>
               {/each}
               {#each stagedImages as image (image.id)}
                 <div class="relative">
@@ -562,6 +653,91 @@
               Ces images sont en attente ; « Enregistrer » les importe dans Tillin
               (stockage Xano) et les attache au produit.
             </p>
+          {/if}
+
+          <!-- Traitements sur l'image sélectionnée (Photoroom / FASHN). -->
+          {#if (product.images ?? []).length > 0}
+            <div class="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!imgSel || imagingBusy || savingAsset}
+                onclick={runNormalize}
+              >
+                <Scissors size={14} aria-hidden="true" />
+                Normaliser (fond uni 4:5)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!imgSel || imagingBusy || savingAsset}
+                onclick={runGenerateModel}
+              >
+                <PersonStanding size={14} aria-hidden="true" />
+                Porté mannequin
+              </Button>
+            </div>
+            {#if imagingBusy}
+              <p class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                <LoaderCircle
+                  size={14}
+                  class="shrink-0 animate-spin"
+                  aria-hidden="true"
+                />
+                {imagingVerb === "generate_model"
+                  ? "Génération en cours (10 s à 1 min)…"
+                  : "Traitement en cours…"}
+              </p>
+            {/if}
+            {#if imagingAsset && imagingPreviews.length > 0}
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <img
+                    src={imagingAsset.source_image ?? imgSel?.url}
+                    alt="Avant traitement"
+                    class="bg-muted aspect-4/5 w-full rounded-md object-cover"
+                  />
+                  <span class="text-muted-foreground text-center text-[11px]">
+                    Avant
+                  </span>
+                </div>
+                {#each imagingPreviews as preview (preview)}
+                  <div class="flex flex-col gap-1">
+                    <img
+                      src={preview}
+                      alt="Résultat du traitement"
+                      class="bg-muted ring-primary/40 aspect-4/5 w-full rounded-md object-cover ring-2"
+                    />
+                    <span class="text-muted-foreground text-center text-[11px]">
+                      Après
+                    </span>
+                  </div>
+                {/each}
+              </div>
+              {#if imagingAsset.source_product_image_id != null}
+                <label class="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" bind:checked={replaceOriginal} />
+                  Remplacer l'image originale
+                </label>
+              {/if}
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={savingAsset}
+                  onclick={saveImagingResult}
+                >
+                  {savingAsset ? "Enregistrement…" : "Enregistrer dans Tillin"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={savingAsset}
+                  onclick={disposeImagingResult}
+                >
+                  Annuler
+                </Button>
+              </div>
+            {/if}
           {/if}
         </div>
 
@@ -658,126 +834,6 @@
           {/if}
         </div>
 
-        <!-- Actions -->
-        {#if onEnrich && productId != null}
-          <Button class="w-full" onclick={() => onEnrich?.(productId)}>
-            <Sparkles size={14} aria-hidden="true" />
-            Enrichir ce produit
-          </Button>
-        {/if}
-
-        <!-- Traitement d'images à la carte : normalisation (Photoroom) et
-             génération porté-mannequin (FASHN), preview avant/après puis
-             enregistrement vers Tillin. -->
-        <div class="border-border flex flex-col gap-2 rounded-md border p-3">
-          <h3 class="text-sm font-medium">Traitement d'images</h3>
-          {#if (product.images ?? []).length === 0}
-            <p class="text-muted-foreground text-xs italic">
-              Ajoutez d'abord une image au produit.
-            </p>
-          {:else}
-            <p class="text-muted-foreground text-xs">Image source :</p>
-            <div class="flex flex-wrap gap-2">
-              {#each product.images ?? [] as image (image.url)}
-                <button
-                  type="button"
-                  class={`overflow-hidden rounded-md transition-shadow ${
-                    imgSel?.url === image.url
-                      ? "ring-primary ring-2"
-                      : "ring-border ring-1"
-                  }`}
-                  aria-label="Choisir cette image comme source"
-                  aria-pressed={imgSel?.url === image.url}
-                  onclick={() => selectImagingSource(image)}
-                >
-                  <img
-                    src={image.url}
-                    alt=""
-                    loading="lazy"
-                    class="bg-muted aspect-4/5 w-14 object-cover"
-                  />
-                </button>
-              {/each}
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!imgSel || imagingBusy || savingAsset}
-                onclick={runNormalize}
-              >
-                <Scissors size={14} aria-hidden="true" />
-                Normaliser (fond uni 4:5)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!imgSel || imagingBusy || savingAsset}
-                onclick={runGenerateModel}
-              >
-                <PersonStanding size={14} aria-hidden="true" />
-                Porté mannequin
-              </Button>
-            </div>
-            {#if imagingBusy}
-              <p class="text-muted-foreground flex items-center gap-1.5 text-xs">
-                <LoaderCircle
-                  size={14}
-                  class="animate-spin shrink-0"
-                  aria-hidden="true"
-                />
-                {imagingVerb === "generate_model"
-                  ? "Génération en cours (10 s à 1 min)…"
-                  : "Traitement en cours…"}
-              </p>
-            {/if}
-            {#if imagingAsset && imagingPreviews.length > 0}
-              <div class="grid grid-cols-2 gap-2">
-                <div class="flex flex-col gap-1">
-                  <img
-                    src={imagingAsset.source_image ?? imgSel?.url}
-                    alt="Avant traitement"
-                    class="bg-muted aspect-4/5 w-full rounded-md object-cover"
-                  />
-                  <span class="text-muted-foreground text-center text-[11px]">
-                    Avant
-                  </span>
-                </div>
-                {#each imagingPreviews as preview (preview)}
-                  <div class="flex flex-col gap-1">
-                    <img
-                      src={preview}
-                      alt="Résultat du traitement"
-                      class="bg-muted ring-primary/40 aspect-4/5 w-full rounded-md object-cover ring-2"
-                    />
-                    <span class="text-muted-foreground text-center text-[11px]">
-                      Après
-                    </span>
-                  </div>
-                {/each}
-              </div>
-              {#if imagingAsset.source_product_image_id != null}
-                <label class="flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" bind:checked={replaceOriginal} />
-                  Remplacer l'image originale
-                </label>
-              {/if}
-              <div class="flex flex-wrap gap-2">
-                <Button size="sm" disabled={savingAsset} onclick={saveImagingResult}>
-                  {savingAsset ? "Enregistrement…" : "Enregistrer dans Tillin"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={savingAsset}
-                  onclick={disposeImagingResult}
-                >
-                  Annuler
-                </Button>
-              </div>
-            {/if}
-          {/if}
-        </div>
 
         <!-- Complétude (en bas de panneau) -->
         <div class="border-border mt-1 flex flex-col gap-4 border-t pt-4">

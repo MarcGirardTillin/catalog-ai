@@ -91,12 +91,17 @@ def normalize_product_image(
     photoroom: PhotoroomClient,
     db: Session,
     account_id: int,
+    job_id: int | None = None,
+    item_id: int | None = None,
 ) -> ImagingResult:
     """Deterministic pipeline: cutout + solid bg + pad to 4:5 + format/weight.
 
     `src` is the source image URL; raw bytes are not supported yet (whether
     Photoroom v2 accepts multipart input is an open item to confirm live, like
     the v2 parameter names).
+
+    `job_id`/`item_id` attach the metered usage_event to an enrichment run
+    when the verb is called from the batch pipeline (None for à la carte).
     """
     if isinstance(src, bytes):
         raise NotImplementedError(
@@ -119,6 +124,8 @@ def normalize_product_image(
         provider="photoroom",
         metric="images",
         quantity=1,
+        job_id=job_id,
+        item_id=item_id,
         model=PHOTOROOM_MODEL,
     )
     return ImagingResult(

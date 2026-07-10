@@ -3,44 +3,60 @@
 Maps an approved `enrichment_item` onto Tillin's write endpoints:
 - copy (title, description, meta) → `POST /product/{id}/enrich`
 - images (URLs)                   → `POST /product_image/{id}/bulk`
+- images (normalized files)       → `POST /product_image/{id}/bulk` (multipart)
 - weight                          → `POST /product/weight`
 
-Images are pushed first so a copy failure doesn't leave images orphaned mid
-apply; both are idempotent per call but the bulk endpoint *appends*, so callers
-must not re-apply an already-applied item (the `applied` status guards this).
+Staged image entries come in two shapes: raw source URLs (`{"url", "position"}`,
+pushed by URL) and Photoroom-normalized entries (`{"url", "position",
+"asset_id", "source_url"}`, whose bytes are read from the imaging staging and
+uploaded). Images are pushed first so a copy failure doesn't leave images
+orphaned mid apply; both are idempotent per call but the bulk endpoint
+*appends*, so callers must not re-apply an already-applied item (the `applied`
+status guards this).
 """
 
+import logging
 from typing import Any
 
-from app.clients.xano import XanoClient
-from app.models import EnrichmentItem
+from sqlalchemy.orm import Session, object_session
+
+from app.api.exceptions import AppException
+from app.api.services.imaging import MEDIA_TYPES
+from app.clients.xano import FilePart, XanoClient
+from app.imaging import staging
+from app.models import EnrichmentItem, ImageAsset
+
+logger = logging.getLogger(__name__)
 
 # Staged weights are normalized to kg by the pipeline; map to Tillin's codes
 # (1=kg, 2=g, 3=lb, 4=oz) defensively in case that ever changes.
 _WEIGHT_UNIT_CODES = {"kg": "1", "g": "2", "lb": "3", "oz": "4"}
 
 
-def _image_urls(staged_images_json: Any) -> list[str]:
-    urls: list[str] = []
+def _image_entries(staged_images_json: Any) -> list[dict[str, Any]]:
+    """Normalize staged entries to dicts with a `url` key (legacy strings too)."""
+    entries: list[dict[str, Any]] = []
     for entry in staged_images_json or []:
         if isinstance(entry, dict) and entry.get("url"):
-            urls.append(str(entry["url"]))
+            entries.append(entry)
         elif isinstance(entry, str) and entry:
-            urls.append(entry)
-    return urls
+            entries.append({"url": entry})
+    return entries
 
 
-def _filter_image_urls(urls: list[str], selected: Any) -> list[str]:
-    """Keep only the reviewer-selected image URLs, in staged order.
+def _filter_image_entries(
+    entries: list[dict[str, Any]], selected: Any
+) -> list[dict[str, Any]]:
+    """Keep only the reviewer-selected image entries, in staged order.
 
-    `selected` is `apply_fields_json["image_urls"]`: absent (or not a list)
-    means "apply all"; an empty list means "apply none"; URLs not present in
-    the staged set are ignored.
+    `selected` is `apply_fields_json["image_urls"]`, matched against each
+    entry's `url`: absent (or not a list) means "apply all"; an empty list
+    means "apply none"; URLs not present in the staged set are ignored.
     """
     if not isinstance(selected, list):
-        return urls
+        return entries
     wanted = {str(u) for u in selected}
-    return [u for u in urls if u in wanted]
+    return [e for e in entries if str(e["url"]) in wanted]
 
 
 def _selected_weights(
@@ -85,11 +101,10 @@ class XanoTillinDestination:
         include: dict[str, Any] = item.apply_fields_json or {}
 
         if include.get("images", True):
-            urls = _filter_image_urls(
-                _image_urls(item.staged_images_json), include.get("image_urls")
+            entries = _filter_image_entries(
+                _image_entries(item.staged_images_json), include.get("image_urls")
             )
-            if urls:
-                self._client.add_product_images(item.tillin_product_id, urls)
+            self._push_images(item, entries)
         copy = {
             "title": item.staged_title if include.get("title", True) else None,
             "description": item.staged_description
@@ -118,3 +133,71 @@ class XanoTillinDestination:
                     self._client.set_product_weight(
                         [item.tillin_product_id], float(weight), unit
                     )
+
+    def _push_images(self, item: EnrichmentItem, entries: list[dict[str, Any]]) -> None:
+        """Push the selected image entries: raw URLs by URL, normalized ones
+        as staged bytes (multipart bulk upload).
+
+        All staged bytes are loaded BEFORE any write so a purged/missing
+        staging fails the apply cleanly instead of uploading a partial set.
+        """
+        raw_urls = [str(e["url"]) for e in entries if not e.get("asset_id")]
+        asset_entries = [e for e in entries if e.get("asset_id")]
+
+        uploads: list[tuple[ImageAsset, FilePart]] = []
+        if asset_entries:
+            db = object_session(item)
+            if db is None:  # pragma: no cover - defensive
+                raise AppException(
+                    status_code=500,
+                    code="staging_unavailable",
+                    message="Cannot load normalized images: item has no session",
+                )
+            for entry in asset_entries:
+                uploads.append(self._load_upload(db, entry))
+
+        if raw_urls:
+            self._client.add_product_images(item.tillin_product_id, raw_urls)
+        if uploads:
+            created = self._client.upload_product_images(
+                item.tillin_product_id, [part for _, part in uploads]
+            )
+            created_ids = [image.id for image in created]
+            for index, (asset, _) in enumerate(uploads):
+                if index < len(created_ids) and created_ids[index] is not None:
+                    asset.tillin_image_ids_json = [created_ids[index]]
+                staging.purge_asset(asset.id)
+
+    def _load_upload(
+        self, db: Session, entry: dict[str, Any]
+    ) -> tuple[ImageAsset, FilePart]:
+        """Resolve one normalized entry to (asset, multipart file part)."""
+        asset_id = int(entry["asset_id"])
+        asset = db.get(ImageAsset, asset_id)
+        staged = list(asset.staged_paths_json or []) if asset is not None else []
+        if asset is None or not staged:
+            raise AppException(
+                status_code=409,
+                code="staging_missing",
+                message=(
+                    f"Normalized image (asset {asset_id}) has no staged file — "
+                    "re-run the enrichment before applying"
+                ),
+            )
+        relpath = str(staged[0])
+        try:
+            data = staging.load(relpath)
+        except (FileNotFoundError, ValueError) as exc:
+            raise AppException(
+                status_code=409,
+                code="staging_missing",
+                message=(
+                    f"Staged file for normalized image (asset {asset_id}) is "
+                    "gone — re-run the enrichment before applying"
+                ),
+            ) from exc
+        extension = relpath.rsplit(".", 1)[-1].lower()
+        position = entry.get("position") or 0
+        filename = f"normalize_{asset_id}_{position}.{extension}"
+        content_type = MEDIA_TYPES.get(extension, "application/octet-stream")
+        return asset, (filename, data, content_type)

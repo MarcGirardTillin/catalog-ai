@@ -7,14 +7,19 @@ testable with mocked transports:
 - ``read_product``: canonical product lookup (Xano read path in prod).
 - ``http_client``: brand-site (Shopify JSON) resolution + source fetch.
 - ``claude``: optional copy generator — skipped when not configured.
+- ``photoroom``: optional image normalizer — source images stay raw URLs
+  when not configured (or when one normalization fails).
 
-TODO(plan Phase 1): image processing (Photoroom 4:5) — until then the source
-images are staged raw for review. TODO(plan Phase 3): firecrawl/unlocker
-fallbacks via the resolver's ``method`` override.
+Per-job toggles live in ``config_json["transforms"]`` (``copy``/``title``/
+``weights``/``images``); a missing key or block means "enabled" so older jobs
+keep their behavior. TODO(plan Phase 3): firecrawl/unlocker fallbacks via the
+resolver's ``method`` override.
 """
 
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -24,9 +29,16 @@ from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
 from app.api.services.usage import record_claude_usage
 from app.clients.claude import ClaudeClient
+from app.clients.photoroom import PhotoroomClient
 from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
-from app.models import EnrichmentItem
+from app.imaging import staging
+from app.imaging.service import (
+    PHOTOROOM_MODEL,
+    NormalizeOptions,
+    normalize_product_image,
+)
+from app.models import EnrichmentItem, ImageAsset
 from app.sources.resolver import resolve_source_url
 from app.sources.shopify_json import fetch_product, score_product_match
 
@@ -37,6 +49,37 @@ logger = logging.getLogger(__name__)
 DEFAULT_TITLE_TEMPLATE = "{title}"
 
 ProductReader = Callable[[int], Product | None]
+
+_TRANSFORM_KEYS = ("copy", "title", "weights", "images")
+
+
+def _transforms(config: dict[str, Any]) -> dict[str, bool]:
+    """Per-job transform toggles; absent block or key = enabled (frozen contract)."""
+    raw = config.get("transforms")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {key: bool(raw.get(key, True)) for key in _TRANSFORM_KEYS}
+
+
+def _normalize_options(config: dict[str, Any]) -> NormalizeOptions:
+    """Map `config_json["image"]` onto the verb's options (defaults preserved)."""
+    raw = config.get("image")
+    if not isinstance(raw, dict):
+        return NormalizeOptions()
+    options = NormalizeOptions()
+    if raw.get("bg_color"):
+        options.bg_color = str(raw["bg_color"])
+    if raw.get("output_size"):
+        options.output_size = str(raw["output_size"])
+    if raw.get("padding"):
+        options.padding = str(raw["padding"])
+    if raw.get("format"):
+        options.fmt = str(raw["format"])
+    if raw.get("quality") is not None:
+        options.quality = int(raw["quality"])
+    if raw.get("max_kb") is not None:
+        options.max_kb = int(raw["max_kb"])
+    return options
 
 
 def _split_product_url(url: str) -> tuple[str, str]:
@@ -54,10 +97,12 @@ class EnrichmentPipeline:
         read_product: ProductReader,
         http_client: httpx.Client,
         claude: ClaudeClient | None = None,
+        photoroom: PhotoroomClient | None = None,
     ) -> None:
         self._read_product = read_product
         self._http = http_client
         self._claude = claude
+        self._photoroom = photoroom
 
     def __call__(self, db: Session, item: EnrichmentItem) -> None:
         product = self._read_product(item.tillin_product_id)
@@ -66,15 +111,28 @@ class EnrichmentPipeline:
                 f"product {item.tillin_product_id} not found at the source"
             )
         config: dict[str, Any] = item.job.config_json or {}
+        transforms = _transforms(config)
 
-        # 1. Title template — pure, always runs.
-        template = config.get("title_template") or DEFAULT_TITLE_TEMPLATE
-        case: TitleCase = (
-            config["title_case"]
-            if config.get("title_case") in ("upper", "capitalize")
-            else "none"
-        )
-        item.staged_title = apply_title_template(product, template, case) or None
+        # 1. Title template — pure, no source needed.
+        if transforms["title"]:
+            template = config.get("title_template") or DEFAULT_TITLE_TEMPLATE
+            case: TitleCase = (
+                config["title_case"]
+                if config.get("title_case") in ("upper", "capitalize")
+                else "none"
+            )
+            item.staged_title = apply_title_template(product, template, case) or None
+
+        # Source resolution feeds copy/weights/images only — skip it (and
+        # everything downstream) when none of them is enabled. Degenerate case
+        # (everything off): the item still reaches review with nothing staged.
+        if not (transforms["copy"] or transforms["weights"] or transforms["images"]):
+            logger.info(
+                "item %s: all source-dependent transforms disabled — skipping "
+                "source resolution",
+                item.id,
+            )
+            return
 
         # 2. Resolve the product's page on the brand site(s) + job extras.
         websites = _candidate_websites(product, config)
@@ -93,9 +151,9 @@ class EnrichmentPipeline:
         if resolved.status == "resolved" and resolved.url:
             site, handle = _split_product_url(resolved.url)
             source_product = fetch_product(self._http, site, handle)
-        self._stage_source(item, product, source_product)
+        self._stage_source(db, item, product, source_product, config)
 
-        # 4. Copy generation — optional (needs an API key).
+        # 4. Copy generation — optional (needs an API key + its toggle).
         self._stage_copy(db, item, product, source_product, config)
 
     def stage_from_url(self, item: EnrichmentItem, url: str) -> None:
@@ -119,29 +177,117 @@ class EnrichmentPipeline:
         item.source_url = url
         item.source_method = "manual"
         item.match_score = score_product_match(product, source_product)
-        self._stage_source(item, product, source_product)
-        self._stage_copy(object_session(item), item, product, source_product, config)
+        db = object_session(item)
+        self._stage_source(db, item, product, source_product, config)
+        self._stage_copy(db, item, product, source_product, config)
 
     def _stage_source(
         self,
+        db: Session | None,
         item: EnrichmentItem,
         product: Product,
         source_product: dict[str, Any] | None,
+        config: dict[str, Any],
     ) -> None:
-        """Stage weights + raw source images from a resolved source page."""
+        """Stage weights + source images (normalized when Photoroom is up)."""
         if not source_product:
             return
-        proposals = map_weights(product.variants, source_product.get("variants") or [])
-        item.staged_weights_json = proposals or None
-        images = [
-            {"url": str(image["src"]), "position": position}
-            for position, image in enumerate(
-                source_product.get("images") or [], start=1
+        transforms = _transforms(config)
+        if transforms["weights"]:
+            proposals = map_weights(
+                product.variants, source_product.get("variants") or []
             )
+            item.staged_weights_json = proposals or None
+        if transforms["images"]:
+            self._stage_images(db, item, source_product, config)
+
+    def _stage_images(
+        self,
+        db: Session | None,
+        item: EnrichmentItem,
+        source_product: dict[str, Any],
+        config: dict[str, Any],
+    ) -> None:
+        """Stage the source images, Photoroom-normalized when possible.
+
+        Every entry keeps a ``url`` key (review-UI contract). Normalized
+        entries add ``asset_id``/``source_url`` and point at the staged file;
+        raw fallback entries (no Photoroom, or one image failed) keep the
+        source URL only.
+        """
+        sources = [
+            str(image["src"])
+            for image in source_product.get("images") or []
             if isinstance(image, dict) and image.get("src")
         ]
-        # Raw source images for review; Photoroom 4:5 processing is TODO.
-        item.staged_images_json = images or None
+        options = _normalize_options(config)
+        entries: list[dict[str, Any]] = []
+        for position, url in enumerate(sources, start=1):
+            entry: dict[str, Any] | None = None
+            if self._photoroom is not None and db is not None:
+                entry = self._normalize_image(db, item, url, position, options)
+            entries.append(entry or {"url": url, "position": position})
+        item.staged_images_json = entries or None
+
+    def _normalize_image(
+        self,
+        db: Session,
+        item: EnrichmentItem,
+        url: str,
+        position: int,
+        options: NormalizeOptions,
+    ) -> dict[str, Any] | None:
+        """Normalize one source image; None = fall back to the raw URL.
+
+        Each run leaves an ``image_asset`` trace row (completed with its staged
+        file, or failed with the error) — committed by the worker alongside the
+        item's staged fields and the metered usage_event.
+        """
+        asset = ImageAsset(
+            account_id=item.account_id,
+            product_id=item.tillin_product_id,
+            verb="normalize",
+            provider="photoroom",
+            model=PHOTOROOM_MODEL,
+            status="processing",
+            source_image=url,
+            params_json={"options": asdict(options)},
+        )
+        db.add(asset)
+        db.flush()  # the staging path needs the asset id
+        try:
+            result = normalize_product_image(
+                url,
+                options=options,
+                photoroom=self._photoroom,  # type: ignore[arg-type]  # caller checked
+                db=db,
+                account_id=item.account_id,
+                job_id=item.job_id,
+                item_id=item.id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "item %s: normalization failed for %s — staging the raw URL (%s)",
+                item.id,
+                url,
+                exc,
+            )
+            asset.status = "failed"
+            asset.error = str(exc)
+            asset.finished_at = datetime.now(UTC)
+            return None
+        asset.staged_paths_json = [
+            staging.store(asset.id, 0, result.data, result.format)
+        ]
+        asset.status = "completed"
+        asset.finished_at = datetime.now(UTC)
+        asset.params_json = {**(asset.params_json or {}), "trace": result.trace}
+        return {
+            "url": f"/imaging/assets/{asset.id}/files/0",
+            "position": position,
+            "asset_id": asset.id,
+            "source_url": url,
+        }
 
     def _stage_copy(
         self,
@@ -151,7 +297,10 @@ class EnrichmentPipeline:
         source_product: dict[str, Any] | None,
         config: dict[str, Any],
     ) -> None:
-        """Generate FR copy — optional (needs an API key)."""
+        """Generate FR copy — optional (needs an API key + its toggle)."""
+        if not _transforms(config)["copy"]:
+            logger.info("item %s: copy skipped (transform disabled)", item.id)
+            return
         if self._claude is None:
             logger.info("item %s: copy skipped (no AI client configured)", item.id)
             return

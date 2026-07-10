@@ -17,6 +17,7 @@
     jobsListJobItems,
   } from "@/client"
   import type { ItemPublic, Product } from "@/client"
+  import { client } from "@/client/client.gen"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -88,6 +89,7 @@
     title = data.staged_title ?? ""
     description = data.staged_description ?? ""
     meta = data.staged_meta ?? ""
+    void loadImagePreviews(data)
     const raw = (data.apply_fields_json ?? {}) as ApplyFieldsExtended
     const bools: Record<string, boolean> = {}
     for (const [key, value] of Object.entries(raw)) {
@@ -132,6 +134,40 @@
     selectedImageUrls = selectedImageUrls.includes(url)
       ? selectedImageUrls.filter((u) => u !== url)
       : [...selectedImageUrls, url]
+  }
+
+  // Les images normalisées par le batch pointent vers la route authentifiée
+  // /imaging/assets/{id}/files/{i} : un <img src> nu ne porte pas le cookie
+  // de façon fiable en cross-origin — on les charge en blob (object URLs,
+  // révoquées à chaque rechargement). Les URLs externes restent telles quelles.
+  let imagePreviews = $state<Record<string, string>>({})
+  // Bascule avant/après quand au moins une entrée porte sa source d'origine.
+  let showOriginals = $state(false)
+
+  async function loadImagePreviews(data: ItemPublic) {
+    for (const url of Object.values(imagePreviews)) URL.revokeObjectURL(url)
+    imagePreviews = {}
+    showOriginals = false
+    const entries = (data.staged_images_json ?? []) as { url: string }[]
+    const previews: Record<string, string> = {}
+    for (const entry of entries) {
+      if (!entry.url.startsWith("/imaging/")) continue
+      const { data: blob } = await client.get<{ 200: Blob }, unknown>({
+        responseType: "blob",
+        url: entry.url,
+      })
+      if (blob instanceof Blob) previews[entry.url] = URL.createObjectURL(blob)
+    }
+    imagePreviews = previews
+  }
+
+  $effect(() => () => {
+    for (const url of Object.values(imagePreviews)) URL.revokeObjectURL(url)
+  })
+
+  function imageSrc(image: { url: string; source_url?: string }): string {
+    if (showOriginals && image.source_url) return image.source_url
+    return imagePreviews[image.url] ?? image.url
   }
 
   function toggleWeight(variantId: number) {
@@ -231,8 +267,14 @@
       item?.status === "failed",
   )
   const images = $derived(
-    (item?.staged_images_json ?? []) as { url: string; position?: number }[],
+    (item?.staged_images_json ?? []) as {
+      url: string
+      position?: number
+      asset_id?: number
+      source_url?: string
+    }[],
   )
+  const hasBeforeAfter = $derived(images.some((i) => i.source_url))
   const weights = $derived(
     (item?.staged_weights_json ?? []) as {
       variant_id: number
@@ -839,7 +881,9 @@
           {#if images.length > 0}
             <Card>
               <CardHeader>
-                <CardTitle class="font-title text-sm">Images source ({images.length})</CardTitle>
+                <CardTitle class="font-title text-sm">
+                  Images proposées ({images.length})
+                </CardTitle>
                 <CardAction>{@render applyCheckbox("images")}</CardAction>
               </CardHeader>
               <CardContent class="flex flex-col gap-2">
@@ -853,15 +897,29 @@
                       ? "s"
                       : ""}
                   </span>
-                  {#if reviewable && isApplied("images")}
-                    <button
-                      type="button"
-                      class="hover:text-foreground cursor-pointer underline underline-offset-2"
-                      onclick={toggleAllImages}
-                    >
-                      {allImagesSelected ? "Tout désélectionner" : "Tout sélectionner"}
-                    </button>
-                  {/if}
+                  <span class="flex items-center gap-3">
+                    {#if hasBeforeAfter}
+                      <button
+                        type="button"
+                        class="hover:text-foreground cursor-pointer underline underline-offset-2"
+                        aria-pressed={showOriginals}
+                        onclick={() => (showOriginals = !showOriginals)}
+                      >
+                        {showOriginals
+                          ? "Voir les images normalisées"
+                          : "Voir les originales"}
+                      </button>
+                    {/if}
+                    {#if reviewable && isApplied("images")}
+                      <button
+                        type="button"
+                        class="hover:text-foreground cursor-pointer underline underline-offset-2"
+                        onclick={toggleAllImages}
+                      >
+                        {allImagesSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                      </button>
+                    {/if}
+                  </span>
                 </div>
                 <div
                   class="grid grid-cols-2 gap-2 sm:grid-cols-3"
@@ -880,13 +938,22 @@
                       onclick={() => toggleImage(image.url)}
                     >
                       <img
-                        src={image.url}
+                        src={imageSrc(image)}
                         alt=""
                         loading="lazy"
                         class="bg-muted aspect-4/5 w-full rounded-md object-cover transition-opacity {selected
                           ? ''
                           : 'ring-muted-foreground/50 opacity-40 ring-2'}"
                       />
+                      {#if image.asset_id != null}
+                        <span
+                          class="bg-card/90 text-muted-foreground absolute bottom-1.5 left-1.5 rounded px-1 text-[10px]"
+                        >
+                          {showOriginals && image.source_url
+                            ? "originale"
+                            : "normalisée"}
+                        </span>
+                      {/if}
                       <span
                         aria-hidden="true"
                         class="absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded border shadow-sm {selected

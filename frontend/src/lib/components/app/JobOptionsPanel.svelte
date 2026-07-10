@@ -22,6 +22,13 @@
   let keywords = $state<string[]>([])
   let urlsRaw = $state("")
 
+  // Transformations à exécuter (contrat config_json.transforms : clé absente
+  // = activé côté backend — on n'envoie le bloc que si un choix a été fait).
+  let tCopy = $state(true)
+  let tTitle = $state(true)
+  let tWeights = $state(true)
+  let tImages = $state(true)
+
   onMount(async () => {
     const { data, error } = await listInstructions()
     if (error || data === undefined) {
@@ -46,11 +53,41 @@
       .map((line) => line.trim())
       .filter((line) => line !== "")
     if (urls.length > 0) config.extra_website_urls = urls
+    if (!tCopy || !tTitle || !tWeights || !tImages) {
+      config.transforms = {
+        copy: tCopy,
+        title: tTitle,
+        weights: tWeights,
+        images: tImages,
+      }
+    }
     return config
   }
 </script>
 
 <div class="flex flex-col gap-4">
+  <fieldset class="flex flex-col gap-1.5">
+    <legend class="text-sm font-medium">Transformations</legend>
+    <div class="flex flex-wrap gap-x-4 gap-y-1.5 pt-1.5">
+      <label class="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" bind:checked={tCopy} />
+        Description & méta
+      </label>
+      <label class="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" bind:checked={tTitle} />
+        Titre
+      </label>
+      <label class="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" bind:checked={tWeights} />
+        Poids
+      </label>
+      <label class="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" bind:checked={tImages} />
+        Images (normalisation)
+      </label>
+    </div>
+  </fieldset>
+
   <div class="flex flex-col gap-1.5">
     <Label for="{uid}-instruction">Instructions éditoriales</Label>
     <select

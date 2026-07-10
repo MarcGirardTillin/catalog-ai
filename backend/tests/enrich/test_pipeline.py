@@ -1,15 +1,20 @@
 """Tests for the composed enrichment pipeline (worker processor)."""
 
+from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import Brand, Product, ProductVariant
 from app.clients.claude import ClaudeUsage, CopyResult
+from app.clients.photoroom import PhotoroomClient
+from app.core.config import settings
 from app.enrich.pipeline import EnrichmentPipeline
+from app.imaging import staging
 from app.jobs.worker import process_one
-from app.models import Account, EnrichmentItem, EnrichmentJob, UsageEvent
+from app.models import Account, EnrichmentItem, EnrichmentJob, ImageAsset, UsageEvent
 
 SITE = "https://gramicci.example"
 
@@ -362,6 +367,256 @@ def test_pipeline_selects_instruction_by_product_category(
     # The product's category picks its snapshotted instruction; defaults hold.
     assert claude.calls[0]["instructions"] == "Parle de la coupe."
     assert claude.calls[0]["meta_max_length"] == 160
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# Transform toggles (config_json["transforms"]) — absent block/key = enabled.
+# ---------------------------------------------------------------------------
+
+
+def _run(
+    db: Session,
+    *,
+    claude: _FakeClaude | None = None,
+    photoroom: PhotoroomClient | None = None,
+) -> None:
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid: PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+            photoroom=photoroom,
+        )
+        assert process_one(db, pipeline) is True
+
+
+def test_transforms_all_disabled_stages_nothing_but_reaches_review(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(
+        db,
+        PRODUCT.id,
+        config={
+            "transforms": {
+                "copy": False,
+                "title": False,
+                "weights": False,
+                "images": False,
+            }
+        },
+    )
+    claude = _FakeClaude()
+    _run(db, claude=claude)
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"  # degenerate case: nothing staged
+    assert item.staged_title is None
+    assert item.source_url is None  # source resolution skipped entirely
+    assert item.source_method is None
+    assert item.staged_weights_json is None
+    assert item.staged_images_json is None
+    assert item.staged_description is None
+    assert item.staged_meta is None
+    assert claude.calls == []
+    db.close()
+
+
+def test_transforms_title_only_skips_source_resolution(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Title does not depend on the source: resolution must not even run."""
+    db = db_session_factory()
+    item = _seed_item(
+        db,
+        PRODUCT.id,
+        config={"transforms": {"copy": False, "weights": False, "images": False}},
+    )
+    _run(db)
+
+    db.refresh(item)
+    assert item.staged_title == "G-Short Double Navy"
+    assert item.source_url is None
+    assert item.staged_weights_json is None
+    assert item.staged_images_json is None
+    db.close()
+
+
+@pytest.mark.parametrize("disabled", ["copy", "title", "weights", "images"])
+def test_transforms_single_toggle_disables_only_its_field(
+    db_session_factory: sessionmaker[Session], disabled: str
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id, config={"transforms": {disabled: False}})
+    claude = _FakeClaude()
+    _run(db, claude=claude)
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    assert (item.staged_title is None) == (disabled == "title")
+    assert (item.staged_weights_json is None) == (disabled == "weights")
+    assert (item.staged_images_json is None) == (disabled == "images")
+    assert (item.staged_description is None) == (disabled == "copy")
+    assert (claude.calls == []) == (disabled == "copy")
+    # The other transforms still depend on the source: it resolved.
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    db.close()
+
+
+def test_transforms_empty_block_means_all_enabled(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id, config={"transforms": {}})
+    claude = _FakeClaude()
+    _run(db, claude=claude)
+
+    db.refresh(item)
+    assert item.staged_title is not None
+    assert item.staged_weights_json is not None
+    assert item.staged_images_json is not None
+    assert item.staged_description is not None
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# Batch image normalization (Photoroom) — assets, staging, metering, fallback.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def imaging_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    directory = tmp_path / "imaging"
+    monkeypatch.setattr(settings, "IMAGING_DIR", str(directory))
+    return directory
+
+
+def _photoroom(handler: Any) -> PhotoroomClient:
+    return PhotoroomClient("pr-key", transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.usefixtures("imaging_dir")
+def test_pipeline_normalizes_source_images_with_photoroom(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(
+        db, PRODUCT.id, config={"image": {"bg_color": "F5F5F5", "quality": 90}}
+    )
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        source = request.url.params["imageUrl"]
+        return httpx.Response(200, content=b"norm:" + source.encode())
+
+    _run(db, photoroom=_photoroom(handler))
+
+    db.refresh(item)
+    assets = db.query(ImageAsset).order_by(ImageAsset.id).all()
+    assert len(assets) == 2
+    assert item.staged_images_json == [
+        {
+            "url": f"/imaging/assets/{assets[0].id}/files/0",
+            "position": 1,
+            "asset_id": assets[0].id,
+            "source_url": f"{SITE}/cdn/1.jpg",
+        },
+        {
+            "url": f"/imaging/assets/{assets[1].id}/files/0",
+            "position": 2,
+            "asset_id": assets[1].id,
+            "source_url": f"{SITE}/cdn/2.jpg",
+        },
+    ]
+    for asset, source in zip(assets, ("1.jpg", "2.jpg"), strict=True):
+        assert (asset.verb, asset.provider, asset.status) == (
+            "normalize",
+            "photoroom",
+            "completed",
+        )
+        assert asset.product_id == PRODUCT.id
+        assert asset.account_id == item.account_id
+        assert asset.source_image == f"{SITE}/cdn/{source}"
+        assert asset.params_json["options"]["bg_color"] == "F5F5F5"
+        assert asset.params_json["trace"]["provider"] == "photoroom"
+        # The normalized bytes are staged on disk under the asset id.
+        assert staging.load(asset.staged_paths_json[0]) == (
+            b"norm:" + f"{SITE}/cdn/{source}".encode()
+        )
+    # The job options reached Photoroom (format→fmt mapping kept the default).
+    assert seen[0].url.params["background.color"] == "F5F5F5"
+    assert seen[0].url.params["export.quality"] == "90"
+    assert seen[0].url.params["export.format"] == "webp"
+
+    # Metering: one photoroom event per image, tied to the job and item.
+    events = [
+        e
+        for e in db.query(UsageEvent).order_by(UsageEvent.id)
+        if e.provider == "photoroom"
+    ]
+    assert [(e.metric, e.quantity) for e in events] == [("images", 1), ("images", 1)]
+    assert all(
+        (e.source, e.job_id, e.item_id) == ("imaging", item.job_id, item.id)
+        for e in events
+    )
+    db.close()
+
+
+@pytest.mark.usefixtures("imaging_dir")
+def test_pipeline_normalization_failure_falls_back_to_raw_url(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """One image failing keeps its raw URL; the others stay normalized."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "1.jpg" in str(request.url.params["imageUrl"]):
+            return httpx.Response(500)
+        return httpx.Response(200, content=b"normalized")
+
+    _run(db, photoroom=_photoroom(handler))
+
+    db.refresh(item)
+    assets = db.query(ImageAsset).order_by(ImageAsset.id).all()
+    assert [a.status for a in assets] == ["failed", "completed"]
+    assert assets[0].error
+    completed = assets[1]
+    assert item.staged_images_json == [
+        {"url": f"{SITE}/cdn/1.jpg", "position": 1},  # raw fallback
+        {
+            "url": f"/imaging/assets/{completed.id}/files/0",
+            "position": 2,
+            "asset_id": completed.id,
+            "source_url": f"{SITE}/cdn/2.jpg",
+        },
+    ]
+    # Only the successful normalization was metered.
+    photoroom_events = [
+        e for e in db.query(UsageEvent).all() if e.provider == "photoroom"
+    ]
+    assert len(photoroom_events) == 1
+    db.close()
+
+
+def test_pipeline_without_photoroom_stages_raw_urls(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """No Photoroom client (key missing) → same raw-URL staging as before."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    _run(db)
+
+    db.refresh(item)
+    assert item.staged_images_json == [
+        {"url": f"{SITE}/cdn/1.jpg", "position": 1},
+        {"url": f"{SITE}/cdn/2.jpg", "position": 2},
+    ]
+    assert db.query(ImageAsset).count() == 0
     db.close()
 
 
