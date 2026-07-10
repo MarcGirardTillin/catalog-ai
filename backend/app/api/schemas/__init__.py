@@ -1,5 +1,14 @@
 from app.api.schemas.auth import LoginRequest, UserPublic
 from app.api.schemas.error import ApiError
+from app.api.schemas.imaging import (
+    AssetSaveRequest,
+    AssetSaveResult,
+    GenerateModelOptions,
+    GenerateModelRequest,
+    ImageAssetPublic,
+    NormalizeOptions,
+    NormalizeRequest,
+)
 from app.api.schemas.pagination import (
     PaginatedResponse,
     PaginationParams,
@@ -15,8 +24,15 @@ from app.api.schemas.product import (
 
 __all__ = [
     "ApiError",
+    "AssetSaveRequest",
+    "AssetSaveResult",
     "Brand",
+    "GenerateModelOptions",
+    "GenerateModelRequest",
+    "ImageAssetPublic",
     "LoginRequest",
+    "NormalizeOptions",
+    "NormalizeRequest",
     "PaginatedResponse",
     "PaginationParams",
     "Product",

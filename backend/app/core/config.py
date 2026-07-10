@@ -77,11 +77,15 @@ class Settings(BaseSettings):
 
     # Where uploaded supplier files (imports) are stored. Created on demand.
     UPLOAD_DIR: str = str(BACKEND_DIR / "var" / "uploads")
+    # Ephemeral staging for processed/generated images (imaging sprint) — the
+    # durable store is Xano; this only holds previews until save/purge.
+    IMAGING_DIR: str = str(BACKEND_DIR / "var" / "imaging")
 
     # External service clients (all optional: empty key = integration disabled).
     ANTHROPIC_API_KEY: str = ""
     AI_DEFAULT_MODEL: str = "claude-sonnet-5"
     PHOTOROOM_API_KEY: str = ""
+    FASHN_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
     BREVO_API_KEY: str = ""
     BREVO_SENDER_EMAIL: str = ""

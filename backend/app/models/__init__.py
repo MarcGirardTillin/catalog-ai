@@ -1,6 +1,7 @@
 from app.models.account import Account
 from app.models.base import Base
 from app.models.enrichment import EnrichmentItem, EnrichmentJob
+from app.models.image_asset import ImageAsset
 from app.models.import_item import ImportItem
 from app.models.import_profile import ImportProfile
 from app.models.instruction import InstructionTemplate
@@ -14,6 +15,7 @@ __all__ = [
     "Base",
     "EnrichmentItem",
     "EnrichmentJob",
+    "ImageAsset",
     "ImportItem",
     "ImportProfile",
     "InstructionTemplate",

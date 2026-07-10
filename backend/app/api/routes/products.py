@@ -6,13 +6,35 @@ from that selection. The Xano bearer token never reaches the browser — the
 backend proxies the call behind the session cookie.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 
-from app.api.deps import XanoDep, get_current_user
+from app.api.deps import (
+    CurrentUserDep,
+    FashnDep,
+    PhotoroomDep,
+    SessionDep,
+    XanoDep,
+    get_current_user,
+)
 from app.api.exceptions import AppException
-from app.api.schemas import PaginatedResponse, Product, ProductImagesUploadResult
+from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
+from app.api.schemas import (
+    GenerateModelRequest,
+    ImageAssetPublic,
+    NormalizeOptions,
+    NormalizeRequest,
+    PaginatedResponse,
+    Product,
+    ProductImagesUploadResult,
+)
+from app.api.services.accounts import resolve_account_id
+from app.api.services.imaging import run_generate_model, to_public
+from app.imaging import service as imaging_service
+from app.imaging import staging
+from app.models import ImageAsset
 
 # Guardrails for the upload route (a boutique adds a handful of shots at a time).
 MAX_UPLOAD_FILES = 20
@@ -111,3 +133,104 @@ def upload_product_images(
         )
     created = xano.upload_product_images(product_id, parts)
     return ProductImagesUploadResult(created=len(created), images=created)
+
+
+@router.post("/{product_id}/images/normalize", response_model=ImageAssetPublic)
+def normalize_image(
+    product_id: int,
+    body: NormalizeRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    photoroom: PhotoroomDep,
+) -> ImageAssetPublic:
+    """Deterministic pipeline, synchronous (Photoroom answers in seconds).
+
+    Creates the asset, runs the verb, stages the result and settles the asset
+    in one request. Provider errors mark the asset failed and surface as the
+    usual 502/503 (ExternalServiceError handlers).
+    """
+    account_id = resolve_account_id(db, current_user)
+    options = body.options or NormalizeOptions()
+    asset = ImageAsset(
+        account_id=account_id,
+        product_id=product_id,
+        verb="normalize",
+        provider="photoroom",
+        model=imaging_service.PHOTOROOM_MODEL,
+        status="processing",
+        source_image=body.image_url,
+        source_product_image_id=body.product_image_id,
+        params_json={"options": options.model_dump()},
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    try:
+        result = imaging_service.normalize_product_image(
+            body.image_url,
+            options=imaging_service.NormalizeOptions(
+                bg_color=options.bg_color,
+                output_size=options.output_size,
+                padding=options.padding,
+                fmt=options.format,
+                quality=options.quality,
+                max_kb=options.max_kb,
+            ),
+            photoroom=photoroom,
+            db=db,
+            account_id=account_id,
+        )
+    except Exception as exc:
+        db.rollback()
+        asset.status = "failed"
+        asset.error = str(exc)
+        asset.finished_at = datetime.now(UTC)
+        db.commit()
+        raise
+    asset.staged_paths_json = [staging.store(asset.id, 0, result.data, result.format)]
+    asset.status = "completed"
+    asset.finished_at = datetime.now(UTC)
+    asset.params_json = {**(asset.params_json or {}), "trace": result.trace}
+    db.commit()
+    db.refresh(asset)
+    return to_public(asset)
+
+
+@router.post(
+    "/{product_id}/images/generate-model",
+    response_model=ImageAssetPublic,
+    status_code=202,
+)
+def generate_model_image(
+    product_id: int,
+    body: GenerateModelRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    fashn: FashnDep,
+    background: BackgroundTasks,
+) -> ImageAssetPublic:
+    """Generative pipeline, 202 + asset id (FASHN takes 10-55 s).
+
+    The FASHN dependency resolves BEFORE any row is written: a missing key is
+    a clean 503 with no zombie asset. The BackgroundTask polls FASHN, downloads
+    the outputs to staging and settles the asset with its own DB session.
+    """
+    account_id = resolve_account_id(db, current_user)
+    options = body.options or GenerateModelOptionsSchema()
+    asset = ImageAsset(
+        account_id=account_id,
+        product_id=product_id,
+        verb="generate_model",
+        provider="fashn",
+        model=imaging_service.FASHN_PRODUCT_TO_MODEL,
+        seed=options.seed,
+        status="pending",
+        source_image=body.image_url,
+        source_product_image_id=body.product_image_id,
+        params_json={"options": options.model_dump()},
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    background.add_task(run_generate_model, asset.id, body.image_url, options, fashn)
+    return to_public(asset)

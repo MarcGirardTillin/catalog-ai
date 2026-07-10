@@ -49,6 +49,38 @@ export type AccountSettings = {
 };
 
 /**
+ * AssetSaveRequest
+ *
+ * POST /imaging/assets/{id}/save body.
+ */
+export type AssetSaveRequest = {
+    /**
+     * Replace
+     */
+    replace?: boolean;
+};
+
+/**
+ * AssetSaveResult
+ *
+ * Outcome of pushing a completed asset to Tillin (Xano bulk upload).
+ */
+export type AssetSaveResult = {
+    /**
+     * Created
+     */
+    created: number;
+    /**
+     * Deactivated
+     */
+    deactivated: number;
+    /**
+     * Images
+     */
+    images?: Array<ProductImage>;
+};
+
+/**
  * Body_imports-create_import
  */
 export type BodyImportsCreateImport = {
@@ -255,6 +287,53 @@ export type FilterOption = {
 };
 
 /**
+ * GenerateModelOptions
+ *
+ * Options of POST /products/{id}/images/generate-model (FASHN).
+ */
+export type GenerateModelOptions = {
+    /**
+     * Prompt
+     */
+    prompt?: string | null;
+    /**
+     * Aspect Ratio
+     */
+    aspect_ratio?: string;
+    /**
+     * Resolution
+     */
+    resolution?: '1k' | '2k' | '4k';
+    /**
+     * Generation Mode
+     */
+    generation_mode?: 'fast' | 'balanced' | 'quality';
+    /**
+     * Seed
+     */
+    seed?: number;
+    /**
+     * Num Images
+     */
+    num_images?: number;
+};
+
+/**
+ * GenerateModelRequest
+ */
+export type GenerateModelRequest = {
+    /**
+     * Image Url
+     */
+    image_url: string;
+    /**
+     * Product Image Id
+     */
+    product_image_id?: number | null;
+    options?: GenerateModelOptions | null;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -278,6 +357,66 @@ export type HealthResponse = {
      * Database
      */
     database: 'up';
+};
+
+/**
+ * ImageAssetPublic
+ *
+ * One imaging operation: status + provenance + staged previews.
+ */
+export type ImageAssetPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Product Id
+     */
+    product_id: number;
+    /**
+     * Verb
+     */
+    verb: string;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model?: string | null;
+    /**
+     * Seed
+     */
+    seed?: number | null;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Preview Urls
+     */
+    preview_urls?: Array<string>;
+    /**
+     * Source Image
+     */
+    source_image?: string | null;
+    /**
+     * Source Product Image Id
+     */
+    source_product_image_id?: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
 };
 
 /**
@@ -1138,6 +1277,53 @@ export type LoginRequest = {
 };
 
 /**
+ * NormalizeOptions
+ *
+ * Options of POST /products/{id}/images/normalize (Photoroom).
+ */
+export type NormalizeOptions = {
+    /**
+     * Bg Color
+     */
+    bg_color?: string;
+    /**
+     * Output Size
+     */
+    output_size?: string;
+    /**
+     * Padding
+     */
+    padding?: string;
+    /**
+     * Format
+     */
+    format?: string;
+    /**
+     * Quality
+     */
+    quality?: number;
+    /**
+     * Max Kb
+     */
+    max_kb?: number;
+};
+
+/**
+ * NormalizeRequest
+ */
+export type NormalizeRequest = {
+    /**
+     * Image Url
+     */
+    image_url: string;
+    /**
+     * Product Image Id
+     */
+    product_image_id?: number | null;
+    options?: NormalizeOptions | null;
+};
+
+/**
  * PaginatedResponse[ImportItemPublic]
  */
 export type PaginatedResponseImportItemPublic = {
@@ -1352,6 +1538,10 @@ export type Product = {
  * An image associated with a product.
  */
 export type ProductImage = {
+    /**
+     * Id
+     */
+    id?: number | null;
     /**
      * Url
      */
@@ -2117,6 +2307,158 @@ export type ProductsUploadProductImagesResponses = {
 };
 
 export type ProductsUploadProductImagesResponse = ProductsUploadProductImagesResponses[keyof ProductsUploadProductImagesResponses];
+
+export type ProductsNormalizeImageData = {
+    body: NormalizeRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/normalize';
+};
+
+export type ProductsNormalizeImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsNormalizeImageError = ProductsNormalizeImageErrors[keyof ProductsNormalizeImageErrors];
+
+export type ProductsNormalizeImageResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ProductsNormalizeImageResponse = ProductsNormalizeImageResponses[keyof ProductsNormalizeImageResponses];
+
+export type ProductsGenerateModelImageData = {
+    body: GenerateModelRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/generate-model';
+};
+
+export type ProductsGenerateModelImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsGenerateModelImageError = ProductsGenerateModelImageErrors[keyof ProductsGenerateModelImageErrors];
+
+export type ProductsGenerateModelImageResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImageAssetPublic;
+};
+
+export type ProductsGenerateModelImageResponse = ProductsGenerateModelImageResponses[keyof ProductsGenerateModelImageResponses];
+
+export type ImagingReadAssetData = {
+    body?: never;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}';
+};
+
+export type ImagingReadAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingReadAssetError = ImagingReadAssetErrors[keyof ImagingReadAssetErrors];
+
+export type ImagingReadAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ImagingReadAssetResponse = ImagingReadAssetResponses[keyof ImagingReadAssetResponses];
+
+export type ImagingReadAssetFileData = {
+    body?: never;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+        /**
+         * Index
+         */
+        index: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/files/{index}';
+};
+
+export type ImagingReadAssetFileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingReadAssetFileError = ImagingReadAssetFileErrors[keyof ImagingReadAssetFileErrors];
+
+export type ImagingReadAssetFileResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImagingSaveAssetData = {
+    body: AssetSaveRequest;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/save';
+};
+
+export type ImagingSaveAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingSaveAssetError = ImagingSaveAssetErrors[keyof ImagingSaveAssetErrors];
+
+export type ImagingSaveAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AssetSaveResult;
+};
+
+export type ImagingSaveAssetResponse = ImagingSaveAssetResponses[keyof ImagingSaveAssetResponses];
 
 export type BrandsListBrandsData = {
     body?: never;

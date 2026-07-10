@@ -338,8 +338,11 @@ def test_upload_product_images_sends_repeated_files_and_maps_response() -> None:
             ],
         )
 
-    # Response mapped to canonical ProductImage (protocol-relative src fixed).
-    assert [(i.url, i.position) for i in created] == [("https://xano.test/x.jpg", 3)]
+    # Response mapped to canonical ProductImage (protocol-relative src fixed);
+    # the Tillin `product_image.id` is kept for the replace-on-save flow.
+    assert [(i.id, i.url, i.position) for i in created] == [
+        (9, "https://xano.test/x.jpg", 3)
+    ]
     request = captured["request"]
     assert request.url.path.endswith("/product_image/42/bulk")
     assert request.headers["content-type"].startswith("multipart/form-data")
@@ -347,6 +350,34 @@ def test_upload_product_images_sends_repeated_files_and_maps_response() -> None:
     body = request.content
     assert b"a.jpg" in body and b"b.png" in body
     assert body.count(b'name="files"') == 2
+
+
+def test_deactivate_product_images_puts_ids() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        captured["request"] = request
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.deactivate_product_images([501, 502])
+
+    request = captured["request"]
+    assert request.method == "PUT"
+    assert request.url.path.endswith("/product_image/deactivate")
+    assert json.loads(request.content) == {"product_image_ids": [501, 502]}
+
+
+def test_deactivate_product_images_noop_on_empty_ids() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        raise AssertionError("no request expected for empty ids")
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.deactivate_product_images([])  # returns without calling
 
 
 def test_set_product_weight_posts_ids_weight_and_unit() -> None:

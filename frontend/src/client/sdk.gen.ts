@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ImportProfilesCreateImportProfileData, ImportProfilesCreateImportProfileErrors, ImportProfilesCreateImportProfileResponses, ImportProfilesDeleteImportProfileData, ImportProfilesDeleteImportProfileErrors, ImportProfilesDeleteImportProfileResponses, ImportProfilesListImportProfilesData, ImportProfilesListImportProfilesErrors, ImportProfilesListImportProfilesResponses, ImportProfilesUpdateImportProfileData, ImportProfilesUpdateImportProfileErrors, ImportProfilesUpdateImportProfileResponses, ImportsCreateImportData, ImportsCreateImportErrors, ImportsCreateImportResponses, ImportsDownloadImportCsvData, ImportsDownloadImportCsvErrors, ImportsDownloadImportCsvResponses, ImportsDownloadImportFileData, ImportsDownloadImportFileErrors, ImportsDownloadImportFileResponses, ImportsLinkImportProductsData, ImportsLinkImportProductsErrors, ImportsLinkImportProductsResponses, ImportsListImportItemsData, ImportsListImportItemsErrors, ImportsListImportItemsResponses, ImportsListImportProductsData, ImportsListImportProductsErrors, ImportsListImportProductsResponses, ImportsListImportsData, ImportsListImportsErrors, ImportsListImportsResponses, ImportsPreviewImportFileData, ImportsPreviewImportFileErrors, ImportsPreviewImportFileResponses, ImportsPreviewImportRowsData, ImportsPreviewImportRowsErrors, ImportsPreviewImportRowsResponses, ImportsReadImportData, ImportsReadImportErrors, ImportsReadImportResponses, ImportsSetImportLocationData, ImportsSetImportLocationErrors, ImportsSetImportLocationResponses, ImportsSetImportProfileData, ImportsSetImportProfileErrors, ImportsSetImportProfileResponses, ImportsTransferImportData, ImportsTransferImportErrors, ImportsTransferImportResponses, ImportsUpdateImportItemData, ImportsUpdateImportItemErrors, ImportsUpdateImportItemResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, LocationsListLocationsData, LocationsListLocationsErrors, LocationsListLocationsResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, ProductsReadProductData, ProductsReadProductErrors, ProductsReadProductResponses, ProductsUploadProductImagesData, ProductsUploadProductImagesErrors, ProductsUploadProductImagesResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses, UsageCreateUsagePriceData, UsageCreateUsagePriceErrors, UsageCreateUsagePriceResponses, UsageDeleteUsagePriceData, UsageDeleteUsagePriceErrors, UsageDeleteUsagePriceResponses, UsageExportUsageCsvData, UsageExportUsageCsvErrors, UsageExportUsageCsvResponses, UsageListUsagePricesData, UsageListUsagePricesErrors, UsageListUsagePricesResponses, UsageReadUsageByJobData, UsageReadUsageByJobErrors, UsageReadUsageByJobResponses, UsageReadUsageSummaryData, UsageReadUsageSummaryErrors, UsageReadUsageSummaryResponses, UsageReadUsageTimeseriesData, UsageReadUsageTimeseriesErrors, UsageReadUsageTimeseriesResponses, UsageRefreezeSnapshotData, UsageRefreezeSnapshotErrors, UsageRefreezeSnapshotResponses, UsageUpdateUsagePriceData, UsageUpdateUsagePriceErrors, UsageUpdateUsagePriceResponses } from './types.gen';
+import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ImagingReadAssetData, ImagingReadAssetErrors, ImagingReadAssetFileData, ImagingReadAssetFileErrors, ImagingReadAssetFileResponses, ImagingReadAssetResponses, ImagingSaveAssetData, ImagingSaveAssetErrors, ImagingSaveAssetResponses, ImportProfilesCreateImportProfileData, ImportProfilesCreateImportProfileErrors, ImportProfilesCreateImportProfileResponses, ImportProfilesDeleteImportProfileData, ImportProfilesDeleteImportProfileErrors, ImportProfilesDeleteImportProfileResponses, ImportProfilesListImportProfilesData, ImportProfilesListImportProfilesErrors, ImportProfilesListImportProfilesResponses, ImportProfilesUpdateImportProfileData, ImportProfilesUpdateImportProfileErrors, ImportProfilesUpdateImportProfileResponses, ImportsCreateImportData, ImportsCreateImportErrors, ImportsCreateImportResponses, ImportsDownloadImportCsvData, ImportsDownloadImportCsvErrors, ImportsDownloadImportCsvResponses, ImportsDownloadImportFileData, ImportsDownloadImportFileErrors, ImportsDownloadImportFileResponses, ImportsLinkImportProductsData, ImportsLinkImportProductsErrors, ImportsLinkImportProductsResponses, ImportsListImportItemsData, ImportsListImportItemsErrors, ImportsListImportItemsResponses, ImportsListImportProductsData, ImportsListImportProductsErrors, ImportsListImportProductsResponses, ImportsListImportsData, ImportsListImportsErrors, ImportsListImportsResponses, ImportsPreviewImportFileData, ImportsPreviewImportFileErrors, ImportsPreviewImportFileResponses, ImportsPreviewImportRowsData, ImportsPreviewImportRowsErrors, ImportsPreviewImportRowsResponses, ImportsReadImportData, ImportsReadImportErrors, ImportsReadImportResponses, ImportsSetImportLocationData, ImportsSetImportLocationErrors, ImportsSetImportLocationResponses, ImportsSetImportProfileData, ImportsSetImportProfileErrors, ImportsSetImportProfileResponses, ImportsTransferImportData, ImportsTransferImportErrors, ImportsTransferImportResponses, ImportsUpdateImportItemData, ImportsUpdateImportItemErrors, ImportsUpdateImportItemResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, LocationsListLocationsData, LocationsListLocationsErrors, LocationsListLocationsResponses, ProductsGenerateModelImageData, ProductsGenerateModelImageErrors, ProductsGenerateModelImageResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, ProductsNormalizeImageData, ProductsNormalizeImageErrors, ProductsNormalizeImageResponses, ProductsReadProductData, ProductsReadProductErrors, ProductsReadProductResponses, ProductsUploadProductImagesData, ProductsUploadProductImagesErrors, ProductsUploadProductImagesResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses, UsageCreateUsagePriceData, UsageCreateUsagePriceErrors, UsageCreateUsagePriceResponses, UsageDeleteUsagePriceData, UsageDeleteUsagePriceErrors, UsageDeleteUsagePriceResponses, UsageExportUsageCsvData, UsageExportUsageCsvErrors, UsageExportUsageCsvResponses, UsageListUsagePricesData, UsageListUsagePricesErrors, UsageListUsagePricesResponses, UsageReadUsageByJobData, UsageReadUsageByJobErrors, UsageReadUsageByJobResponses, UsageReadUsageSummaryData, UsageReadUsageSummaryErrors, UsageReadUsageSummaryResponses, UsageReadUsageTimeseriesData, UsageReadUsageTimeseriesErrors, UsageReadUsageTimeseriesResponses, UsageRefreezeSnapshotData, UsageRefreezeSnapshotErrors, UsageRefreezeSnapshotResponses, UsageUpdateUsagePriceData, UsageUpdateUsagePriceErrors, UsageUpdateUsagePriceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -139,6 +139,84 @@ export const productsUploadProductImages = <ThrowOnError extends boolean = false
     ...options,
     headers: {
         'Content-Type': null,
+        ...options.headers
+    }
+});
+
+/**
+ * Normalize Image
+ *
+ * Deterministic pipeline, synchronous (Photoroom answers in seconds).
+ *
+ * Creates the asset, runs the verb, stages the result and settles the asset
+ * in one request. Provider errors mark the asset failed and surface as the
+ * usual 502/503 (ExternalServiceError handlers).
+ */
+export const productsNormalizeImage = <ThrowOnError extends boolean = false>(options: Options<ProductsNormalizeImageData, ThrowOnError>): RequestResult<ProductsNormalizeImageResponses, ProductsNormalizeImageErrors, ThrowOnError> => (options.client ?? client).post<ProductsNormalizeImageResponses, ProductsNormalizeImageErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/products/{product_id}/images/normalize',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Generate Model Image
+ *
+ * Generative pipeline, 202 + asset id (FASHN takes 10-55 s).
+ *
+ * The FASHN dependency resolves BEFORE any row is written: a missing key is
+ * a clean 503 with no zombie asset. The BackgroundTask polls FASHN, downloads
+ * the outputs to staging and settles the asset with its own DB session.
+ */
+export const productsGenerateModelImage = <ThrowOnError extends boolean = false>(options: Options<ProductsGenerateModelImageData, ThrowOnError>): RequestResult<ProductsGenerateModelImageResponses, ProductsGenerateModelImageErrors, ThrowOnError> => (options.client ?? client).post<ProductsGenerateModelImageResponses, ProductsGenerateModelImageErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/products/{product_id}/images/generate-model',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Asset
+ *
+ * Status + preview URLs of one imaging operation (poll target).
+ */
+export const imagingReadAsset = <ThrowOnError extends boolean = false>(options: Options<ImagingReadAssetData, ThrowOnError>): RequestResult<ImagingReadAssetResponses, ImagingReadAssetErrors, ThrowOnError> => (options.client ?? client).get<ImagingReadAssetResponses, ImagingReadAssetErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imaging/assets/{asset_id}',
+    ...options
+});
+
+/**
+ * Read Asset File
+ *
+ * Stream one staged preview file (404 when absent or already purged).
+ */
+export const imagingReadAssetFile = <ThrowOnError extends boolean = false>(options: Options<ImagingReadAssetFileData, ThrowOnError>): RequestResult<ImagingReadAssetFileResponses, ImagingReadAssetFileErrors, ThrowOnError> => (options.client ?? client).get<ImagingReadAssetFileResponses, ImagingReadAssetFileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imaging/assets/{asset_id}/files/{index}',
+    ...options
+});
+
+/**
+ * Save Asset
+ *
+ * Push the staged results to Tillin (bulk upload) and purge the staging.
+ *
+ * `replace=true` also deactivates the original `product_image` row when the
+ * asset knows it (source_product_image_id). Saving twice is a 409.
+ */
+export const imagingSaveAsset = <ThrowOnError extends boolean = false>(options: Options<ImagingSaveAssetData, ThrowOnError>): RequestResult<ImagingSaveAssetResponses, ImagingSaveAssetErrors, ThrowOnError> => (options.client ?? client).post<ImagingSaveAssetResponses, ImagingSaveAssetErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/imaging/assets/{asset_id}/save',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
         ...options.headers
     }
 });

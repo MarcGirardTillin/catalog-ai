@@ -7,6 +7,7 @@ from app.api.routes import (
     brands,
     catalog,
     example,
+    imaging,
     import_profiles,
     imports,
     instructions,
@@ -25,6 +26,7 @@ api_router.include_router(system.router)
 api_router.include_router(example.router)
 api_router.include_router(auth.router)
 api_router.include_router(products.router)
+api_router.include_router(imaging.router)
 api_router.include_router(brands.router)
 api_router.include_router(catalog.router)
 api_router.include_router(jobs.router)

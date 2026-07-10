@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
 from app.api.services.users import get_user_by_id
+from app.clients.fashn import FashnClient
+from app.clients.photoroom import PhotoroomClient
 from app.clients.xano import XanoClient
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -54,6 +56,33 @@ def get_xano_client() -> XanoClient:
 
 
 XanoDep = Annotated[XanoClient, Depends(get_xano_client)]
+
+
+# Imaging provider clients (same process-wide pattern as Xano: one httpx pool
+# reused across requests). `from_settings` raises NotConfiguredError -> a clean
+# 503 at dependency-resolution time, BEFORE any asset row is created.
+_photoroom_client: PhotoroomClient | None = None
+
+
+def get_photoroom_client() -> PhotoroomClient:
+    global _photoroom_client
+    if _photoroom_client is None:
+        _photoroom_client = PhotoroomClient.from_settings()
+    return _photoroom_client
+
+
+_fashn_client: FashnClient | None = None
+
+
+def get_fashn_client() -> FashnClient:
+    global _fashn_client
+    if _fashn_client is None:
+        _fashn_client = FashnClient.from_settings()
+    return _fashn_client
+
+
+PhotoroomDep = Annotated[PhotoroomClient, Depends(get_photoroom_client)]
+FashnDep = Annotated[FashnClient, Depends(get_fashn_client)]
 
 
 # Background job runner. Injected so the route can schedule enrichment after a

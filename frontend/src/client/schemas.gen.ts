@@ -87,6 +87,46 @@ export const AccountSettingsSchema = {
     description: 'Boutique-level enrichment defaults (stored on account.settings_json).'
 } as const;
 
+export const AssetSaveRequestSchema = {
+    properties: {
+        replace: {
+            type: 'boolean',
+            title: 'Replace',
+            default: false
+        }
+    },
+    type: 'object',
+    title: 'AssetSaveRequest',
+    description: 'POST /imaging/assets/{id}/save body.'
+} as const;
+
+export const AssetSaveResultSchema = {
+    properties: {
+        created: {
+            type: 'integer',
+            title: 'Created'
+        },
+        deactivated: {
+            type: 'integer',
+            title: 'Deactivated'
+        },
+        images: {
+            items: {
+                $ref: '#/components/schemas/ProductImage'
+            },
+            type: 'array',
+            title: 'Images'
+        }
+    },
+    type: 'object',
+    required: [
+        'created',
+        'deactivated'
+    ],
+    title: 'AssetSaveResult',
+    description: 'Outcome of pushing a completed asset to Tillin (Xano bulk upload).'
+} as const;
+
 export const Body_imports_create_importSchema = {
     properties: {
         file: {
@@ -426,6 +466,97 @@ export const FilterOptionSchema = {
     description: 'One selectable value in a search filter (brand, category, …).'
 } as const;
 
+export const GenerateModelOptionsSchema = {
+    properties: {
+        prompt: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Prompt'
+        },
+        aspect_ratio: {
+            type: 'string',
+            title: 'Aspect Ratio',
+            default: '4:5'
+        },
+        resolution: {
+            type: 'string',
+            enum: [
+                '1k',
+                '2k',
+                '4k'
+            ],
+            title: 'Resolution',
+            default: '1k'
+        },
+        generation_mode: {
+            type: 'string',
+            enum: [
+                'fast',
+                'balanced',
+                'quality'
+            ],
+            title: 'Generation Mode',
+            default: 'balanced'
+        },
+        seed: {
+            type: 'integer',
+            title: 'Seed',
+            default: 42
+        },
+        num_images: {
+            type: 'integer',
+            maximum: 4,
+            minimum: 1,
+            title: 'Num Images',
+            default: 1
+        }
+    },
+    type: 'object',
+    title: 'GenerateModelOptions',
+    description: 'Options of POST /products/{id}/images/generate-model (FASHN).'
+} as const;
+
+export const GenerateModelRequestSchema = {
+    properties: {
+        image_url: {
+            type: 'string',
+            title: 'Image Url'
+        },
+        product_image_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Image Id'
+        },
+        options: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/GenerateModelOptions'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    required: [
+        'image_url'
+    ],
+    title: 'GenerateModelRequest'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
@@ -460,6 +591,121 @@ export const HealthResponseSchema = {
     ],
     title: 'HealthResponse',
     description: 'Response returned by the healthcheck endpoint.'
+} as const;
+
+export const ImageAssetPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        product_id: {
+            type: 'integer',
+            title: 'Product Id'
+        },
+        verb: {
+            type: 'string',
+            title: 'Verb'
+        },
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        seed: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Seed'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        error: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error'
+        },
+        preview_urls: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Preview Urls'
+        },
+        source_image: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Image'
+        },
+        source_product_image_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Product Image Id'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'product_id',
+        'verb',
+        'provider',
+        'status',
+        'created_at'
+    ],
+    title: 'ImageAssetPublic',
+    description: 'One imaging operation: status + provenance + staged previews.'
 } as const;
 
 export const ImportFilePreviewSchema = {
@@ -1963,6 +2209,82 @@ export const LoginRequestSchema = {
     description: 'Credentials submitted to the login endpoint.'
 } as const;
 
+export const NormalizeOptionsSchema = {
+    properties: {
+        bg_color: {
+            type: 'string',
+            title: 'Bg Color',
+            default: 'FFFFFF'
+        },
+        output_size: {
+            type: 'string',
+            title: 'Output Size',
+            default: '1600x2000'
+        },
+        padding: {
+            type: 'string',
+            title: 'Padding',
+            default: '10%'
+        },
+        format: {
+            type: 'string',
+            title: 'Format',
+            default: 'webp'
+        },
+        quality: {
+            type: 'integer',
+            maximum: 100,
+            minimum: 1,
+            title: 'Quality',
+            default: 80
+        },
+        max_kb: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Max Kb',
+            default: 200
+        }
+    },
+    type: 'object',
+    title: 'NormalizeOptions',
+    description: 'Options of POST /products/{id}/images/normalize (Photoroom).'
+} as const;
+
+export const NormalizeRequestSchema = {
+    properties: {
+        image_url: {
+            type: 'string',
+            title: 'Image Url'
+        },
+        product_image_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Image Id'
+        },
+        options: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/NormalizeOptions'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    required: [
+        'image_url'
+    ],
+    title: 'NormalizeRequest'
+} as const;
+
 export const PaginatedResponse_ImportItemPublic_Schema = {
     properties: {
         items: {
@@ -2329,6 +2651,17 @@ export const ProductSchema = {
 
 export const ProductImageSchema = {
     properties: {
+        id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Id'
+        },
         url: {
             type: 'string',
             title: 'Url'

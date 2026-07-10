@@ -34,6 +34,7 @@ CLASSIFICATION_PATH = "/get_all_informations"
 LOGIN_PATH = "/auth/login"
 PRODUCT_IMPORT_PATH = "/product_import"
 PRODUCT_WEIGHT_PATH = "/product/weight"
+PRODUCT_IMAGE_DEACTIVATE_PATH = "/product_image/deactivate"
 
 
 def _enrich_path(product_id: int) -> str:
@@ -252,7 +253,11 @@ def _collect_images(raw: Mapping[str, Any]) -> list[ProductImage]:
         if not src or src in seen:
             return
         seen.add(src)
-        images.append(ProductImage(url=src, position=_first(entry, "position")))
+        images.append(
+            ProductImage(
+                id=_first(entry, "id"), url=src, position=_first(entry, "position")
+            )
+        )
 
     for entry in _as_list(raw.get("product_images")):
         add(entry)
@@ -854,8 +859,23 @@ class XanoClient:
                 continue
             src = _normalize_url(str(_first(raw, "src", "url") or ""))
             if src:
-                created.append(ProductImage(url=src, position=_first(raw, "position")))
+                created.append(
+                    ProductImage(
+                        id=_first(raw, "id"), url=src, position=_first(raw, "position")
+                    )
+                )
         return created
+
+    def deactivate_product_images(self, product_image_ids: list[int]) -> None:
+        """Deactivate product images (`PUT /product_image/deactivate`).
+
+        The bulk upload only APPENDS; replacement = upload the new files then
+        deactivate the original `product_image` rows through this endpoint.
+        """
+        ids = [int(i) for i in product_image_ids if i is not None]
+        if not ids:
+            return
+        self._put(PRODUCT_IMAGE_DEACTIVATE_PATH, {"product_image_ids": ids})
 
     def set_brand_website_urls(self, brand_id: int, urls: list[str]) -> None:
         """Replace a brand's reference websites (`/brand/{id}/website_urls`).

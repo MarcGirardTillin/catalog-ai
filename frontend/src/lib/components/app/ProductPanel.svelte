@@ -5,6 +5,9 @@
   import Camera from "@lucide/svelte/icons/camera"
   import Check from "@lucide/svelte/icons/check"
   import ImageIcon from "@lucide/svelte/icons/image"
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+  import PersonStanding from "@lucide/svelte/icons/person-standing"
+  import Scissors from "@lucide/svelte/icons/scissors"
   import Sparkles from "@lucide/svelte/icons/sparkles"
   import Upload from "@lucide/svelte/icons/upload"
   import X from "@lucide/svelte/icons/x"
@@ -12,7 +15,15 @@
   import { toast } from "svelte-sonner"
   import { fade, fly } from "svelte/transition"
 
-  import { settingsReadAccountSettings } from "@/client"
+  import { type ProductImage, settingsReadAccountSettings } from "@/client"
+  import {
+    fetchAssetPreviews,
+    generateModelImage,
+    type ImageAssetPublic,
+    normalizeImage,
+    saveAsset,
+    waitForAsset,
+  } from "@/lib/api/imaging"
   import {
     getProduct,
     uploadProductImages,
@@ -65,6 +76,115 @@
     stagedImages = []
   }
 
+  // Traitement d'images à la carte (sprint imagerie, Phase A) : une opération
+  // à la fois — image source choisie, verbe lancé, preview avant/après, puis
+  // enregistrement vers Tillin (avec remplacement optionnel de l'originale).
+  let imgSel = $state<{ url: string; id: number | null } | null>(null)
+  let imagingAsset = $state<ImageAssetPublic | null>(null)
+  let imagingPreviews = $state<string[]>([])
+  let imagingBusy = $state(false)
+  let imagingVerb = $state<"normalize" | "generate_model" | null>(null)
+  let replaceOriginal = $state(false)
+  let savingAsset = $state(false)
+  // Interrompt le polling du génératif quand le panneau change de produit.
+  let pollAborter: AbortController | null = null
+
+  function disposeImagingResult() {
+    for (const url of imagingPreviews) URL.revokeObjectURL(url)
+    imagingPreviews = []
+    imagingAsset = null
+    replaceOriginal = false
+  }
+
+  function clearImaging() {
+    pollAborter?.abort()
+    pollAborter = null
+    disposeImagingResult()
+    imgSel = null
+    imagingBusy = false
+    imagingVerb = null
+  }
+
+  function selectImagingSource(image: ProductImage) {
+    if (imagingBusy || savingAsset) return
+    imgSel = { url: image.url, id: image.id ?? null }
+  }
+
+  async function runNormalize() {
+    const id = productId
+    const sel = imgSel
+    if (id == null || !sel || imagingBusy) return
+    imagingBusy = true
+    imagingVerb = "normalize"
+    disposeImagingResult()
+    const { data, error } = await normalizeImage(id, sel.url, sel.id)
+    imagingBusy = false
+    if (error || !data) {
+      toast.error(
+        "Échec du traitement de l'image (service Photoroom indisponible ?).",
+      )
+      return
+    }
+    imagingAsset = data
+    imagingPreviews = await fetchAssetPreviews(data)
+  }
+
+  async function runGenerateModel() {
+    const id = productId
+    const sel = imgSel
+    if (id == null || !sel || imagingBusy) return
+    imagingBusy = true
+    imagingVerb = "generate_model"
+    disposeImagingResult()
+    const { data, error } = await generateModelImage(id, sel.url, sel.id)
+    if (error || !data) {
+      imagingBusy = false
+      toast.error(
+        "Échec du lancement de la génération (service FASHN indisponible ?).",
+      )
+      return
+    }
+    // 202 : la génération tourne côté serveur (10 s à ~1 min) — polling léger.
+    pollAborter = new AbortController()
+    const signal = pollAborter.signal
+    const final = await waitForAsset(data.id, { signal })
+    if (signal.aborted) return // le panneau a changé de produit entre-temps
+    imagingBusy = false
+    if (!final) {
+      toast.error("La génération n'a pas abouti dans le temps imparti.")
+      return
+    }
+    if (final.status !== "completed") {
+      toast.error(final.error ?? "Génération échouée.")
+      return
+    }
+    imagingAsset = final
+    imagingPreviews = await fetchAssetPreviews(final)
+  }
+
+  async function saveImagingResult() {
+    const asset = imagingAsset
+    if (!asset || savingAsset) return
+    savingAsset = true
+    const replace = replaceOriginal && asset.source_product_image_id != null
+    const { data, error } = await saveAsset(asset.id, replace)
+    savingAsset = false
+    if (error || !data) {
+      toast.error("Échec de l'enregistrement dans Tillin.")
+      return
+    }
+    toast.success(
+      `${data.created} image(s) enregistrée(s)` +
+        (data.deactivated > 0 ? ", originale désactivée" : ""),
+    )
+    clearImaging()
+    const id = productId
+    if (id != null) {
+      const reload = await getProduct(id)
+      if (reload.data) product = reload.data
+    }
+  }
+
   // Réagit au changement de produit uniquement (productId). Le reste écrit —
   // et `clearStaged` LIT `stagedImages` en le remettant à zéro — donc on
   // l'exécute hors suivi (untrack) pour ne pas boucler l'effet.
@@ -74,6 +194,7 @@
       product = null
       errorMessage = null
       clearStaged()
+      clearImaging()
       if (id == null) return
       loading = true
       getProduct(id).then(({ data, error }) => {
@@ -94,7 +215,10 @@
   })
 
   // Libère les object-URLs restantes quand le panneau est démonté.
-  $effect(() => () => clearStaged())
+  $effect(() => () => {
+    clearStaged()
+    clearImaging()
+  })
 
   function onFilesPicked(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -542,16 +666,117 @@
           </Button>
         {/if}
 
-        <!-- À venir : traitements d'images via Photoroom (aucune action). -->
-        <div class="bg-muted/50 flex flex-col gap-1.5 rounded-md p-3">
-          <p class="text-muted-foreground text-xs font-medium">
-            Images (Photoroom) — bientôt
-          </p>
-          <ul class="text-muted-foreground list-inside list-disc text-xs">
-            <li>Détourage automatique</li>
-            <li>Reformatage des visuels</li>
-            <li>Génération mannequin / à plat</li>
-          </ul>
+        <!-- Traitement d'images à la carte : normalisation (Photoroom) et
+             génération porté-mannequin (FASHN), preview avant/après puis
+             enregistrement vers Tillin. -->
+        <div class="border-border flex flex-col gap-2 rounded-md border p-3">
+          <h3 class="text-sm font-medium">Traitement d'images</h3>
+          {#if (product.images ?? []).length === 0}
+            <p class="text-muted-foreground text-xs italic">
+              Ajoutez d'abord une image au produit.
+            </p>
+          {:else}
+            <p class="text-muted-foreground text-xs">Image source :</p>
+            <div class="flex flex-wrap gap-2">
+              {#each product.images ?? [] as image (image.url)}
+                <button
+                  type="button"
+                  class={`overflow-hidden rounded-md transition-shadow ${
+                    imgSel?.url === image.url
+                      ? "ring-primary ring-2"
+                      : "ring-border ring-1"
+                  }`}
+                  aria-label="Choisir cette image comme source"
+                  aria-pressed={imgSel?.url === image.url}
+                  onclick={() => selectImagingSource(image)}
+                >
+                  <img
+                    src={image.url}
+                    alt=""
+                    loading="lazy"
+                    class="bg-muted aspect-4/5 w-14 object-cover"
+                  />
+                </button>
+              {/each}
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!imgSel || imagingBusy || savingAsset}
+                onclick={runNormalize}
+              >
+                <Scissors size={14} aria-hidden="true" />
+                Normaliser (fond uni 4:5)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!imgSel || imagingBusy || savingAsset}
+                onclick={runGenerateModel}
+              >
+                <PersonStanding size={14} aria-hidden="true" />
+                Porté mannequin
+              </Button>
+            </div>
+            {#if imagingBusy}
+              <p class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                <LoaderCircle
+                  size={14}
+                  class="animate-spin shrink-0"
+                  aria-hidden="true"
+                />
+                {imagingVerb === "generate_model"
+                  ? "Génération en cours (10 s à 1 min)…"
+                  : "Traitement en cours…"}
+              </p>
+            {/if}
+            {#if imagingAsset && imagingPreviews.length > 0}
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <img
+                    src={imagingAsset.source_image ?? imgSel?.url}
+                    alt="Avant traitement"
+                    class="bg-muted aspect-4/5 w-full rounded-md object-cover"
+                  />
+                  <span class="text-muted-foreground text-center text-[11px]">
+                    Avant
+                  </span>
+                </div>
+                {#each imagingPreviews as preview (preview)}
+                  <div class="flex flex-col gap-1">
+                    <img
+                      src={preview}
+                      alt="Résultat du traitement"
+                      class="bg-muted ring-primary/40 aspect-4/5 w-full rounded-md object-cover ring-2"
+                    />
+                    <span class="text-muted-foreground text-center text-[11px]">
+                      Après
+                    </span>
+                  </div>
+                {/each}
+              </div>
+              {#if imagingAsset.source_product_image_id != null}
+                <label class="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" bind:checked={replaceOriginal} />
+                  Remplacer l'image originale
+                </label>
+              {/if}
+              <div class="flex flex-wrap gap-2">
+                <Button size="sm" disabled={savingAsset} onclick={saveImagingResult}>
+                  {savingAsset ? "Enregistrement…" : "Enregistrer dans Tillin"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={savingAsset}
+                  onclick={disposeImagingResult}
+                >
+                  Annuler
+                </Button>
+              </div>
+            {/if}
+          {/if}
         </div>
 
         <!-- Complétude (en bas de panneau) -->

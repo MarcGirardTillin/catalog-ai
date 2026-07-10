@@ -32,6 +32,9 @@ class ProductVariant(BaseModel):
 class ProductImage(BaseModel):
     """An image associated with a product."""
 
+    # Destination-side image row id (Tillin `product_image.id`) when known —
+    # needed by the imaging replace flow (deactivate the original on save).
+    id: int | None = None
     url: str
     position: int | None = None
 
