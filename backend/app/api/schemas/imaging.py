@@ -29,7 +29,9 @@ class NormalizeRequest(BaseModel):
 class GenerateModelOptions(BaseModel):
     """Options of POST /products/{id}/images/generate-model (FASHN)."""
 
-    prompt: str | None = None
+    # Sans prompt, FASHN choisit librement le décor (vérifié live : scène
+    # extérieure) — la décision actée est « porté mannequin sur fond uni ».
+    prompt: str | None = "studio photo, plain light neutral background"
     aspect_ratio: str = "4:5"
     resolution: Literal["1k", "2k", "4k"] = "1k"
     generation_mode: Literal["fast", "balanced", "quality"] = "balanced"

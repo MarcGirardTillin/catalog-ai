@@ -1,9 +1,13 @@
 """Photoroom client — background removal/recolor + 4:5 framing in one call.
 
-TODO(plan open item): confirm the live parameter names (`outputSize`,
-`padding`, `horizontalAlignment`, `backgroundColor`) and that the transparent
-cutout can be returned for the Pillow manual-recenter path. Kwargs are kept
-close to the documented v2 names and isolated here.
+Confirmed live (2026-07-10): `/v2/edit` takes the parameters as **query params
+on a GET** (`imageUrl`, `background.color`, `outputSize`, `padding`,
+`export.format`, `export.quality`); a JSON POST is rejected with 400 ("Only
+multipart form data is supported") — multipart POST is the documented path for
+raw file input (`imageFile`), kept for a later bytes-input need.
+
+TODO(plan open item): confirm the transparent cutout can be returned for the
+Pillow manual-recenter path.
 """
 
 import httpx
@@ -60,7 +64,7 @@ class PhotoroomClient:
 
         Returns the processed image bytes; storage is the caller's concern.
         """
-        body: dict[str, str | int] = {
+        params: dict[str, str | int] = {
             "imageUrl": image_url,
             "background.color": background_color,
             "outputSize": output_size,
@@ -68,10 +72,9 @@ class PhotoroomClient:
             "export.format": export_format,
         }
         if quality is not None:
-            # v2 name to confirm live alongside the other params (see module TODO).
-            body["export.quality"] = quality
+            params["export.quality"] = quality
         try:
-            response = self._client.post("/v2/edit", json=body)
+            response = self._client.get("/v2/edit", params=params)
         except httpx.HTTPError as exc:
             raise ExternalServiceError("photoroom", "Photoroom is unreachable") from exc
         if response.status_code >= 400:

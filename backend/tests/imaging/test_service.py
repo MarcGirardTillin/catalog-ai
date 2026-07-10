@@ -1,6 +1,5 @@
 """Tests for the imaging business verbs (providers mocked, usage in DB)."""
 
-import json
 from collections.abc import Generator
 
 import httpx
@@ -66,9 +65,10 @@ def test_normalize_calls_photoroom_and_meters_one_image(
     assert result.width is None and result.height is None  # no Pillow in deps
     assert result.trace["provider"] == "photoroom"
     assert result.trace["params"]["bg_color"] == "F5F5F5"
-    body = json.loads(captured["request"].content)
-    assert body["background.color"] == "F5F5F5"
-    assert body["export.quality"] == 90
+    # Confirmed live: Photoroom /v2/edit reads its params from the GET query.
+    assert captured["request"].method == "GET"
+    assert captured["request"].url.params["background.color"] == "F5F5F5"
+    assert captured["request"].url.params["export.quality"] == "90"
 
     events = _usage_events(db)
     assert [(e.provider, e.metric, e.quantity, e.source) for e in events] == [

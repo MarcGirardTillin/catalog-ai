@@ -123,10 +123,13 @@ def test_claude_requires_api_key() -> None:
 
 def test_photoroom_edit_image_returns_bytes() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        # Confirmed live: /v2/edit takes its parameters as GET query params
+        # (a JSON POST is rejected with 400 "Only multipart form data...").
+        assert request.method == "GET"
         assert request.url.path == "/v2/edit"
         assert request.headers["x-api-key"] == "pr-key"
-        body = json.loads(request.content)
-        assert body["outputSize"] == "1600x2000"
+        assert request.url.params["outputSize"] == "1600x2000"
+        assert request.url.params["background.color"] == "FFFFFF"
         return httpx.Response(200, content=b"\x89WEBP-bytes")
 
     with PhotoroomClient("pr-key", transport=httpx.MockTransport(handler)) as client:

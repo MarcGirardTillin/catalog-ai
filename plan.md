@@ -376,11 +376,19 @@ Architecture direction brought by Marc and validated together; scoping decisions
 - `generate_flat_photo` (worn → flat) — wait for a suitable FASHN endpoint.
 - Per-category fill ratio (already noted in the historical `images.py` spec).
 - Multi-provider routing — when a second provider exists for a verb.
-- Confirm Photoroom v2 params + RGBA cutout via live call at build time.
-- Does the FASHN status response return consumed credits? Otherwise use a
-  versioned static grid.
-- Drop the `.xs` export of `PUT /product_image/deactivate` into
-  `fichiers_xano/endpoints_xano/`.
+- ~~Confirm Photoroom v2 params~~ — **CONFIRMED live 2026-07-10**: `/v2/edit`
+  takes the params as **GET query params** (`imageUrl`, `background.color`,
+  `outputSize`, `padding`, `export.format`, `export.quality`); JSON POST is
+  rejected (400 — POST is multipart-only, the future bytes-input path). Still
+  open: RGBA cutout retrieval for the Pillow manual-recenter path.
+- ~~FASHN consumed credits in /status?~~ — static grid in use
+  (`fashn_credits()`), validated live 2026-07-10 (`product-to-model` run/status
+  flow works as documented; without a prompt FASHN picks a free outdoor scene,
+  hence the default prompt "studio photo, plain light neutral background" to
+  honour the plain-background decision).
+- ~~Drop the `.xs` export of `PUT /product_image/deactivate`~~ — **DONE
+  2026-07-10** (`fichiers_xano/endpoints_xano/6546_product_image_deactivate.xs`);
+  endpoint validated live (upload + deactivate, net zero).
 
 ## Future / separate sprints (out of scope here)
 - **In-scene / lifestyle imagery:** generative scene from a text prompt (e.g.

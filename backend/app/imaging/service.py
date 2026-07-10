@@ -46,9 +46,14 @@ class NormalizeOptions:
 
 @dataclass
 class GenerateModelOptions:
-    """Options of the generative verb (FASHN `product-to-model`)."""
+    """Options of the generative verb (FASHN `product-to-model`).
 
-    prompt: str | None = None
+    Without a prompt FASHN picks a free environment (confirmed live: outdoor
+    scene) — the locked decision is "worn by a model on a plain background",
+    hence the default prompt.
+    """
+
+    prompt: str | None = "studio photo, plain light neutral background"
     aspect_ratio: str = "4:5"
     resolution: str = "1k"
     generation_mode: str = "balanced"
