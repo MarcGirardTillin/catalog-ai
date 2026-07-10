@@ -42,10 +42,42 @@ def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
     return parse_file(data, filename)
 
 
+def _known_category_paths() -> list[str] | None:
+    """Best-effort « parent > enfant » category paths from the boutique tree.
+
+    Fed to the extractor so it maps supplier category labels onto the user's
+    own arborescence. Any failure (Xano unconfigured/unreachable) yields None —
+    extraction then keeps the raw supplier labels, as before.
+    """
+    try:
+        from app.api.deps import get_xano_client
+
+        options = get_xano_client().get_classification().get("categories", [])
+    except Exception:  # noqa: BLE001 — category matching is a best-effort bonus
+        logger.warning("could not load categories for extraction matching")
+        return None
+
+    by_id = {int(o["id"]): o for o in options if o.get("id") is not None}
+
+    def path_of(cid: int, depth: int = 0) -> str:
+        option = by_id.get(cid)
+        if not option or depth > 6:
+            return ""
+        title = str(option.get("title") or "").strip()
+        parent = option.get("parent_id") or 0
+        prefix = path_of(int(parent), depth + 1) if parent else ""
+        return f"{prefix} > {title}" if prefix else title
+
+    paths = [p for cid in by_id if (p := path_of(cid))]
+    return paths or None
+
+
 def _default_build_extractor() -> Extractor:
     from app.imports.extract import build_extractor
 
-    return build_extractor(settings.ANTHROPIC_API_KEY)
+    return build_extractor(
+        settings.ANTHROPIC_API_KEY, known_categories=_known_category_paths()
+    )
 
 
 def run_import_job(

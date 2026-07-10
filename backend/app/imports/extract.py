@@ -79,6 +79,31 @@ _USER_PROMPT = (
 )
 
 
+def _normalize_label(value: str) -> str:
+    """Casefold + collapse whitespace, for matching a category to the tree."""
+    return " ".join(value.split()).strip().casefold()
+
+
+def _category_prompt(known_categories: list[str]) -> str:
+    """Extra instruction: map `category` onto the boutique's own tree.
+
+    The arborescence is user-defined (Tillin « get_all_informations »), so the
+    supplier's own wording must be rapproché to an EXISTING category rather than
+    copied verbatim. Paths give Claude the hierarchy for disambiguation; the
+    answer is the leaf label (canonicalized deterministically after the call).
+    """
+    listing = "\n".join(f"- {path}" for path in known_categories)
+    return (
+        "\n\nCatégories existantes de la boutique (arborescence « parent > "
+        "enfant ») :\n" + listing + "\n\nPour le champ category de chaque "
+        "produit : choisis la catégorie EXISTANTE la plus précise (la feuille) "
+        "qui correspond au produit, et renvoie exactement son dernier segment "
+        "(après le dernier « > »). Si aucune catégorie existante ne correspond "
+        'avec certitude, renvoie une chaîne vide "". N\'invente jamais une '
+        "catégorie absente de cette liste."
+    )
+
+
 # NOTE: the structured-output schema deliberately has ZERO union/nullable
 # parameters — the live API caps them at 16 per schema ("exponential
 # compilation cost"), and a fully-nullable product schema blows past it.
@@ -256,11 +281,19 @@ class ClaudeExtractor:
         *,
         model: str | None = None,
         http_client: httpx.Client | None = None,
+        known_categories: list[str] | None = None,
     ) -> None:
         if not api_key:
             raise NotConfiguredError("claude")
         self._model = model or settings.AI_DEFAULT_MODEL
         self._client = anthropic.Anthropic(api_key=api_key, http_client=http_client)
+        # Boutique category tree (« parent > enfant » paths); when provided,
+        # extracted categories are mapped onto it (prompt + canonicalization).
+        self._known_categories = [c for c in (known_categories or []) if c.strip()]
+        self._category_canon = {
+            _normalize_label(path.rsplit(">", 1)[-1]): path.rsplit(">", 1)[-1].strip()
+            for path in self._known_categories
+        }
 
     def __call__(self, document: RawDocument) -> ExtractionResult:
         warnings: list[str] = []
@@ -310,6 +343,7 @@ class ClaudeExtractor:
         products = [
             self._to_product(raw_product, warnings) for raw_product in raw.products
         ]
+        self._canonicalize_categories(products)
         if document.kind == "tabular":
             self._cross_check_tabular(products, document, warnings)
         else:
@@ -333,7 +367,13 @@ class ClaudeExtractor:
 
     # ---- request building ----
 
+    def _user_prompt(self) -> str:
+        if self._known_categories:
+            return _USER_PROMPT + _category_prompt(self._known_categories)
+        return _USER_PROMPT
+
     def _build_content(self, document: RawDocument, warnings: list[str]) -> list[Any]:
+        user_prompt = self._user_prompt()
         if document.kind == "pdf":
             if document.pdf_bytes is None:
                 raise ValueError("pdf document has no pdf_bytes")
@@ -348,13 +388,13 @@ class ClaudeExtractor:
                         ),
                     },
                 },
-                {"type": "text", "text": _USER_PROMPT},
+                {"type": "text", "text": user_prompt},
             ]
         return [
             {
                 "type": "text",
                 "text": (
-                    f"{_USER_PROMPT}\n\nFichier : {document.filename}\n\n"
+                    f"{user_prompt}\n\nFichier : {document.filename}\n\n"
                     + self._serialize_tables(document, warnings)
                 ),
             }
@@ -455,6 +495,26 @@ class ClaudeExtractor:
             confidence=confidence,
         )
 
+    def _canonicalize_categories(self, products: list[ImportedProduct]) -> None:
+        """Map each product's category onto the boutique tree (leaf label).
+
+        When the tree is known, an extracted category that normalizes to an
+        existing leaf is rewritten to that leaf's canonical casing (confidence
+        1.0). An unmatched value is kept verbatim so the reviewer can still map
+        it by hand — never dropped.
+        """
+        if not self._category_canon:
+            return
+        for product in products:
+            if product.category is None:
+                continue
+            # Claude may echo a full « parent > leaf » path; keep the leaf.
+            leaf = product.category.rsplit(">", 1)[-1]
+            canonical = self._category_canon.get(_normalize_label(leaf))
+            if canonical is not None:
+                product.category = canonical
+                product.confidence["category"] = 1.0
+
     # ---- cross-checks ----
 
     def _cross_check_tabular(
@@ -524,6 +584,12 @@ def build_extractor(
     *,
     model: str | None = None,
     http_client: httpx.Client | None = None,
+    known_categories: list[str] | None = None,
 ) -> Extractor:
     """Build the Claude-backed :class:`Extractor` (frozen entry point)."""
-    return ClaudeExtractor(api_key, model=model, http_client=http_client)
+    return ClaudeExtractor(
+        api_key,
+        model=model,
+        http_client=http_client,
+        known_categories=known_categories,
+    )

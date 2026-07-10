@@ -9,6 +9,7 @@ from app.api.schemas.product import (
     Brand,
     Product,
     ProductImage,
+    ProductImagesUploadResult,
     ProductVariant,
 )
 
@@ -20,6 +21,7 @@ __all__ = [
     "PaginationParams",
     "Product",
     "ProductImage",
+    "ProductImagesUploadResult",
     "ProductVariant",
     "SortingParams",
     "UserPublic",

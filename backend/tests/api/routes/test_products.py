@@ -181,6 +181,56 @@ def test_upstream_error_surfaces_as_502(
     assert response.json()["code"] == "xano_error"
 
 
+def test_upload_product_images_forwards_multipart_and_maps_result(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/bulk"):
+            captured["request"] = request
+            return httpx.Response(
+                200,
+                json={
+                    "images": [
+                        {"id": 5, "src": "https://xano.test/img-a.jpg", "position": 1},
+                        {"id": 6, "src": "https://xano.test/img-b.png", "position": 2},
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    override_xano(handler)
+
+    response = auth_client.post(
+        "/products/101/images",
+        files=[
+            ("files", ("a.jpg", b"\xff\xd8fakejpeg", "image/jpeg")),
+            ("files", ("b.png", b"\x89PNGfake", "image/png")),
+        ],
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == 2
+    assert [i["url"] for i in body["images"]] == [
+        "https://xano.test/img-a.jpg",
+        "https://xano.test/img-b.png",
+    ]
+    # The backend forwards to Tillin's bulk endpoint as multipart.
+    request = captured["request"]
+    assert request.url.path.endswith("/product_image/101/bulk")
+    assert request.headers["content-type"].startswith("multipart/form-data")
+
+
+def test_upload_product_images_rejects_empty(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    override_xano(lambda request: httpx.Response(404))
+    # No files part at all -> FastAPI validation rejects the request.
+    assert auth_client.post("/products/101/images").status_code == 422
+
+
 def test_returns_503_when_xano_not_configured(
     auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

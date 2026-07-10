@@ -8,11 +8,15 @@ backend proxies the call behind the session cookie.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 
 from app.api.deps import XanoDep, get_current_user
 from app.api.exceptions import AppException
-from app.api.schemas import PaginatedResponse, Product
+from app.api.schemas import PaginatedResponse, Product, ProductImagesUploadResult
+
+# Guardrails for the upload route (a boutique adds a handful of shots at a time).
+MAX_UPLOAD_FILES = 20
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB per file
 
 router = APIRouter(
     prefix="/products",
@@ -65,3 +69,45 @@ def read_product(product_id: int, xano: XanoDep) -> Product:
             status_code=404, code="not_found", message="Product not found"
         )
     return product
+
+
+@router.post("/{product_id}/images", response_model=ProductImagesUploadResult)
+def upload_product_images(
+    product_id: int,
+    xano: XanoDep,
+    files: Annotated[list[UploadFile], File(description="Image files to upload")],
+) -> ProductImagesUploadResult:
+    """Upload local/captured images to a product (proxied to Tillin storage).
+
+    The browser posts the raw image bytes here; the backend forwards them to
+    Tillin's bulk endpoint (multipart), which imports each into Xano storage and
+    appends a `product_image` row. The Xano token never reaches the browser.
+    """
+    if not files:
+        raise AppException(
+            status_code=422, code="no_files", message="No image provided"
+        )
+    if len(files) > MAX_UPLOAD_FILES:
+        raise AppException(
+            status_code=422,
+            code="too_many_files",
+            message=f"Too many files (max {MAX_UPLOAD_FILES})",
+        )
+    parts: list[tuple[str, bytes, str]] = []
+    for upload in files:
+        data = upload.file.read()  # sync route -> threadpool; use the sync handle
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise AppException(
+                status_code=422,
+                code="file_too_large",
+                message=f"{upload.filename or 'file'} exceeds the size limit",
+            )
+        parts.append(
+            (
+                upload.filename or "image.jpg",
+                data,
+                upload.content_type or "application/octet-stream",
+            )
+        )
+    created = xano.upload_product_images(product_id, parts)
+    return ProductImagesUploadResult(created=len(created), images=created)

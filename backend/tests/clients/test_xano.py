@@ -50,6 +50,9 @@ def _store(
     detail: dict[str, Any] | None = None,
     brands: list[dict[str, Any]] | None = None,
     categories: list[dict[str, Any]] | None = None,
+    seasons: list[dict[str, Any]] | None = None,
+    compositions: list[dict[str, Any]] | None = None,
+    tags: list[dict[str, Any]] | None = None,
     data_source: str = "",
 ) -> httpx.MockTransport:
     """Fake Xano: /auth/login issues a token, reads require the bearer."""
@@ -66,7 +69,14 @@ def _store(
         if path.endswith("/get_all_informations"):
             return httpx.Response(
                 200,
-                json={"company_all_informations": {"categories": categories or []}},
+                json={
+                    "company_all_informations": {
+                        "categories": categories or [],
+                        "seasons": seasons or [],
+                        "compositions": compositions or [],
+                        "tags": tags or [],
+                    }
+                },
             )
         if path.endswith(PRODUCTS_PATH):
             return httpx.Response(
@@ -253,6 +263,89 @@ def test_get_product_resolves_flat_category_id_via_classification() -> None:
         product = client.get_product(2680)
     assert product is not None
     assert product.category == "Polos"
+
+
+def test_get_product_maps_season_department_composition_tags_and_variant_axes() -> None:
+    # A realistic detail payload: flat classification ids + positional variant
+    # options declared by `product_options` (Taille at position 1, Couleur at 2).
+    detail = {
+        "id": 1911,
+        "title": "Sneakers",
+        "brand_id": 1332,
+        "category_id": 12,
+        "season_id": 62,
+        "department_id": 2,  # -> Femme (static map)
+        "composition_id": 5,
+        "tags_id": [7, 8, 99],  # 99 has no title -> dropped
+        "manufacturing_country": "Portugal",
+        "product_options": [
+            {"name": "Couleur", "position": 2, "values": ["Bleu"]},
+            {"name": "Taille", "position": 1, "values": ["41", "42"]},
+        ],
+        "product_variants": [
+            {
+                "id": 1,
+                "sku": "S-41",
+                "barcode": "3600000000001",
+                "options": ["41", "Bleu"],  # aligned to position: [Taille, Couleur]
+                "price": {"amount": "190", "currency_code_id": 1},
+                "wholesale_price": {"amount": "87.7", "currency_code_id": 1},
+                "weight": 0.72,
+            },
+        ],
+    }
+    store = _store(
+        detail=detail,
+        categories=[{"id": 12, "title": "Sneakers"}],
+        seasons=[{"id": 62, "title": "FW24"}],
+        compositions=[{"id": 5, "title": "Cuir"}],
+        tags=[{"id": 7, "title": "Nouveauté"}, {"id": 8, "title": "Éco"}],
+    )
+    with _client(store) as client:
+        product = client.get_product(1911)
+    assert product is not None
+    assert product.season == "FW24"
+    assert product.department == "Femme"
+    assert product.composition == "Cuir"
+    assert product.manufacturing_country == "Portugal"
+    assert product.tags == ["Nouveauté", "Éco"]
+    variant = product.variants[0]
+    assert variant.size == "41"
+    assert variant.color == "Bleu"
+    assert variant.price == Decimal("190")
+    assert variant.wholesale_price == Decimal("87.7")
+
+
+def test_upload_product_images_sends_repeated_files_and_maps_response() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        captured["request"] = request
+        return httpx.Response(
+            200,
+            json={"images": [{"id": 9, "src": "//xano.test/x.jpg", "position": 3}]},
+        )
+
+    with _client(httpx.MockTransport(handler)) as client:
+        created = client.upload_product_images(
+            42,
+            [
+                ("a.jpg", b"\xff\xd8aaa", "image/jpeg"),
+                ("b.png", b"\x89PNGbbb", "image/png"),
+            ],
+        )
+
+    # Response mapped to canonical ProductImage (protocol-relative src fixed).
+    assert [(i.url, i.position) for i in created] == [("https://xano.test/x.jpg", 3)]
+    request = captured["request"]
+    assert request.url.path.endswith("/product_image/42/bulk")
+    assert request.headers["content-type"].startswith("multipart/form-data")
+    # Both files travel under a repeated `files` part (not collapsed to one).
+    body = request.content
+    assert b"a.jpg" in body and b"b.png" in body
+    assert body.count(b'name="files"') == 2
 
 
 def test_get_product_category_is_none_when_classification_unavailable() -> None:

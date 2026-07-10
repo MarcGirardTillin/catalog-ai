@@ -173,6 +173,73 @@ def test_document_info_empty_strings_map_to_none() -> None:
     assert result.document.supplier is None
 
 
+def _category_payload(category: str) -> dict[str, Any]:
+    return {
+        "po_number": "",
+        "supplier": "",
+        "products": [
+            {
+                "supplier_ref": "REF001",
+                "title": "Robe fleurie",
+                "brand": "",
+                "category": category,
+                "confidence": {},
+                "variants": [],
+            }
+        ],
+    }
+
+
+def _extractor_with_categories(handler: Handler, categories: list[str]) -> Extractor:
+    return build_extractor(
+        "sk-test",
+        http_client=anthropic.DefaultHttpxClient(
+            transport=httpx.MockTransport(handler)
+        ),
+        known_categories=categories,
+    )
+
+
+def test_known_categories_are_injected_into_prompt() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(200, json=_api_response(_category_payload("")))
+
+    tree = ["VETEMENTS > Robes", "ACCESSOIRES > Bijoux > Bracelet"]
+    _extractor_with_categories(handler, tree)(_tabular_document())
+
+    text = json.loads(captured["request"].content)["messages"][0]["content"][0]["text"]
+    assert "Catégories existantes" in text
+    assert "VETEMENTS > Robes" in text
+    assert "ACCESSOIRES > Bijoux > Bracelet" in text
+
+
+def test_extracted_category_is_canonicalized_to_the_tree() -> None:
+    # Model echoes a lowercase leaf; it is rewritten to the tree's casing.
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_api_response(_category_payload("robes")))
+
+    result = _extractor_with_categories(handler, ["VETEMENTS > Robes"])(
+        _tabular_document()
+    )
+    product = result.products[0]
+    assert product.category == "Robes"
+    assert product.confidence["category"] == 1.0
+
+
+def test_unmatched_category_is_kept_verbatim() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_api_response(_category_payload("Chaussettes")))
+
+    result = _extractor_with_categories(handler, ["VETEMENTS > Robes"])(
+        _tabular_document()
+    )
+    # No confident tree match -> raw label preserved for manual mapping.
+    assert result.products[0].category == "Chaussettes"
+
+
 def test_tabular_cross_check_removes_unverifiable_values() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         payload = _payload(ean="9999999999994", wholesale="12.34")

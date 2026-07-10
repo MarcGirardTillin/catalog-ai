@@ -12,7 +12,7 @@ contract lives in one place.
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -21,6 +21,11 @@ from pydantic import BaseModel
 
 from app.api.exceptions import AppException
 from app.api.schemas import Brand, Product, ProductImage, ProductVariant
+
+# One multipart file part: (filename, bytes, content_type).
+FilePart = tuple[str, bytes, str]
+# Either one part per field name, or several parts sharing a field name.
+MultipartFiles = Mapping[str, FilePart] | Sequence[tuple[str, FilePart]]
 
 PRODUCTS_PATH = "/products_with_pagination"
 PRODUCT_PATH = "/product"
@@ -57,6 +62,11 @@ CLASSIFICATION_GROUPS = (
     "suppliers",
     "tags",
 )
+
+# Departments (« rayon ») are a fixed Tillin taxonomy — NOT exposed by
+# `/get_all_informations` and there is no `/department` endpoint, so the
+# `product.department_id` int is resolved through this static map.
+DEPARTMENTS: dict[int, str] = {1: "Homme", 2: "Femme", 3: "Unisex"}
 
 logger = logging.getLogger(__name__)
 
@@ -145,10 +155,15 @@ def _as_list(value: Any) -> list[Any]:
     return [value]
 
 
-def _variant_price(raw: Mapping[str, Any]) -> Decimal | None:
-    """Retail price of a variant: Tillin nests it as `price.amount`."""
-    price = raw.get("price")
-    amount = price.get("amount") if isinstance(price, Mapping) else price
+def _amount(raw: Mapping[str, Any], key: str) -> Decimal | None:
+    """A price amount nested as `<key>.amount` (Tillin shape), or flat.
+
+    Tillin nests both the retail (`price`) and purchase (`wholesale_price`)
+    prices as `{amount, currency_code_id}`; older/flat payloads may carry the
+    number directly.
+    """
+    value = raw.get(key)
+    amount = value.get("amount") if isinstance(value, Mapping) else value
     if amount is None or isinstance(amount, Mapping):
         return None
     try:
@@ -157,14 +172,53 @@ def _variant_price(raw: Mapping[str, Any]) -> Decimal | None:
         return None
 
 
-def _map_variant(raw: Mapping[str, Any]) -> ProductVariant:
+def _variant_axes(raw: Mapping[str, Any]) -> dict[str, int]:
+    """Map « couleur »/« taille » to their index in each variant's `options`.
+
+    Tillin declares the variant axes in `product_options` (`{name, position}`);
+    every variant's positional `options` array aligns with those axes sorted by
+    position. The axis *name* varies in case (« Taille »/« taille »), so match
+    on a normalized substring. Returns e.g. `{"size": 0, "color": 1}`.
+    """
+    options = [
+        o for o in _as_list(raw.get("product_options")) if isinstance(o, Mapping)
+    ]
+    options.sort(key=lambda o: o.get("position") or 0)
+    axes: dict[str, int] = {}
+    for index, option in enumerate(options):
+        name = str(_first(option, "name", "title") or "").strip().lower()
+        if "couleur" in name and "color" not in axes:
+            axes["color"] = index
+        elif "taille" in name and "size" not in axes:
+            axes["size"] = index
+    return axes
+
+
+def _axis_value(
+    raw: Mapping[str, Any], axes: Mapping[str, int], key: str
+) -> str | None:
+    """Read one variant axis (color/size) from its positional `options` slot."""
+    index = axes.get(key)
+    if index is None:
+        return None
+    options = raw.get("options")
+    if isinstance(options, list) and 0 <= index < len(options):
+        value = str(options[index]).strip()
+        return value or None
+    return None
+
+
+def _map_variant(raw: Mapping[str, Any], axes: Mapping[str, int]) -> ProductVariant:
     return ProductVariant(
         id=_first(raw, "id", "variant_id"),
         sku=_first(raw, "sku"),
         barcode=_first(raw, "barcode"),
+        color=_axis_value(raw, axes, "color"),
+        size=_axis_value(raw, axes, "size"),
         weight=_first(raw, "weight"),
         weight_unit=_first(raw, "weight_unit"),
-        price=_variant_price(raw),
+        price=_amount(raw, "price"),
+        wholesale_price=_amount(raw, "wholesale_price"),
     )
 
 
@@ -262,26 +316,93 @@ def _map_category(
     return None
 
 
+def _resolve_title(
+    raw: Mapping[str, Any],
+    nested_key: str,
+    id_key: str,
+    id_map: Mapping[int, str] | None,
+) -> str | None:
+    """Resolve a single classification title from a nested object or flat id.
+
+    The list shape may nest `{<nested_key>: {title}}`; the detail shape carries
+    only a flat `<id_key>` resolved through the id→title map. A `0`/None id is
+    treated as absent (Tillin uses 0 for « none »).
+    """
+    nested = raw.get(nested_key)
+    if isinstance(nested, Mapping):
+        title = _first(nested, "title", "name")
+        if title is not None:
+            return str(title)
+    ref = raw.get(id_key)
+    if id_map and ref:
+        try:
+            return id_map.get(int(ref))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _resolve_tags(
+    raw: Mapping[str, Any], id_map: Mapping[int, str] | None
+) -> list[str]:
+    """Resolve a product's `tags_id` list to tag titles (order preserved)."""
+    titles: list[str] = []
+    for ref in _as_list(raw.get("tags_id")):
+        if not id_map or ref is None:
+            continue
+        try:
+            title = id_map.get(int(ref))
+        except (TypeError, ValueError):
+            continue
+        if title:
+            titles.append(title)
+    return titles
+
+
+def _blank_to_none(value: Any) -> str | None:
+    """Tillin text fields use "" for absent; normalize to None."""
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
 def _map_product(
     raw: Mapping[str, Any],
     brands: Mapping[int, Mapping[str, Any]] | None = None,
-    categories: Mapping[int, str] | None = None,
+    maps: Mapping[str, Mapping[int, str]] | None = None,
 ) -> Product:
-    """Map one raw Tillin product (list or detail shape) onto :class:`Product`."""
+    """Map one raw Tillin product (list or detail shape) onto :class:`Product`.
+
+    `maps` bundles the id→title classification maps (categories, seasons,
+    compositions, tags); absent maps simply leave those fields unresolved.
+    """
+    maps = maps or {}
     variants_raw = [
         v for v in _as_list(raw.get("product_variants")) if isinstance(v, Mapping)
     ]
-    variants = [_map_variant(v) for v in variants_raw]
+    axes = _variant_axes(raw)
+    variants = [_map_variant(v, axes) for v in variants_raw]
     # Product-level retail price: the first variant that carries one.
     price = next((v.price for v in variants if v.price is not None), None)
+    department_id = raw.get("department_id")
+    try:
+        department = DEPARTMENTS.get(int(department_id)) if department_id else None
+    except (TypeError, ValueError):
+        department = None
     return Product(
         id=_first(raw, "id", "product_id"),
         title=_first(raw, "title", "title_label"),
         reference_code=_first(raw, "product_reference_code"),
         brand=_map_brand(_first(raw, "brand_id"), brands or {}),
-        category=_map_category(raw, categories),
+        category=_map_category(raw, maps.get("categories")),
+        season=_resolve_title(raw, "season", "season_id", maps.get("seasons")),
+        department=department,
+        composition=_resolve_title(
+            raw, "composition", "composition_id", maps.get("compositions")
+        ),
+        manufacturing_country=_blank_to_none(raw.get("manufacturing_country")),
+        tags=_resolve_tags(raw, maps.get("tags")),
         description=_first(raw, "description", "body_html"),
-        meta_description=_first(raw, "meta_description"),
+        meta_description=_blank_to_none(raw.get("meta_description")),
         price=price,
         variants=variants,
         images=_collect_images(raw),
@@ -314,7 +435,7 @@ class XanoClient:
         )
         self._token: str | None = None
         self._brands: dict[int, Mapping[str, Any]] | None = None
-        self._categories: dict[int, str] | None = None
+        self._class_maps: dict[str, dict[int, str]] | None = None
 
     def __enter__(self) -> "XanoClient":
         return self
@@ -420,10 +541,16 @@ class XanoClient:
         self,
         path: str,
         *,
-        files: Mapping[str, tuple[str, bytes, str]],
-        data: Mapping[str, str],
+        files: MultipartFiles,
+        data: Mapping[str, str] | None = None,
     ) -> Any:
-        """POST multipart/form-data with bearer auth; re-login once on 401."""
+        """POST multipart/form-data with bearer auth; re-login once on 401.
+
+        ``files`` may be a mapping (one part per key) or a sequence of
+        ``(field, (filename, bytes, content_type))`` tuples so several files
+        can share one field name (e.g. a repeated ``files`` part for an array
+        input).
+        """
         if self._token is None:
             self._login()
         response = self._do_post_multipart(path, files=files, data=data)
@@ -444,14 +571,14 @@ class XanoClient:
         self,
         path: str,
         *,
-        files: Mapping[str, tuple[str, bytes, str]],
-        data: Mapping[str, str],
+        files: MultipartFiles,
+        data: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         try:
             return self._client.post(
                 path,
-                files=dict(files),
-                data=dict(data),
+                files=files,  # httpx accepts both a mapping and a list of tuples
+                data=dict(data) if data else None,
                 headers={"Authorization": f"Bearer {self._token}"},
             )
         except httpx.TimeoutException as exc:
@@ -480,23 +607,27 @@ class XanoClient:
         self._brands = brands
         return brands
 
-    def _category_map(self) -> dict[int, str]:
-        """Lazily load and cache the `{category_id: title}` map.
+    def _classification_maps(self) -> dict[str, dict[int, str]]:
+        """Lazily load and cache the id→title maps for every id-resolved group.
 
-        Sourced from the classification endpoint (same payload as the search
-        filters). Best-effort like `_brand_map`: on failure the map is cached
-        empty and detail products simply keep `category=None` (never raises).
+        One `/get_all_informations` call feeds the category, season,
+        composition and tag maps used to resolve a product's flat ids to
+        titles. Best-effort like `_brand_map`: on failure the maps are cached
+        empty and those fields simply stay unresolved (never raises).
         """
-        if self._categories is not None:
-            return self._categories
-        categories: dict[int, str] = {}
+        if self._class_maps is not None:
+            return self._class_maps
+        groups = ("categories", "seasons", "compositions", "tags")
+        maps: dict[str, dict[int, str]] = {group: {} for group in groups}
         try:
-            for option in self.get_classification().get("categories", []):
-                categories[int(option["id"])] = str(option["title"])
+            classification = self.get_classification()
+            for group in groups:
+                for option in classification.get(group, []):
+                    maps[group][int(option["id"])] = str(option["title"])
         except XanoError:
-            logger.warning("could not load Xano categories; category names omitted")
-        self._categories = categories
-        return categories
+            logger.warning("could not load Xano classification; titles omitted")
+        self._class_maps = maps
+        return maps
 
     # -- reads --------------------------------------------------------------
 
@@ -556,6 +687,9 @@ class XanoClient:
             return ProductPage(items=[], total=0, page=page, per_page=per_page)
         brands = self._brand_map()
         raw_items = payload.get("items")
+        # List shape: category is nested (no map needed) and department resolves
+        # from the static map; season/composition/tags are left for the detail
+        # read (get_product), which the product panel uses.
         items = [
             _map_product(item, brands)
             for item in (raw_items if isinstance(raw_items, list) else [])
@@ -569,7 +703,7 @@ class XanoClient:
         payload = self._request(f"{PRODUCT_PATH}/{product_id}", {})
         if not isinstance(payload, Mapping):
             return None
-        return _map_product(payload, self._brand_map(), self._category_map())
+        return _map_product(payload, self._brand_map(), self._classification_maps())
 
     def get_classification(self) -> dict[str, list[dict[str, Any]]]:
         """Classification lists for search filters (brands, categories, …).
@@ -668,6 +802,31 @@ class XanoClient:
         if not urls:
             return
         self._post(_bulk_images_path(product_id), {"image_urls": urls})
+
+    def upload_product_images(
+        self, product_id: int, files: list[FilePart]
+    ) -> list[ProductImage]:
+        """Upload raw image bytes to a product (`/product_image/{id}/bulk`).
+
+        The bulk endpoint accepts a repeated ``files`` multipart part, imports
+        each into Xano storage and appends a `product_image` row. Returns the
+        created images (Xano-hosted `src`), mapped to canonical `ProductImage`.
+        Only difference with `add_product_images` is the source: raw bytes here,
+        external URLs there — both re-hosted server-side by Tillin.
+        """
+        parts: list[tuple[str, FilePart]] = [("files", part) for part in files]
+        if not parts:
+            return []
+        payload = self._post_multipart(_bulk_images_path(product_id), files=parts)
+        created: list[ProductImage] = []
+        images = payload.get("images") if isinstance(payload, Mapping) else None
+        for raw in _as_list(images):
+            if not isinstance(raw, Mapping):
+                continue
+            src = _normalize_url(str(_first(raw, "src", "url") or ""))
+            if src:
+                created.append(ProductImage(url=src, position=_first(raw, "position")))
+        return created
 
     def set_brand_website_urls(self, brand_id: int, urls: list[str]) -> None:
         """Replace a brand's reference websites (`/brand/{id}/website_urls`).
