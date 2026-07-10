@@ -358,7 +358,16 @@ Architecture direction brought by Marc and validated together; scoping decisions
   = save (+ « remplacer l'originale » checkbox for normalize). Light polling in
   the panel for the generative action.
 
-### 5. Phase B — batch (enrichment pipeline)
+### 5. Phase B — batch (enrichment pipeline) — SHIPPED 2026-07-10
+
+Both phases are SHIPPED (A: à-la-carte panel actions + live-validated verbs;
+B: batch normalize + `config_json.transforms` toggles {copy,title,weights,
+images} — absent key = enabled — honoured by the pipeline and exposed in the
+product panel's "Enrichir" chooser and JobOptionsPanel; review shows
+before/after with authenticated previews). Live-validated end to end on the
+test product (manual restage → 6 normalized → selective apply → deactivate,
+net zero). Known gap: auto source resolution broke on salomon.com redirects —
+scraping robustness stays in the infra sprint (Firecrawl fallback).
 
 - Replaces the Photoroom TODO in `enrich/pipeline.py`: resolved source images go
   through `normalize_product_image`; results staged in `staged_images_json`
