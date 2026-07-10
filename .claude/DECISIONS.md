@@ -547,3 +547,63 @@ Photoroom actions in the panel are documented in plan.md only (détourage,
 reformatage, mannequin porté <-> à plat) — not built. Orphan /jobs/new
 removed. Bridge: « Voir / Enrichir les produits créés » on transferred
 imports closes the pipeline loop import -> enrichment.
+
+## 2026-07-09 — Product read-mapping fixes + panel expansion + category-tree matching
+
+Product panel data gaps traced to a read-mapping omission, not a UI bug:
+`_map_product` (xano.py) never read `season_id`, `department_id`,
+`composition_id`, `tags_id` nor `manufacturing_country`, so « saison » and
+« rayon » (and more) were always empty in the panel. Fixed by resolving them
+through the classification maps (season/composition/tags, one cached
+`/get_all_informations` call) and, for departments, a STATIC map
+`{1: Homme, 2: Femme, 3: Unisex}` — Tillin exposes no department titles (no
+`/department` endpoint, absent from get_all_informations); Marc supplied the
+mapping. Variant couleur/taille are read from the positional `options` array
+aligned to `product_options` (`{name, position}`, case-varying names matched by
+substring); variant prix d'achat from `wholesale_price.amount`. Only the detail
+read (get_product) resolves the full set — the list/search keeps its cheap
+mapping (category from the nested object, department from the static map).
+`Product`/`ProductVariant` gained composition, manufacturing_country, tags,
+color, size, wholesale_price; OpenAPI client regenerated. Verified live on real
+products before shipping (mock ≠ reality discipline).
+
+Panel UX (Marc's asks): wider (`sm:w-[36rem]`), completeness moved to the
+BOTTOM, added description + meta description + a full variants table (taille,
+couleur, EAN, SKU, achat, vente) + composition/tags/pays, and local image
+upload + camera capture (`<input type=file accept=image/* [capture]>`) that is
+STAGED/preview-only — persistence needs an object-storage target that doesn't
+exist yet, so it is deferred to the imagery/Photoroom phase (decided with Marc).
+
+Import extraction now matches supplier categories onto the user-defined tree:
+the extractor receives the boutique's category paths (« parent > enfant », built
+best-effort in `import_runner._known_category_paths`) and is instructed to pick
+an EXISTING leaf; a deterministic post-step canonicalizes the model's answer to
+the tree's exact casing (confidence 1.0) and keeps unmatched labels verbatim.
+This deliberately amends the earlier "extraction carries raw supplier facts
+only; category mapping is a profile concern" stance, because the arborescence is
+user-defined and matching at extraction is what Marc wants. Schema stays
+union-free (category is still a plain string).
+
+## 2026-07-09 (suite) — Enregistrement des images du panneau : direct vers Xano
+
+Décision finalisée avec Marc : les images uploadées/capturées dans le panneau
+sont enregistrées **directement dans le stockage Xano**, sans stockage objet
+intermédiaire (ni Railway volume, ni R2). Marc a modifié l'endpoint Tillin
+`product_image/{id}/bulk` pour accepter DEUX sources : `text[] image_urls`
+(téléchargées/ré-hébergées via `storage.create_image` depuis l'URL) ET
+`file[] files` (octets bruts uploadés, `storage.create_image` sur la ressource
+fichier). Dans les deux cas `src` = URL hébergée par Xano.
+
+Côté CatalogAI : `POST /products/{id}/images` (route FastAPI) reçoit les
+UploadFile du navigateur et les refait suivre à Tillin en **multipart, champ
+répété `files`** (le token Xano ne touche jamais le navigateur). Le client Xano
+`_post_multipart` a été généralisé pour accepter une liste de tuples
+`(field, (filename, bytes, content_type))` afin d'envoyer plusieurs fichiers
+sous un même nom de champ sans les fusionner. Bouton « Enregistrer » dans le
+panneau ; sur `created === 0` on garde les images en attente + toast d'erreur
+(pas de faux succès).
+
+Piège rencontré (mock ≠ réel) : le premier test live renvoyait `{images: []}`
+pour tous les noms de champ — la branche fichiers de l'endpoint Xano échouait en
+silence (try_catch → debug.log). Corrigé côté Xano (le `filename=""` était le
+suspect). Validé end-to-end via l'UI CatalogAI par Marc.
