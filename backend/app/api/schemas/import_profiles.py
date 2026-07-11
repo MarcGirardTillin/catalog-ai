@@ -51,6 +51,10 @@ class ImportProfileConfig(BaseModel):
     # foreign supplier (no input VAT), "20" for a domestic one.
     wholesale_tax_rate: str = "20"
     status: str = "active"  # CSV `status` column
+    # When True, the CSV `title` column is rendered from the account's title
+    # template (settings) instead of the raw extracted title. Off by default:
+    # most imports keep the supplier's title and only template at enrichment.
+    apply_title_template: bool = False
     # NOTE: gender/category defaults were removed on user request (2026-07-09):
     # those are per-product review-grid edits, not supplier conventions.
     # Stored configs may still carry the old keys — pydantic ignores them.

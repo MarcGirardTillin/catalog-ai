@@ -1335,6 +1335,11 @@ export const ImportProfileConfig_InputSchema = {
             type: 'string',
             title: 'Status',
             default: 'active'
+        },
+        apply_title_template: {
+            type: 'boolean',
+            title: 'Apply Title Template',
+            default: false
         }
     },
     type: 'object',
@@ -1418,6 +1423,11 @@ export const ImportProfileConfig_OutputSchema = {
             type: 'string',
             title: 'Status',
             default: 'active'
+        },
+        apply_title_template: {
+            type: 'boolean',
+            title: 'Apply Title Template',
+            default: false
         }
     },
     type: 'object',

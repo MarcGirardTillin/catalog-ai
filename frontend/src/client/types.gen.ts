@@ -776,6 +776,10 @@ export type ImportProfileConfigInput = {
      * Status
      */
     status?: string;
+    /**
+     * Apply Title Template
+     */
+    apply_title_template?: boolean;
 };
 
 /**
@@ -828,6 +832,10 @@ export type ImportProfileConfigOutput = {
      * Status
      */
     status?: string;
+    /**
+     * Apply Title Template
+     */
+    apply_title_template?: boolean;
 };
 
 /**

@@ -126,6 +126,39 @@ def test_bambinoh_row_uses_retail_price_and_real_ean() -> None:
     assert _col(row, "season") == "H26"
 
 
+def test_title_template_applied_at_import_when_flag_set() -> None:
+    config = ImportProfileConfig(
+        brand_mode="fixed",
+        brand_value="SALOMON",
+        season_label="FW26",
+        apply_title_template=True,
+    )
+    product = ImportedProduct(
+        supplier_ref="XT6",
+        title="XT-6",
+        variants=[ImportedVariant(color="Noir", size="42", ean="1")],
+    )
+    rows, _ = render_rows(
+        [product],
+        config,
+        title_template="{brand} {title} {color} {season}",
+        title_case="none",
+    )
+    assert _col(rows[0], "title") == "SALOMON XT-6 Noir FW26"
+
+
+def test_title_template_ignored_when_flag_off() -> None:
+    config = ImportProfileConfig(apply_title_template=False)
+    product = ImportedProduct(
+        supplier_ref="XT6",
+        title="XT-6",
+        variants=[ImportedVariant(color="Noir", ean="1")],
+    )
+    rows, _ = render_rows([product], config, title_template="{brand} {title} {color}")
+    # Flag off: the raw extracted title is kept untouched.
+    assert _col(rows[0], "title") == "XT-6"
+
+
 def test_supplier_falls_back_to_document_supplier() -> None:
     config = ImportProfileConfig()
     product = ImportedProduct(

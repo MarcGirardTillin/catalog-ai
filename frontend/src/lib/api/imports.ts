@@ -62,6 +62,8 @@ export type ImportProfileConfig = {
   tax_rate: string
   wholesale_tax_rate: string
   status: string
+  // Rendre le titre depuis le modèle de titre du compte dès l'import (défaut off).
+  apply_title_template: boolean
 }
 
 export type ImportProfilePublic = {

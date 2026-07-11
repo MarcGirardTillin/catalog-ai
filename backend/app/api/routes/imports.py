@@ -48,8 +48,10 @@ from app.api.schemas.imports import (
     ImportTransferRequest,
     ImportTransferResult,
 )
+from app.api.schemas.settings import AccountSettings
 from app.api.services.accounts import resolve_account_id
 from app.core.config import settings
+from app.enrich.pipeline import DEFAULT_TITLE_TEMPLATE
 from app.imports.schema import ImportedProduct
 from app.imports.selection import stored_import_files
 from app.imports.tillin_csv import (
@@ -58,7 +60,7 @@ from app.imports.tillin_csv import (
     render_csv,
     render_rows,
 )
-from app.models import EnrichmentJob, ImportItem, ImportProfile
+from app.models import Account, EnrichmentJob, ImportItem, ImportProfile
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -538,10 +540,20 @@ def _resolve_render(
     ).all()
     document = config_json.get("document") or {}
     fallback_supplier = document.get("supplier")
+    account = db.get(Account, job.account_id)
+    account_settings = AccountSettings.model_validate(
+        (account.settings_json if account else None) or {}
+    )
     try:
         config = ImportProfileConfig.model_validate(profile.config_json or {})
         products = products_from_payloads([item.payload_json or {} for item in items])
-        return render_rows(products, config, fallback_supplier=fallback_supplier)
+        return render_rows(
+            products,
+            config,
+            fallback_supplier=fallback_supplier,
+            title_template=account_settings.title_template or DEFAULT_TITLE_TEMPLATE,
+            title_case=account_settings.title_case,
+        )
     except ValueError as exc:  # includes pydantic.ValidationError
         raise AppException(
             status_code=400, code="invalid_profile", message=str(exc)

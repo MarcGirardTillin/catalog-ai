@@ -61,11 +61,17 @@ def _apply_case(text: str, case: TitleCase) -> str:
     return text
 
 
-def apply_title_template(
-    product: Product, template: str, case: TitleCase = "none"
+def render_title_template(
+    values: dict[str, str], template: str, case: TitleCase = "none"
 ) -> str:
-    """Render a title template; unknown tokens raise, empty values collapse."""
-    values = _token_values(product)
+    """Render a title template from an explicit token map.
+
+    Shared core: enrichment builds `values` from a Tillin `Product`
+    (:func:`apply_title_template`), imports build them from an
+    `ImportedProduct` (`app.imports.tillin_csv`). Unknown tokens raise;
+    empty values collapse dangling separators.
+    """
+    values = dict(values)
     _drop_brand_if_already_in_title(values)
 
     def replace(match: re.Match[str]) -> str:
@@ -83,3 +89,10 @@ def apply_title_template(
     rendered = re.sub(r"(?:\s[-|•/,])+$", "", rendered)
     rendered = re.sub(r"^(?:[-|•/,]\s)+", "", rendered)
     return _apply_case(rendered.strip(), case)
+
+
+def apply_title_template(
+    product: Product, template: str, case: TitleCase = "none"
+) -> str:
+    """Render a title template for a Tillin product (enrichment pipeline)."""
+    return render_title_template(_token_values(product), template, case)

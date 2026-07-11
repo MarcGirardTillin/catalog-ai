@@ -81,6 +81,7 @@
         round_up_to: c.round_up_to,
         barcode_mode: c.barcode_mode,
         tax_rate: c.tax_rate,
+        apply_title_template: c.apply_title_template ?? false,
       }
     }
     const supplier = prefill?.supplier_label ?? prefill?.supplier_match ?? ""
@@ -96,6 +97,7 @@
       round_up_to: "5",
       barcode_mode: "ean" as ImportProfileConfig["barcode_mode"],
       tax_rate: "20",
+      apply_title_template: false,
     }
   }
 
@@ -134,6 +136,7 @@
       wholesale_tax_rate: form.wholesale_tax_rate.trim(),
       // Statut retiré du formulaire : toujours « active » à la création.
       status: "active",
+      apply_title_template: form.apply_title_template,
     }
     // Le fournisseur sert aussi de clé d'auto-sélection (comparaison minuscule).
     const body = { name, supplier_match: supplier.toLowerCase(), config }
@@ -276,6 +279,25 @@
     <p class="text-muted-foreground text-xs">
       « Construits » : un code REF-COULEUR-TAILLE est généré quand l'EAN manque.
     </p>
+  </div>
+
+  <Separator />
+
+  <div class="flex flex-col gap-1.5">
+    <label class="flex items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        class="mt-0.5 size-4"
+        bind:checked={form.apply_title_template}
+      />
+      <span>
+        Appliquer le modèle de titre dès l'import
+        <span class="text-muted-foreground block text-xs font-normal">
+          Le titre du CSV est reconstruit depuis le modèle de titre du compte
+          (Réglages) au lieu du titre brut du fournisseur. Désactivé par défaut.
+        </span>
+      </span>
+    </label>
   </div>
 
   <div class="flex items-center justify-end gap-2">

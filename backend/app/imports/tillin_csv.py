@@ -12,6 +12,8 @@ from decimal import ROUND_CEILING, Decimal
 from typing import Any
 
 from app.api.schemas.import_profiles import ImportProfileConfig
+from app.api.schemas.settings import TitleCase
+from app.enrich.title import render_title_template
 from app.imports.schema import ImportedProduct, ImportedVariant
 
 # Exact template header, frozen against the real import files.
@@ -86,17 +88,33 @@ def compute_barcode(
     return "-".join(part.strip() for part in parts if part.strip())
 
 
+def _product_color(product: ImportedProduct) -> str:
+    """First non-empty variant color (boutique convention: one color/product)."""
+    colors: list[str] = []
+    for variant in product.variants:
+        color = (variant.color or "").strip()
+        if color and color not in colors:
+            colors.append(color)
+    return " / ".join(colors)
+
+
 def render_rows(
     products: list[ImportedProduct],
     config: ImportProfileConfig,
     *,
     fallback_supplier: str | None = None,
+    title_template: str | None = None,
+    title_case: TitleCase = "none",
 ) -> tuple[list[list[str]], list[str]]:
     """One CSV row per variant, in TILLIN_CSV_COLUMNS order, plus warnings.
 
     A product without variants yields no row (warned). Values already
     reviewed/edited in the grid arrive through `products` — this function
     only applies the profile conventions on top.
+
+    When `config.apply_title_template` is set and a `title_template` is given
+    (the account default, from settings), the CSV `title` is rendered from
+    that template instead of the raw extracted title.
     """
     rows: list[list[str]] = []
     warnings: list[str] = []
@@ -107,7 +125,6 @@ def render_rows(
         if not product.variants:
             warnings.append(f"Réf {product.supplier_ref} : aucune variante — ignorée")
             continue
-        title = product.title or product.supplier_ref
         brand = (
             config.brand_value if config.brand_mode == "fixed" else product.brand or ""
         )
@@ -116,6 +133,21 @@ def render_rows(
         gender = product.gender or ""
         category = product.category or ""
         image_url = product.image_urls[0] if product.image_urls else ""
+        title = product.title or product.supplier_ref
+        if config.apply_title_template and title_template:
+            values = {
+                "brand": brand,
+                "title": product.title or "",
+                "season": season,
+                "reference": product.supplier_ref,
+                "color": _product_color(product),
+                "category": category,
+                "department": gender,
+            }
+            title = (
+                render_title_template(values, title_template, title_case)
+                or product.supplier_ref
+            )
 
         for variant in product.variants:
             price = compute_price(variant, config)
