@@ -98,3 +98,30 @@ def auth_client(client: TestClient, test_user: dict[str, Any]) -> TestClient:
     )
     assert response.status_code == 200
     return client
+
+
+@pytest.fixture
+def admin_client(
+    client: TestClient,
+    test_user: dict[str, Any],
+    db_session_factory: sessionmaker[Session],
+) -> TestClient:
+    """A TestClient signed in as the seeded user, promoted platform admin."""
+    from sqlalchemy import update
+
+    from app.models import User
+
+    db = db_session_factory()
+    try:
+        db.execute(
+            update(User).where(User.email == test_user["email"]).values(is_admin=True)
+        )
+        db.commit()
+    finally:
+        db.close()
+    response = client.post(
+        "/auth/login",
+        json={"email": test_user["email"], "password": test_user["password"]},
+    )
+    assert response.status_code == 200
+    return client

@@ -125,8 +125,10 @@ def test_usage_requires_authentication(client: TestClient) -> None:
     assert client.get("/usage/export").status_code == 401
 
 
-def test_price_crud(auth_client: TestClient) -> None:
-    created = _post_price(auth_client, model="claude-sonnet-4-5", unit_price="0.000003")
+def test_price_crud(admin_client: TestClient) -> None:
+    created = _post_price(
+        admin_client, model="claude-sonnet-4-5", unit_price="0.000003"
+    )
     assert created["provider"] == "claude"
     assert created["model"] == "claude-sonnet-4-5"
     assert created["metric"] == "input_tokens"
@@ -135,10 +137,10 @@ def test_price_crud(auth_client: TestClient) -> None:
 
     # Fallback price (model null) and another metric; list is sorted
     # provider/model/metric with the model-null fallback first.
-    _post_price(auth_client, model=None, metric="output_tokens", unit_price="0.000015")
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+    _post_price(admin_client, model=None, metric="output_tokens", unit_price="0.000015")
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
 
-    listed = auth_client.get("/usage/prices").json()
+    listed = admin_client.get("/usage/prices").json()
     assert [(p["model"], p["metric"]) for p in listed] == [
         (None, "input_tokens"),
         (None, "output_tokens"),
@@ -146,7 +148,7 @@ def test_price_crud(auth_client: TestClient) -> None:
     ]
 
     # Partial update.
-    patched = auth_client.patch(
+    patched = admin_client.patch(
         f"/usage/prices/{created['id']}", json={"unit_price": "0.000006"}
     )
     assert patched.status_code == 200
@@ -154,13 +156,13 @@ def test_price_crud(auth_client: TestClient) -> None:
     assert patched.json()["model"] == "claude-sonnet-4-5"  # untouched
 
     # Delete.
-    assert auth_client.delete(f"/usage/prices/{created['id']}").status_code == 204
-    remaining = auth_client.get("/usage/prices").json()
+    assert admin_client.delete(f"/usage/prices/{created['id']}").status_code == 204
+    remaining = admin_client.get("/usage/prices").json()
     assert created["id"] not in [p["id"] for p in remaining]
 
 
-def test_price_account_isolation(auth_client: TestClient) -> None:
-    _account_id(auth_client)  # resolve the caller's account first
+def test_price_account_isolation(admin_client: TestClient) -> None:
+    _account_id(admin_client)  # resolve the caller's account first
     db = _db()
     other = Account(name="other-boutique")
     db.add(other)
@@ -176,27 +178,29 @@ def test_price_account_isolation(auth_client: TestClient) -> None:
     db.commit()
     foreign_id = foreign.id
 
-    assert auth_client.get("/usage/prices").json() == []
-    patch = auth_client.patch(f"/usage/prices/{foreign_id}", json={"unit_price": "0.5"})
+    assert admin_client.get("/usage/prices").json() == []
+    patch = admin_client.patch(
+        f"/usage/prices/{foreign_id}", json={"unit_price": "0.5"}
+    )
     assert patch.status_code == 404
     assert patch.json()["code"] == "not_found"
-    assert auth_client.delete(f"/usage/prices/{foreign_id}").status_code == 404
+    assert admin_client.delete(f"/usage/prices/{foreign_id}").status_code == 404
 
 
-def test_summary_pricing_fallback_and_coefficient(auth_client: TestClient) -> None:
-    account_id = _account_id(auth_client)
+def test_summary_pricing_fallback_and_coefficient(admin_client: TestClient) -> None:
+    account_id = _account_id(admin_client)
     # Exact price for model-a input, provider-wide fallback for input, no
     # price at all for output_tokens.
     _post_price(
-        auth_client, model="model-a", metric="input_tokens", unit_price="0.000003"
+        admin_client, model="model-a", metric="input_tokens", unit_price="0.000003"
     )
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
 
     # billing_coefficient persists through the regular settings PUT.
-    put = auth_client.put("/settings/account", json={"billing_coefficient": 2.0})
+    put = admin_client.put("/settings/account", json={"billing_coefficient": 2.0})
     assert put.status_code == 200
     assert put.json()["billing_coefficient"] == 2.0
-    assert auth_client.get("/settings/account").json()["billing_coefficient"] == 2.0
+    assert admin_client.get("/settings/account").json()["billing_coefficient"] == 2.0
 
     # Two events on the same group: quantities are summed.
     _seed_event(
@@ -220,7 +224,7 @@ def test_summary_pricing_fallback_and_coefficient(auth_client: TestClient) -> No
         created_at=_previous_month_dt(),
     )
 
-    response = auth_client.get("/usage/summary")
+    response = admin_client.get("/usage/summary")
     assert response.status_code == 200
     summary = response.json()
     assert summary["month"] == _current_month()
@@ -261,9 +265,9 @@ def test_summary_pricing_fallback_and_coefficient(auth_client: TestClient) -> No
     ]
 
 
-def test_summary_explicit_month_filter(auth_client: TestClient) -> None:
-    account_id = _account_id(auth_client)
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+def test_summary_explicit_month_filter(admin_client: TestClient) -> None:
+    account_id = _account_id(admin_client)
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
     previous = _previous_month_dt()
     _seed_event(
         account_id=account_id,
@@ -274,14 +278,14 @@ def test_summary_explicit_month_filter(auth_client: TestClient) -> None:
     _seed_event(account_id=account_id, metric="input_tokens", quantity=42)
 
     month = f"{previous.year:04d}-{previous.month:02d}"
-    summary = auth_client.get(f"/usage/summary?month={month}").json()
+    summary = admin_client.get(f"/usage/summary?month={month}").json()
     assert summary["month"] == month
     assert [line["quantity"] for line in summary["lines"]] == [1000]
 
 
-def test_by_job_labels_tokens_and_sorting(auth_client: TestClient) -> None:
-    account_id = _account_id(auth_client)
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+def test_by_job_labels_tokens_and_sorting(admin_client: TestClient) -> None:
+    account_id = _account_id(admin_client)
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
 
     import_job = _seed_job(
         account_id=account_id,
@@ -322,7 +326,7 @@ def test_by_job_labels_tokens_and_sorting(auth_client: TestClient) -> None:
     # Events without a job: only an unpriced metric → cost null, sorted last.
     _seed_event(account_id=account_id, metric="output_tokens", quantity=900)
 
-    response = auth_client.get("/usage/by-job")
+    response = admin_client.get("/usage/by-job")
     assert response.status_code == 200
     body = response.json()
     assert body["month"] == _current_month()
@@ -357,14 +361,14 @@ def test_by_job_labels_tokens_and_sorting(auth_client: TestClient) -> None:
     assert hors_job["billable"] is None
 
 
-def test_export_csv(auth_client: TestClient) -> None:
-    account_id = _account_id(auth_client)
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+def test_export_csv(admin_client: TestClient) -> None:
+    account_id = _account_id(admin_client)
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
     _seed_event(account_id=account_id, metric="input_tokens", quantity=3000)
     _seed_event(account_id=account_id, metric="output_tokens", quantity=100)  # unpriced
 
     month = _current_month()
-    response = auth_client.get("/usage/export")
+    response = admin_client.get("/usage/export")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert (
@@ -384,10 +388,10 @@ def test_export_csv(auth_client: TestClient) -> None:
     assert unpriced_row == f"{month},claude,,output_tokens,100,,,1.0,"
 
 
-def test_invalid_month_returns_422(auth_client: TestClient) -> None:
+def test_invalid_month_returns_422(admin_client: TestClient) -> None:
     for path in ("/usage/summary", "/usage/by-job", "/usage/export"):
         for bad in ("2026-13", "202607", "2026-7", "abcd-ef"):
-            response = auth_client.get(f"{path}?month={bad}")
+            response = admin_client.get(f"{path}?month={bad}")
             assert response.status_code == 422, (path, bad)
             assert response.json()["code"] == "invalid_month"
 
@@ -410,13 +414,13 @@ def test_billing_date_and_is_frozen() -> None:
 
 
 def test_summary_frozen_month_pins_prices(
-    auth_client: TestClient, monkeypatch: Any
+    admin_client: TestClient, monkeypatch: Any
 ) -> None:
     # Pretend "today" is 2026-08-15: 2026-06 is billed (2026-07-01), 2026-08 is
     # the live current month.
     monkeypatch.setattr(usage_module, "_now", lambda: datetime(2026, 8, 15, tzinfo=UTC))
-    account_id = _account_id(auth_client)
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
+    account_id = _account_id(admin_client)
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
     _seed_event(
         account_id=account_id,
         metric="input_tokens",
@@ -424,7 +428,7 @@ def test_summary_frozen_month_pins_prices(
         created_at=datetime(2026, 6, 10, tzinfo=UTC),
     )
 
-    body = auth_client.get("/usage/summary?month=2026-06").json()
+    body = admin_client.get("/usage/summary?month=2026-06").json()
     assert body["frozen"] is True
     assert body["billing_date"] == "2026-07-01"
     assert body["frozen_at"] is not None
@@ -437,12 +441,12 @@ def test_summary_frozen_month_pins_prices(
     assert len(snaps) == 1
 
     # Change the current price: the frozen month keeps the OLD cost.
-    prices = auth_client.get("/usage/prices").json()
-    patch = auth_client.patch(
+    prices = admin_client.get("/usage/prices").json()
+    patch = admin_client.patch(
         f"/usage/prices/{prices[0]['id']}", json={"unit_price": "0.001"}
     )
     assert patch.status_code == 200
-    again = auth_client.get("/usage/summary?month=2026-06").json()
+    again = admin_client.get("/usage/summary?month=2026-06").json()
     assert again["totals"]["cost"] == "0.0010"  # pinned, not repriced
     snaps_after = db.scalars(
         select(UsageBillingSnapshot).where(UsageBillingSnapshot.period == "2026-06")
@@ -450,7 +454,7 @@ def test_summary_frozen_month_pins_prices(
     assert len(snaps_after) == 1  # no duplicate snapshot on re-read
 
     # The current month is never frozen and creates no snapshot.
-    current = auth_client.get("/usage/summary?month=2026-08").json()
+    current = admin_client.get("/usage/summary?month=2026-08").json()
     assert current["frozen"] is False
     assert current["frozen_at"] is None
     assert current["billing_date"] == "2026-09-01"
@@ -463,10 +467,10 @@ def test_summary_frozen_month_pins_prices(
 
 
 def test_snapshot_refreeze_and_not_frozen(
-    auth_client: TestClient, monkeypatch: Any
+    admin_client: TestClient, monkeypatch: Any
 ) -> None:
     monkeypatch.setattr(usage_module, "_now", lambda: datetime(2026, 8, 15, tzinfo=UTC))
-    account_id = _account_id(auth_client)
+    account_id = _account_id(admin_client)
     # No price configured at closing time: the metric is unpriced.
     _seed_event(
         account_id=account_id,
@@ -474,14 +478,14 @@ def test_snapshot_refreeze_and_not_frozen(
         quantity=1000,
         created_at=datetime(2026, 6, 10, tzinfo=UTC),
     )
-    first = auth_client.get("/usage/summary?month=2026-06").json()
+    first = admin_client.get("/usage/summary?month=2026-06").json()
     assert first["frozen"] is True
     assert first["unpriced_count"] == 1
     assert first["totals"]["cost"] == "0.0000"
 
     # Correct the missing price, then re-freeze from the current grid.
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000002")
-    refrozen = auth_client.post("/usage/snapshot?month=2026-06")
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000002")
+    refrozen = admin_client.post("/usage/snapshot?month=2026-06")
     assert refrozen.status_code == 200
     body = refrozen.json()
     assert body["frozen"] is True
@@ -489,18 +493,18 @@ def test_snapshot_refreeze_and_not_frozen(
     assert body["totals"]["cost"] == "0.0020"  # 1000 × 0.000002
 
     # A current/future month cannot be frozen.
-    bad = auth_client.post("/usage/snapshot?month=2026-08")
+    bad = admin_client.post("/usage/snapshot?month=2026-08")
     assert bad.status_code == 400
     assert bad.json()["code"] == "not_frozen"
 
 
 def test_timeseries_group_by_and_empty_days(
-    auth_client: TestClient, monkeypatch: Any
+    admin_client: TestClient, monkeypatch: Any
 ) -> None:
     monkeypatch.setattr(usage_module, "_now", lambda: datetime(2026, 8, 15, tzinfo=UTC))
-    account_id = _account_id(auth_client)
-    _post_price(auth_client, model=None, metric="input_tokens", unit_price="0.000001")
-    put = auth_client.put("/settings/account", json={"billing_coefficient": 2.0})
+    account_id = _account_id(admin_client)
+    _post_price(admin_client, model=None, metric="input_tokens", unit_price="0.000001")
+    put = admin_client.put("/settings/account", json={"billing_coefficient": 2.0})
     assert put.status_code == 200
 
     _seed_event(
@@ -521,7 +525,7 @@ def test_timeseries_group_by_and_empty_days(
     )
 
     # group_by=none: a single "total" series, every June day present.
-    ts = auth_client.get("/usage/timeseries?month=2026-06&group_by=none").json()
+    ts = admin_client.get("/usage/timeseries?month=2026-06&group_by=none").json()
     assert ts["group_by"] == "none"
     assert ts["currency"] == "EUR"
     assert [s["key"] for s in ts["series"]] == ["total"]
@@ -538,11 +542,11 @@ def test_timeseries_group_by_and_empty_days(
     assert by_date["2026-06-01"]["quantity"] == 0
 
     # group_by=model: one series per model, sorted by key.
-    ts_model = auth_client.get("/usage/timeseries?month=2026-06&group_by=model").json()
+    ts_model = admin_client.get("/usage/timeseries?month=2026-06&group_by=model").json()
     assert [s["key"] for s in ts_model["series"]] == ["model-a", "model-b"]
 
     # group_by=provider: one series per provider.
-    ts_prov = auth_client.get(
+    ts_prov = admin_client.get(
         "/usage/timeseries?month=2026-06&group_by=provider"
     ).json()
     assert [s["key"] for s in ts_prov["series"]] == ["claude"]

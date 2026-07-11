@@ -154,3 +154,19 @@ def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
+def get_current_admin(current_user: CurrentUserDep) -> User:
+    """The signed-in user, required to be a platform admin (else 403).
+
+    Guards everything white-label-sensitive: pricing grid, billing
+    coefficient, per-model/per-provider breakdowns, cross-account monitoring.
+    """
+    if not current_user.is_admin:
+        raise AppException(
+            status_code=403, code="admin_required", message="Admin access required"
+        )
+    return current_user
+
+
+CurrentAdminDep = Annotated[User, Depends(get_current_admin)]

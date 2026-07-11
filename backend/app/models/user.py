@@ -26,6 +26,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str | None] = mapped_column(String(255), default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
+    # Platform operator (admin console, pricing, cross-account monitoring).
+    # Regular client users stay False — they never see providers/models/costs.
+    is_admin: Mapped[bool] = mapped_column(default=False)
     # Per-user UI preferences (shortcuts, review flow, density…); None = all
     # defaults. Validated by the UserPreferences schema at the API boundary.
     preferences_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)

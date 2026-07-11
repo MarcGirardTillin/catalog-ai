@@ -40,6 +40,12 @@ class AccountSettings(BaseModel):
     notify_email: str | None = None
     # Billing markup applied at read time: billable = cost × coefficient.
     billing_coefficient: float = Field(1.0, ge=0)
+    # « Temps gagné » shown on the client dashboard: minutes saved per product
+    # sheet created by an import transfer, and per sheet enriched (applied).
+    # Admin-managed (PUT /admin/accounts/{id}/settings) — the client-facing
+    # settings PUT preserves the stored values.
+    minutes_saved_per_import_product: int = Field(2, ge=0, le=120)
+    minutes_saved_per_enriched_product: int = Field(10, ge=0, le=120)
     # Day of the month a period is billed on: a month is billed (and its
     # prices frozen) on this day of the FOLLOWING month. 1 = frozen as soon
     # as the month rolls over.

@@ -58,7 +58,15 @@ def test_account_settings_roundtrip_and_job_defaults(auth_client: TestClient) ->
         "billing_day": 5,
     }
     assert auth_client.put("/settings/account", json=payload).status_code == 200
-    assert auth_client.get("/settings/account").json() == payload
+    stored = auth_client.get("/settings/account").json()
+    # Operator-owned fields are preserved on the client PUT (white-label:
+    # the margin and the time-saved rates are admin-managed only).
+    assert stored["billing_coefficient"] == 1.0
+    assert stored["minutes_saved_per_import_product"] == 2
+    assert stored["minutes_saved_per_enriched_product"] == 10
+    for key, value in payload.items():
+        if key != "billing_coefficient":
+            assert stored[key] == value
 
     # New jobs inherit the account defaults…
     job = auth_client.post("/jobs", json={"selection": {"ids": [1]}}).json()

@@ -19,7 +19,7 @@ from fastapi import APIRouter, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentAdminDep, CurrentUserDep, SessionDep
 from app.api.exceptions import AppException
 from app.api.schemas.settings import AccountSettings
 from app.api.schemas.usage import (
@@ -52,6 +52,100 @@ router = APIRouter(prefix="/usage", tags=["usage"])
 
 # Display precision for money values (unit prices keep their full scale).
 _CENTS = Decimal("0.0001")
+
+# --- White-label redaction -------------------------------------------------
+# Client users must never see providers/models (the app is sold white-label)
+# nor raw costs / the billing coefficient (the operator's margin). Admin-only
+# surfaces keep everything; client responses are redacted server-side (hiding
+# in the UI is not enough — the payloads themselves must be clean).
+
+# Provider -> neutral service label shown to clients.
+SERVICE_LABELS = {
+    "claude": "Génération de texte",
+    "openai": "Génération de texte",
+    "photoroom": "Traitement d'image",
+    "fashn": "Traitement d'image",
+    "firecrawl": "Recherche produit",
+}
+
+
+def _service_label(provider: str) -> str:
+    return SERVICE_LABELS.get(provider, "Autre")
+
+
+def _redact_summary(summary: UsageSummary) -> UsageSummary:
+    """Client view of a summary: neutral services, billable amounts only.
+
+    Lines are MERGED by (service, metric): keeping one line per model would
+    leak how many models are in play even without their names.
+    """
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    for line in summary.lines:
+        key = (_service_label(line.provider), line.metric)
+        bucket = merged.setdefault(
+            key, {"quantity": 0, "billable": Decimal(0), "priced": False}
+        )
+        bucket["quantity"] += line.quantity
+        if line.billable is not None:
+            bucket["billable"] += Decimal(line.billable)
+            bucket["priced"] = True
+    lines = [
+        UsageSummaryLine(
+            provider=service,
+            model=None,
+            metric=metric,
+            quantity=bucket["quantity"],
+            unit_price=None,
+            cost=None,
+            billable=str(bucket["billable"].quantize(_CENTS))
+            if bucket["priced"]
+            else None,
+        )
+        for (service, metric), bucket in sorted(merged.items())
+    ]
+    return UsageSummary(
+        month=summary.month,
+        currency=summary.currency,
+        # The coefficient is the operator's margin: neutralized for clients
+        # (billable amounts already include it).
+        coefficient=1.0,
+        lines=lines,
+        totals=UsageTotals(
+            cost=summary.totals.billable,  # raw cost never leaves the server
+            billable=summary.totals.billable,
+        ),
+        unpriced_count=summary.unpriced_count,
+        frozen=summary.frozen,
+        billing_date=summary.billing_date,
+        frozen_at=summary.frozen_at,
+    )
+
+
+def _redact_by_job(by_job: UsageByJob) -> UsageByJob:
+    """Client view of the per-job breakdown: billable only, neutral services."""
+    jobs: list[UsageJobLine] = []
+    for line in by_job.jobs:
+        metrics: dict[tuple[str, str], int] = {}
+        for metric in line.other_metrics:
+            key = (_service_label(metric.provider), metric.metric)
+            metrics[key] = metrics.get(key, 0) + metric.quantity
+        jobs.append(
+            UsageJobLine(
+                job_id=line.job_id,
+                job_type=line.job_type,
+                label=line.label,
+                created_at=line.created_at,
+                input_tokens=line.input_tokens,
+                output_tokens=line.output_tokens,
+                other_metrics=[
+                    UsageJobMetric(provider=service, metric=metric, quantity=qty)
+                    for (service, metric), qty in sorted(metrics.items())
+                ],
+                cost=None,
+                billable=line.billable,
+            )
+        )
+    return UsageByJob(month=by_job.month, jobs=jobs)
 
 
 def _parse_month(month: str | None) -> tuple[str, datetime, datetime]:
@@ -257,7 +351,7 @@ def _get_price(db: Session, *, account_id: int, price_id: int) -> UsagePrice:
 
 @router.get("/prices", response_model=list[UsagePricePublic])
 def list_usage_prices(
-    db: SessionDep, current_user: CurrentUserDep
+    db: SessionDep, current_user: CurrentAdminDep
 ) -> list[UsagePricePublic]:
     account_id = resolve_account_id(db, current_user)
     prices = db.scalars(
@@ -269,7 +363,7 @@ def list_usage_prices(
 
 @router.post("/prices", response_model=UsagePricePublic, status_code=201)
 def create_usage_price(
-    payload: UsagePriceCreate, db: SessionDep, current_user: CurrentUserDep
+    payload: UsagePriceCreate, db: SessionDep, current_user: CurrentAdminDep
 ) -> UsagePricePublic:
     account_id = resolve_account_id(db, current_user)
     price = UsagePrice(
@@ -291,7 +385,7 @@ def update_usage_price(
     price_id: int,
     payload: UsagePriceUpdate,
     db: SessionDep,
-    current_user: CurrentUserDep,
+    current_user: CurrentAdminDep,
 ) -> UsagePricePublic:
     account_id = resolve_account_id(db, current_user)
     price = _get_price(db, account_id=account_id, price_id=price_id)
@@ -305,7 +399,7 @@ def update_usage_price(
 
 @router.delete("/prices/{price_id}", status_code=204)
 def delete_usage_price(
-    price_id: int, db: SessionDep, current_user: CurrentUserDep
+    price_id: int, db: SessionDep, current_user: CurrentAdminDep
 ) -> None:
     account_id = resolve_account_id(db, current_user)
     price = _get_price(db, account_id=account_id, price_id=price_id)
@@ -374,10 +468,15 @@ def _build_summary(
 def read_usage_summary(
     db: SessionDep, current_user: CurrentUserDep, month: str | None = None
 ) -> UsageSummary:
-    """Monthly consumption per (provider, model, metric), priced at read time."""
+    """Monthly consumption per (provider, model, metric), priced at read time.
+
+    Non-admin callers get the white-label view: neutral service labels,
+    billable amounts only (no models, no raw cost, no coefficient).
+    """
     account_id = resolve_account_id(db, current_user)
     label, start, end = _parse_month(month)
-    return _build_summary(db, account_id, label, start, end)
+    summary = _build_summary(db, account_id, label, start, end)
+    return summary if current_user.is_admin else _redact_summary(summary)
 
 
 @dataclass
@@ -391,13 +490,10 @@ class _JobBucket:
     priced: bool = False  # at least one metric had a price
 
 
-@router.get("/by-job", response_model=UsageByJob)
-def read_usage_by_job(
-    db: SessionDep, current_user: CurrentUserDep, month: str | None = None
+def _build_by_job(
+    db: Session, account_id: int, label: str, start: datetime, end: datetime
 ) -> UsageByJob:
     """Monthly consumption grouped by job (null job_id = "Hors job")."""
-    account_id = resolve_account_id(db, current_user)
-    label, start, end = _parse_month(month)
     lookup, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
         db, account_id, label
     )
@@ -488,57 +584,87 @@ def read_usage_by_job(
     return UsageByJob(month=label, jobs=lines)
 
 
+@router.get("/by-job", response_model=UsageByJob)
+def read_usage_by_job(
+    db: SessionDep, current_user: CurrentUserDep, month: str | None = None
+) -> UsageByJob:
+    """Monthly consumption grouped by job; white-label view for non-admins."""
+    account_id = resolve_account_id(db, current_user)
+    label, start, end = _parse_month(month)
+    by_job = _build_by_job(db, account_id, label, start, end)
+    return by_job if current_user.is_admin else _redact_by_job(by_job)
+
+
 @router.get("/export")
 def export_usage_csv(
     db: SessionDep, current_user: CurrentUserDep, month: str | None = None
 ) -> Response:
-    """The monthly summary as a CSV attachment (comma separated, with header)."""
+    """The monthly summary as a CSV attachment (comma separated, with header).
+
+    Clients get the white-label columns (service/metric/quantity/amount);
+    admins keep the full grid (provider, model, unit price, cost, coefficient).
+    """
     account_id = resolve_account_id(db, current_user)
     label, start, end = _parse_month(month)
     summary = _build_summary(db, account_id, label, start, end)
 
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\r\n")
-    writer.writerow(
-        [
-            "month",
-            "provider",
-            "model",
-            "metric",
-            "quantity",
-            "unit_price",
-            "cost",
-            "coefficient",
-            "billable",
-        ]
-    )
-    for line in summary.lines:
+    if current_user.is_admin:
+        writer.writerow(
+            [
+                "month",
+                "provider",
+                "model",
+                "metric",
+                "quantity",
+                "unit_price",
+                "cost",
+                "coefficient",
+                "billable",
+            ]
+        )
+        for line in summary.lines:
+            writer.writerow(
+                [
+                    summary.month,
+                    line.provider,
+                    line.model or "",
+                    line.metric,
+                    line.quantity,
+                    line.unit_price or "",
+                    line.cost or "",
+                    summary.coefficient,
+                    line.billable or "",
+                ]
+            )
         writer.writerow(
             [
                 summary.month,
-                line.provider,
-                line.model or "",
-                line.metric,
-                line.quantity,
-                line.unit_price or "",
-                line.cost or "",
+                "TOTAL",
+                "",
+                "",
+                "",
+                "",
+                summary.totals.cost,
                 summary.coefficient,
-                line.billable or "",
+                summary.totals.billable,
             ]
         )
-    writer.writerow(
-        [
-            summary.month,
-            "TOTAL",
-            "",
-            "",
-            "",
-            "",
-            summary.totals.cost,
-            summary.coefficient,
-            summary.totals.billable,
-        ]
-    )
+    else:
+        redacted = _redact_summary(summary)
+        writer.writerow(["month", "service", "metric", "quantity", "amount"])
+        for line in redacted.lines:
+            writer.writerow(
+                [
+                    redacted.month,
+                    line.provider,
+                    line.metric,
+                    line.quantity,
+                    line.billable or "",
+                ]
+            )
+        writer.writerow([redacted.month, "TOTAL", "", "", redacted.totals.billable])
     return Response(
         content=buffer.getvalue(),
         media_type="text/csv",
@@ -550,7 +676,7 @@ def export_usage_csv(
 
 @router.post("/snapshot", response_model=UsageSummary)
 def refreeze_snapshot(
-    db: SessionDep, current_user: CurrentUserDep, month: str
+    db: SessionDep, current_user: CurrentAdminDep, month: str
 ) -> UsageSummary:
     """Re-freeze a billed month with the CURRENT price grid + coefficient.
 
@@ -617,6 +743,12 @@ def read_usage_timeseries(
             status_code=422,
             code="invalid_group_by",
             message="group_by must be one of: none, model, provider",
+        )
+    # White-label: per-model/per-provider breakdowns reveal the underlying
+    # stack — operator only. The total curve stays available to clients.
+    if group_by != "none" and not current_user.is_admin:
+        raise AppException(
+            status_code=403, code="admin_required", message="Admin access required"
         )
     account_id = resolve_account_id(db, current_user)
     label, start, end = _parse_month(month)

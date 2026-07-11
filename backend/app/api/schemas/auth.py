@@ -17,3 +17,6 @@ class UserPublic(BaseModel):
     email: EmailStr
     full_name: str | None = None
     is_active: bool
+    # Platform operator: unlocks the admin console (pricing, per-client
+    # monitoring). Regular client users are always False.
+    is_admin: bool = False

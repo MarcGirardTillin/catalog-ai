@@ -44,15 +44,31 @@ def read_account_settings(
     )
 
 
+# Operator-owned settings a client user must not be able to change through
+# the public settings PUT (billing margin, dashboard time-saved rates). They
+# are managed via /admin/accounts/{id}/settings.
+ADMIN_ONLY_SETTINGS = (
+    "billing_coefficient",
+    "minutes_saved_per_import_product",
+    "minutes_saved_per_enriched_product",
+)
+
+
 @router.put("/account", response_model=AccountSettings)
 def update_account_settings(
     payload: AccountSettings, db: SessionDep, current_user: CurrentUserDep
 ) -> AccountSettings:
     account_id = resolve_account_id(db, current_user)
     account = db.get(Account, account_id)
-    if account is not None:
-        account.settings_json = payload.model_dump()
-        db.commit()
+    if account is None:
+        return payload
+    if not current_user.is_admin:
+        # Preserve operator-owned fields whatever the client sent.
+        stored = AccountSettings.model_validate(account.settings_json or {})
+        for name in ADMIN_ONLY_SETTINGS:
+            setattr(payload, name, getattr(stored, name))
+    account.settings_json = payload.model_dump()
+    db.commit()
     return payload
 
 
