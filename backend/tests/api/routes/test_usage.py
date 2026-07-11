@@ -343,7 +343,7 @@ def test_by_job_labels_tokens_and_sorting(auth_client: TestClient) -> None:
     assert first["billable"] == "0.0050"  # default coefficient 1.0
 
     second = jobs[1]
-    assert second["label"] == f"Job #{enrich_job}"
+    assert second["label"] == f"Enrichissement #{enrich_job}"
     assert second["job_type"] == "enrichment"
     assert second["input_tokens"] == 2000
     assert second["cost"] == "0.0020"

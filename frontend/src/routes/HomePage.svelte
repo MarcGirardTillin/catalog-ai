@@ -1,6 +1,4 @@
 <script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus"
-  import Search from "@lucide/svelte/icons/search"
   import Sparkles from "@lucide/svelte/icons/sparkles"
   import { navigate } from "svelte5-router"
 
@@ -90,16 +88,10 @@
       <div class="mx-auto flex max-w-4xl flex-col gap-4 p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Tableau de bord</h1>
-          <div class="flex items-center gap-2">
-            <Button variant="outline" size="sm" onclick={() => navigate("/products")}>
-              <Search size={14} />
-              Rechercher des produits
-            </Button>
-            <Button size="sm" onclick={() => navigate("/products")}>
-              <Plus size={14} />
-              Nouvel enrichissement
-            </Button>
-          </div>
+          <Button size="sm" onclick={() => navigate("/products?intent=enrich")}>
+            <Sparkles size={14} />
+            Enrichir des produits
+          </Button>
         </div>
 
         {#if errorMessage}
@@ -122,7 +114,9 @@
               <p class="text-muted-foreground text-sm">
                 Aucun enrichissement pour l'instant — lancez le premier depuis les produits
               </p>
-              <Button onclick={() => navigate("/products")}>Rechercher des produits</Button>
+              <Button onclick={() => navigate("/products?intent=enrich")}>
+                Enrichir des produits
+              </Button>
             </CardContent>
           </Card>
         {:else if tiles}
@@ -209,7 +203,7 @@
                   <Card class="hover:ring-primary/40 transition-shadow" size="sm">
                     <CardContent class="flex flex-wrap items-center justify-between gap-2">
                       <div class="flex items-center gap-3">
-                        <span class="font-title text-sm font-bold">Job #{job.id}</span>
+                        <span class="font-title text-sm font-bold">Enrichissement #{job.id}</span>
                         <StatusBadge status={job.status} />
                       </div>
                       <div class="text-muted-foreground flex items-center gap-3 text-xs">

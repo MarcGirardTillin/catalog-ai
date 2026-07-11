@@ -10,6 +10,7 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
+  import { formatDuration } from "@/lib/format"
 
   let { appName, id }: { appName: string; id: string } = $props()
 
@@ -64,14 +65,6 @@
     return Math.round((done / counts.total) * 100)
   })
 
-  function formatDuration(seconds: number): string {
-    const s = Math.round(seconds)
-    if (s < 60) return `${s} s`
-    const m = Math.floor(s / 60)
-    const rem = s % 60
-    return rem === 0 ? `${m} min` : `${m} min ${rem} s`
-  }
-
   // Live elapsed while the job is still running (recomputed on each poll tick).
   let now = $state(Date.now())
   $effect(() => {
@@ -92,6 +85,12 @@
   })
 
   const retryableCount = $derived(counts.failed + counts.rejected)
+
+  // Ouvre le premier produit encore à vérifier (la review sérielle enchaîne).
+  function startReview() {
+    const first = (items ?? []).find((i) => i.status === "ready_for_review")
+    if (first) navigate(`/items/${first.id}`)
+  }
 
   async function retryFailures() {
     if (!job) return
@@ -124,7 +123,10 @@
     <AppShell
       {appName}
       {user}
-      breadcrumbs={[{ label: "Enrichissements", href: "/jobs" }, { label: `Job #${id}` }]}
+      breadcrumbs={[
+        { label: "Enrichissements", href: "/jobs" },
+        { label: `Enrichissement #${id}` },
+      ]}
     >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         {#if errorMessage}
@@ -137,7 +139,7 @@
           <Skeleton class="h-16 w-full" />
         {:else}
           <div class="flex items-center justify-between gap-2">
-            <h1 class="font-title text-lg font-bold">Job #{job.id}</h1>
+            <h1 class="font-title text-lg font-bold">Enrichissement #{job.id}</h1>
             <StatusBadge status={job.status} />
           </div>
 
@@ -169,18 +171,27 @@
                   {/if}
                 {/each}
               </dl>
-              {#if retryableCount > 0}
-                <div class="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={retrying}
-                    onclick={retryFailures}
-                  >
-                    {retrying
-                      ? "Relance…"
-                      : `Relancer les échecs (${retryableCount})`}
-                  </Button>
+              {#if counts.ready_for_review > 0 || retryableCount > 0}
+                <div class="flex flex-wrap items-center gap-2">
+                  {#if counts.ready_for_review > 0}
+                    <!-- Entrée de la review sérielle : premier item à vérifier
+                         (les suivants s'enchaînent via l'auto-advance). -->
+                    <Button size="sm" onclick={startReview}>
+                      Vérifier les produits ({counts.ready_for_review})
+                    </Button>
+                  {/if}
+                  {#if retryableCount > 0}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={retrying}
+                      onclick={retryFailures}
+                    >
+                      {retrying
+                        ? "Relance…"
+                        : `Relancer les échecs (${retryableCount})`}
+                    </Button>
+                  {/if}
                 </div>
               {/if}
             </CardContent>

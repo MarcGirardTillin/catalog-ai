@@ -6,6 +6,7 @@
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
   import PackageSearch from "@lucide/svelte/icons/package-search"
   import Search from "@lucide/svelte/icons/search"
+  import Sparkles from "@lucide/svelte/icons/sparkles"
   import X from "@lucide/svelte/icons/x"
   import { onMount } from "svelte"
   import { toast } from "svelte-sonner"
@@ -51,6 +52,10 @@
 
   // Densité des tables : padding vertical des cellules selon la préférence.
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2")
+
+  // Bandeau d'intention (arrivée via « Enrichir des produits ») : disparaît
+  // dès qu'une sélection existe (le geste est compris).
+  let enrichIntent = $state(false)
 
   let search = $state("")
   let page = $state(1)
@@ -165,9 +170,13 @@
     catalogGetFilters().then(({ data }) => {
       if (data) filters = data
     })
+    // Arrivée depuis un CTA « Enrichir des produits » (?intent=enrich) :
+    // bandeau qui explique le geste sélection → barre d'action.
+    const params = new URLSearchParams(window.location.search)
+    enrichIntent = params.get("intent") === "enrich"
     // Pré-sélection d'un import via `?import=ID` (routeur svelte5-router :
     // lecture simple de location.search au montage).
-    const param = new URLSearchParams(window.location.search).get("import")
+    const param = params.get("import")
     const importId = param ? Number(param) : NaN
     if (Number.isFinite(importId)) {
       tab = "import"
@@ -422,6 +431,18 @@
     <AppShell {appName} {user} breadcrumbs={[{ label: "Produits" }]}>
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4 pb-24">
         <h1 class="font-title text-lg font-bold">Produits</h1>
+
+        {#if enrichIntent && selected.size === 0}
+          <div
+            class="border-primary/30 bg-primary/5 flex items-start gap-2 rounded-md border p-3"
+          >
+            <Sparkles size={16} class="text-primary mt-0.5 shrink-0" aria-hidden="true" />
+            <p class="text-sm">
+              Sélectionnez les produits à enrichir en cochant leurs lignes — la
+              barre de lancement apparaîtra en bas de l'écran.
+            </p>
+          </div>
+        {/if}
 
         <!-- Barre d'onglets sobre (même pattern qu'EnrichmentPage). -->
         <div

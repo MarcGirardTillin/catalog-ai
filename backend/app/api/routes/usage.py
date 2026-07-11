@@ -454,9 +454,9 @@ def read_usage_by_job(
             from app.imports.selection import stored_import_files
 
             names = [entry["file_name"] for entry in stored_import_files(job)]
-            label_text = names[0] if names else f"Job #{job_id}"
+            label_text = names[0] if names else f"Import #{job_id}"
         else:
-            label_text = f"Job #{job_id}"
+            label_text = f"Enrichissement #{job_id}"
         cost = bucket.cost.quantize(_CENTS) if bucket.priced else None
         billable = (cost * coefficient).quantize(_CENTS) if cost is not None else None
         lines.append(

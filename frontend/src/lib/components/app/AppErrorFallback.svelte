@@ -7,20 +7,32 @@
     CardHeader,
     CardTitle,
   } from "@/lib/components/ui/card"
+  import SystemShell from "@/lib/components/app/SystemShell.svelte"
 
-  export let message = "Something went wrong. Please try again."
-  export let onReset: () => void
+  let {
+    appName = "CatalogAI",
+    message = "Une erreur inattendue est survenue. Réessayez.",
+    onReset,
+  }: {
+    appName?: string
+    message?: string
+    onReset: () => void
+  } = $props()
 </script>
 
-<main class="mx-auto flex min-h-screen w-full max-w-5xl items-center justify-center px-4 py-8">
-  <Card class="w-full max-w-xl text-center">
+<SystemShell {appName}>
+  <Card class="w-full text-center shadow-sm">
     <CardHeader>
-      <CardTitle class="text-3xl font-semibold tracking-tight">Error</CardTitle>
+      <CardTitle class="font-title text-lg font-bold">
+        Une erreur est survenue
+      </CardTitle>
       <CardDescription>{message}</CardDescription>
     </CardHeader>
     <CardContent class="flex justify-center gap-3">
-      <Button variant="outline" onclick={onReset}>Retry</Button>
-      <Button onclick={() => window.location.replace("/")}>Go home</Button>
+      <Button variant="outline" onclick={onReset}>Réessayer</Button>
+      <Button onclick={() => window.location.replace("/")}>
+        Retour à l'accueil
+      </Button>
     </CardContent>
   </Card>
-</main>
+</SystemShell>

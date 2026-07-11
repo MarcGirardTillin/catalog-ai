@@ -75,7 +75,10 @@
     {/if}
     {#snippet failed(error, reset)}
       <AppErrorFallback
-        message={error instanceof Error ? error.message : "Something went wrong. Please try again."}
+        {appName}
+        message={error instanceof Error
+          ? error.message
+          : "Une erreur inattendue est survenue. Réessayez."}
         onReset={reset}
       />
     {/snippet}

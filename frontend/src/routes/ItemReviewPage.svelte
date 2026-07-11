@@ -35,6 +35,7 @@
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { accountSettings, loadAccountSettings } from "@/lib/accountSettings.svelte"
+  import { formatDuration } from "@/lib/format"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
@@ -399,14 +400,6 @@
     item?.source_method ? (METHOD_LABELS[item.source_method] ?? item.source_method) : null,
   )
 
-  function formatDuration(seconds: number): string {
-    const s = Math.round(seconds)
-    if (s < 60) return `${s} s`
-    const m = Math.floor(s / 60)
-    const rem = s % 60
-    return rem === 0 ? `${m} min` : `${m} min ${rem} s`
-  }
-
   async function save(): Promise<boolean> {
     if (!item) return false
     busy = true
@@ -573,7 +566,7 @@
     if (!item) return [{ label: "Enrichissements", href: "/jobs" }]
     return [
       { label: "Enrichissements", href: "/jobs" },
-      { label: `Job #${item.job_id}`, href: `/jobs/${item.job_id}` },
+      { label: `Enrichissement #${item.job_id}`, href: `/jobs/${item.job_id}` },
       { label: `Produit #${item.tillin_product_id}` },
     ]
   })

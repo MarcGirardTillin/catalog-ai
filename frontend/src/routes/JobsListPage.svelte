@@ -93,7 +93,9 @@
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Enrichissements</h1>
-          <Button size="sm" onclick={() => navigate("/products")}>Nouvel enrichissement</Button>
+          <Button size="sm" onclick={() => navigate("/products?intent=enrich")}>
+            Nouvel enrichissement
+          </Button>
         </div>
 
         {#if errorMessage}
@@ -108,7 +110,9 @@
               <p class="text-muted-foreground text-sm">
                 Aucun enrichissement — créez le premier depuis la recherche produits.
               </p>
-              <Button onclick={() => navigate("/products")}>Rechercher des produits</Button>
+              <Button onclick={() => navigate("/products?intent=enrich")}>
+                Enrichir des produits
+              </Button>
             </CardContent>
           </Card>
         {:else}
@@ -117,7 +121,7 @@
               <table class="w-full min-w-xl text-sm">
                 <thead>
                   <tr class="border-border border-b">
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Job</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Enrichissement</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Statut</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Progression</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Suivi produits</th>

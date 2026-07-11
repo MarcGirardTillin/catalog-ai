@@ -165,10 +165,11 @@
       {user}
       breadcrumbs={[{ label: "Imports", href: "/imports" }, { label: "Nouvel import" }]}
     >
-      <div class="mx-auto max-w-4xl p-4">
+      <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
+        <h1 class="font-title text-lg font-bold">Nouvel import</h1>
         <Card>
           <CardHeader>
-            <CardTitle class="font-title text-lg">Importer un fichier fournisseur</CardTitle>
+            <CardTitle class="font-title text-sm">Importer un fichier fournisseur</CardTitle>
             <CardDescription>
               Les fichiers sont analysés par IA pour en extraire les produits (référence,
               coloris, tailles, EAN, prix) — vous vérifierez le résultat avant tout envoi

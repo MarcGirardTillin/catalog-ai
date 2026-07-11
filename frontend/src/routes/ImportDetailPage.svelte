@@ -187,13 +187,15 @@
   const profileSeason = $derived((selectedProfile?.config.season_label ?? "").trim())
 
   // Combien de produits partiront (non écartés) vs écartés vs déjà transférés :
-  // le transfert n'envoie que les produits gardés.
+  // le transfert n'envoie que les produits gardés. Dérivé des counts SERVEUR
+  // (job.counts) et non de la page d'items : le transfert backend couvre tout
+  // le job, pas seulement la page affichée (imports > 100 produits).
   const transferSummary = $derived.by(() => {
-    const list = items ?? []
+    const c = job?.counts
     return {
-      kept: list.filter((i) => i.status === "ready_for_review").length,
-      excluded: list.filter((i) => i.status === "rejected").length,
-      applied: list.filter((i) => i.status === "applied").length,
+      kept: c?.ready_for_review ?? 0,
+      excluded: c?.rejected ?? 0,
+      applied: c?.applied ?? 0,
     }
   })
 
@@ -549,9 +551,9 @@
   // d'enrichissement sur eux (liaison à la volée si nécessaire). ---
   let enriching = $state(false)
 
-  // Des items « Transféré » sur la page courante, ou transfert fait à l'instant.
+  // Des items déjà transférés (counts serveur), ou transfert fait à l'instant.
   const hasTransferred = $derived(
-    transferred || (items ?? []).some((i) => i.status === "applied"),
+    transferred || (job?.counts.applied ?? 0) > 0,
   )
 
   async function enrichCreatedProducts(
@@ -1114,13 +1116,20 @@
                   <thead>
                     <tr class="border-border border-b">
                       <th class="w-9 px-2 py-2.5">
+                        <!-- Portée = page affichée uniquement (le job peut
+                             avoir plusieurs pages) ; le compteur du transfert,
+                             lui, couvre tout le job via job.counts. -->
                         <input
                           type="checkbox"
                           class="cursor-pointer"
                           checked={allSelected}
                           disabled={selectableItems.length === 0 || bulkUpdating}
-                          aria-label="Tout transférer / tout écarter"
-                          title="Tout transférer / tout écarter"
+                          aria-label={totalPages > 1
+                            ? "Tout transférer / tout écarter (page affichée)"
+                            : "Tout transférer / tout écarter"}
+                          title={totalPages > 1
+                            ? "Tout transférer / tout écarter (page affichée)"
+                            : "Tout transférer / tout écarter"}
                           onchange={(e) => setAllIncluded(e.currentTarget.checked)}
                         />
                       </th>
@@ -1219,18 +1228,10 @@
                         </td>
                         <td class="px-3 {cellPad}">
                           <div class="flex items-center gap-1.5 whitespace-nowrap">
-                            {#if isRejected}
-                              <span
-                                class="text-muted-foreground border-border rounded-full border px-2 py-0.5 text-[11px]"
-                              >
-                                Écarté
-                              </span>
-                            {:else if isApplied}
-                              <span
-                                class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
-                              >
-                                Transféré
-                              </span>
+                            {#if isRejected || isApplied}
+                              <!-- Même rendu de statut que partout ailleurs
+                                   (« Transféré » côté imports via context). -->
+                              <StatusBadge status={item.status} context="import" />
                             {/if}
                             {#if noEan > 0}
                               <span
@@ -1587,13 +1588,28 @@
             </div>
           {/if}
 
-          <!-- Export Tillin : aperçu des lignes générées, CSV et transfert. -->
-          {#if completed && selectedProfileId != null}
+          <!-- Export Tillin : aperçu des lignes générées, CSV et transfert.
+               Toujours visible quand l'analyse est terminée : sans profil, les
+               actions sont désactivées avec l'explication (pas de section
+               fantôme introuvable). -->
+          {#if completed}
             <h2 class="font-title mt-1 text-sm font-bold">Export Tillin</h2>
             <Card>
               <CardContent class="flex flex-col gap-3">
+                {#if selectedProfileId == null}
+                  <p class="text-muted-foreground text-xs">
+                    Sélectionnez un profil d'import (section « Profil d'import »
+                    ci-dessus) pour générer l'aperçu, le CSV et le transfert
+                    vers Tillin.
+                  </p>
+                {/if}
                 <div class="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onclick={toggleCsvPreview}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={selectedProfileId == null}
+                    onclick={toggleCsvPreview}
+                  >
                     {#if rowsLoading}
                       <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
                     {:else if rowsOpen}
@@ -1606,7 +1622,7 @@
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={csvDownloading}
+                    disabled={csvDownloading || selectedProfileId == null}
                     onclick={downloadCsv}
                   >
                     {#if csvDownloading}
@@ -1618,10 +1634,12 @@
                   </Button>
                   <Button
                     size="sm"
-                    disabled={transferSummary.kept === 0}
-                    title={transferSummary.kept === 0
-                      ? "Aucun produit à transférer"
-                      : undefined}
+                    disabled={transferSummary.kept === 0 || selectedProfileId == null}
+                    title={selectedProfileId == null
+                      ? "Sélectionnez d'abord un profil d'import"
+                      : transferSummary.kept === 0
+                        ? "Aucun produit à transférer"
+                        : undefined}
                     onclick={toggleTransfer}
                   >
                     <Send size={14} aria-hidden="true" />

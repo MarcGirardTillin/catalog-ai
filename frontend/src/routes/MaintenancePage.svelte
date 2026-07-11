@@ -6,22 +6,28 @@
     CardHeader,
     CardTitle,
   } from "@/lib/components/ui/card"
+  import SystemShell from "@/lib/components/app/SystemShell.svelte"
 
   import { frontendEnv } from "../lib/env"
 
-  export let appName: string
+  let { appName }: { appName: string } = $props()
 </script>
 
-<main class="mx-auto flex min-h-screen w-full max-w-5xl items-center justify-center px-4 py-8">
-  <Card class="w-full max-w-xl text-center">
+<SystemShell {appName}>
+  <Card class="w-full text-center shadow-sm">
     <CardHeader>
-      <CardTitle class="text-3xl font-semibold tracking-tight">{appName} is under maintenance</CardTitle>
-      <CardDescription>Access is temporarily disabled while a maintenance operation is running.</CardDescription>
+      <CardTitle class="font-title text-lg font-bold">Maintenance en cours</CardTitle>
+      <CardDescription>
+        L'accès est temporairement suspendu le temps d'une opération de
+        maintenance. Revenez dans quelques minutes.
+      </CardDescription>
     </CardHeader>
     {#if frontendEnv.environment()}
       <CardContent>
-        <p class="text-sm text-muted-foreground">Environment: {frontendEnv.environment()}</p>
+        <p class="text-muted-foreground text-sm">
+          Environnement : {frontendEnv.environment()}
+        </p>
       </CardContent>
     {/if}
   </Card>
-</main>
+</SystemShell>

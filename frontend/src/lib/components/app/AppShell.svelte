@@ -101,7 +101,7 @@
           isActive: (path) => path.startsWith("/profiles"),
         },
         {
-          label: "Instructions",
+          label: "Réglages d'enrichissement",
           href: "/enrichment",
           icon: WandSparkles,
           isActive: (path) => path.startsWith("/enrichment"),

@@ -9,25 +9,21 @@
     CardHeader,
     CardTitle,
   } from "@/lib/components/ui/card"
-  import LayoutShell from "@/lib/components/app/LayoutShell.svelte"
-  import VersionFooter from "@/lib/components/app/VersionFooter.svelte"
+  import SystemShell from "@/lib/components/app/SystemShell.svelte"
 
-  export let appName: string
+  let { appName }: { appName: string } = $props()
 </script>
 
-<LayoutShell {appName}>
-  <Card class="w-full max-w-xl text-center">
+<SystemShell {appName}>
+  <Card class="w-full text-center shadow-sm">
     <CardHeader>
-      <CardTitle class="text-3xl font-semibold tracking-tight">404</CardTitle>
-      <CardDescription>The page you are looking for was not found.</CardDescription>
+      <CardTitle class="font-title text-3xl font-bold">404</CardTitle>
+      <CardDescription>Cette page n'existe pas (ou plus).</CardDescription>
     </CardHeader>
     <CardContent class="flex justify-center">
-      <Button variant="outline" onclick={() => navigate("/", { replace: true })}>Go back</Button>
+      <Button variant="outline" onclick={() => navigate("/", { replace: true })}>
+        Retour à l'accueil
+      </Button>
     </CardContent>
   </Card>
-
-  <svelte:fragment slot="footer">
-    <p>{appName} - {new Date().getFullYear()}</p>
-    <VersionFooter />
-  </svelte:fragment>
-</LayoutShell>
+</SystemShell>

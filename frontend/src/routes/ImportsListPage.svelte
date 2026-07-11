@@ -131,8 +131,18 @@
                       onclick={() => openImport(job.id)}
                       onkeydown={(e) => onRowKeydown(e, job.id)}
                     >
-                      <td class="max-w-60 truncate px-4 {cellPad} font-medium" title={job.file_name}>
-                        {job.file_name}
+                      <td class="max-w-60 px-4 {cellPad} font-medium" title={job.file_names.join("\n")}>
+                        <span class="flex items-center gap-1.5">
+                          <span class="truncate">{job.file_name}</span>
+                          {#if job.file_names.length > 1}
+                            <!-- Lot multi-fichiers : signaler les fichiers croisés. -->
+                            <span
+                              class="bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 py-0.5 text-[11px]"
+                            >
+                              +{job.file_names.length - 1}
+                            </span>
+                          {/if}
+                        </span>
                       </td>
                       <td class="px-4 {cellPad}"><StatusBadge status={job.status} /></td>
                       <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
