@@ -211,8 +211,9 @@
                     <div class="flex min-w-0 flex-col gap-0.5">
                       <span class="text-sm font-medium">{profile.name}</span>
                       <span class="text-muted-foreground text-xs">
-                        {#if profile.supplier_match}
-                          Fournisseur détecté : « {profile.supplier_match} » ·
+                        {#if profile.config.supplier_label || profile.supplier_match}
+                          Fournisseur : « {profile.config.supplier_label ||
+                            profile.supplier_match} » ·
                         {/if}
                         {priceSummary(profile.config)}
                       </span>

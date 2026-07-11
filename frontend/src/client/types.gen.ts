@@ -761,6 +761,10 @@ export type ImportProfileConfigInput = {
      */
     tax_rate?: string;
     /**
+     * Wholesale Tax Rate
+     */
+    wholesale_tax_rate?: string;
+    /**
      * Status
      */
     status?: string;
@@ -808,6 +812,10 @@ export type ImportProfileConfigOutput = {
      * Tax Rate
      */
     tax_rate?: string;
+    /**
+     * Wholesale Tax Rate
+     */
+    wholesale_tax_rate?: string;
     /**
      * Status
      */

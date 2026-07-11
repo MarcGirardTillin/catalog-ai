@@ -76,6 +76,7 @@ def test_lespion_row_matches_real_import_file() -> None:
     # 440 x 2.8 = 1232 -> rounded UP to the nearest 5.
     assert _col(row, "price") == "1235"
     assert _col(row, "tax_rate") == "20"
+    assert _col(row, "wholesale_tax_rate") == "20"  # purchase-price tax
     assert _col(row, "gender") == "Femme"
     assert _col(row, "supplier") == "L'ESPION"
     assert _col(row, "brand") == "BARBARA BUI"

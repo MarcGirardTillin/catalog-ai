@@ -9,7 +9,7 @@
   // transformation vers le CSV Tillin). Utilisé par la page Profils et par le
   // panneau inline de la page d'import. Le composant fait lui-même l'appel
   // create/update et remonte le profil sauvegardé via `onSaved`.
-  import { onMount } from "svelte"
+  import { onMount, untrack } from "svelte"
   import { toast } from "svelte-sonner"
 
   import {
@@ -59,8 +59,10 @@
   })
 
   let saving = $state(false)
+  // En création, le nom suit le fournisseur tant que l'utilisateur n'y a pas
+  // touché ; en édition on ne réécrit jamais le nom saisi.
+  let nameEdited = $state(untrack(() => profile !== null))
 
-  // Tous les champs en chaînes (les décimaux voyagent en chaînes JSON).
   let form = $state(initialForm())
 
   function initialForm() {
@@ -68,61 +70,73 @@
       const c = profile.config
       return {
         name: profile.name,
-        supplier_match: profile.supplier_match,
+        // Un seul champ fournisseur (fusion de supplier_match + supplier_label).
+        supplier: c.supplier_label || profile.supplier_match,
+        // Marque vide = « telle qu'extraite » ; sinon valeur fixe.
+        brand: c.brand_mode === "fixed" ? c.brand_value : "",
+        season_label: c.season_label,
+        wholesale_tax_rate: c.wholesale_tax_rate ?? "20",
         price_mode: c.price_mode,
         coefficient: c.coefficient ?? "",
         round_up_to: c.round_up_to,
         barcode_mode: c.barcode_mode,
-        brand_mode: c.brand_mode,
-        brand_value: c.brand_value,
-        supplier_label: c.supplier_label,
-        season_label: c.season_label,
         tax_rate: c.tax_rate,
-        status: c.status,
       }
     }
+    const supplier = prefill?.supplier_label ?? prefill?.supplier_match ?? ""
     return {
-      name: "",
-      supplier_match: prefill?.supplier_match ?? "",
+      name: supplier,
+      supplier,
+      // La marque est à ~95% le fournisseur : pré-remplie, modifiable.
+      brand: supplier,
+      season_label: "",
+      wholesale_tax_rate: "20",
       price_mode: "retail_as_is" as ImportProfileConfig["price_mode"],
       coefficient: "",
       round_up_to: "5",
       barcode_mode: "ean" as ImportProfileConfig["barcode_mode"],
-      brand_mode: "as_extracted" as ImportProfileConfig["brand_mode"],
-      brand_value: "",
-      supplier_label: prefill?.supplier_label ?? "",
-      season_label: "",
       tax_rate: "20",
-      status: "active",
     }
   }
+
+  // Nom auto = fournisseur, tant qu'il n'a pas été édité (création seulement).
+  $effect(() => {
+    const supplier = form.supplier
+    if (!nameEdited) untrack(() => (form.name = supplier))
+  })
 
   async function save(event: SubmitEvent) {
     event.preventDefault()
     if (saving) return
-    const name = form.name.trim()
+    const supplier = form.supplier.trim()
+    const name = form.name.trim() || supplier
     if (name === "") {
-      toast.error("Le nom du profil est requis.")
+      toast.error("Le nom du profil (ou le fournisseur) est requis.")
       return
     }
     if (form.price_mode === "coefficient" && form.coefficient.trim() === "") {
       toast.error("Le coefficient est requis en mode coefficient.")
       return
     }
+    const brand = form.brand.trim()
     const config: ImportProfileConfig = {
       price_mode: form.price_mode,
       coefficient:
         form.price_mode === "coefficient" ? form.coefficient.trim() : null,
       round_up_to: form.round_up_to.trim(),
       barcode_mode: form.barcode_mode,
-      brand_mode: form.brand_mode,
-      brand_value: form.brand_mode === "fixed" ? form.brand_value.trim() : "",
-      supplier_label: form.supplier_label.trim(),
+      // Marque renseignée → valeur fixe ; vide → telle qu'extraite du document.
+      brand_mode: brand === "" ? "as_extracted" : "fixed",
+      brand_value: brand,
+      supplier_label: supplier,
       season_label: form.season_label.trim(),
       tax_rate: form.tax_rate.trim(),
-      status: form.status.trim(),
+      wholesale_tax_rate: form.wholesale_tax_rate.trim(),
+      // Statut retiré du formulaire : toujours « active » à la création.
+      status: "active",
     }
-    const body = { name, supplier_match: form.supplier_match.trim(), config }
+    // Le fournisseur sert aussi de clé d'auto-sélection (comparaison minuscule).
+    const body = { name, supplier_match: supplier.toLowerCase(), config }
     saving = true
     if (profile === null) {
       const { data, error } = await createImportProfile(body)
@@ -147,35 +161,72 @@
 </script>
 
 <form class="flex flex-col gap-4" onsubmit={save}>
-  <div class="grid gap-3 sm:grid-cols-2">
+  <div class="flex flex-col gap-1.5 sm:max-w-96">
+    <Label for="{uid}-name">Nom du profil</Label>
+    <Input
+      id="{uid}-name"
+      placeholder="Ex. L'Espion"
+      required
+      bind:value={form.name}
+      oninput={() => (nameEdited = true)}
+    />
+    <p class="text-muted-foreground text-xs">
+      Pré-rempli avec le fournisseur — modifiable librement.
+    </p>
+  </div>
+
+  <Separator />
+
+  <!-- Fournisseur, marque, saison et taxe d'achat sur une même ligne. -->
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
     <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-name">Nom du profil</Label>
-      <Input
-        id="{uid}-name"
-        placeholder="Ex. L'Espion — Bambinoh"
-        required
-        bind:value={form.name}
+      <Label for="{uid}-supplier">Fournisseur</Label>
+      <ReferenceSelect
+        id="{uid}-supplier"
+        placeholder="Ex. L'Espion"
+        options={optionTitles(filters?.suppliers ?? [])}
+        emptyLabel="Fournisseur du document"
+        bind:value={form.supplier}
       />
     </div>
     <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-supplier-match">Fournisseur détecté</Label>
-      <Input
-        id="{uid}-supplier-match"
-        placeholder="Ex. l'espion"
-        bind:value={form.supplier_match}
+      <Label for="{uid}-brand">Marque</Label>
+      <ReferenceSelect
+        id="{uid}-brand"
+        placeholder="Vide = telle qu'extraite"
+        options={optionTitles(filters?.brands ?? [])}
+        emptyLabel="Telle qu'extraite"
+        bind:value={form.brand}
       />
-      <p class="text-muted-foreground text-xs">
-        Sert à pré-sélectionner ce profil quand le fournisseur du document
-        correspond (comparaison en minuscules).
-      </p>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-season">Saison</Label>
+      <ReferenceSelect
+        id="{uid}-season"
+        placeholder="Ex. H26"
+        options={optionTitles(filters?.seasons ?? [])}
+        emptyLabel="Saison du document"
+        bind:value={form.season_label}
+      />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-wholesale-tax">Taxe achat (%)</Label>
+      <Input
+        id="{uid}-wholesale-tax"
+        inputmode="decimal"
+        placeholder="Ex. 0"
+        bind:value={form.wholesale_tax_rate}
+      />
+      <p class="text-muted-foreground text-xs">0 pour un fournisseur étranger.</p>
     </div>
   </div>
 
   <Separator />
 
+  <!-- Prix de vente + TVA vente. -->
   <div class="grid gap-3 sm:grid-cols-2">
     <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-price-mode">Mode de prix</Label>
+      <Label for="{uid}-price-mode">Mode de prix (vente)</Label>
       <select id="{uid}-price-mode" class={selectClass} bind:value={form.price_mode}>
         <option value="retail_as_is">Prix conseillé tel quel</option>
         <option value="coefficient">Coefficient sur le prix de gros</option>
@@ -185,87 +236,8 @@
         multiple supérieur.
       </p>
     </div>
-    {#if form.price_mode === "coefficient"}
-      <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-1.5">
-          <Label for="{uid}-coefficient">Coefficient</Label>
-          <Input
-            id="{uid}-coefficient"
-            inputmode="decimal"
-            placeholder="Ex. 2.5"
-            bind:value={form.coefficient}
-          />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <Label for="{uid}-round-up">Arrondi (multiple)</Label>
-          <Input
-            id="{uid}-round-up"
-            inputmode="decimal"
-            placeholder="Ex. 5"
-            bind:value={form.round_up_to}
-          />
-        </div>
-      </div>
-    {/if}
-  </div>
-
-  <div class="grid gap-3 sm:grid-cols-2">
     <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-barcode-mode">Codes-barres</Label>
-      <select id="{uid}-barcode-mode" class={selectClass} bind:value={form.barcode_mode}>
-        <option value="ean">EAN du fournisseur</option>
-        <option value="constructed">Construits automatiquement</option>
-      </select>
-      <p class="text-muted-foreground text-xs">
-        « Construits » : un code est généré quand l'EAN manque.
-      </p>
-    </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-brand-mode">Marque</Label>
-      <select id="{uid}-brand-mode" class={selectClass} bind:value={form.brand_mode}>
-        <option value="as_extracted">Telle qu'extraite du document</option>
-        <option value="fixed">Valeur fixe</option>
-      </select>
-      {#if form.brand_mode === "fixed"}
-        <ReferenceSelect
-          ariaLabel="Marque fixe"
-          placeholder="Ex. Garcia"
-          options={optionTitles(filters?.brands ?? [])}
-          emptyLabel="Choisir une marque…"
-          bind:value={form.brand_value}
-        />
-      {/if}
-    </div>
-  </div>
-
-  <Separator />
-
-  <div class="grid gap-3 sm:grid-cols-2">
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-supplier-label">Libellé fournisseur</Label>
-      <ReferenceSelect
-        id="{uid}-supplier-label"
-        placeholder="Ex. L'Espion"
-        options={optionTitles(filters?.suppliers ?? [])}
-        emptyLabel="Fournisseur du document"
-        bind:value={form.supplier_label}
-      />
-      <p class="text-muted-foreground text-xs">
-        Valeur écrite dans la colonne fournisseur du CSV.
-      </p>
-    </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-season-label">Libellé saison</Label>
-      <ReferenceSelect
-        id="{uid}-season-label"
-        placeholder="Ex. H26"
-        options={optionTitles(filters?.seasons ?? [])}
-        emptyLabel="Saison du document"
-        bind:value={form.season_label}
-      />
-    </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-tax-rate">TVA (%)</Label>
+      <Label for="{uid}-tax-rate">TVA vente (%)</Label>
       <Input
         id="{uid}-tax-rate"
         inputmode="decimal"
@@ -273,13 +245,37 @@
         bind:value={form.tax_rate}
       />
     </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-status">Statut des produits</Label>
-      <Input id="{uid}-status" placeholder="Ex. active" bind:value={form.status} />
-      <p class="text-muted-foreground text-xs">
-        Statut appliqué aux produits créés dans Tillin.
-      </p>
-    </div>
+    {#if form.price_mode === "coefficient"}
+      <div class="flex flex-col gap-1.5">
+        <Label for="{uid}-coefficient">Coefficient</Label>
+        <Input
+          id="{uid}-coefficient"
+          inputmode="decimal"
+          placeholder="Ex. 2.5"
+          bind:value={form.coefficient}
+        />
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <Label for="{uid}-round-up">Arrondi (multiple)</Label>
+        <Input
+          id="{uid}-round-up"
+          inputmode="decimal"
+          placeholder="Ex. 5"
+          bind:value={form.round_up_to}
+        />
+      </div>
+    {/if}
+  </div>
+
+  <div class="flex flex-col gap-1.5 sm:max-w-96">
+    <Label for="{uid}-barcode-mode">Codes-barres</Label>
+    <select id="{uid}-barcode-mode" class={selectClass} bind:value={form.barcode_mode}>
+      <option value="ean">EAN du fournisseur</option>
+      <option value="constructed">Construits automatiquement</option>
+    </select>
+    <p class="text-muted-foreground text-xs">
+      « Construits » : un code REF-COULEUR-TAILLE est généré quand l'EAN manque.
+    </p>
   </div>
 
   <div class="flex items-center justify-end gap-2">

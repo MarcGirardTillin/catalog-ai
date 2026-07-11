@@ -46,7 +46,10 @@ class ImportProfileConfig(BaseModel):
 
     supplier_label: str = ""  # CSV `supplier` column ("" = extracted supplier)
     season_label: str = ""  # CSV `season` column ("" = extracted season)
-    tax_rate: str = "20"  # CSV `tax_rate` column
+    tax_rate: str = "20"  # CSV `tax_rate` column (VAT on the sale price)
+    # CSV `wholesale_tax_rate` column (tax on the purchase price) — "0" for a
+    # foreign supplier (no input VAT), "20" for a domestic one.
+    wholesale_tax_rate: str = "20"
     status: str = "active"  # CSV `status` column
     # NOTE: gender/category defaults were removed on user request (2026-07-09):
     # those are per-product review-grid edits, not supplier conventions.

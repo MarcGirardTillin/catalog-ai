@@ -1316,6 +1316,11 @@ export const ImportProfileConfig_InputSchema = {
             title: 'Tax Rate',
             default: '20'
         },
+        wholesale_tax_rate: {
+            type: 'string',
+            title: 'Wholesale Tax Rate',
+            default: '20'
+        },
         status: {
             type: 'string',
             title: 'Status',
@@ -1392,6 +1397,11 @@ export const ImportProfileConfig_OutputSchema = {
         tax_rate: {
             type: 'string',
             title: 'Tax Rate',
+            default: '20'
+        },
+        wholesale_tax_rate: {
+            type: 'string',
+            title: 'Wholesale Tax Rate',
             default: '20'
         },
         status: {

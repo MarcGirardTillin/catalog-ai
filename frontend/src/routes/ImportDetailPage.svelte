@@ -49,6 +49,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
   import ReferenceSelect from "@/lib/components/app/ReferenceSelect.svelte"
   import ImportProfileForm from "@/lib/components/app/ImportProfileForm.svelte"
@@ -495,7 +496,10 @@
     transferred || (items ?? []).some((i) => i.status === "applied"),
   )
 
-  async function enrichCreatedProducts() {
+  async function enrichCreatedProducts(
+    transforms: { copy: boolean; title: boolean; weights: boolean; images: boolean },
+    instructionId: number | null,
+  ) {
     if (enriching) return
     enriching = true
     let { data, error } = await getImportProducts(Number(id))
@@ -530,7 +534,13 @@
       return
     }
     const { data: jobData, error: jobError } = await jobsCreateEnrichmentJob({
-      body: { selection: { ids } },
+      body: {
+        selection: { ids },
+        config: {
+          transforms,
+          ...(instructionId != null ? { instruction_id: instructionId } : {}),
+        },
+      },
     })
     enriching = false
     if (jobError || !jobData) {
@@ -828,7 +838,7 @@
 
               {#if job.warnings.length > 0}
                 <ul class="flex flex-col gap-0.5">
-                  {#each job.warnings as warning (warning)}
+                  {#each job.warnings as warning, i (i)}
                     <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
                       <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
                       {warning}
@@ -1151,7 +1161,7 @@
                             <div class="flex flex-col gap-3">
                               {#if item.warnings.length > 0}
                                 <ul class="flex flex-col gap-0.5">
-                                  {#each item.warnings as warning (warning)}
+                                  {#each item.warnings as warning, i (i)}
                                     <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
                                       <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
                                       {warning}
@@ -1528,12 +1538,11 @@
                       >
                         Voir les produits créés
                       </Button>
-                      <Button size="sm" disabled={enriching} onclick={enrichCreatedProducts}>
-                        {#if enriching}
-                          <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
-                        {/if}
-                        {enriching ? "Préparation…" : "Enrichir les produits créés"}
-                      </Button>
+                      <EnrichChooser
+                        label="Enrichir les produits créés"
+                        busy={enriching}
+                        onLaunch={enrichCreatedProducts}
+                      />
                     </div>
                   </div>
                 {/if}
@@ -1546,7 +1555,7 @@
                   {:else if rowsPreview}
                     {#if rowsPreview.warnings.length > 0}
                       <ul class="flex flex-col gap-0.5">
-                        {#each rowsPreview.warnings as warning (warning)}
+                        {#each rowsPreview.warnings as warning, i (i)}
                           <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
                             <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
                             {warning}

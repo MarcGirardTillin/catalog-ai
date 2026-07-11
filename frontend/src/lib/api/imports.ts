@@ -58,6 +58,7 @@ export type ImportProfileConfig = {
   supplier_label: string
   season_label: string
   tax_rate: string
+  wholesale_tax_rate: string
   status: string
 }
 

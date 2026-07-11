@@ -34,6 +34,7 @@ TILLIN_CSV_COLUMNS = [
     "image_url",
     "wholesale_price",
     "wholesale_discount",
+    "wholesale_tax_rate",
     "price",
     "tax_rate",
     "gender",
@@ -146,6 +147,7 @@ def render_rows(
                             else ""
                         ),
                         "wholesale_discount": "0",
+                        "wholesale_tax_rate": config.wholesale_tax_rate,
                         "price": format_decimal(price) if price is not None else "",
                         "tax_rate": config.tax_rate,
                         "gender": gender,

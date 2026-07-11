@@ -8,7 +8,6 @@
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
   import PersonStanding from "@lucide/svelte/icons/person-standing"
   import Scissors from "@lucide/svelte/icons/scissors"
-  import Sparkles from "@lucide/svelte/icons/sparkles"
   import Upload from "@lucide/svelte/icons/upload"
   import X from "@lucide/svelte/icons/x"
   import { untrack } from "svelte"
@@ -16,10 +15,6 @@
   import { fade, fly } from "svelte/transition"
 
   import { type ProductImage, settingsReadAccountSettings } from "@/client"
-  import {
-    listInstructions,
-    type InstructionPublic,
-  } from "@/lib/api/instructions"
   import {
     fetchAssetPreviews,
     generateModelImage,
@@ -33,6 +28,7 @@
     uploadProductImages,
     type ProductDetail,
   } from "@/lib/api/products"
+  import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
   import { Button } from "@/lib/components/ui/button"
   import { Skeleton } from "@/lib/components/ui/skeleton"
 
@@ -119,50 +115,6 @@
     imgSel = null
     imagingBusy = false
     imagingVerb = null
-    enrichOpen = false
-  }
-
-  // Choix des transformations avant de lancer l'enrichissement.
-  let enrichOpen = $state(false)
-  let enrichCopy = $state(true)
-  let enrichTitle = $state(true)
-  let enrichWeights = $state(true)
-  let enrichImages = $state(true)
-  const enrichNone = $derived(
-    !enrichCopy && !enrichTitle && !enrichWeights && !enrichImages,
-  )
-
-  // Instruction éditoriale : sans choix explicite, les défauts du compte
-  // s'appliquent — c'est pour ça que « Mode Vêtement » n'était pas pris en
-  // compte depuis le panneau (aucun sélecteur ici jusqu'à présent).
-  let enrichInstructions = $state<InstructionPublic[]>([])
-  let instructionsLoaded = false
-  let enrichInstructionId = $state("")
-
-  function openEnrichChooser() {
-    enrichOpen = !enrichOpen
-    if (enrichOpen && !instructionsLoaded) {
-      instructionsLoaded = true
-      listInstructions().then(({ data }) => {
-        enrichInstructions = data ?? []
-      })
-    }
-  }
-
-  function launchEnrich() {
-    const id = productId
-    if (id == null) return
-    enrichOpen = false
-    onEnrich?.(
-      id,
-      {
-        copy: enrichCopy,
-        title: enrichTitle,
-        weights: enrichWeights,
-        images: enrichImages,
-      },
-      enrichInstructionId === "" ? null : Number(enrichInstructionId),
-    )
   }
 
   function selectImagingSource(image: ProductImage) {
@@ -502,52 +454,11 @@
       </div>
       <div class="flex shrink-0 items-center gap-1.5">
         {#if onEnrich && productId != null && product}
-          <div class="relative">
-            <Button size="sm" aria-expanded={enrichOpen} onclick={openEnrichChooser}>
-              <Sparkles size={14} aria-hidden="true" />
-              Enrichir
-            </Button>
-            {#if enrichOpen}
-              <div
-                class="border-border bg-background absolute top-full right-0 z-20 mt-1 flex w-60 flex-col gap-2 rounded-md border p-3 shadow-md"
-              >
-                <p class="text-xs font-medium">Quoi enrichir ?</p>
-                <label class="flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" bind:checked={enrichCopy} />
-                  Description & méta description
-                </label>
-                <label class="flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" bind:checked={enrichTitle} />
-                  Titre (modèle du compte)
-                </label>
-                <label class="flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" bind:checked={enrichWeights} />
-                  Poids des variantes
-                </label>
-                <label class="flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" bind:checked={enrichImages} />
-                  Images (visuels source)
-                </label>
-                <label class="flex flex-col gap-1 text-xs">
-                  Instructions éditoriales
-                  <select
-                    class="border-input bg-card text-foreground h-8 w-full rounded-md border px-2 text-xs outline-none"
-                    bind:value={enrichInstructionId}
-                  >
-                    <option value="">Automatique (défauts du compte)</option>
-                    {#each enrichInstructions as instruction (instruction.id)}
-                      <option value={String(instruction.id)}>
-                        {instruction.name}
-                      </option>
-                    {/each}
-                  </select>
-                </label>
-                <Button size="sm" disabled={enrichNone} onclick={launchEnrich}>
-                  Lancer l'enrichissement
-                </Button>
-              </div>
-            {/if}
-          </div>
+          <EnrichChooser
+            align="right"
+            onLaunch={(transforms, instructionId) =>
+              onEnrich?.(productId, transforms, instructionId)}
+          />
         {/if}
         <button
           type="button"
