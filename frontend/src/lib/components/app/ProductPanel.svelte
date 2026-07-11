@@ -137,7 +137,7 @@
     imagingBusy = false
     if (error || !data) {
       toast.error(
-        "Échec du traitement de l'image (service Photoroom indisponible ?).",
+        "Échec du traitement de l'image (service d'imagerie indisponible ?).",
       )
       return
     }
@@ -156,7 +156,7 @@
     if (error || !data) {
       imagingBusy = false
       toast.error(
-        "Échec du lancement de la génération (service FASHN indisponible ?).",
+        "Échec du lancement de la génération (service de visuels indisponible ?).",
       )
       return
     }

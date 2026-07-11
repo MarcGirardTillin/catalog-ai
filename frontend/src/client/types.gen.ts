@@ -43,9 +43,157 @@ export type AccountSettings = {
      */
     billing_coefficient?: number;
     /**
+     * Minutes Saved Per Import Product
+     */
+    minutes_saved_per_import_product?: number;
+    /**
+     * Minutes Saved Per Enriched Product
+     */
+    minutes_saved_per_enriched_product?: number;
+    /**
      * Billing Day
      */
     billing_day?: number;
+};
+
+/**
+ * AdminAccountActivity
+ */
+export type AdminAccountActivity = {
+    /**
+     * Account Id
+     */
+    account_id: number;
+    /**
+     * Entries
+     */
+    entries: Array<AdminActivityEntry>;
+};
+
+/**
+ * AdminAccountSummary
+ *
+ * One row of the accounts list.
+ */
+export type AdminAccountSummary = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * User Count
+     */
+    user_count: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Last Activity At
+     */
+    last_activity_at: string | null;
+};
+
+/**
+ * AdminActivityEntry
+ *
+ * One recent job/import of an account (monitoring feed).
+ */
+export type AdminActivityEntry = {
+    /**
+     * Job Id
+     */
+    job_id: number;
+    /**
+     * Job Type
+     */
+    job_type: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Total Items
+     */
+    total_items: number;
+    /**
+     * Failed Items
+     */
+    failed_items: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * AdminOverview
+ */
+export type AdminOverview = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Currency
+     */
+    currency: string;
+    /**
+     * Lines
+     */
+    lines: Array<AdminOverviewLine>;
+};
+
+/**
+ * AdminOverviewLine
+ *
+ * Per-account monthly monitoring line (money as decimal strings).
+ */
+export type AdminOverviewLine = {
+    /**
+     * Account Id
+     */
+    account_id: number;
+    /**
+     * Account Name
+     */
+    account_name: string;
+    /**
+     * Cost
+     */
+    cost: string;
+    /**
+     * Billable
+     */
+    billable: string;
+    /**
+     * Margin
+     */
+    margin: string;
+    /**
+     * Coefficient
+     */
+    coefficient: number;
+    /**
+     * Jobs Count
+     */
+    jobs_count: number;
+    /**
+     * Imports Count
+     */
+    imports_count: number;
+    /**
+     * Failed Items
+     */
+    failed_items: number;
 };
 
 /**
@@ -2009,6 +2157,10 @@ export type UserPublic = {
      * Is Active
      */
     is_active: boolean;
+    /**
+     * Is Admin
+     */
+    is_admin?: boolean;
 };
 
 /**
@@ -4138,3 +4290,220 @@ export type UsageReadUsageTimeseriesResponses = {
 };
 
 export type UsageReadUsageTimeseriesResponse = UsageReadUsageTimeseriesResponses[keyof UsageReadUsageTimeseriesResponses];
+
+export type AdminListAccountsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/admin/accounts';
+};
+
+export type AdminListAccountsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListAccountsError = AdminListAccountsErrors[keyof AdminListAccountsErrors];
+
+export type AdminListAccountsResponses = {
+    /**
+     * Response Admin-List Accounts
+     *
+     * Successful Response
+     */
+    200: Array<AdminAccountSummary>;
+};
+
+export type AdminListAccountsResponse = AdminListAccountsResponses[keyof AdminListAccountsResponses];
+
+export type AdminReadOverviewData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/admin/overview';
+};
+
+export type AdminReadOverviewErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadOverviewError = AdminReadOverviewErrors[keyof AdminReadOverviewErrors];
+
+export type AdminReadOverviewResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminOverview;
+};
+
+export type AdminReadOverviewResponse = AdminReadOverviewResponses[keyof AdminReadOverviewResponses];
+
+export type AdminReadAccountUsageData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/admin/accounts/{account_id}/usage';
+};
+
+export type AdminReadAccountUsageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountUsageError = AdminReadAccountUsageErrors[keyof AdminReadAccountUsageErrors];
+
+export type AdminReadAccountUsageResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageSummary;
+};
+
+export type AdminReadAccountUsageResponse = AdminReadAccountUsageResponses[keyof AdminReadAccountUsageResponses];
+
+export type AdminReadAccountUsageByJobData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/admin/accounts/{account_id}/usage/by-job';
+};
+
+export type AdminReadAccountUsageByJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountUsageByJobError = AdminReadAccountUsageByJobErrors[keyof AdminReadAccountUsageByJobErrors];
+
+export type AdminReadAccountUsageByJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageByJob;
+};
+
+export type AdminReadAccountUsageByJobResponse = AdminReadAccountUsageByJobResponses[keyof AdminReadAccountUsageByJobResponses];
+
+export type AdminReadAccountActivityData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/activity';
+};
+
+export type AdminReadAccountActivityErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountActivityError = AdminReadAccountActivityErrors[keyof AdminReadAccountActivityErrors];
+
+export type AdminReadAccountActivityResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminAccountActivity;
+};
+
+export type AdminReadAccountActivityResponse = AdminReadAccountActivityResponses[keyof AdminReadAccountActivityResponses];
+
+export type AdminReadAccountSettingsAdminData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/settings';
+};
+
+export type AdminReadAccountSettingsAdminErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountSettingsAdminError = AdminReadAccountSettingsAdminErrors[keyof AdminReadAccountSettingsAdminErrors];
+
+export type AdminReadAccountSettingsAdminResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountSettings;
+};
+
+export type AdminReadAccountSettingsAdminResponse = AdminReadAccountSettingsAdminResponses[keyof AdminReadAccountSettingsAdminResponses];
+
+export type AdminUpdateAccountSettingsAdminData = {
+    body: AccountSettings;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/settings';
+};
+
+export type AdminUpdateAccountSettingsAdminErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateAccountSettingsAdminError = AdminUpdateAccountSettingsAdminErrors[keyof AdminUpdateAccountSettingsAdminErrors];
+
+export type AdminUpdateAccountSettingsAdminResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountSettings;
+};
+
+export type AdminUpdateAccountSettingsAdminResponse = AdminUpdateAccountSettingsAdminResponses[keyof AdminUpdateAccountSettingsAdminResponses];

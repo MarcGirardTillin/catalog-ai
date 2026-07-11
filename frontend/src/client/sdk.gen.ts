@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ImagingReadAssetData, ImagingReadAssetErrors, ImagingReadAssetFileData, ImagingReadAssetFileErrors, ImagingReadAssetFileResponses, ImagingReadAssetResponses, ImagingSaveAssetData, ImagingSaveAssetErrors, ImagingSaveAssetResponses, ImportProfilesCreateImportProfileData, ImportProfilesCreateImportProfileErrors, ImportProfilesCreateImportProfileResponses, ImportProfilesDeleteImportProfileData, ImportProfilesDeleteImportProfileErrors, ImportProfilesDeleteImportProfileResponses, ImportProfilesListImportProfilesData, ImportProfilesListImportProfilesErrors, ImportProfilesListImportProfilesResponses, ImportProfilesUpdateImportProfileData, ImportProfilesUpdateImportProfileErrors, ImportProfilesUpdateImportProfileResponses, ImportsCreateImportData, ImportsCreateImportErrors, ImportsCreateImportResponses, ImportsDownloadImportCsvData, ImportsDownloadImportCsvErrors, ImportsDownloadImportCsvResponses, ImportsDownloadImportFileData, ImportsDownloadImportFileErrors, ImportsDownloadImportFileResponses, ImportsLinkImportProductsData, ImportsLinkImportProductsErrors, ImportsLinkImportProductsResponses, ImportsListImportItemsData, ImportsListImportItemsErrors, ImportsListImportItemsResponses, ImportsListImportProductsData, ImportsListImportProductsErrors, ImportsListImportProductsResponses, ImportsListImportsData, ImportsListImportsErrors, ImportsListImportsResponses, ImportsPreviewImportFileData, ImportsPreviewImportFileErrors, ImportsPreviewImportFileResponses, ImportsPreviewImportRowsData, ImportsPreviewImportRowsErrors, ImportsPreviewImportRowsResponses, ImportsReadImportData, ImportsReadImportErrors, ImportsReadImportResponses, ImportsSetImportLocationData, ImportsSetImportLocationErrors, ImportsSetImportLocationResponses, ImportsSetImportProfileData, ImportsSetImportProfileErrors, ImportsSetImportProfileResponses, ImportsTransferImportData, ImportsTransferImportErrors, ImportsTransferImportResponses, ImportsUpdateImportItemData, ImportsUpdateImportItemErrors, ImportsUpdateImportItemResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsNormalizeItemImageRouteData, ItemsNormalizeItemImageRouteErrors, ItemsNormalizeItemImageRouteResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, LocationsListLocationsData, LocationsListLocationsErrors, LocationsListLocationsResponses, ProductsGenerateModelImageData, ProductsGenerateModelImageErrors, ProductsGenerateModelImageResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, ProductsNormalizeImageData, ProductsNormalizeImageErrors, ProductsNormalizeImageResponses, ProductsReadProductData, ProductsReadProductErrors, ProductsReadProductResponses, ProductsUploadProductImagesData, ProductsUploadProductImagesErrors, ProductsUploadProductImagesResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses, UsageCreateUsagePriceData, UsageCreateUsagePriceErrors, UsageCreateUsagePriceResponses, UsageDeleteUsagePriceData, UsageDeleteUsagePriceErrors, UsageDeleteUsagePriceResponses, UsageExportUsageCsvData, UsageExportUsageCsvErrors, UsageExportUsageCsvResponses, UsageListUsagePricesData, UsageListUsagePricesErrors, UsageListUsagePricesResponses, UsageReadUsageByJobData, UsageReadUsageByJobErrors, UsageReadUsageByJobResponses, UsageReadUsageSummaryData, UsageReadUsageSummaryErrors, UsageReadUsageSummaryResponses, UsageReadUsageTimeseriesData, UsageReadUsageTimeseriesErrors, UsageReadUsageTimeseriesResponses, UsageRefreezeSnapshotData, UsageRefreezeSnapshotErrors, UsageRefreezeSnapshotResponses, UsageUpdateUsagePriceData, UsageUpdateUsagePriceErrors, UsageUpdateUsagePriceResponses } from './types.gen';
+import type { AdminListAccountsData, AdminListAccountsErrors, AdminListAccountsResponses, AdminReadAccountActivityData, AdminReadAccountActivityErrors, AdminReadAccountActivityResponses, AdminReadAccountSettingsAdminData, AdminReadAccountSettingsAdminErrors, AdminReadAccountSettingsAdminResponses, AdminReadAccountUsageByJobData, AdminReadAccountUsageByJobErrors, AdminReadAccountUsageByJobResponses, AdminReadAccountUsageData, AdminReadAccountUsageErrors, AdminReadAccountUsageResponses, AdminReadOverviewData, AdminReadOverviewErrors, AdminReadOverviewResponses, AdminUpdateAccountSettingsAdminData, AdminUpdateAccountSettingsAdminErrors, AdminUpdateAccountSettingsAdminResponses, AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutResponses, AuthReadCurrentUserData, AuthReadCurrentUserErrors, AuthReadCurrentUserResponses, AuthUpdatePasswordData, AuthUpdatePasswordErrors, AuthUpdatePasswordResponses, BrandsListBrandsData, BrandsListBrandsErrors, BrandsListBrandsResponses, BrandsUpdateBrandWebsiteUrlsData, BrandsUpdateBrandWebsiteUrlsErrors, BrandsUpdateBrandWebsiteUrlsResponses, CatalogGetFiltersData, CatalogGetFiltersErrors, CatalogGetFiltersResponses, ExampleReadExampleData, ExampleReadExampleErrors, ExampleReadExampleResponses, ImagingReadAssetData, ImagingReadAssetErrors, ImagingReadAssetFileData, ImagingReadAssetFileErrors, ImagingReadAssetFileResponses, ImagingReadAssetResponses, ImagingSaveAssetData, ImagingSaveAssetErrors, ImagingSaveAssetResponses, ImportProfilesCreateImportProfileData, ImportProfilesCreateImportProfileErrors, ImportProfilesCreateImportProfileResponses, ImportProfilesDeleteImportProfileData, ImportProfilesDeleteImportProfileErrors, ImportProfilesDeleteImportProfileResponses, ImportProfilesListImportProfilesData, ImportProfilesListImportProfilesErrors, ImportProfilesListImportProfilesResponses, ImportProfilesUpdateImportProfileData, ImportProfilesUpdateImportProfileErrors, ImportProfilesUpdateImportProfileResponses, ImportsCreateImportData, ImportsCreateImportErrors, ImportsCreateImportResponses, ImportsDownloadImportCsvData, ImportsDownloadImportCsvErrors, ImportsDownloadImportCsvResponses, ImportsDownloadImportFileData, ImportsDownloadImportFileErrors, ImportsDownloadImportFileResponses, ImportsLinkImportProductsData, ImportsLinkImportProductsErrors, ImportsLinkImportProductsResponses, ImportsListImportItemsData, ImportsListImportItemsErrors, ImportsListImportItemsResponses, ImportsListImportProductsData, ImportsListImportProductsErrors, ImportsListImportProductsResponses, ImportsListImportsData, ImportsListImportsErrors, ImportsListImportsResponses, ImportsPreviewImportFileData, ImportsPreviewImportFileErrors, ImportsPreviewImportFileResponses, ImportsPreviewImportRowsData, ImportsPreviewImportRowsErrors, ImportsPreviewImportRowsResponses, ImportsReadImportData, ImportsReadImportErrors, ImportsReadImportResponses, ImportsSetImportLocationData, ImportsSetImportLocationErrors, ImportsSetImportLocationResponses, ImportsSetImportProfileData, ImportsSetImportProfileErrors, ImportsSetImportProfileResponses, ImportsTransferImportData, ImportsTransferImportErrors, ImportsTransferImportResponses, ImportsUpdateImportItemData, ImportsUpdateImportItemErrors, ImportsUpdateImportItemResponses, InstructionsCreateInstructionData, InstructionsCreateInstructionErrors, InstructionsCreateInstructionResponses, InstructionsDeleteInstructionData, InstructionsDeleteInstructionErrors, InstructionsDeleteInstructionResponses, InstructionsListInstructionsData, InstructionsListInstructionsErrors, InstructionsListInstructionsResponses, InstructionsUpdateInstructionData, InstructionsUpdateInstructionErrors, InstructionsUpdateInstructionResponses, ItemsApplyItemRouteData, ItemsApplyItemRouteErrors, ItemsApplyItemRouteResponses, ItemsApproveItemData, ItemsApproveItemErrors, ItemsApproveItemResponses, ItemsNormalizeItemImageRouteData, ItemsNormalizeItemImageRouteErrors, ItemsNormalizeItemImageRouteResponses, ItemsPatchItemData, ItemsPatchItemErrors, ItemsPatchItemResponses, ItemsReadItemData, ItemsReadItemErrors, ItemsReadItemProductData, ItemsReadItemProductErrors, ItemsReadItemProductResponses, ItemsReadItemResponses, ItemsRejectItemData, ItemsRejectItemErrors, ItemsRejectItemResponses, ItemsResolveItemRouteData, ItemsResolveItemRouteErrors, ItemsResolveItemRouteResponses, ItemsRetryItemRouteData, ItemsRetryItemRouteErrors, ItemsRetryItemRouteResponses, JobsCreateEnrichmentJobData, JobsCreateEnrichmentJobErrors, JobsCreateEnrichmentJobResponses, JobsListJobItemsData, JobsListJobItemsErrors, JobsListJobItemsResponses, JobsListJobsData, JobsListJobsErrors, JobsListJobsResponses, JobsReadJobData, JobsReadJobErrors, JobsReadJobResponses, JobsRetryJobFailuresData, JobsRetryJobFailuresErrors, JobsRetryJobFailuresResponses, LocationsListLocationsData, LocationsListLocationsErrors, LocationsListLocationsResponses, ProductsGenerateModelImageData, ProductsGenerateModelImageErrors, ProductsGenerateModelImageResponses, ProductsListProductsData, ProductsListProductsErrors, ProductsListProductsResponses, ProductsNormalizeImageData, ProductsNormalizeImageErrors, ProductsNormalizeImageResponses, ProductsReadProductData, ProductsReadProductErrors, ProductsReadProductResponses, ProductsUploadProductImagesData, ProductsUploadProductImagesErrors, ProductsUploadProductImagesResponses, SettingsReadAccountSettingsData, SettingsReadAccountSettingsErrors, SettingsReadAccountSettingsResponses, SettingsReadConnectionStatusData, SettingsReadConnectionStatusErrors, SettingsReadConnectionStatusResponses, SettingsReadMyPreferencesData, SettingsReadMyPreferencesErrors, SettingsReadMyPreferencesResponses, SettingsUpdateAccountSettingsData, SettingsUpdateAccountSettingsErrors, SettingsUpdateAccountSettingsResponses, SettingsUpdateMyPreferencesData, SettingsUpdateMyPreferencesErrors, SettingsUpdateMyPreferencesResponses, StatsDashboardStatsData, StatsDashboardStatsErrors, StatsDashboardStatsResponses, SystemHealthcheckData, SystemHealthcheckResponses, SystemVersionData, SystemVersionResponses, UsageCreateUsagePriceData, UsageCreateUsagePriceErrors, UsageCreateUsagePriceResponses, UsageDeleteUsagePriceData, UsageDeleteUsagePriceErrors, UsageDeleteUsagePriceResponses, UsageExportUsageCsvData, UsageExportUsageCsvErrors, UsageExportUsageCsvResponses, UsageListUsagePricesData, UsageListUsagePricesErrors, UsageListUsagePricesResponses, UsageReadUsageByJobData, UsageReadUsageByJobErrors, UsageReadUsageByJobResponses, UsageReadUsageSummaryData, UsageReadUsageSummaryErrors, UsageReadUsageSummaryResponses, UsageReadUsageTimeseriesData, UsageReadUsageTimeseriesErrors, UsageReadUsageTimeseriesResponses, UsageRefreezeSnapshotData, UsageRefreezeSnapshotErrors, UsageRefreezeSnapshotResponses, UsageUpdateUsagePriceData, UsageUpdateUsagePriceErrors, UsageUpdateUsagePriceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -815,6 +815,9 @@ export const usageUpdateUsagePrice = <ThrowOnError extends boolean = false>(opti
  * Read Usage Summary
  *
  * Monthly consumption per (provider, model, metric), priced at read time.
+ *
+ * Non-admin callers get the white-label view: neutral service labels,
+ * billable amounts only (no models, no raw cost, no coefficient).
  */
 export const usageReadUsageSummary = <ThrowOnError extends boolean = false>(options?: Options<UsageReadUsageSummaryData, ThrowOnError>): RequestResult<UsageReadUsageSummaryResponses, UsageReadUsageSummaryErrors, ThrowOnError> => (options?.client ?? client).get<UsageReadUsageSummaryResponses, UsageReadUsageSummaryErrors, ThrowOnError>({
     responseType: 'json',
@@ -825,7 +828,7 @@ export const usageReadUsageSummary = <ThrowOnError extends boolean = false>(opti
 /**
  * Read Usage By Job
  *
- * Monthly consumption grouped by job (null job_id = "Hors job").
+ * Monthly consumption grouped by job; white-label view for non-admins.
  */
 export const usageReadUsageByJob = <ThrowOnError extends boolean = false>(options?: Options<UsageReadUsageByJobData, ThrowOnError>): RequestResult<UsageReadUsageByJobResponses, UsageReadUsageByJobErrors, ThrowOnError> => (options?.client ?? client).get<UsageReadUsageByJobResponses, UsageReadUsageByJobErrors, ThrowOnError>({
     responseType: 'json',
@@ -837,6 +840,9 @@ export const usageReadUsageByJob = <ThrowOnError extends boolean = false>(option
  * Export Usage Csv
  *
  * The monthly summary as a CSV attachment (comma separated, with header).
+ *
+ * Clients get the white-label columns (service/metric/quantity/amount);
+ * admins keep the full grid (provider, model, unit price, cost, coefficient).
  */
 export const usageExportUsageCsv = <ThrowOnError extends boolean = false>(options?: Options<UsageExportUsageCsvData, ThrowOnError>): RequestResult<UsageExportUsageCsvResponses, UsageExportUsageCsvErrors, ThrowOnError> => (options?.client ?? client).get<UsageExportUsageCsvResponses, UsageExportUsageCsvErrors, ThrowOnError>({
     responseType: 'json',
@@ -872,4 +878,86 @@ export const usageReadUsageTimeseries = <ThrowOnError extends boolean = false>(o
     responseType: 'json',
     url: '/usage/timeseries',
     ...options
+});
+
+/**
+ * List Accounts
+ *
+ * Every account with its user count and latest activity.
+ */
+export const adminListAccounts = <ThrowOnError extends boolean = false>(options?: Options<AdminListAccountsData, ThrowOnError>): RequestResult<AdminListAccountsResponses, AdminListAccountsErrors, ThrowOnError> => (options?.client ?? client).get<AdminListAccountsResponses, AdminListAccountsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/accounts',
+    ...options
+});
+
+/**
+ * Read Overview
+ *
+ * Per-account monthly monitoring: cost vs billable (margin), volumes.
+ */
+export const adminReadOverview = <ThrowOnError extends boolean = false>(options?: Options<AdminReadOverviewData, ThrowOnError>): RequestResult<AdminReadOverviewResponses, AdminReadOverviewErrors, ThrowOnError> => (options?.client ?? client).get<AdminReadOverviewResponses, AdminReadOverviewErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/overview',
+    ...options
+});
+
+/**
+ * Read Account Usage
+ *
+ * FULL (non-redacted) monthly summary of one account.
+ */
+export const adminReadAccountUsage = <ThrowOnError extends boolean = false>(options: Options<AdminReadAccountUsageData, ThrowOnError>): RequestResult<AdminReadAccountUsageResponses, AdminReadAccountUsageErrors, ThrowOnError> => (options.client ?? client).get<AdminReadAccountUsageResponses, AdminReadAccountUsageErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/accounts/{account_id}/usage',
+    ...options
+});
+
+/**
+ * Read Account Usage By Job
+ *
+ * FULL (non-redacted) per-job breakdown of one account.
+ */
+export const adminReadAccountUsageByJob = <ThrowOnError extends boolean = false>(options: Options<AdminReadAccountUsageByJobData, ThrowOnError>): RequestResult<AdminReadAccountUsageByJobResponses, AdminReadAccountUsageByJobErrors, ThrowOnError> => (options.client ?? client).get<AdminReadAccountUsageByJobResponses, AdminReadAccountUsageByJobErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/accounts/{account_id}/usage/by-job',
+    ...options
+});
+
+/**
+ * Read Account Activity
+ *
+ * Latest jobs and imports of one account (monitoring feed).
+ */
+export const adminReadAccountActivity = <ThrowOnError extends boolean = false>(options: Options<AdminReadAccountActivityData, ThrowOnError>): RequestResult<AdminReadAccountActivityResponses, AdminReadAccountActivityErrors, ThrowOnError> => (options.client ?? client).get<AdminReadAccountActivityResponses, AdminReadAccountActivityErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/accounts/{account_id}/activity',
+    ...options
+});
+
+/**
+ * Read Account Settings Admin
+ *
+ * One account's settings, operator view (all fields).
+ */
+export const adminReadAccountSettingsAdmin = <ThrowOnError extends boolean = false>(options: Options<AdminReadAccountSettingsAdminData, ThrowOnError>): RequestResult<AdminReadAccountSettingsAdminResponses, AdminReadAccountSettingsAdminErrors, ThrowOnError> => (options.client ?? client).get<AdminReadAccountSettingsAdminResponses, AdminReadAccountSettingsAdminErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/accounts/{account_id}/settings',
+    ...options
+});
+
+/**
+ * Update Account Settings Admin
+ *
+ * Operator write of one account's settings (incl. admin-only fields:
+ * billing coefficient, dashboard time-saved minutes).
+ */
+export const adminUpdateAccountSettingsAdmin = <ThrowOnError extends boolean = false>(options: Options<AdminUpdateAccountSettingsAdminData, ThrowOnError>): RequestResult<AdminUpdateAccountSettingsAdminResponses, AdminUpdateAccountSettingsAdminErrors, ThrowOnError> => (options.client ?? client).put<AdminUpdateAccountSettingsAdminResponses, AdminUpdateAccountSettingsAdminErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/admin/accounts/{account_id}/settings',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });

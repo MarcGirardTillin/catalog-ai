@@ -9,6 +9,7 @@
   import Menu from "@lucide/svelte/icons/menu"
   import Package from "@lucide/svelte/icons/package"
   import Settings from "@lucide/svelte/icons/settings"
+  import ShieldCheck from "@lucide/svelte/icons/shield-check"
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal"
   import WandSparkles from "@lucide/svelte/icons/wand-sparkles"
   import X from "@lucide/svelte/icons/x"
@@ -59,8 +60,9 @@
   }
 
   // Navigation en deux sections : le flux quotidien (Pipeline) et les
-  // réglages durables (Configuration). Les routes ne changent pas.
-  const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  // réglages durables (Configuration). Un groupe « Admin » s'ajoute pour
+  // l'opérateur uniquement (user.is_admin).
+  const BASE_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     {
       title: "Pipeline",
       items: [
@@ -115,6 +117,33 @@
       ],
     },
   ]
+
+  // Groupe Admin (console opérateur), visible seulement pour l'admin.
+  const NAV_GROUPS = $derived(
+    user.is_admin
+      ? [
+          ...BASE_NAV_GROUPS,
+          {
+            title: "Admin",
+            items: [
+              {
+                label: "Clients",
+                href: "/admin",
+                icon: ShieldCheck,
+                isActive: (path: string) =>
+                  path.startsWith("/admin") && !path.startsWith("/admin/pricing"),
+              },
+              {
+                label: "Tarification",
+                href: "/admin/pricing",
+                icon: ChartColumn,
+                isActive: (path: string) => path.startsWith("/admin/pricing"),
+              },
+            ],
+          },
+        ]
+      : BASE_NAV_GROUPS,
+  )
 
   // Paramètres : section séparée en bas de la sidebar, au-dessus du bloc user.
   const settingsActive = $derived(pathname.startsWith("/settings"))

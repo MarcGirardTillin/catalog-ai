@@ -190,7 +190,7 @@
       toast.error(
         revert
           ? "Impossible de rétablir l'originale."
-          : "Échec de la normalisation (service Photoroom indisponible ?).",
+          : "Échec de la normalisation (service d'imagerie indisponible ?).",
       )
       return
     }

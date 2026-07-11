@@ -74,6 +74,20 @@ export const AccountSettingsSchema = {
             title: 'Billing Coefficient',
             default: 1
         },
+        minutes_saved_per_import_product: {
+            type: 'integer',
+            maximum: 120,
+            minimum: 0,
+            title: 'Minutes Saved Per Import Product',
+            default: 2
+        },
+        minutes_saved_per_enriched_product: {
+            type: 'integer',
+            maximum: 120,
+            minimum: 0,
+            title: 'Minutes Saved Per Enriched Product',
+            default: 10
+        },
         billing_day: {
             type: 'integer',
             maximum: 28,
@@ -85,6 +99,200 @@ export const AccountSettingsSchema = {
     type: 'object',
     title: 'AccountSettings',
     description: 'Boutique-level enrichment defaults (stored on account.settings_json).'
+} as const;
+
+export const AdminAccountActivitySchema = {
+    properties: {
+        account_id: {
+            type: 'integer',
+            title: 'Account Id'
+        },
+        entries: {
+            items: {
+                $ref: '#/components/schemas/AdminActivityEntry'
+            },
+            type: 'array',
+            title: 'Entries'
+        }
+    },
+    type: 'object',
+    required: [
+        'account_id',
+        'entries'
+    ],
+    title: 'AdminAccountActivity'
+} as const;
+
+export const AdminAccountSummarySchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        user_count: {
+            type: 'integer',
+            title: 'User Count'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        last_activity_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Activity At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'name',
+        'user_count',
+        'created_at',
+        'last_activity_at'
+    ],
+    title: 'AdminAccountSummary',
+    description: 'One row of the accounts list.'
+} as const;
+
+export const AdminActivityEntrySchema = {
+    properties: {
+        job_id: {
+            type: 'integer',
+            title: 'Job Id'
+        },
+        job_type: {
+            type: 'string',
+            title: 'Job Type'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        total_items: {
+            type: 'integer',
+            title: 'Total Items'
+        },
+        failed_items: {
+            type: 'integer',
+            title: 'Failed Items'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: [
+        'job_id',
+        'job_type',
+        'label',
+        'status',
+        'total_items',
+        'failed_items',
+        'created_at'
+    ],
+    title: 'AdminActivityEntry',
+    description: 'One recent job/import of an account (monitoring feed).'
+} as const;
+
+export const AdminOverviewSchema = {
+    properties: {
+        month: {
+            type: 'string',
+            title: 'Month'
+        },
+        currency: {
+            type: 'string',
+            title: 'Currency'
+        },
+        lines: {
+            items: {
+                $ref: '#/components/schemas/AdminOverviewLine'
+            },
+            type: 'array',
+            title: 'Lines'
+        }
+    },
+    type: 'object',
+    required: [
+        'month',
+        'currency',
+        'lines'
+    ],
+    title: 'AdminOverview'
+} as const;
+
+export const AdminOverviewLineSchema = {
+    properties: {
+        account_id: {
+            type: 'integer',
+            title: 'Account Id'
+        },
+        account_name: {
+            type: 'string',
+            title: 'Account Name'
+        },
+        cost: {
+            type: 'string',
+            title: 'Cost'
+        },
+        billable: {
+            type: 'string',
+            title: 'Billable'
+        },
+        margin: {
+            type: 'string',
+            title: 'Margin'
+        },
+        coefficient: {
+            type: 'number',
+            title: 'Coefficient'
+        },
+        jobs_count: {
+            type: 'integer',
+            title: 'Jobs Count'
+        },
+        imports_count: {
+            type: 'integer',
+            title: 'Imports Count'
+        },
+        failed_items: {
+            type: 'integer',
+            title: 'Failed Items'
+        }
+    },
+    type: 'object',
+    required: [
+        'account_id',
+        'account_name',
+        'cost',
+        'billable',
+        'margin',
+        'coefficient',
+        'jobs_count',
+        'imports_count',
+        'failed_items'
+    ],
+    title: 'AdminOverviewLine',
+    description: 'Per-account monthly monitoring line (money as decimal strings).'
 } as const;
 
 export const AssetSaveRequestSchema = {
@@ -3496,6 +3704,11 @@ export const UserPublicSchema = {
         is_active: {
             type: 'boolean',
             title: 'Is Active'
+        },
+        is_admin: {
+            type: 'boolean',
+            title: 'Is Admin',
+            default: false
         }
     },
     type: 'object',
