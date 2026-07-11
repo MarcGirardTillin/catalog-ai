@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
@@ -14,35 +15,46 @@
 
   let { appName, id }: { appName: string; id: string } = $props()
 
-  let job = $state<JobPublic | null>(null)
-  let items = $state<ItemPublic[] | null>(null)
-  let errorMessage = $state<string | null>(null)
   let retrying = $state(false)
 
-  async function load() {
-    const jobId = Number(id)
-    const [jobResult, itemsResult] = await Promise.all([
-      jobsReadJob({ path: { job_id: jobId } }),
-      jobsListJobItems({ path: { job_id: jobId }, query: { page_size: 100 } }),
-    ])
-    if (jobResult.error || !jobResult.data) {
-      errorMessage = "Job introuvable."
-      return
-    }
-    job = jobResult.data
-    items = itemsResult.data?.items ?? []
-  }
+  const jobId = $derived(Number(id))
+  const queryClient = useQueryClient()
 
-  // Initial load + poll every 2.5s while the worker is still busy.
-  $effect(() => {
-    load()
-    const timer = setInterval(() => {
-      if (job && (job.status === "pending" || job.status === "processing")) {
-        load()
-      }
-    }, 2500)
-    return () => clearInterval(timer)
-  })
+  // TanStack Query : cache + polling conditionnel (2,5 s tant que le worker
+  // tourne) — remplace le setInterval maison.
+  const jobQuery = createQuery(() => ({
+    queryKey: ["jobs", jobId],
+    queryFn: async () => {
+      const { data, error } = await jobsReadJob({ path: { job_id: jobId } })
+      if (error || !data) throw new Error("job_not_found")
+      return data
+    },
+    refetchInterval: (query: { state: { data?: JobPublic } }) => {
+      const status = query.state.data?.status
+      return status === "pending" || status === "processing" ? 2500 : false
+    },
+    retry: false,
+  }))
+  const running = $derived(
+    jobQuery.data?.status === "pending" || jobQuery.data?.status === "processing",
+  )
+  const itemsQuery = createQuery(() => ({
+    queryKey: ["jobs", jobId, "items"],
+    queryFn: async () => {
+      const { data } = await jobsListJobItems({
+        path: { job_id: jobId },
+        query: { page_size: 100 },
+      })
+      return data?.items ?? []
+    },
+    // Suit le statut du job (l'accessor est réactif) : les items avancent
+    // pendant le traitement.
+    refetchInterval: running ? 2500 : false,
+  }))
+
+  const job = $derived(jobQuery.data ?? null)
+  const items = $derived<ItemPublic[] | null>(itemsQuery.data ?? null)
+  const errorMessage = $derived(jobQuery.isError ? "Job introuvable." : null)
 
   // OpenAPI marks the pydantic-defaulted count fields optional — normalize.
   const counts = $derived.by(() => {
@@ -103,8 +115,10 @@
       return
     }
     toast.success(`Relance des échecs lancée (${count} item${count > 1 ? "s" : ""})`)
-    job = data
-    load() // refresh items; polling resumes since the job is pending again
+    // Le job repasse pending : le cache est mis à jour immédiatement et le
+    // polling conditionnel reprend tout seul ; les items sont invalidés.
+    queryClient.setQueryData(["jobs", jobId], data)
+    queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] })
   }
 
   const COUNT_LABELS: [keyof Omit<typeof counts, "total">, string][] = [

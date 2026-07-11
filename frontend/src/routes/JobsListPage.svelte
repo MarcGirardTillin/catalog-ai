@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createQuery } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
   import { jobsListJobs } from "@/client"
@@ -17,18 +18,19 @@
   // Densité des tables : padding vertical des cellules selon la préférence.
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
-  let jobs = $state<JobPublic[] | null>(null)
-  let errorMessage = $state<string | null>(null)
-
-  $effect(() => {
-    jobsListJobs({ query: { page_size: 50 } }).then(({ data, error }) => {
-      if (error || !data) {
-        errorMessage = "Impossible de charger les enrichissements."
-        return
-      }
-      jobs = data.items
-    })
-  })
+  // TanStack Query : cache partagé (retour liste ↔ détail instantané).
+  const jobsQuery = createQuery(() => ({
+    queryKey: ["jobs", "list"],
+    queryFn: async () => {
+      const { data, error } = await jobsListJobs({ query: { page_size: 50 } })
+      if (error || !data) throw new Error("jobs_load_failed")
+      return data
+    },
+  }))
+  const jobs = $derived(jobsQuery.data?.items ?? null)
+  const errorMessage = $derived(
+    jobsQuery.isError ? "Impossible de charger les enrichissements." : null,
+  )
 
   // done = total - pending - processing (same rule as JobDetailPage).
   function progressOf(job: JobPublic): { done: number; total: number; percent: number } {

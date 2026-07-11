@@ -1,5 +1,6 @@
 <script lang="ts">
   import FileUp from "@lucide/svelte/icons/file-up"
+  import { createQuery } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
   import { listImports, type ImportJobPublic } from "@/lib/api/imports"
@@ -17,18 +18,19 @@
   // Densité des tables : padding vertical des cellules selon la préférence.
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
-  let imports = $state<ImportJobPublic[] | null>(null)
-  let errorMessage = $state<string | null>(null)
-
-  $effect(() => {
-    listImports({ page_size: 50 }).then(({ data, error }) => {
-      if (error || !data) {
-        errorMessage = "Impossible de charger les imports."
-        return
-      }
-      imports = data.items
-    })
-  })
+  // TanStack Query : cache partagé (retour liste ↔ détail instantané).
+  const importsQuery = createQuery(() => ({
+    queryKey: ["imports", "list"],
+    queryFn: async () => {
+      const { data, error } = await listImports({ page_size: 50 })
+      if (error || !data) throw new Error("imports_load_failed")
+      return data
+    },
+  }))
+  const imports = $derived(importsQuery.data?.items ?? null)
+  const errorMessage = $derived(
+    importsQuery.isError ? "Impossible de charger les imports." : null,
+  )
 
   // Suivi produits : où en sont les produits extraits de l'import.
   type Chip = { label: string; count: number; tone: string }

@@ -3,6 +3,7 @@
   // polling du job et des items, le référentiel et les magasins vivent ici,
   // les trois blocs métier sont des composants (lib/components/imports/) :
   // synthèse, grille de review, export Tillin.
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
   import {
@@ -34,44 +35,59 @@
   const PAGE_SIZE = 100
   const importId = $derived(Number(id))
 
+  // job/items restent des $state bindables (les composants enfants font des
+  // mises à jour optimistes) mais leur source de vérité est TanStack Query :
+  // cache + polling conditionnel (2,5 s tant que l'analyse tourne), chaque
+  // refetch/invalidation resynchronise depuis le serveur.
   let job = $state<ImportJobPublic | null>(null)
   let items = $state<ImportItemPublic[] | null>(null)
   let page = $state(1)
   let totalPages = $state(1)
-  let errorMessage = $state<string | null>(null)
 
-  async function load() {
-    const jobId = Number(id)
-    const [jobResult, itemsResult] = await Promise.all([
-      readImport(jobId),
-      listImportItems(jobId, { page, page_size: PAGE_SIZE }),
-    ])
-    if (jobResult.error || !jobResult.data) {
-      errorMessage = "Import introuvable."
-      return
-    }
-    job = jobResult.data
-    if (itemsResult.data) {
-      items = itemsResult.data.items
-      totalPages = itemsResult.data.total_pages
-    } else {
-      items = items ?? []
-    }
-  }
+  const queryClient = useQueryClient()
 
-  // Chargement initial + polling toutes les 2,5 s tant que l'analyse tourne
-  // (même pattern que le suivi des jobs d'enrichissement).
+  const jobQuery = createQuery(() => ({
+    queryKey: ["imports", importId],
+    queryFn: async () => {
+      const { data, error } = await readImport(importId)
+      if (error || !data) throw new Error("import_not_found")
+      return data
+    },
+    refetchInterval: (query: { state: { data?: ImportJobPublic } }) => {
+      const status = query.state.data?.status
+      return status === "pending" || status === "processing" ? 2500 : false
+    },
+    retry: false,
+  }))
+  const jobRunning = $derived(
+    jobQuery.data?.status === "pending" || jobQuery.data?.status === "processing",
+  )
+  const itemsQuery = createQuery(() => ({
+    queryKey: ["imports", importId, "items", page],
+    queryFn: async () => {
+      const { data } = await listImportItems(importId, {
+        page,
+        page_size: PAGE_SIZE,
+      })
+      return data ?? null
+    },
+    // Les produits apparaissent au fil de l'analyse (accessor réactif).
+    refetchInterval: jobRunning ? 2500 : false,
+  }))
+
   $effect(() => {
-    // `page` est lu ici pour recharger quand la pagination change.
-    void page
-    load()
-    const timer = setInterval(() => {
-      if (job && (job.status === "pending" || job.status === "processing")) {
-        load()
-      }
-    }, 2500)
-    return () => clearInterval(timer)
+    if (jobQuery.data) job = jobQuery.data
   })
+  $effect(() => {
+    const data = itemsQuery.data
+    if (data) {
+      items = data.items
+      totalPages = data.total_pages
+    }
+  })
+  const errorMessage = $derived(
+    jobQuery.isError ? "Import introuvable." : null,
+  )
 
   const running = $derived(job?.status === "pending" || job?.status === "processing")
   const completed = $derived(job?.status === "completed")
@@ -164,14 +180,14 @@
     renderVersion += 1
   }
 
-  async function refreshJob() {
-    const { data } = await readImport(Number(id))
-    if (data) job = data
-  }
-
   function onItemsChanged() {
     invalidateRender()
-    refreshJob()
+    // Counts serveur : refetch du job (le préfixe couvre aussi les items).
+    queryClient.invalidateQueries({ queryKey: ["imports", importId] })
+  }
+
+  function onTransferred() {
+    queryClient.invalidateQueries({ queryKey: ["imports", importId] })
   }
 </script>
 
@@ -249,7 +265,7 @@
               {locationsError}
               onRetryLocations={loadLocations}
               {renderVersion}
-              onTransferred={load}
+              {onTransferred}
             />
           {/if}
         {/if}
