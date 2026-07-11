@@ -526,6 +526,50 @@ def _add_item(
     return item_id
 
 
+def test_bulk_update_items_mixed_statuses(import_client: TestClient) -> None:
+    """The bulk PATCH only touches editable items; applied/failed are skipped."""
+    job = _upload(import_client)
+    ready = _add_item(job["id"], {"supplier_ref": "R1"})
+    rejected = _add_item(job["id"], {"supplier_ref": "R2"}, status="rejected")
+    applied = _add_item(job["id"], {"supplier_ref": "R3"}, status="applied")
+    failed = _add_item(job["id"], {"supplier_ref": "R4"}, status="failed")
+
+    # Tout écarter : seul l'item ready change (rejected l'est déjà).
+    response = import_client.patch(
+        f"/imports/{job['id']}/items",
+        json={"ids": [ready, rejected, applied, failed], "status": "rejected"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["updated"] == 1
+    assert body["counts"]["rejected"] == 2
+    assert body["counts"]["applied"] == 1
+    assert body["counts"]["failed"] == 1
+
+    db = _db()
+    assert db.get(ImportItem, applied).status == "applied"  # intouché
+    assert db.get(ImportItem, failed).status == "failed"  # intouché
+
+    # Tout réintégrer : les deux écartés reviennent.
+    restore = import_client.patch(
+        f"/imports/{job['id']}/items",
+        json={"ids": [ready, rejected, applied, failed], "status": "ready_for_review"},
+    )
+    assert restore.json()["updated"] == 2
+    assert restore.json()["counts"]["ready_for_review"] == 2
+
+    # Statut hors périmètre → 400 ; liste vide → 422 (validation pydantic).
+    bad = import_client.patch(
+        f"/imports/{job['id']}/items", json={"ids": [ready], "status": "applied"}
+    )
+    assert bad.status_code == 400
+    assert bad.json()["code"] == "invalid_status"
+    empty = import_client.patch(
+        f"/imports/{job['id']}/items", json={"ids": [], "status": "rejected"}
+    )
+    assert empty.status_code == 422
+
+
 def test_patch_item_edits_payload(import_client: TestClient) -> None:
     job = _upload(import_client)
     item_id = _add_item(job["id"], {"supplier_ref": "REF-1", "title": "Pull"})

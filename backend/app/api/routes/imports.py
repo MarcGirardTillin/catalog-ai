@@ -35,6 +35,8 @@ from app.api.schemas.imports import (
     ImportFilePreview,
     ImportFilePreviewSheet,
     ImportItemPublic,
+    ImportItemsBulkResult,
+    ImportItemsBulkUpdate,
     ImportItemUpdate,
     ImportJobCounts,
     ImportJobPublic,
@@ -460,6 +462,43 @@ def update_import_item(
     db.commit()
     db.refresh(item)
     return _item_public(item)
+
+
+@router.patch("/{import_id}/items", response_model=ImportItemsBulkResult)
+def bulk_update_import_items(
+    import_id: int,
+    body: ImportItemsBulkUpdate,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ImportItemsBulkResult:
+    """One-shot include/exclude of many items (« tout transférer/écarter »).
+
+    Atomic single UPDATE: only the job's items whose current status is
+    editable (ready_for_review/rejected) are touched — applied/failed items
+    are silently skipped, exactly like the per-item PATCH would refuse them.
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    if body.status not in EDITABLE_ITEM_STATUSES:
+        raise AppException(
+            status_code=400,
+            code="invalid_status",
+            message="status must be 'ready_for_review' or 'rejected'",
+        )
+    result = db.execute(
+        update(ImportItem)
+        .where(
+            ImportItem.job_id == job.id,
+            ImportItem.id.in_(body.ids),
+            ImportItem.status.in_(EDITABLE_ITEM_STATUSES),
+            ImportItem.status != body.status,
+        )
+        .values(status=body.status)
+    )
+    db.commit()
+    # CursorResult carries rowcount; the generic Result type doesn't expose it.
+    updated = int(getattr(result, "rowcount", 0) or 0)
+    return ImportItemsBulkResult(updated=updated, counts=_job_counts(db, job.id))
 
 
 @router.put("/{import_id}/profile", response_model=ImportJobPublic)

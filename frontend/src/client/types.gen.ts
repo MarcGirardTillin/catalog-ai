@@ -693,6 +693,36 @@ export type ImportItemUpdate = {
 };
 
 /**
+ * ImportItemsBulkResult
+ */
+export type ImportItemsBulkResult = {
+    /**
+     * Updated
+     */
+    updated?: number;
+    counts: ImportJobCounts;
+};
+
+/**
+ * ImportItemsBulkUpdate
+ *
+ * PATCH /imports/{id}/items body — one-shot include/exclude of many items.
+ *
+ * Powers « tout transférer / tout écarter » in one request instead of one
+ * PATCH per item (atomic, and fast on 100+ product imports).
+ */
+export type ImportItemsBulkUpdate = {
+    /**
+     * Ids
+     */
+    ids: Array<number>;
+    /**
+     * Status
+     */
+    status: string;
+};
+
+/**
  * ImportJobCounts
  */
 export type ImportJobCounts = {
@@ -3130,6 +3160,36 @@ export type ImportsListImportItemsResponses = {
 };
 
 export type ImportsListImportItemsResponse = ImportsListImportItemsResponses[keyof ImportsListImportItemsResponses];
+
+export type ImportsBulkUpdateImportItemsData = {
+    body: ImportItemsBulkUpdate;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/items';
+};
+
+export type ImportsBulkUpdateImportItemsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsBulkUpdateImportItemsError = ImportsBulkUpdateImportItemsErrors[keyof ImportsBulkUpdateImportItemsErrors];
+
+export type ImportsBulkUpdateImportItemsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportItemsBulkResult;
+};
+
+export type ImportsBulkUpdateImportItemsResponse = ImportsBulkUpdateImportItemsResponses[keyof ImportsBulkUpdateImportItemsResponses];
 
 export type ImportsUpdateImportItemData = {
     body: ImportItemUpdate;

@@ -19,6 +19,7 @@
   } from "@/lib/api/catalogFilters"
   import { jobsCreateEnrichmentJob } from "@/client"
   import {
+    bulkUpdateImportItems,
     getImportCsv,
     getImportFile,
     getImportProducts,
@@ -419,14 +420,21 @@
     const toChange = selectableItems.filter((i) => i.status !== target)
     if (toChange.length === 0) return
     bulkUpdating = true
-    const results = await Promise.all(
-      toChange.map((i) => patchImportItem(Number(id), i.id, { status: target })),
+    // Un seul PATCH atomique (l'ancienne version envoyait N requêtes).
+    const { data, error } = await bulkUpdateImportItems(
+      Number(id),
+      toChange.map((i) => i.id),
+      target,
     )
     bulkUpdating = false
-    const updated = new Map(
-      results.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : [])),
+    if (error || !data) {
+      toast.error("Mise à jour de la sélection impossible.")
+      return
+    }
+    const changed = new Set(toChange.map((i) => i.id))
+    items = (items ?? []).map((i) =>
+      changed.has(i.id) ? { ...i, status: target } : i,
     )
-    items = (items ?? []).map((i) => updated.get(i.id) ?? i)
     rowsPreview = null
     rowsOpen = false
     toast.success(

@@ -114,6 +114,24 @@ class ImportItemUpdate(BaseModel):
     status: str | None = None
 
 
+class ImportItemsBulkUpdate(BaseModel):
+    """PATCH /imports/{id}/items body — one-shot include/exclude of many items.
+
+    Powers « tout transférer / tout écarter » in one request instead of one
+    PATCH per item (atomic, and fast on 100+ product imports).
+    """
+
+    ids: list[int] = Field(min_length=1)
+    # Only "ready_for_review" (include) and "rejected" (exclude) are accepted.
+    status: str
+
+
+class ImportItemsBulkResult(BaseModel):
+    # Items actually changed (already-target / non-editable ones are skipped).
+    updated: int = 0
+    counts: ImportJobCounts
+
+
 class ImportProfileSelection(BaseModel):
     """PUT /imports/{id}/profile body — null clears the selection."""
 

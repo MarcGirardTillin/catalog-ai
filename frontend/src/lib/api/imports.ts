@@ -271,6 +271,24 @@ export function patchImportItem(
   })
 }
 
+/** Inclusion/exclusion en masse (« tout transférer / tout écarter ») :
+ * un seul PATCH atomique au lieu d'une requête par item. */
+export function bulkUpdateImportItems(
+  jobId: number,
+  ids: number[],
+  status: "ready_for_review" | "rejected",
+) {
+  return client.patch<
+    { 200: { updated: number; counts: ImportJobCounts } },
+    unknown
+  >({
+    responseType: "json",
+    url: `/imports/${jobId}/items`,
+    body: { ids, status },
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
 /** Associe (ou détache avec null) un profil d'import au job. */
 export function setImportProfile(id: number, profileId: number | null) {
   return client.put<{ 200: ImportJobPublic }, unknown>({

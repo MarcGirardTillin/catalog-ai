@@ -1120,6 +1120,48 @@ export const ImportItemUpdateSchema = {
     description: 'Review edits: a corrected payload and/or a reject/restore status.'
 } as const;
 
+export const ImportItemsBulkResultSchema = {
+    properties: {
+        updated: {
+            type: 'integer',
+            title: 'Updated',
+            default: 0
+        },
+        counts: {
+            $ref: '#/components/schemas/ImportJobCounts'
+        }
+    },
+    type: 'object',
+    required: [
+        'counts'
+    ],
+    title: 'ImportItemsBulkResult'
+} as const;
+
+export const ImportItemsBulkUpdateSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Ids'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    required: [
+        'ids',
+        'status'
+    ],
+    title: 'ImportItemsBulkUpdate',
+    description: 'PATCH /imports/{id}/items body — one-shot include/exclude of many items.\n\nPowers « tout transférer / tout écarter » in one request instead of one\nPATCH per item (atomic, and fast on 100+ product imports).'
+} as const;
+
 export const ImportJobCountsSchema = {
     properties: {
         total: {
