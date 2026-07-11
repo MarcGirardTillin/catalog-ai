@@ -6,6 +6,7 @@ import {
   type ImageAssetPublic,
   imagingReadAsset,
   imagingSaveAsset,
+  itemsNormalizeItemImageRoute,
   productsGenerateModelImage,
   productsNormalizeImage,
 } from "@/client"
@@ -49,9 +50,8 @@ export function saveAsset(assetId: number, replace: boolean) {
 /** Normalise (ou rétablit) UNE image stagée d'un item d'enrichissement —
  *  action par image de la review (les originales sont stagées par défaut). */
 export function normalizeItemImage(itemId: number, url: string, revert: boolean) {
-  return client.post<{ 200: import("@/client").ItemPublic }, unknown>({
-    responseType: "json",
-    url: `/items/${itemId}/images/normalize`,
+  return itemsNormalizeItemImageRoute({
+    path: { item_id: itemId },
     body: { url, revert },
   })
 }

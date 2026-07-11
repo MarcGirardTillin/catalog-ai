@@ -23,7 +23,6 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import FileResponse
-from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -417,7 +416,12 @@ def _item_public(item: ImportItem) -> ImportItemPublic:
         id=item.id,
         status=item.status,
         tillin_product_id=item.tillin_product_id,
-        payload=item.payload_json or {},
+        # payload est typé ImportedProduct : un payload_json vide (item en
+        # échec avant staging) devient un produit sans référence plutôt
+        # qu'une erreur de validation.
+        payload=ImportedProduct.model_validate(
+            item.payload_json or {"supplier_ref": ""}
+        ),
         warnings=[str(w) for w in item.warnings_json or []],
         error=item.error,
         created_at=item.created_at,
@@ -447,16 +451,8 @@ def update_import_item(
             message="status must be 'ready_for_review' or 'rejected'",
         )
     if body.payload is not None:
-        try:
-            product = ImportedProduct.model_validate(body.payload)
-        except ValidationError as exc:
-            raise AppException(
-                status_code=400,
-                code="invalid_payload",
-                message="payload is not a valid imported product",
-                detail=exc.errors(include_url=False),
-            ) from exc
-        item.payload_json = product.model_dump(mode="json")
+        # Déjà validé à la frontière (le schéma type payload: ImportedProduct).
+        item.payload_json = body.payload.model_dump(mode="json")
     if body.status is not None:
         item.status = body.status
     db.commit()

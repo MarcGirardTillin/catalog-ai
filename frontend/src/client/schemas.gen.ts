@@ -1051,9 +1051,7 @@ export const ImportItemPublicSchema = {
             title: 'Tillin Product Id'
         },
         payload: {
-            additionalProperties: true,
-            type: 'object',
-            title: 'Payload'
+            $ref: '#/components/schemas/ImportedProduct-Output'
         },
         warnings: {
             items: {
@@ -1094,14 +1092,12 @@ export const ImportItemUpdateSchema = {
         payload: {
             anyOf: [
                 {
-                    additionalProperties: true,
-                    type: 'object'
+                    $ref: '#/components/schemas/ImportedProduct-Input'
                 },
                 {
                     type: 'null'
                 }
-            ],
-            title: 'Payload'
+            ]
         },
         status: {
             anyOf: [
@@ -1930,6 +1926,448 @@ export const ImportTransferResultSchema = {
     },
     type: 'object',
     title: 'ImportTransferResult'
+} as const;
+
+export const ImportedProduct_InputSchema = {
+    properties: {
+        supplier_ref: {
+            type: 'string',
+            title: 'Supplier Ref'
+        },
+        title: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Title'
+        },
+        brand: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Brand'
+        },
+        category: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Category'
+        },
+        season: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Season'
+        },
+        gender: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Gender'
+        },
+        composition: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Composition'
+        },
+        hs_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Hs Code'
+        },
+        manufacturing_country: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Manufacturing Country'
+        },
+        image_urls: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Image Urls'
+        },
+        variants: {
+            items: {
+                $ref: '#/components/schemas/ImportedVariant-Input'
+            },
+            type: 'array',
+            title: 'Variants'
+        },
+        confidence: {
+            additionalProperties: {
+                type: 'number'
+            },
+            type: 'object',
+            title: 'Confidence'
+        }
+    },
+    type: 'object',
+    required: [
+        'supplier_ref'
+    ],
+    title: 'ImportedProduct',
+    description: 'One product (a supplier reference) with its extracted variants.'
+} as const;
+
+export const ImportedProduct_OutputSchema = {
+    properties: {
+        supplier_ref: {
+            type: 'string',
+            title: 'Supplier Ref'
+        },
+        title: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Title'
+        },
+        brand: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Brand'
+        },
+        category: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Category'
+        },
+        season: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Season'
+        },
+        gender: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Gender'
+        },
+        composition: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Composition'
+        },
+        hs_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Hs Code'
+        },
+        manufacturing_country: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Manufacturing Country'
+        },
+        image_urls: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Image Urls'
+        },
+        variants: {
+            items: {
+                $ref: '#/components/schemas/ImportedVariant-Output'
+            },
+            type: 'array',
+            title: 'Variants'
+        },
+        confidence: {
+            additionalProperties: {
+                type: 'number'
+            },
+            type: 'object',
+            title: 'Confidence'
+        }
+    },
+    type: 'object',
+    required: [
+        'supplier_ref'
+    ],
+    title: 'ImportedProduct',
+    description: 'One product (a supplier reference) with its extracted variants.'
+} as const;
+
+export const ImportedVariant_InputSchema = {
+    properties: {
+        ean: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ean'
+        },
+        color: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color'
+        },
+        size: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Size'
+        },
+        quantity: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Quantity'
+        },
+        wholesale_price: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wholesale Price'
+        },
+        retail_price: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Retail Price'
+        },
+        supplier_sku: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Supplier Sku'
+        },
+        confidence: {
+            additionalProperties: {
+                type: 'number'
+            },
+            type: 'object',
+            title: 'Confidence'
+        }
+    },
+    type: 'object',
+    title: 'ImportedVariant',
+    description: 'One sellable variant (one size of one color), one CSV row later.'
+} as const;
+
+export const ImportedVariant_OutputSchema = {
+    properties: {
+        ean: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ean'
+        },
+        color: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color'
+        },
+        size: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Size'
+        },
+        quantity: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Quantity'
+        },
+        wholesale_price: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wholesale Price'
+        },
+        retail_price: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Retail Price'
+        },
+        supplier_sku: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Supplier Sku'
+        },
+        confidence: {
+            additionalProperties: {
+                type: 'number'
+            },
+            type: 'object',
+            title: 'Confidence'
+        }
+    },
+    type: 'object',
+    title: 'ImportedVariant',
+    description: 'One sellable variant (one size of one color), one CSV row later.'
 } as const;
 
 export const InstructionCreateSchema = {

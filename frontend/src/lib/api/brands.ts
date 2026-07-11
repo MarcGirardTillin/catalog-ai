@@ -1,31 +1,21 @@
-// Appels typés vers les marques (sites web de référence).
-//
-// Ces endpoints sont plus récents que le client généré (src/client) : on
-// réutilise son instance axios configurée (baseURL + cookies) via `client`
-// et on appelle les chemins bruts. À remplacer par les fonctions générées
-// après régénération OpenAPI.
-import { client } from "@/client/client.gen"
+// Marques (sites web de référence) : adaptateur fin au-dessus du client
+// OpenAPI généré — types et appels viennent de src/client.
+import { brandsListBrands, brandsUpdateBrandWebsiteUrls } from "@/client"
+import type { BrandPublic as GenBrandPublic } from "@/client"
 
-export type BrandPublic = {
-  id: number
-  name: string | null
-  website_urls: string[]
-}
+// `website_urls` a un default serveur : toujours émis (raffinement requis).
+export type BrandPublic = GenBrandPublic & { website_urls: string[] }
 
-// Le client généré attend TData sous forme de map { statut: type } et
-// renvoie `{ data, error }` (throwOnError = false par défaut).
 export function listBrands() {
-  return client.get<{ 200: BrandPublic[] }, unknown>({
-    responseType: "json",
-    url: "/brands",
-  })
+  return brandsListBrands() as Promise<{
+    data?: BrandPublic[]
+    error?: unknown
+  }>
 }
 
 export function updateBrandWebsiteUrls(id: number, websiteUrls: string[]) {
-  return client.put<{ 200: BrandPublic }, unknown>({
-    responseType: "json",
-    url: `/brands/${id}/website_urls`,
+  return brandsUpdateBrandWebsiteUrls({
+    path: { brand_id: id },
     body: { website_urls: websiteUrls },
-    headers: { "Content-Type": "application/json" },
-  })
+  }) as Promise<{ data?: BrandPublic; error?: unknown }>
 }

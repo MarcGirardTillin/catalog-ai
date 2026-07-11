@@ -126,7 +126,7 @@
       composition: clean(draft.composition),
       hs_code: clean(draft.hs_code),
       manufacturing_country: clean(draft.manufacturing_country),
-      variants: original.variants.map((variant, index) => {
+      variants: original.variants.map((variant, index): ImportedVariant => {
         const v = draft.variants[index]
         if (!v) return variant
         const quantity = v.quantity.trim()

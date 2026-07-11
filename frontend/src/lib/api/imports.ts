@@ -1,151 +1,104 @@
-// Appels typés vers les imports de fichiers fournisseurs.
+// Imports fournisseurs : adaptateur fin au-dessus du client OpenAPI généré.
 //
-// Ces endpoints sont plus récents que le client généré (src/client) : on
-// réutilise son instance axios configurée (baseURL + cookies) via `client`
-// et on appelle les chemins bruts. À remplacer par les fonctions générées
-// après régénération OpenAPI.
+// Les types viennent TOUS de src/client (zéro redéfinition manuelle, donc
+// zéro dérive possible avec le backend). Les seuls raffinements locaux
+// rendent OBLIGATOIRES des champs que le serveur émet toujours (pydantic
+// default_factory) mais que l'OpenAPI marque optionnels — si le backend
+// renomme/supprime un champ, la compilation casse quand même.
+//
+// Restent en appels bruts (instance axios du client généré) : l'upload
+// multipart (champ répété `files`) et les téléchargements binaires (blob).
+import {
+  importProfilesCreateImportProfile,
+  importProfilesDeleteImportProfile,
+  importProfilesListImportProfiles,
+  importProfilesUpdateImportProfile,
+  importsBulkUpdateImportItems,
+  importsLinkImportProducts,
+  importsListImportItems,
+  importsListImportProducts,
+  importsListImports,
+  importsPreviewImportFile,
+  importsPreviewImportRows,
+  importsReadImport,
+  importsSetImportLocation,
+  importsSetImportProfile,
+  importsTransferImport,
+  importsUpdateImportItem,
+  locationsListLocations,
+} from "@/client"
+import type {
+  ImportedProductOutput,
+  ImportedVariantOutput,
+  ImportFilePreview as GenImportFilePreview,
+  ImportFilePreviewSheet as GenImportFilePreviewSheet,
+  ImportItemPublic as GenImportItemPublic,
+  ImportJobCounts as GenImportJobCounts,
+  ImportJobPublic as GenImportJobPublic,
+  ImportJobTotals as GenImportJobTotals,
+  ImportLinkResult,
+  ImportProductLine,
+  ImportProducts,
+  ImportProfileConfigOutput,
+  ImportProfilePublic as GenImportProfilePublic,
+  ImportRenderPreview,
+  ImportTransferResult,
+} from "@/client"
 import { client } from "@/client/client.gen"
+
+// --- Types (générés, avec raffinements "toujours émis par le serveur") ---
+
+export type { ImportItemsBulkResult, LocationPublic } from "@/client"
 
 export type ImportJobStatus = "pending" | "processing" | "completed" | "failed"
 
-export type ImportJobCounts = {
-  total: number
-  ready_for_review: number // à transférer
-  applied: number // déjà transférés
-  rejected: number // écartés
-  failed: number
+export type ImportJobCounts = Required<GenImportJobCounts>
+export type ImportJobTotals = Required<GenImportJobTotals>
+
+// Alias historiques (noms utilisés par les pages avant la migration),
+// rendus obligatoires là où le serveur émet toujours la valeur (defaults).
+export type LinkProductsResult = Required<ImportLinkResult>
+export type ImportProductItem = Required<ImportProductLine>
+export type ImportProductsResponse = Required<ImportProducts> & {
+  items: ImportProductItem[]
+}
+export type ImportRowsPreview = Required<ImportRenderPreview>
+export type TransferResult = Required<ImportTransferResult>
+export type ImportFilePreviewSheet = Required<GenImportFilePreviewSheet>
+export type ImportFilePreview = GenImportFilePreview & {
+  sheets: ImportFilePreviewSheet[]
 }
 
-// Cumuls sur toutes les variantes extraites (quantité absente = 1 unité ;
-// montants = quantité × prix unitaire, en chaînes décimales JSON).
-export type ImportJobTotals = {
-  quantity: number
-  wholesale_amount: string | null
-  retail_amount: string | null
-}
+// Required<> retire l'optionnalité (le serveur émet toujours les champs à
+// défaut pydantic) mais conserve les unions `| null`.
+export type ImportedVariant = Required<ImportedVariantOutput>
 
-export type ImportJobPublic = {
-  id: number
-  status: ImportJobStatus
-  // Nom du 1er fichier (compat) ; `file_names` liste tous les fichiers du lot.
-  file_name: string
-  file_names: string[]
-  counts: ImportJobCounts
-  totals: ImportJobTotals
-  // Infos lues sur le document lui-même (bons de commande surtout).
-  po_number: string | null
-  supplier: string | null
-  warnings: string[]
-  error: string | null
-  created_at: string
-  started_at: string | null
-  finished_at: string | null
-  duration_seconds: number | null
-  // Profil d'import associé au job (règles d'export Tillin), null si aucun.
-  profile_id: number | null
-  // Magasin (location Tillin) de destination du job, null si non choisi.
-  location_id: number | null
-}
-
-// --- Profils d'import (règles de transformation vers le CSV Tillin) ---
-
-// Les décimaux (coefficient, arrondi, TVA) voyagent en chaînes JSON.
-export type ImportProfileConfig = {
-  price_mode: "retail_as_is" | "coefficient"
-  coefficient: string | null
-  round_up_to: string
-  barcode_mode: "ean" | "constructed"
-  brand_mode: "as_extracted" | "fixed"
-  brand_value: string
-  supplier_label: string
-  season_label: string
-  tax_rate: string
-  wholesale_tax_rate: string
-  status: string
-  // Rendre le titre depuis le modèle de titre du compte dès l'import (défaut off).
-  apply_title_template: boolean
-}
-
-export type ImportProfilePublic = {
-  id: number
-  name: string
-  supplier_match: string
-  config: ImportProfileConfig
-  created_at: string
-  updated_at: string
-}
-
-export type ImportProfileCreate = {
-  name: string
-  supplier_match: string
-  config: ImportProfileConfig
-}
-
-// Aperçu des lignes du CSV Tillin généré pour un job + profil.
-export type ImportRowsPreview = {
-  columns: string[]
-  rows: string[][]
-  warnings: string[]
-  row_count: number
-}
-
-export type LocationPublic = {
-  id: number
-  title: string
-}
-
-export type TransferResult = {
-  ok: boolean
-  row_count: number
-}
-
-export type ImportedVariant = {
-  ean: string | null
-  color: string | null
-  size: string | null
-  quantity: number | null
-  // Les prix arrivent en chaînes décimales JSON (ex. "12.50").
-  wholesale_price: string | null
-  retail_price: string | null
-  supplier_sku: string | null
-  confidence: Record<string, number>
-}
-
-export type ImportedProduct = {
-  supplier_ref: string
-  title: string | null
-  brand: string | null
-  category: string | null
-  season: string | null
-  gender: string | null
-  composition: string | null
-  hs_code: string | null
-  manufacturing_country: string | null
-  image_urls: string[]
+export type ImportedProduct = Required<
+  Omit<ImportedProductOutput, "variants">
+> & {
   variants: ImportedVariant[]
-  confidence: Record<string, number>
 }
 
-export type ImportItemPublic = {
-  id: number
-  status: string
+export type ImportItemPublic = GenImportItemPublic & {
   payload: ImportedProduct
   warnings: string[]
-  error: string | null
-  created_at: string
 }
 
-export type ImportFilePreviewSheet = {
-  sheet: string | null
-  rows: string[][]
-  total_rows: number
-  truncated: boolean
+export type ImportJobPublic = GenImportJobPublic & {
+  counts: ImportJobCounts
+  file_names: string[]
+  warnings: string[]
+  totals: ImportJobTotals
 }
 
-export type ImportFilePreview = {
-  kind: "pdf" | "tabular"
-  file_name: string
-  sheets: ImportFilePreviewSheet[]
+// Le CSV voyage en chaînes décimales ; l'Output généré (réponses) est déjà
+// tout-chaînes, et reste assignable à l'Input (corps de création).
+export type ImportProfileConfig = Required<
+  Omit<ImportProfileConfigOutput, "coefficient">
+> & { coefficient: string | null }
+
+export type ImportProfilePublic = GenImportProfilePublic & {
+  config: ImportProfileConfig
 }
 
 export type Paginated<T> = {
@@ -156,8 +109,7 @@ export type Paginated<T> = {
   total_pages: number
 }
 
-// Le client généré attend TData sous forme de map { statut: type } et
-// renvoie `{ data, error }` (throwOnError = false par défaut).
+// --- Jobs d'import ---
 
 /** Upload multipart : plusieurs fichiers d'un même bon de commande sous le
  * champ répété `files`, plus le magasin et le profil choisis au dépôt.
@@ -179,18 +131,17 @@ export function createImport(
 }
 
 export function listImports(query?: { page?: number; page_size?: number }) {
-  return client.get<{ 200: Paginated<ImportJobPublic> }, unknown>({
-    responseType: "json",
-    url: "/imports",
-    query,
-  })
+  return importsListImports({ query }) as Promise<{
+    data?: Paginated<ImportJobPublic>
+    error?: unknown
+  }>
 }
 
 export function readImport(id: number) {
-  return client.get<{ 200: ImportJobPublic }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}`,
-  })
+  return importsReadImport({ path: { import_id: id } }) as Promise<{
+    data?: ImportJobPublic
+    error?: unknown
+  }>
 }
 
 /** Fichier source original, en blob (l'auth passe par les cookies axios).
@@ -205,55 +156,54 @@ export function getImportFile(id: number, index = 0) {
 
 /** Premières lignes parsées d'un fichier tabulaire (xlsx/csv) du lot. */
 export function previewImportFile(id: number, index = 0) {
-  return client.get<{ 200: ImportFilePreview }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/file/preview`,
+  return importsPreviewImportFile({
+    path: { import_id: id },
     query: index ? { index } : undefined,
-  })
+  }) as Promise<{ data?: ImportFilePreview; error?: unknown }>
 }
 
 export function listImportItems(
   id: number,
   query?: { page?: number; page_size?: number },
 ) {
-  return client.get<{ 200: Paginated<ImportItemPublic> }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/items`,
-    query,
-  })
+  return importsListImportItems({ path: { import_id: id }, query }) as Promise<{
+    data?: Paginated<ImportItemPublic>
+    error?: unknown
+  }>
 }
 
 // --- CRUD des profils d'import ---
 
 export function listImportProfiles() {
-  return client.get<{ 200: ImportProfilePublic[] }, unknown>({
-    responseType: "json",
-    url: "/import-profiles",
-  })
+  return importProfilesListImportProfiles() as Promise<{
+    data?: ImportProfilePublic[]
+    error?: unknown
+  }>
 }
 
-export function createImportProfile(body: ImportProfileCreate) {
-  return client.post<{ 201: ImportProfilePublic }, unknown>({
-    responseType: "json",
-    url: "/import-profiles",
-    body,
-    headers: { "Content-Type": "application/json" },
-  })
+export function createImportProfile(body: {
+  name: string
+  supplier_match: string
+  config: ImportProfileConfig
+}) {
+  return importProfilesCreateImportProfile({ body }) as Promise<{
+    data?: ImportProfilePublic
+    error?: unknown
+  }>
 }
 
-export function updateImportProfile(id: number, body: Partial<ImportProfileCreate>) {
-  return client.patch<{ 200: ImportProfilePublic }, unknown>({
-    responseType: "json",
-    url: `/import-profiles/${id}`,
+export function updateImportProfile(
+  id: number,
+  body: Partial<{ name: string; supplier_match: string; config: ImportProfileConfig }>,
+) {
+  return importProfilesUpdateImportProfile({
+    path: { profile_id: id },
     body,
-    headers: { "Content-Type": "application/json" },
-  })
+  }) as Promise<{ data?: ImportProfilePublic; error?: unknown }>
 }
 
 export function deleteImportProfile(id: number) {
-  return client.delete<{ 204: unknown }, unknown>({
-    url: `/import-profiles/${id}`,
-  })
+  return importProfilesDeleteImportProfile({ path: { profile_id: id } })
 }
 
 // --- Review des items (édition du payload, exclusion/réintégration) ---
@@ -263,12 +213,10 @@ export function patchImportItem(
   itemId: number,
   body: { payload?: ImportedProduct; status?: "ready_for_review" | "rejected" },
 ) {
-  return client.patch<{ 200: ImportItemPublic }, unknown>({
-    responseType: "json",
-    url: `/imports/${jobId}/items/${itemId}`,
+  return importsUpdateImportItem({
+    path: { import_id: jobId, item_id: itemId },
     body,
-    headers: { "Content-Type": "application/json" },
-  })
+  }) as Promise<{ data?: ImportItemPublic; error?: unknown }>
 }
 
 /** Inclusion/exclusion en masse (« tout transférer / tout écarter ») :
@@ -278,45 +226,35 @@ export function bulkUpdateImportItems(
   ids: number[],
   status: "ready_for_review" | "rejected",
 ) {
-  return client.patch<
-    { 200: { updated: number; counts: ImportJobCounts } },
-    unknown
-  >({
-    responseType: "json",
-    url: `/imports/${jobId}/items`,
+  return importsBulkUpdateImportItems({
+    path: { import_id: jobId },
     body: { ids, status },
-    headers: { "Content-Type": "application/json" },
   })
 }
 
 /** Associe (ou détache avec null) un profil d'import au job. */
 export function setImportProfile(id: number, profileId: number | null) {
-  return client.put<{ 200: ImportJobPublic }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/profile`,
+  return importsSetImportProfile({
+    path: { import_id: id },
     body: { profile_id: profileId },
-    headers: { "Content-Type": "application/json" },
-  })
+  }) as Promise<{ data?: ImportJobPublic; error?: unknown }>
 }
 
 /** Associe (ou détache avec null) le magasin de destination du job. */
 export function setImportLocation(id: number, locationId: number | null) {
-  return client.put<{ 200: ImportJobPublic }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/location`,
+  return importsSetImportLocation({
+    path: { import_id: id },
     body: { location_id: locationId },
-    headers: { "Content-Type": "application/json" },
-  })
+  }) as Promise<{ data?: ImportJobPublic; error?: unknown }>
 }
 
 // --- Export Tillin (aperçu, CSV, transfert) ---
 
 export function getImportRows(id: number, profileId?: number) {
-  return client.get<{ 200: ImportRowsPreview }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/rows`,
+  return importsPreviewImportRows({
+    path: { import_id: id },
     query: profileId != null ? { profile_id: profileId } : undefined,
-  })
+  }) as Promise<{ data?: ImportRowsPreview; error?: unknown }>
 }
 
 /** CSV Tillin généré, en blob (l'auth passe par les cookies axios). */
@@ -329,10 +267,7 @@ export function getImportCsv(id: number, profileId?: number) {
 }
 
 export function listLocations() {
-  return client.get<{ 200: LocationPublic[] }, unknown>({
-    responseType: "json",
-    url: "/locations",
-  })
+  return locationsListLocations()
 }
 
 /** Transfert vers Tillin. `location_id` absent → le backend utilise la
@@ -341,55 +276,27 @@ export function transferImport(
   id: number,
   body: { location_id?: number; profile_id?: number },
 ) {
-  return client.post<{ 200: TransferResult }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/transfer`,
-    body,
-    headers: { "Content-Type": "application/json" },
-  })
+  return importsTransferImport({ path: { import_id: id }, body }) as Promise<{
+    data?: TransferResult
+    error?: unknown
+  }>
 }
 
 // --- Pont import → produits Tillin (liaison et lecture des produits créés) ---
 
-export type LinkProductsResult = {
-  linked: number
-  already_linked: number
-  not_found: string[]
-}
-
-export type ImportProductItem = {
-  item_id: number
-  status: string
-  supplier_ref: string
-  title: string | null
-  brand: string | null
-  image_url: string | null
-  variant_count: number
-  // Id du produit Tillin créé par le transfert, null tant que non relié.
-  tillin_product_id: number | null
-}
-
-export type ImportProductsResponse = {
-  import_id: number
-  file_name: string
-  items: ImportProductItem[]
-  linked_count: number
-  unlinked_count: number
-}
-
 /** Relie les items transférés aux produits Tillin (résolution par référence).
  * 400 `{code:"not_transferred"}` si l'import n'a pas encore été transféré. */
 export function linkImportProducts(id: number) {
-  return client.post<{ 200: LinkProductsResult }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/link-products`,
-  })
+  return importsLinkImportProducts({ path: { import_id: id } }) as Promise<{
+    data?: LinkProductsResult
+    error?: unknown
+  }>
 }
 
 /** Produits de l'import avec leur liaison Tillin (onglet « Par import »). */
 export function getImportProducts(id: number) {
-  return client.get<{ 200: ImportProductsResponse }, unknown>({
-    responseType: "json",
-    url: `/imports/${id}/products`,
-  })
+  return importsListImportProducts({ path: { import_id: id } }) as Promise<{
+    data?: ImportProductsResponse
+    error?: unknown
+  }>
 }

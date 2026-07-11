@@ -1,118 +1,42 @@
-// Appels typés vers le metering de consommation (usage LLM et autres métriques).
-//
-// Ces endpoints sont plus récents que le client généré (src/client) : on
-// réutilise son instance axios configurée (baseURL + cookies) via `client`
-// et on appelle les chemins bruts. À remplacer par les fonctions générées
-// après régénération OpenAPI.
+// Metering de consommation : adaptateur fin au-dessus du client OpenAPI
+// généré — les types viennent TOUS de src/client (aucune redéfinition à la
+// main, donc aucune dérive possible avec le backend). Seul l'export CSV
+// reste un appel brut (blob + cookies).
+import {
+  usageCreateUsagePrice,
+  usageDeleteUsagePrice,
+  usageListUsagePrices,
+  usageReadUsageByJob,
+  usageReadUsageSummary,
+  usageReadUsageTimeseries,
+  usageRefreezeSnapshot,
+  usageUpdateUsagePrice,
+} from "@/client"
+import type { UsagePriceCreate, UsagePriceUpdate } from "@/client"
 import { client } from "@/client/client.gen"
 
-// Les montants et prix voyagent en chaînes décimales JSON (ex. "0.000003").
-
-export type UsageSummaryLine = {
-  provider: string
-  model: string | null
-  metric: string
-  quantity: number
-  unit_price: string | null
-  cost: string | null
-  billable: string | null
-}
-
-export type UsageSummary = {
-  month: string
-  currency: string
-  coefficient: number
-  lines: UsageSummaryLine[]
-  totals: { cost: string; billable: string }
-  // Nombre de (provider, model, metric) consommés sans tarif dans la grille.
-  unpriced_count: number
-  // Figement : true si le mois est facturé (tarifs figés à cette date).
-  frozen: boolean
-  // Date à laquelle le mois est/sera facturé ("YYYY-MM-DD").
-  billing_date: string
-  // Horodatage du figement effectif, ou null si pas encore figé.
-  frozen_at: string | null
-}
-
-// --- Série temporelle quotidienne (pour les graphiques) ---
+export type {
+  UsageByJob,
+  UsageJobLine,
+  UsageJobMetric,
+  UsagePriceCreate,
+  UsageSummary,
+  UsageSummaryLine,
+  UsageTimeseries,
+  UsageTimeseriesPoint,
+  UsageTimeseriesSeries,
+} from "@/client"
+// Alias historiques (noms utilisés par les pages avant la migration).
+export type { UsagePricePublic as UsagePrice } from "@/client"
 
 export type UsageTimeseriesGroupBy = "none" | "model" | "provider"
 
-export type UsageTimeseriesPoint = {
-  date: string // "YYYY-MM-DD"
-  amount: string // facturable en EUR (chaîne décimale)
-  quantity: number
-}
-
-export type UsageTimeseriesSeries = {
-  key: string
-  points: UsageTimeseriesPoint[]
-}
-
-export type UsageTimeseries = {
-  month: string
-  group_by: UsageTimeseriesGroupBy
-  currency: string
-  series: UsageTimeseriesSeries[]
-}
-
-export type UsageJobMetric = {
-  provider: string
-  metric: string
-  quantity: number
-}
-
-export type UsageJobLine = {
-  job_id: number | null
-  job_type: string | null
-  label: string
-  created_at: string | null
-  input_tokens: number
-  output_tokens: number
-  other_metrics: UsageJobMetric[]
-  cost: string | null
-  billable: string | null
-}
-
-export type UsageByJob = {
-  month: string
-  jobs: UsageJobLine[]
-}
-
-export type UsagePrice = {
-  id: number
-  provider: string
-  model: string | null
-  metric: string
-  unit_price: string
-  currency: string
-}
-
-export type UsagePriceCreate = {
-  provider: string
-  model?: string | null
-  metric: string
-  unit_price: string
-  currency?: string
-}
-
-// Le client généré attend TData sous forme de map { statut: type } et
-// renvoie `{ data, error }` (throwOnError = false par défaut).
-
 export function getUsageSummary(month: string) {
-  return client.get<{ 200: UsageSummary }, unknown>({
-    responseType: "json",
-    url: "/usage/summary",
-    query: { month },
-  })
+  return usageReadUsageSummary({ query: { month } })
 }
 
 export function getUsageByJob(month: string) {
-  return client.get<{ 200: UsageByJob }, unknown>({
-    responseType: "json",
-    url: "/usage/by-job",
-    query: { month },
-  })
+  return usageReadUsageByJob({ query: { month } })
 }
 
 /** Série temporelle quotidienne du facturable, regroupée ou non. */
@@ -120,23 +44,15 @@ export function getUsageTimeseries(
   month: string,
   groupBy: UsageTimeseriesGroupBy,
 ) {
-  return client.get<{ 200: UsageTimeseries }, unknown>({
-    responseType: "json",
-    url: "/usage/timeseries",
-    query: { month, group_by: groupBy },
-  })
+  return usageReadUsageTimeseries({ query: { month, group_by: groupBy } })
 }
 
 /**
- * Re-figement d'un mois déjà facturé avec les tarifs actuels.
+ * Re-figement d'un mois déjà facturé avec les tarifs actuels (admin).
  * 400 {code:"not_frozen"} si le mois n'est pas encore facturé.
  */
 export function refreezeUsageMonth(month: string) {
-  return client.post<{ 200: UsageSummary }, { code?: string }>({
-    responseType: "json",
-    url: "/usage/snapshot",
-    query: { month },
-  })
+  return usageRefreezeSnapshot({ query: { month } })
 }
 
 /** Export CSV du mois, en blob (l'auth passe par les cookies axios). */
@@ -148,35 +64,20 @@ export function getUsageExport(month: string) {
   })
 }
 
-// --- CRUD de la grille tarifaire ---
+// --- CRUD de la grille tarifaire (admin) ---
 
 export function listUsagePrices() {
-  return client.get<{ 200: UsagePrice[] }, unknown>({
-    responseType: "json",
-    url: "/usage/prices",
-  })
+  return usageListUsagePrices()
 }
 
 export function createUsagePrice(body: UsagePriceCreate) {
-  return client.post<{ 201: UsagePrice }, unknown>({
-    responseType: "json",
-    url: "/usage/prices",
-    body,
-    headers: { "Content-Type": "application/json" },
-  })
+  return usageCreateUsagePrice({ body })
 }
 
-export function updateUsagePrice(id: number, body: Partial<UsagePriceCreate>) {
-  return client.patch<{ 200: UsagePrice }, unknown>({
-    responseType: "json",
-    url: `/usage/prices/${id}`,
-    body,
-    headers: { "Content-Type": "application/json" },
-  })
+export function updateUsagePrice(id: number, body: UsagePriceUpdate) {
+  return usageUpdateUsagePrice({ path: { price_id: id }, body })
 }
 
 export function deleteUsagePrice(id: number) {
-  return client.delete<{ 204: unknown }, unknown>({
-    url: `/usage/prices/${id}`,
-  })
+  return usageDeleteUsagePrice({ path: { price_id: id } })
 }

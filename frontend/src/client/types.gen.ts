@@ -654,12 +654,7 @@ export type ImportItemPublic = {
      * Tillin Product Id
      */
     tillin_product_id?: number | null;
-    /**
-     * Payload
-     */
-    payload: {
-        [key: string]: unknown;
-    };
+    payload: ImportedProductOutput;
     /**
      * Warnings
      */
@@ -680,12 +675,7 @@ export type ImportItemPublic = {
  * Review edits: a corrected payload and/or a reject/restore status.
  */
 export type ImportItemUpdate = {
-    /**
-     * Payload
-     */
-    payload?: {
-        [key: string]: unknown;
-    } | null;
+    payload?: ImportedProductInput | null;
     /**
      * Status
      */
@@ -1167,6 +1157,206 @@ export type ImportTransferResult = {
      * Row Count
      */
     row_count?: number;
+};
+
+/**
+ * ImportedProduct
+ *
+ * One product (a supplier reference) with its extracted variants.
+ */
+export type ImportedProductInput = {
+    /**
+     * Supplier Ref
+     */
+    supplier_ref: string;
+    /**
+     * Title
+     */
+    title?: string | null;
+    /**
+     * Brand
+     */
+    brand?: string | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+    /**
+     * Season
+     */
+    season?: string | null;
+    /**
+     * Gender
+     */
+    gender?: string | null;
+    /**
+     * Composition
+     */
+    composition?: string | null;
+    /**
+     * Hs Code
+     */
+    hs_code?: string | null;
+    /**
+     * Manufacturing Country
+     */
+    manufacturing_country?: string | null;
+    /**
+     * Image Urls
+     */
+    image_urls?: Array<string>;
+    /**
+     * Variants
+     */
+    variants?: Array<ImportedVariantInput>;
+    /**
+     * Confidence
+     */
+    confidence?: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * ImportedProduct
+ *
+ * One product (a supplier reference) with its extracted variants.
+ */
+export type ImportedProductOutput = {
+    /**
+     * Supplier Ref
+     */
+    supplier_ref: string;
+    /**
+     * Title
+     */
+    title?: string | null;
+    /**
+     * Brand
+     */
+    brand?: string | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+    /**
+     * Season
+     */
+    season?: string | null;
+    /**
+     * Gender
+     */
+    gender?: string | null;
+    /**
+     * Composition
+     */
+    composition?: string | null;
+    /**
+     * Hs Code
+     */
+    hs_code?: string | null;
+    /**
+     * Manufacturing Country
+     */
+    manufacturing_country?: string | null;
+    /**
+     * Image Urls
+     */
+    image_urls?: Array<string>;
+    /**
+     * Variants
+     */
+    variants?: Array<ImportedVariantOutput>;
+    /**
+     * Confidence
+     */
+    confidence?: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * ImportedVariant
+ *
+ * One sellable variant (one size of one color), one CSV row later.
+ */
+export type ImportedVariantInput = {
+    /**
+     * Ean
+     */
+    ean?: string | null;
+    /**
+     * Color
+     */
+    color?: string | null;
+    /**
+     * Size
+     */
+    size?: string | null;
+    /**
+     * Quantity
+     */
+    quantity?: number | null;
+    /**
+     * Wholesale Price
+     */
+    wholesale_price?: number | string | null;
+    /**
+     * Retail Price
+     */
+    retail_price?: number | string | null;
+    /**
+     * Supplier Sku
+     */
+    supplier_sku?: string | null;
+    /**
+     * Confidence
+     */
+    confidence?: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * ImportedVariant
+ *
+ * One sellable variant (one size of one color), one CSV row later.
+ */
+export type ImportedVariantOutput = {
+    /**
+     * Ean
+     */
+    ean?: string | null;
+    /**
+     * Color
+     */
+    color?: string | null;
+    /**
+     * Size
+     */
+    size?: string | null;
+    /**
+     * Quantity
+     */
+    quantity?: number | null;
+    /**
+     * Wholesale Price
+     */
+    wholesale_price?: string | null;
+    /**
+     * Retail Price
+     */
+    retail_price?: string | null;
+    /**
+     * Supplier Sku
+     */
+    supplier_sku?: string | null;
+    /**
+     * Confidence
+     */
+    confidence?: {
+        [key: string]: number;
+    };
 };
 
 /**

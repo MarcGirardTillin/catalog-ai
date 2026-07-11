@@ -2,9 +2,11 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.imports.schema import ImportedProduct
 
 
 class ImportJobCounts(BaseModel):
@@ -69,8 +71,9 @@ class ImportItemPublic(BaseModel):
     status: str
     # Tillin product id once linked back after transfer (by reference_code).
     tillin_product_id: int | None = None
-    # ImportedProduct.model_dump(mode="json") — see app/imports/schema.py.
-    payload: dict[str, Any]
+    # Typed as the frozen import contract so the generated frontend client
+    # carries the real product/variant shape (not an opaque dict).
+    payload: ImportedProduct
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     created_at: datetime
@@ -108,8 +111,9 @@ class ImportProducts(BaseModel):
 class ImportItemUpdate(BaseModel):
     """Review edits: a corrected payload and/or a reject/restore status."""
 
-    # Validated against ImportedProduct before being stored.
-    payload: dict[str, Any] | None = None
+    # Typed as the frozen import contract (validated by pydantic at the
+    # boundary; the route re-normalizes before storing).
+    payload: ImportedProduct | None = None
     # Only "ready_for_review" (restore) and "rejected" are accepted.
     status: str | None = None
 

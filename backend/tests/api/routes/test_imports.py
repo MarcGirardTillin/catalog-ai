@@ -600,12 +600,13 @@ def test_patch_item_rejects_invalid_payload(import_client: TestClient) -> None:
     job = _upload(import_client)
     item_id = _add_item(job["id"], {"supplier_ref": "REF-1"})
 
-    # supplier_ref is required by the frozen contract.
+    # supplier_ref is required by the frozen contract. Le payload est typé
+    # ImportedProduct dans le schéma : la validation se fait à la frontière
+    # FastAPI (422) et non plus dans la route (400 invalid_payload).
     response = import_client.patch(
         f"/imports/{job['id']}/items/{item_id}", json={"payload": {"title": "Pull"}}
     )
-    assert response.status_code == 400
-    assert response.json()["code"] == "invalid_payload"
+    assert response.status_code == 422
     # The stored payload is untouched.
     db = _db()
     assert db.get(ImportItem, item_id).payload_json == {"supplier_ref": "REF-1"}
