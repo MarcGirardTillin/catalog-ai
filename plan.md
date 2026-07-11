@@ -411,6 +411,35 @@ scraping robustness stays in the infra sprint (Firecrawl fallback).
   2026-07-10** (`fichiers_xano/endpoints_xano/6546_product_image_deactivate.xs`);
   endpoint validated live (upload + deactivate, net zero).
 
+## Sprint marque blanche & admin — SHIPPED 2026-07-12
+
+Suite de l'audit UX du 2026-07-11 (voir .claude/DECISIONS.md pour les
+décisions durables). Livré en 9 commits (e885704→2e9b07d) :
+
+1. **Quick wins UX** : compteur de transfert dérivé de job.counts (exact au-delà
+   d'une page), pages système francisées (SystemShell), « Job #N » →
+   « Enrichissement #N », CTA unique « Enrichir des produits » →
+   /products?intent=enrich (bandeau), section Export Tillin toujours visible,
+   CTA « Vérifier les produits (N) », StatusBadge partagé, chips multi-fichiers.
+2. **Backend admin & marque blanche** : user.is_admin (migration 0016, marc
+   promu), CurrentAdminDep, redaction serveur de /usage/* pour les non-admins
+   (services neutres, facturable seul, coefficient masqué), routes /admin
+   (comptes, overview marge, usage complet par compte, activité, réglages),
+   AccountSettings.minutes_saved_* (temps gagné, admin-only).
+3. **Frontend admin** : console /admin (Clients, détail client, Tarification),
+   UsagePage client épurée, sweep des noms de providers dans les toasts.
+4. **Dashboard client** refondu : À traiter (cartes actionnables), Ce mois-ci
+   (temps gagné ≈ Xh calculé serveur), Activité récente fusionnée ;
+   DashboardStats étendu (compteurs exacts).
+5. **Dette technique** : PATCH bulk /imports/{id}/items ; ImportDetailPage
+   scindée (259 l. + 3 composants lib/components/imports/) ; lib/api migré en
+   adaptateurs du client OpenAPI généré (payload typé ImportedProduct de bout
+   en bout) ; TanStack Query v6 sur listes + détails du pipeline.
+
+Reste hors périmètre (plans ultérieurs) : composants ui/ (select/tabs/switch/
+empty-state/confirm-button), Query sur les écrans restants, refonte dashboard
+admin avancée, notifications Brevo, déploiement Railway.
+
 ## Future / separate sprints (out of scope here)
 - **In-scene / lifestyle imagery:** generative scene from a text prompt (e.g.
   Photoroom **AI Backgrounds** or a FASHN background endpoint) — a possible later

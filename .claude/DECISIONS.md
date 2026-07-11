@@ -664,3 +664,45 @@ puis amendée de trois réserves. Décisions durables :
   d'abord — valide chaque verbe visuellement ; Phase B = batch dans le
   pipeline d'enrichissement (déterministe seulement ; le génératif reste à la
   carte).
+
+## 2026-07-12 — Marque blanche, console admin, dashboard client, dette technique
+
+Sprint post-audit UX (plan « logical-shimmying-squirrel », 9 commits
+e885704→2e9b07d). Décisions durables :
+
+- **Marque blanche par redaction SERVEUR, jamais par masquage UI.** Les
+  clients ne doivent voir ni providers/modèles (claude, photoroom, fashn,
+  firecrawl), ni coûts bruts, ni prix unitaires, ni le coefficient de
+  facturation (la marge de l'opérateur). `/usage/summary`, `/usage/by-job`
+  et `/usage/export` sont expurgés pour les non-admins (libellés de service
+  neutres via `SERVICE_LABELS`, lignes FUSIONNÉES par service — même le
+  nombre de modèles ne fuite pas) ; grille tarifaire, refreeze et timeseries
+  par modèle/provider sont admin-only. Tout nouvel endpoint qui touche au
+  coût DOIT passer par `redact`/`CurrentAdminDep`.
+- **Rôle opérateur : `user.is_admin`** (migration 0016, promotion de
+  marc.girard@tillin.fr incluse — table user LOCALE, pas Xano). Console
+  `/admin` (clients, marge par compte, tarification) sous `RequireAdmin`
+  frontend + `CurrentAdminDep` backend. Le PUT client des réglages de compte
+  préserve les champs opérateur (`ADMIN_ONLY_SETTINGS`).
+- **« Temps gagné »** : AccountSettings.minutes_saved_per_import_product
+  (défaut 2) / minutes_saved_per_enriched_product (défaut 10), modifiables
+  uniquement par l'admin ; le dashboard client affiche
+  minutes_saved_this_month calculé côté serveur (DashboardStats).
+- **Pas d'enrichissement avant transfert** (décision Marc 2026-07-11) : le
+  stockage final des images est Xano, un produit doit exister. Seule
+  exception actée : les transformations TEXTE bakées dans le CSV par le
+  profil d'import (modèle de titre déjà livré) — extension possible plus
+  tard, pas maintenant.
+- **Contrats typés de bout en bout** : ImportItemPublic.payload et
+  ImportItemUpdate.payload sont typés ImportedProduct (plus de dict[str,Any])
+  → le client OpenAPI généré porte la vraie forme ; src/lib/api/* sont des
+  ADAPTATEURS fins du client généré (aucun type API recopié à la main ; seuls
+  raffinements : rendre requis les champs à default serveur). Multipart et
+  blobs restent des appels bruts.
+- **Sélections en masse = endpoints bulk atomiques** (PATCH
+  /imports/{id}/items), jamais N requêtes côté client.
+- **TanStack Query v6** est le pattern data-fetching cible (cache, polling
+  par refetchInterval conditionnel, invalidations par préfixe de clé) —
+  adopté sur les listes + détails du pipeline, à étendre aux écrans restants
+  au fil de l'eau. Les compteurs affichés viennent TOUJOURS du serveur
+  (job.counts, DashboardStats), jamais d'une page paginée.
