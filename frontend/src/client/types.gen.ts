@@ -530,6 +530,14 @@ export type ImportJobCounts = {
      */
     ready_for_review?: number;
     /**
+     * Applied
+     */
+    applied?: number;
+    /**
+     * Rejected
+     */
+    rejected?: number;
+    /**
      * Failed
      */
     failed?: number;

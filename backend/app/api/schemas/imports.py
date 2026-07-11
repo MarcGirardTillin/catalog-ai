@@ -9,7 +9,9 @@ from pydantic import BaseModel, Field
 
 class ImportJobCounts(BaseModel):
     total: int = 0
-    ready_for_review: int = 0
+    ready_for_review: int = 0  # à transférer (non écarté, non transféré)
+    applied: int = 0  # déjà transféré vers Tillin
+    rejected: int = 0  # écarté (ne sera pas transféré)
     failed: int = 0
 
 

@@ -10,7 +10,9 @@ export type ImportJobStatus = "pending" | "processing" | "completed" | "failed"
 
 export type ImportJobCounts = {
   total: number
-  ready_for_review: number
+  ready_for_review: number // à transférer
+  applied: number // déjà transférés
+  rejected: number // écartés
   failed: number
 }
 

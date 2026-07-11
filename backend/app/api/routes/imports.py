@@ -77,8 +77,11 @@ PREVIEW_MAX_CELL_CHARS = 200
 
 # Review edits may only toggle between kept and rejected.
 EDITABLE_ITEM_STATUSES = ("ready_for_review", "rejected")
-# Items excluded from rendering/transfer (never reach the Tillin CSV).
-EXCLUDED_RENDER_STATUSES = ("rejected", "failed")
+# Items excluded from rendering/transfer: rejected/failed never reach the CSV,
+# and `applied` items are ALREADY in Tillin — re-rendering them would create
+# duplicates on a second transfer. So a render/transfer only ever concerns the
+# items still "to transfer" (ready_for_review).
+EXCLUDED_RENDER_STATUSES = ("rejected", "failed", "applied")
 # Statuses shown in the per-import products view (kept items only).
 PRODUCTS_VIEW_STATUSES = ("applied", "ready_for_review", "approved")
 
@@ -97,6 +100,8 @@ def _job_counts(db: Session, job_id: int) -> ImportJobCounts:
     return ImportJobCounts(
         total=sum(by_status.values()),
         ready_for_review=by_status.get("ready_for_review", 0),
+        applied=by_status.get("applied", 0),
+        rejected=by_status.get("rejected", 0),
         failed=by_status.get("failed", 0),
     )
 
@@ -622,7 +627,8 @@ def transfer_import(
         raise AppException(
             status_code=400,
             code="nothing_to_transfer",
-            message="No rows to transfer (every item is rejected or failed)",
+            message="No rows to transfer (every item is rejected, failed or "
+            "already transferred)",
         )
     xano.product_import(
         file_name=_csv_file_name(job),

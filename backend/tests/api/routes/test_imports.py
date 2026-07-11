@@ -63,7 +63,13 @@ def test_upload_creates_import_job_and_stores_file(
 
     assert job["status"] == "pending"
     assert job["file_name"] == "Commande L'Espion.PDF"
-    assert job["counts"] == {"total": 0, "ready_for_review": 0, "failed": 0}
+    assert job["counts"] == {
+        "total": 0,
+        "ready_for_review": 0,
+        "applied": 0,
+        "rejected": 0,
+        "failed": 0,
+    }
     assert job["warnings"] == []
     assert job["error"] is None
     assert job["started_at"] is None
@@ -172,7 +178,13 @@ def test_import_detail_surfaces_warnings_error_and_counts(
     db.commit()
 
     detail = import_client.get(f"/imports/{job['id']}").json()
-    assert detail["counts"] == {"total": 2, "ready_for_review": 1, "failed": 1}
+    assert detail["counts"] == {
+        "total": 2,
+        "ready_for_review": 1,
+        "applied": 0,
+        "rejected": 0,
+        "failed": 1,
+    }
     assert detail["warnings"] == ["colonne prix ambiguë"]
     assert detail["po_number"] == "PO-889"
     assert detail["supplier"] == "L'Espion"
@@ -936,6 +948,29 @@ def test_transfer_pushes_csv_and_applies_items(
     assert transfer["location_id"] == 7
     assert transfer["row_count"] == 1
     assert transfer["transferred_at"]  # ISO timestamp
+
+
+def test_second_transfer_does_not_resend_applied_items(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """Applied items are already in Tillin: a second transfer must not re-send
+    them (no duplicates) and reports nothing left to transfer."""
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/profile", json={"profile_id": profile_id})
+
+    first = import_client.post(
+        f"/imports/{job['id']}/transfer", json={"location_id": 7}
+    )
+    assert first.status_code == 200
+
+    second = import_client.post(
+        f"/imports/{job['id']}/transfer", json={"location_id": 7}
+    )
+    assert second.status_code == 400
+    assert second.json()["code"] == "nothing_to_transfer"
+    # Xano received the CSV exactly once — no duplicate push.
+    assert len(fake_xano.calls) == 1
 
 
 def test_transfer_accepts_explicit_profile_id(

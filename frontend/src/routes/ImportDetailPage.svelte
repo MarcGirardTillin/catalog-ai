@@ -393,6 +393,48 @@
     refreshJob()
   }
 
+  // Sélection positive du transfert : cocher = « à transférer »
+  // (ready_for_review), décocher = « écarté » (rejected). Les produits déjà
+  // transférés (applied) ou en échec (failed) ne sont plus sélectionnables.
+  const selectableItems = $derived(
+    (items ?? []).filter(
+      (i) => i.status === "ready_for_review" || i.status === "rejected",
+    ),
+  )
+  const allSelected = $derived(
+    selectableItems.length > 0 &&
+      selectableItems.every((i) => i.status === "ready_for_review"),
+  )
+  let bulkUpdating = $state(false)
+
+  function setItemIncluded(item: ImportItemPublic, include: boolean) {
+    void setItemStatus(item, include ? "ready_for_review" : "rejected")
+  }
+
+  async function setAllIncluded(include: boolean) {
+    if (bulkUpdating) return
+    const target = include ? "ready_for_review" : "rejected"
+    const toChange = selectableItems.filter((i) => i.status !== target)
+    if (toChange.length === 0) return
+    bulkUpdating = true
+    const results = await Promise.all(
+      toChange.map((i) => patchImportItem(Number(id), i.id, { status: target })),
+    )
+    bulkUpdating = false
+    const updated = new Map(
+      results.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : [])),
+    )
+    items = (items ?? []).map((i) => updated.get(i.id) ?? i)
+    rowsPreview = null
+    rowsOpen = false
+    toast.success(
+      include
+        ? "Tous les produits seront transférés"
+        : "Tous les produits écartés du transfert",
+    )
+    refreshJob()
+  }
+
   // --- Export Tillin (aperçu des lignes, CSV, transfert) ---
   let rowsOpen = $state(false)
   let rowsLoading = $state(false)
@@ -1071,6 +1113,17 @@
                 <table class="w-full min-w-2xl text-sm">
                   <thead>
                     <tr class="border-border border-b">
+                      <th class="w-9 px-2 py-2.5">
+                        <input
+                          type="checkbox"
+                          class="cursor-pointer"
+                          checked={allSelected}
+                          disabled={selectableItems.length === 0 || bulkUpdating}
+                          aria-label="Tout transférer / tout écarter"
+                          title="Tout transférer / tout écarter"
+                          onchange={(e) => setAllIncluded(e.currentTarget.checked)}
+                        />
+                      </th>
                       <th class="w-8 px-2 py-2.5"><span class="sr-only">Détail</span></th>
                       <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Référence</th>
                       <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Titre</th>
@@ -1094,6 +1147,25 @@
                           : ''}"
                         onclick={() => toggleExpanded(item)}
                       >
+                        <td class="px-2 {cellPad}">
+                          <!-- Sélection positive : coché = à transférer. Les
+                               produits transférés/échoués ne sont plus modifiables. -->
+                          <input
+                            type="checkbox"
+                            class="cursor-pointer disabled:cursor-default"
+                            checked={item.status === "ready_for_review" || isApplied}
+                            disabled={isApplied ||
+                              item.status === "failed" ||
+                              statusItemId === item.id ||
+                              bulkUpdating}
+                            aria-label={isApplied
+                              ? `${product.supplier_ref} déjà transféré`
+                              : `Transférer ${product.supplier_ref}`}
+                            title={isApplied ? "Déjà transféré" : "À transférer"}
+                            onclick={(e) => e.stopPropagation()}
+                            onchange={(e) => setItemIncluded(item, e.currentTarget.checked)}
+                          />
+                        </td>
                         <td class="px-2 {cellPad}">
                           <button
                             type="button"
@@ -1176,31 +1248,12 @@
                                 {item.warnings.length}
                               </span>
                             {/if}
-                            <!-- Écarter / réintégrer sans déplier : choisir les
-                                 produits à transférer. Indisponible une fois
-                                 transféré (applied). -->
-                            {#if !isApplied}
-                              <button
-                                type="button"
-                                class="text-muted-foreground hover:text-foreground cursor-pointer text-[11px] underline underline-offset-2 disabled:opacity-50"
-                                disabled={statusItemId === item.id}
-                                onclick={(e) => {
-                                  e.stopPropagation()
-                                  setItemStatus(
-                                    item,
-                                    isRejected ? "ready_for_review" : "rejected",
-                                  )
-                                }}
-                              >
-                                {isRejected ? "Réintégrer" : "Écarter"}
-                              </button>
-                            {/if}
                           </div>
                         </td>
                       </tr>
                       {#if isOpen}
                         <tr class="border-border bg-muted/30 border-b">
-                          <td colspan="8" class="px-4 py-3">
+                          <td colspan="9" class="px-4 py-3">
                             <div class="flex flex-col gap-3">
                               {#if item.warnings.length > 0}
                                 <ul class="flex flex-col gap-0.5">
@@ -1563,15 +1616,26 @@
                     {/if}
                     Télécharger le CSV
                   </Button>
-                  <Button size="sm" onclick={toggleTransfer}>
+                  <Button
+                    size="sm"
+                    disabled={transferSummary.kept === 0}
+                    title={transferSummary.kept === 0
+                      ? "Aucun produit à transférer"
+                      : undefined}
+                    onclick={toggleTransfer}
+                  >
                     <Send size={14} aria-hidden="true" />
-                    Transférer vers Tillin
+                    Transférer {transferSummary.kept} produit{transferSummary.kept > 1
+                      ? "s"
+                      : ""} vers Tillin
                   </Button>
-                  {#if transferred}
+                  {#if transferSummary.applied > 0}
                     <span
                       class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
                     >
-                      Transfert effectué
+                      {transferSummary.applied} déjà transféré{transferSummary.applied > 1
+                        ? "s"
+                        : ""}
                     </span>
                   {/if}
                 </div>
@@ -1667,8 +1731,8 @@
                           {transferSummary.excluded > 1 ? "seront" : "sera"} pas transféré{transferSummary.excluded >
                           1
                             ? "s"
-                            : ""}{/if}. Écartez un produit (bouton «&nbsp;Écarter&nbsp;»
-                        sur sa ligne) pour l'exclure du transfert.
+                            : ""}{/if}. Cochez ou décochez les produits dans la liste
+                        pour choisir ceux à transférer.
                       </p>
                     {/if}
                     <div class="flex items-center justify-end gap-2">
@@ -1677,13 +1741,17 @@
                       </Button>
                       <Button
                         size="sm"
-                        disabled={transferring || selectedLocationId === ""}
+                        disabled={transferring ||
+                          selectedLocationId === "" ||
+                          transferSummary.kept === 0}
                         onclick={confirmTransfer}
                       >
                         {#if transferring}
                           <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
                         {/if}
-                        {transferring ? "Transfert…" : "Confirmer le transfert"}
+                        {transferring
+                          ? "Transfert…"
+                          : `Confirmer (${transferSummary.kept})`}
                       </Button>
                     </div>
                   </div>

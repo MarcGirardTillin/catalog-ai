@@ -894,6 +894,16 @@ export const ImportJobCountsSchema = {
             title: 'Ready For Review',
             default: 0
         },
+        applied: {
+            type: 'integer',
+            title: 'Applied',
+            default: 0
+        },
+        rejected: {
+            type: 'integer',
+            title: 'Rejected',
+            default: 0
+        },
         failed: {
             type: 'integer',
             title: 'Failed',
