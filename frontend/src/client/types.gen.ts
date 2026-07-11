@@ -365,7 +365,10 @@ export type ConnectionStatus = {
 /**
  * DashboardStats
  *
- * Account-scoped headline numbers for the dashboard KPI row.
+ * Account-scoped headline numbers for the dashboard.
+ *
+ * Server-side exact counters (the frontend previously approximated some of
+ * these from the first page of paginated lists).
  */
 export type DashboardStats = {
     /**
@@ -396,6 +399,30 @@ export type DashboardStats = {
      * Auto Resolve Rate
      */
     auto_resolve_rate?: number | null;
+    /**
+     * Imports To Transfer
+     */
+    imports_to_transfer?: number;
+    /**
+     * Imports Processing
+     */
+    imports_processing?: number;
+    /**
+     * Failed Items
+     */
+    failed_items?: number;
+    /**
+     * Applied This Month
+     */
+    applied_this_month?: number;
+    /**
+     * Imported This Month
+     */
+    imported_this_month?: number;
+    /**
+     * Minutes Saved This Month
+     */
+    minutes_saved_this_month?: number;
 };
 
 /**

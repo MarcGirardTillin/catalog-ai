@@ -1,13 +1,16 @@
 """Dashboard statistics route."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.api.schemas.settings import AccountSettings
 from app.api.schemas.stats import DashboardStats
 from app.api.services.accounts import resolve_account_id
-from app.models import EnrichmentItem, EnrichmentJob
+from app.models import Account, EnrichmentItem, EnrichmentJob, ImportItem
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -27,14 +30,61 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
         .tuples()
         .all()
     )
-    job_counts = dict(
-        db.execute(
-            select(EnrichmentJob.status, func.count())
+    # Per (job_type, status): the dashboard separates enrichments from imports.
+    job_counts_typed: dict[tuple[str, str], int] = {
+        (job_type, status): count
+        for job_type, status, count in db.execute(
+            select(EnrichmentJob.job_type, EnrichmentJob.status, func.count())
             .where(EnrichmentJob.account_id == account_id)
-            .group_by(EnrichmentJob.status)
+            .group_by(EnrichmentJob.job_type, EnrichmentJob.status)
         )
         .tuples()
         .all()
+    }
+    job_counts: dict[str, int] = {}
+    for (job_type, status), count in job_counts_typed.items():
+        if job_type == "enrichment":
+            job_counts[status] = job_counts.get(status, 0) + count
+    import_item_counts = dict(
+        db.execute(
+            select(ImportItem.status, func.count())
+            .where(ImportItem.account_id == account_id)
+            .group_by(ImportItem.status)
+        )
+        .tuples()
+        .all()
+    )
+
+    # « Ce mois-ci » : items created this month that ended applied (both types).
+    now = datetime.now(UTC)
+    month_start = datetime(now.year, now.month, 1, tzinfo=UTC)
+    applied_this_month = int(
+        db.scalar(
+            select(func.count()).where(
+                EnrichmentItem.account_id == account_id,
+                EnrichmentItem.status == "applied",
+                EnrichmentItem.created_at >= month_start,
+            )
+        )
+        or 0
+    )
+    imported_this_month = int(
+        db.scalar(
+            select(func.count()).where(
+                ImportItem.account_id == account_id,
+                ImportItem.status == "applied",
+                ImportItem.created_at >= month_start,
+            )
+        )
+        or 0
+    )
+    account = db.get(Account, account_id)
+    settings = AccountSettings.model_validate(
+        (account.settings_json if account else None) or {}
+    )
+    minutes_saved = (
+        imported_this_month * settings.minutes_saved_per_import_product
+        + applied_this_month * settings.minutes_saved_per_enriched_product
     )
 
     # Timing + resolution over settled items (Python-side date math: portable
@@ -69,6 +119,14 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
         )
         if resolved_methods
         else None,
+        imports_to_transfer=import_item_counts.get("ready_for_review", 0),
+        imports_processing=job_counts_typed.get(("import", "pending"), 0)
+        + job_counts_typed.get(("import", "processing"), 0),
+        failed_items=item_counts.get("failed", 0)
+        + import_item_counts.get("failed", 0),
+        applied_this_month=applied_this_month,
+        imported_this_month=imported_this_month,
+        minutes_saved_this_month=minutes_saved,
     )
 
 

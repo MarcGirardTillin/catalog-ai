@@ -625,11 +625,41 @@ export const DashboardStatsSchema = {
                 }
             ],
             title: 'Auto Resolve Rate'
+        },
+        imports_to_transfer: {
+            type: 'integer',
+            title: 'Imports To Transfer',
+            default: 0
+        },
+        imports_processing: {
+            type: 'integer',
+            title: 'Imports Processing',
+            default: 0
+        },
+        failed_items: {
+            type: 'integer',
+            title: 'Failed Items',
+            default: 0
+        },
+        applied_this_month: {
+            type: 'integer',
+            title: 'Applied This Month',
+            default: 0
+        },
+        imported_this_month: {
+            type: 'integer',
+            title: 'Imported This Month',
+            default: 0
+        },
+        minutes_saved_this_month: {
+            type: 'integer',
+            title: 'Minutes Saved This Month',
+            default: 0
         }
     },
     type: 'object',
     title: 'DashboardStats',
-    description: 'Account-scoped headline numbers for the dashboard KPI row.'
+    description: 'Account-scoped headline numbers for the dashboard.\n\nServer-side exact counters (the frontend previously approximated some of\nthese from the first page of paginated lists).'
 } as const;
 
 export const ExampleResponseSchema = {
