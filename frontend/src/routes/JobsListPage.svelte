@@ -39,6 +39,42 @@
     return { done, total, percent: total === 0 ? 0 : Math.round((done / total) * 100) }
   }
 
+  // Suivi par produit : où en sont les items du job (vocabulaire harmonisé).
+  // Le statut « Terminé » du job dit seulement que le traitement IA est fini —
+  // ces puces disent si les produits sont à vérifier, appliqués, etc.
+  type Chip = { label: string; count: number; tone: string }
+  function statusChips(job: JobPublic): Chip[] {
+    const c = job.counts
+    const defs: Chip[] = [
+      {
+        label: "à vérifier",
+        count: c.ready_for_review ?? 0,
+        tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+      },
+      {
+        label: "validés",
+        count: c.approved ?? 0,
+        tone: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+      },
+      {
+        label: "appliqués",
+        count: c.applied ?? 0,
+        tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+      },
+      {
+        label: "écartés",
+        count: c.rejected ?? 0,
+        tone: "bg-muted text-muted-foreground",
+      },
+      {
+        label: "échecs",
+        count: c.failed ?? 0,
+        tone: "bg-destructive/15 text-destructive",
+      },
+    ]
+    return defs.filter((chip) => chip.count > 0)
+  }
+
   function openJob(id: number) {
     navigate(`/jobs/${id}`)
   }
@@ -84,6 +120,7 @@
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Job</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Statut</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Progression</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Suivi produits</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Produits</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Durée</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Créé</th>
@@ -92,6 +129,7 @@
                 <tbody>
                   {#each jobs as job (job.id)}
                     {@const progress = progressOf(job)}
+                    {@const chips = statusChips(job)}
                     <tr
                       role="link"
                       tabindex="0"
@@ -114,6 +152,21 @@
                             {progress.done}/{progress.total}
                           </span>
                         </div>
+                      </td>
+                      <td class="px-4 {cellPad}">
+                        {#if chips.length > 0}
+                          <div class="flex flex-wrap gap-1">
+                            {#each chips as chip (chip.label)}
+                              <span
+                                class="rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap {chip.tone}"
+                              >
+                                {chip.count} {chip.label}
+                              </span>
+                            {/each}
+                          </div>
+                        {:else}
+                          <span class="text-muted-foreground text-xs">—</span>
+                        {/if}
                       </td>
                       <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {job.counts.total ?? 0}

@@ -181,6 +181,22 @@
     (profiles ?? []).find((p) => p.id === selectedProfileId) ?? null,
   )
 
+  // Saison imposée par le profil : elle REMPLACE la saison extraite du document
+  // au rendu CSV / transfert (comme le prix en mode coefficient). Affichée comme
+  // valeur effective dans la grille pour éviter toute ambiguïté.
+  const profileSeason = $derived((selectedProfile?.config.season_label ?? "").trim())
+
+  // Combien de produits partiront (non écartés) vs écartés vs déjà transférés :
+  // le transfert n'envoie que les produits gardés.
+  const transferSummary = $derived.by(() => {
+    const list = items ?? []
+    return {
+      kept: list.filter((i) => i.status === "ready_for_review").length,
+      excluded: list.filter((i) => i.status === "rejected").length,
+      applied: list.filter((i) => i.status === "applied").length,
+    }
+  })
+
   // --- Création/édition de profil sans quitter la review (panneau inline) ---
   let profileFormMode = $state<null | "edit" | "new">(null)
 
@@ -903,6 +919,14 @@
                       Le profil définit les règles de transformation (prix,
                       codes-barres, marque…) de l'export Tillin.
                     </p>
+                    {#if profileSeason}
+                      <p class="text-muted-foreground text-xs">
+                        Saison imposée par le profil : «&nbsp;<span
+                          class="text-foreground font-medium">{profileSeason}</span
+                        >&nbsp;» — elle remplace la saison extraite du document dans
+                        l'export.
+                      </p>
+                    {/if}
                   {/if}
                   {#if profiles.length === 0 && profileFormMode !== "new"}
                     <div>
@@ -1152,6 +1176,25 @@
                                 {item.warnings.length}
                               </span>
                             {/if}
+                            <!-- Écarter / réintégrer sans déplier : choisir les
+                                 produits à transférer. Indisponible une fois
+                                 transféré (applied). -->
+                            {#if !isApplied}
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground cursor-pointer text-[11px] underline underline-offset-2 disabled:opacity-50"
+                                disabled={statusItemId === item.id}
+                                onclick={(e) => {
+                                  e.stopPropagation()
+                                  setItemStatus(
+                                    item,
+                                    isRejected ? "ready_for_review" : "rejected",
+                                  )
+                                }}
+                              >
+                                {isRejected ? "Réintégrer" : "Écarter"}
+                              </button>
+                            {/if}
                           </div>
                         </td>
                       </tr>
@@ -1333,10 +1376,20 @@
                                   </div>
                                 </div>
                               {:else}
-                                {#if PRODUCT_FIELDS.some(({ key }) => product[key])}
+                                {#if PRODUCT_FIELDS.some(({ key }) => product[key]) || profileSeason}
                                   <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs sm:grid-cols-3">
                                     {#each PRODUCT_FIELDS as { key, label } (key)}
-                                      {#if product[key]}
+                                      {#if key === "season" && profileSeason}
+                                        <!-- Le profil impose la saison : on montre
+                                             la valeur effective (celle du CSV). -->
+                                        <div>
+                                          <dt class="text-muted-foreground">{label}</dt>
+                                          <dd>
+                                            {profileSeason}
+                                            <span class="text-muted-foreground">(profil)</span>
+                                          </dd>
+                                        </div>
+                                      {:else if product[key]}
                                         <div>
                                           <dt class="text-muted-foreground">{label}</dt>
                                           <dd
@@ -1603,8 +1656,19 @@
                         </select>
                       </div>
                       <p class="text-muted-foreground text-xs">
-                        Les produits non écartés seront créés dans Tillin sur ce
-                        magasin.
+                        <span class="text-foreground font-medium"
+                          >{transferSummary.kept} produit{transferSummary.kept > 1
+                            ? "s"
+                            : ""}</span
+                        >
+                        {transferSummary.kept > 1 ? "seront créés" : "sera créé"} dans
+                        Tillin sur ce magasin{#if transferSummary.excluded > 0}, {transferSummary.excluded}
+                          écarté{transferSummary.excluded > 1 ? "s" : ""} ne
+                          {transferSummary.excluded > 1 ? "seront" : "sera"} pas transféré{transferSummary.excluded >
+                          1
+                            ? "s"
+                            : ""}{/if}. Écartez un produit (bouton «&nbsp;Écarter&nbsp;»
+                        sur sa ligne) pour l'exclure du transfert.
                       </p>
                     {/if}
                     <div class="flex items-center justify-end gap-2">
