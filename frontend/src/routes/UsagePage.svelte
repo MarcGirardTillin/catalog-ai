@@ -22,8 +22,10 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
+  import UsageChart from "@/lib/components/usage/UsageChart.svelte"
   import { formatRelativeDate } from "@/lib/format"
   import { prefs } from "@/lib/preferences.svelte"
+  import { IMAGE_SERVICE_LABEL } from "@/lib/usageLabels"
 
   let { appName }: { appName: string } = $props()
 
@@ -93,73 +95,6 @@
     loadTimeseries()
   })
 
-  // --- Géométrie du graphique SVG (viewBox fixe, rendu responsive 100%) ---
-  const CW = 720
-  const CH = 220
-  const PAD = { l: 46, r: 14, t: 12, b: 26 }
-  const PLOT_W = CW - PAD.l - PAD.r
-  const PLOT_H = CH - PAD.t - PAD.b
-  const BAR_COLOR = "#6366f1"
-
-  const daysInMonth = $derived.by(() => {
-    const [y, m] = month.split("-").map(Number)
-    if (!y || !m) return 30
-    return new Date(y, m, 0).getDate()
-  })
-
-  function xForDay(day: number, n: number): number {
-    if (n <= 1) return PAD.l + PLOT_W / 2
-    return PAD.l + ((day - 1) / (n - 1)) * PLOT_W
-  }
-
-  /** Arrondi « joli » de la borne haute de l'axe Y (1, 2, 5 × 10ⁿ). */
-  function niceCeil(value: number): number {
-    if (value <= 0) return 1
-    const exp = Math.floor(Math.log10(value))
-    const base = Math.pow(10, exp)
-    const frac = value / base
-    const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10
-    return nice * base
-  }
-
-  // Modèle de graphique dérivé de la série temporelle courante (série totale).
-  const chart = $derived.by(() => {
-    const ts = timeseries
-    if (!ts) return null
-    const n = daysInMonth
-    const byDay = new Map<number, number>()
-    for (const s of ts.series) {
-      for (const p of s.points) {
-        const day = Number(p.date.slice(8, 10))
-        const amt = Number(p.amount)
-        if (Number.isFinite(day) && Number.isFinite(amt)) {
-          byDay.set(day, (byDay.get(day) ?? 0) + amt)
-        }
-      }
-    }
-    let maxY = 0
-    for (const v of byDay.values()) if (v > maxY) maxY = v
-    const yMax = niceCeil(maxY)
-    const yFor = (amount: number) => PAD.t + (1 - amount / yMax) * PLOT_H
-    const xTicks: number[] = []
-    for (let d = 1; d <= n; d += 5) xTicks.push(d)
-    if (xTicks[xTicks.length - 1] !== n) xTicks.push(n)
-    const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * yMax)
-    const barWidth = Math.max(2, (PLOT_W / n) * 0.6)
-    return { n, byDay, maxY, yMax, yFor, xTicks, yTicks, barWidth }
-  })
-
-  const chartIsEmpty = $derived(chart != null && chart.maxY <= 0)
-
-  /** Montant court pour l'axe Y : « 12 € », « 1,2 k€ ». */
-  function formatShortEur(n: number): string {
-    if (!Number.isFinite(n)) return ""
-    if (n >= 1000) {
-      return `${(n / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} k€`
-    }
-    return `${n.toLocaleString("fr-FR", { maximumFractionDigits: n < 10 ? 1 : 0 })} €`
-  }
-
   /** Étiquette de date longue fr-FR depuis "YYYY-MM-DD". */
   function formatLongDate(iso: string): string {
     const d = new Date(`${iso}T00:00:00`)
@@ -169,13 +104,6 @@
       month: "long",
       year: "numeric",
     })
-  }
-
-  /** Jour du mois "YYYY-MM-DD" en libellé court "3 juil." pour les tooltips. */
-  function formatDayLabel(day: number): string {
-    const [y, m] = month.split("-").map(Number)
-    const d = new Date(y, (m ?? 1) - 1, day)
-    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
   }
 
   // --- Formatage fr-FR ---
@@ -193,30 +121,43 @@
     return n.toLocaleString("fr-FR")
   }
 
-  // Libellés fr des métriques techniques (repli : nom brut).
-  const METRIC_LABELS: Record<string, string> = {
-    input_tokens: "Unités de texte (entrée)",
-    output_tokens: "Unités de texte (sortie)",
-    images: "Images traitées",
-    credits: "Crédits de génération",
-    web_searches: "Recherches web",
-    search_credits: "Recherches produit",
-    extract_credits: "Extractions de page",
+  // Deux compteurs client, sans vocabulaire technique : « Crédits de
+  // génération » (texte + recherches, en unités opaques) et « Images
+  // traitées ». Le pivot est le libellé de service neutre renvoyé par le
+  // backend expurgé (line.provider = service).
+  const imagesTotal = $derived(
+    summary?.lines
+      .filter((l) => l.provider === IMAGE_SERVICE_LABEL)
+      .reduce((acc, l) => acc + l.quantity, 0) ?? null,
+  )
+  const creditsTotal = $derived(
+    summary?.lines
+      .filter((l) => l.provider !== IMAGE_SERVICE_LABEL)
+      .reduce((acc, l) => acc + l.quantity, 0) ?? null,
+  )
+
+  // Mêmes compteurs par traitement (les other_metrics expurgés portent le
+  // libellé de service dans `provider`).
+  function jobImages(job: UsageByJob["jobs"][number]): number {
+    return job.other_metrics
+      .filter((m) => m.provider === IMAGE_SERVICE_LABEL)
+      .reduce((acc, m) => acc + m.quantity, 0)
   }
-  function metricLabel(metric: string): string {
-    return METRIC_LABELS[metric] ?? metric
+  function jobCredits(job: UsageByJob["jobs"][number]): number {
+    return (
+      job.input_tokens +
+      job.output_tokens +
+      job.other_metrics
+        .filter((m) => m.provider !== IMAGE_SERVICE_LABEL)
+        .reduce((acc, m) => acc + m.quantity, 0)
+    )
   }
 
-  const inputTokensTotal = $derived(
-    summary?.lines
-      .filter((l) => l.metric === "input_tokens")
-      .reduce((acc, l) => acc + l.quantity, 0) ?? null,
-  )
-  const outputTokensTotal = $derived(
-    summary?.lines
-      .filter((l) => l.metric === "output_tokens")
-      .reduce((acc, l) => acc + l.quantity, 0) ?? null,
-  )
+  function jobTypeLabel(jobType: string | null): string {
+    if (jobType === "import") return "Import fichier"
+    if (jobType === "enrichment") return "Enrichissement"
+    return "—"
+  }
 
   // --- Export CSV (blob → ancre de téléchargement) ---
   let exporting = $state(false)
@@ -325,17 +266,17 @@
             </Card>
             <Card size="sm">
               <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground text-xs">Unités de texte (entrée)</span>
+                <span class="text-muted-foreground text-xs">Crédits de génération</span>
                 <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
-                  {inputTokensTotal != null ? formatInt(inputTokensTotal) : "—"}
+                  {creditsTotal != null ? formatInt(creditsTotal) : "—"}
                 </span>
               </CardContent>
             </Card>
             <Card size="sm">
               <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground text-xs">Unités de texte (sortie)</span>
+                <span class="text-muted-foreground text-xs">Images traitées</span>
                 <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
-                  {outputTokensTotal != null ? formatInt(outputTokensTotal) : "—"}
+                  {imagesTotal != null ? formatInt(imagesTotal) : "—"}
                 </span>
               </CardContent>
             </Card>
@@ -347,120 +288,9 @@
               <CardTitle class="font-title text-sm">Évolution quotidienne</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
-              {#if tsFailed}
-                <p class="text-destructive py-4 text-center text-xs" role="alert">
-                  Impossible de charger l'évolution quotidienne.
-                </p>
-              {:else if chart === null}
-                <Skeleton class="h-48 w-full" />
-              {:else if chartIsEmpty}
-                <p class="text-muted-foreground py-10 text-center text-sm">
-                  Aucune consommation ce mois-ci.
-                </p>
-              {:else}
-                {@const c = chart}
-                <svg
-                  viewBox="0 0 {CW} {CH}"
-                  class="text-muted-foreground h-auto w-full"
-                  style="max-width:100%"
-                  role="img"
-                  aria-label="Évolution quotidienne du montant en euros pour {month}"
-                >
-                  <!-- Graduations et axe Y -->
-                  {#each c.yTicks as ty (ty)}
-                    {@const y = c.yFor(ty)}
-                    <line
-                      x1={PAD.l}
-                      x2={CW - PAD.r}
-                      y1={y}
-                      y2={y}
-                      stroke="currentColor"
-                      stroke-opacity="0.15"
-                    />
-                    <text
-                      x={PAD.l - 6}
-                      y={y + 3}
-                      text-anchor="end"
-                      font-size="10"
-                      fill="currentColor"
-                    >
-                      {formatShortEur(ty)}
-                    </text>
-                  {/each}
-
-                  <!-- Étiquettes X -->
-                  {#each c.xTicks as tx (tx)}
-                    <text
-                      x={xForDay(tx, c.n)}
-                      y={CH - PAD.b + 16}
-                      text-anchor="middle"
-                      font-size="10"
-                      fill="currentColor"
-                    >
-                      {tx}
-                    </text>
-                  {/each}
-
-                  <!-- Barres par jour -->
-                  {#each [...c.byDay.entries()] as [day, amount] (day)}
-                    {@const x = xForDay(day, c.n)}
-                    {@const y = c.yFor(amount)}
-                    <rect
-                      x={x - c.barWidth / 2}
-                      y={y}
-                      width={c.barWidth}
-                      height={Math.max(0, CH - PAD.b - y)}
-                      rx="1.5"
-                      fill={BAR_COLOR}
-                    >
-                      <title>{formatDayLabel(day)} : {formatAmount(String(amount))}</title>
-                    </rect>
-                  {/each}
-                </svg>
-              {/if}
+              <UsageChart {timeseries} failed={tsFailed} {month} />
             </CardContent>
           </Card>
-
-          <!-- Table Par service -->
-          <h2 class="font-title mt-1 text-sm font-bold">Par service</h2>
-          {#if summary.lines.length === 0}
-            <Card size="sm">
-              <CardContent class="text-muted-foreground py-4 text-center text-xs">
-                Aucune consommation sur ce mois.
-              </CardContent>
-            </Card>
-          {:else}
-            <Card class="py-0">
-              <CardContent class="overflow-x-auto px-0">
-                <table class="w-full min-w-xl text-sm">
-                  <thead>
-                    <tr class="border-border border-b">
-                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Service</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Type</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Quantité</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Montant</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each summary.lines as line, index (index)}
-                      <tr class="border-border border-b last:border-b-0">
-                        <td class="px-4 {cellPad} whitespace-nowrap">{line.provider}</td>
-                        <td class="text-muted-foreground px-4 {cellPad} whitespace-nowrap text-xs">
-                          {metricLabel(line.metric)}
-                        </td>
-                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(line.quantity)}
-                        </td>
-                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatAmount(line.billable)}
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          {/if}
 
           <!-- Table Par job -->
           <h2 class="font-title mt-1 text-sm font-bold">Par traitement</h2>
@@ -477,10 +307,10 @@
                   <thead>
                     <tr class="border-border border-b">
                       <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Traitement</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Type</th>
                       <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Date</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Texte (entrée)</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Texte (sortie)</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Autres</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Crédits de génération</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Images traitées</th>
                       <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Montant</th>
                     </tr>
                   </thead>
@@ -507,23 +337,17 @@
                             </span>
                           {/if}
                         </td>
+                        <td class="text-muted-foreground px-4 {cellPad} text-xs whitespace-nowrap">
+                          {jobTypeLabel(job.job_type)}
+                        </td>
                         <td class="text-muted-foreground px-4 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
                           {job.created_at != null ? formatRelativeDate(job.created_at) : "—"}
                         </td>
                         <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(job.input_tokens)}
+                          {formatInt(jobCredits(job))}
                         </td>
                         <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(job.output_tokens)}
-                        </td>
-                        <td class="text-muted-foreground px-4 {cellPad} text-xs">
-                          {#if job.other_metrics.length === 0}
-                            —
-                          {:else}
-                            {job.other_metrics
-                              .map((m) => `${metricLabel(m.metric)} : ${formatInt(m.quantity)}`)
-                              .join(" · ")}
-                          {/if}
+                          {formatInt(jobImages(job))}
                         </td>
                         <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                           {formatAmount(job.billable)}

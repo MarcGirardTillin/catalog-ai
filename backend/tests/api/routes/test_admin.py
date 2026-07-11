@@ -98,6 +98,8 @@ def test_admin_routes_forbidden_for_regular_user(auth_client: TestClient) -> Non
     assert auth_client.get("/admin/accounts/1/activity").status_code == 403
     assert auth_client.get("/admin/accounts/1/settings").status_code == 403
     assert auth_client.put("/admin/accounts/1/settings", json={}).status_code == 403
+    assert auth_client.get("/admin/timeseries").status_code == 403
+    assert auth_client.get("/admin/accounts/1/timeseries").status_code == 403
 
 
 def test_usage_admin_surfaces_forbidden_for_regular_user(
@@ -228,6 +230,54 @@ def test_admin_overview_margin_and_volumes(admin_client: TestClient) -> None:
 
     full = admin_client.get(f"/admin/accounts/{account_id}/usage").json()
     assert any(line["model"] == "claude-opus-4-8" for line in full["lines"])
+
+
+def test_admin_timeseries_by_service_and_cross_account(
+    admin_client: TestClient,
+) -> None:
+    account_id = _account_id(admin_client)
+    _seed_priced_events(account_id)
+
+    # Un second compte avec sa propre conso : le graphique opérateur global
+    # doit sommer les deux comptes.
+    db = _db()
+    other = Account(name="other-account")
+    db.add(other)
+    db.commit()
+    db.add(
+        UsageEvent(
+            account_id=other.id,
+            source="enrichment",
+            provider="claude",
+            model="claude-opus-4-8",
+            metric="input_tokens",
+            quantity=200_000,
+        )
+    )
+    db.commit()
+
+    # Par service sur UN compte : les 2 modèles claude fusionnent en une série
+    # « Génération de texte », photoroom devient « Traitement d'image ».
+    per_account = admin_client.get(
+        f"/admin/accounts/{account_id}/timeseries?group_by=service"
+    ).json()
+    keys = {series["key"] for series in per_account["series"]}
+    assert keys == {"Génération de texte", "Traitement d'image"}
+    text = next(s for s in per_account["series"] if s["key"] == "Génération de texte")
+    assert sum(p["quantity"] for p in text["points"]) == 1_500_000
+
+    # Global (tous comptes) : quantités des deux comptes sommées.
+    total = admin_client.get("/admin/timeseries").json()
+    assert total["group_by"] == "none"
+    quantity = sum(p["quantity"] for s in total["series"] for p in s["points"])
+    assert quantity == 1_500_000 + 10 + 200_000
+
+    # Par modèle : les noms de modèles sont visibles côté opérateur.
+    by_model = admin_client.get("/admin/timeseries?group_by=model").json()
+    model_keys = {series["key"] for series in by_model["series"]}
+    assert "claude-opus-4-8" in model_keys
+
+    assert admin_client.get("/admin/timeseries?group_by=nope").status_code == 422
 
 
 def test_client_settings_put_cannot_touch_admin_fields(

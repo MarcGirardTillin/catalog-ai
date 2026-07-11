@@ -4,8 +4,10 @@ import {
   adminListAccounts,
   adminReadAccountActivity,
   adminReadAccountSettingsAdmin,
+  adminReadAccountTimeseries,
   adminReadAccountUsage,
   adminReadAccountUsageByJob,
+  adminReadAdminTimeseries,
   adminReadOverview,
   adminUpdateAccountSettingsAdmin,
 } from "@/client"
@@ -27,6 +29,30 @@ export function listAdminAccounts() {
 
 export function getAdminOverview(month?: string) {
   return adminReadOverview({ query: month ? { month } : undefined })
+}
+
+// Groupements du graphique opérateur : total, par service (libellés neutres),
+// par modèle ou par provider.
+export type AdminTimeseriesGroupBy = "none" | "service" | "model" | "provider"
+
+/** Série quotidienne du facturable sommée sur TOUS les comptes. */
+export function getAdminTimeseries(
+  month: string,
+  groupBy: AdminTimeseriesGroupBy,
+) {
+  return adminReadAdminTimeseries({ query: { month, group_by: groupBy } })
+}
+
+/** Série quotidienne du facturable d'UN compte (vue opérateur complète). */
+export function getAdminAccountTimeseries(
+  accountId: number,
+  month: string,
+  groupBy: AdminTimeseriesGroupBy,
+) {
+  return adminReadAccountTimeseries({
+    path: { account_id: accountId },
+    query: { month, group_by: groupBy },
+  })
 }
 
 /** Summary COMPLET (non expurgé) d'un compte. */

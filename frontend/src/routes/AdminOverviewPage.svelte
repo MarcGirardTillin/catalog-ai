@@ -4,12 +4,19 @@
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
-  import { getAdminOverview, type AdminOverview } from "@/lib/api/admin"
+  import {
+    getAdminOverview,
+    getAdminTimeseries,
+    type AdminOverview,
+    type AdminTimeseriesGroupBy,
+  } from "@/lib/api/admin"
+  import type { UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
-  import { Card, CardContent } from "@/lib/components/ui/card"
+  import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
+  import UsageChart from "@/lib/components/usage/UsageChart.svelte"
   import { prefs } from "@/lib/preferences.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -44,6 +51,35 @@
     load()
   })
 
+  // --- Graphique de consommation, tous clients confondus ---
+  const CHART_MODES: { value: AdminTimeseriesGroupBy; label: string }[] = [
+    { value: "none", label: "Total par jour" },
+    { value: "service", label: "Par service" },
+    { value: "model", label: "Par modèle" },
+  ]
+  let chartMode = $state<AdminTimeseriesGroupBy>("none")
+  let timeseries = $state<UsageTimeseries | null>(null)
+  let tsFailed = $state(false)
+
+  async function loadTimeseries() {
+    const target = `${month}|${chartMode}`
+    timeseries = null
+    tsFailed = false
+    const { data, error } = await getAdminTimeseries(month, chartMode)
+    if (target !== `${month}|${chartMode}`) return // paramètres rechangés
+    if (error || !data) {
+      tsFailed = true
+      return
+    }
+    timeseries = data
+  }
+
+  $effect(() => {
+    void month
+    void chartMode
+    loadTimeseries()
+  })
+
   function formatAmount(value: string): string {
     const n = Number(value)
     if (!Number.isFinite(n)) return "—"
@@ -75,6 +111,32 @@
           Suivi opérateur par client : coût réel des providers, montant facturé
           (coût × coefficient) et marge. Cliquez un client pour le détail.
         </p>
+
+        <!-- Consommation quotidienne, tous clients confondus -->
+        <Card size="sm">
+          <CardHeader>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle class="font-title text-sm">
+                Consommation quotidienne (tous clients)
+              </CardTitle>
+              <div class="flex items-center gap-1" role="group" aria-label="Regroupement du graphique">
+                {#each CHART_MODES as mode (mode.value)}
+                  <Button
+                    size="sm"
+                    variant={chartMode === mode.value ? "secondary" : "ghost"}
+                    aria-pressed={chartMode === mode.value}
+                    onclick={() => (chartMode = mode.value)}
+                  >
+                    {mode.label}
+                  </Button>
+                {/each}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-3">
+            <UsageChart {timeseries} failed={tsFailed} {month} />
+          </CardContent>
+        </Card>
 
         {#if loadFailed}
           <p class="text-destructive text-xs" role="alert">

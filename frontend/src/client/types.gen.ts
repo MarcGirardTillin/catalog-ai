@@ -4625,6 +4625,79 @@ export type AdminReadOverviewResponses = {
 
 export type AdminReadOverviewResponse = AdminReadOverviewResponses[keyof AdminReadOverviewResponses];
 
+export type AdminReadAdminTimeseriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+        /**
+         * Group By
+         */
+        group_by?: string;
+    };
+    url: '/admin/timeseries';
+};
+
+export type AdminReadAdminTimeseriesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAdminTimeseriesError = AdminReadAdminTimeseriesErrors[keyof AdminReadAdminTimeseriesErrors];
+
+export type AdminReadAdminTimeseriesResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageTimeseries;
+};
+
+export type AdminReadAdminTimeseriesResponse = AdminReadAdminTimeseriesResponses[keyof AdminReadAdminTimeseriesResponses];
+
+export type AdminReadAccountTimeseriesData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+        /**
+         * Group By
+         */
+        group_by?: string;
+    };
+    url: '/admin/accounts/{account_id}/timeseries';
+};
+
+export type AdminReadAccountTimeseriesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountTimeseriesError = AdminReadAccountTimeseriesErrors[keyof AdminReadAccountTimeseriesErrors];
+
+export type AdminReadAccountTimeseriesResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsageTimeseries;
+};
+
+export type AdminReadAccountTimeseriesResponse = AdminReadAccountTimeseriesResponses[keyof AdminReadAccountTimeseriesResponses];
+
 export type AdminReadAccountUsageData = {
     body?: never;
     path: {

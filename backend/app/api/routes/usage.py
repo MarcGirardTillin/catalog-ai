@@ -720,72 +720,61 @@ def refreeze_snapshot(
 def _series_key(group_by: str, provider: str, model: str | None) -> str:
     if group_by == "provider":
         return provider
+    if group_by == "service":
+        return _service_label(provider)
     if group_by == "model":
         return model or "sans modèle"
     return "total"
 
 
-@router.get("/timeseries", response_model=UsageTimeseries)
-def read_usage_timeseries(
-    db: SessionDep,
-    current_user: CurrentUserDep,
-    month: str | None = None,
-    group_by: str = "none",
+def _build_timeseries(
+    db: Session,
+    account_ids: list[int],
+    label: str,
+    start: datetime,
+    end: datetime,
+    group_by: str,
 ) -> UsageTimeseries:
-    """Daily billable series for the month, grouped by nothing/model/provider.
+    """Daily billable series for the month over one or several accounts.
 
     Every day of the month is emitted (0 when idle). A series is kept only if
     it has at least one non-empty day, but retained series carry every day.
-    Prices follow the same frozen/current resolution as the summary.
+    Prices follow the same frozen/current resolution as the summary, resolved
+    PER ACCOUNT (each account has its own grid and coefficient).
     """
-    if group_by not in ("none", "model", "provider"):
-        raise AppException(
-            status_code=422,
-            code="invalid_group_by",
-            message="group_by must be one of: none, model, provider",
-        )
-    # White-label: per-model/per-provider breakdowns reveal the underlying
-    # stack — operator only. The total curve stays available to clients.
-    if group_by != "none" and not current_user.is_admin:
-        raise AppException(
-            status_code=403, code="admin_required", message="Admin access required"
-        )
-    account_id = resolve_account_id(db, current_user)
-    label, start, end = _parse_month(month)
-    lookup, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
-        db, account_id, label
-    )
-
-    events = db.execute(
-        select(
-            UsageEvent.created_at,
-            UsageEvent.provider,
-            UsageEvent.model,
-            UsageEvent.metric,
-            UsageEvent.quantity,
-        ).where(
-            UsageEvent.account_id == account_id,
-            UsageEvent.created_at >= start,
-            UsageEvent.created_at < end,
-        )
-    ).all()
-
     amounts: dict[tuple[str, date], Decimal] = defaultdict(lambda: Decimal(0))
     quantities: dict[tuple[str, date], int] = defaultdict(int)
     keys: set[str] = set()
-    for created_at, provider, model, metric, quantity_raw in events:
-        day = (
-            created_at.astimezone(UTC).date()
-            if created_at.tzinfo is not None
-            else created_at.date()
+    for account_id in account_ids:
+        lookup, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
+            db, account_id, label
         )
-        qty = int(quantity_raw or 0)
-        key = _series_key(group_by, provider, model)
-        keys.add(key)
-        quantities[(key, day)] += qty
-        unit_price = _resolve_price(lookup, provider, model, metric)
-        if unit_price is not None:
-            amounts[(key, day)] += Decimal(qty) * unit_price * coefficient
+        events = db.execute(
+            select(
+                UsageEvent.created_at,
+                UsageEvent.provider,
+                UsageEvent.model,
+                UsageEvent.metric,
+                UsageEvent.quantity,
+            ).where(
+                UsageEvent.account_id == account_id,
+                UsageEvent.created_at >= start,
+                UsageEvent.created_at < end,
+            )
+        ).all()
+        for created_at, provider, model, metric, quantity_raw in events:
+            day = (
+                created_at.astimezone(UTC).date()
+                if created_at.tzinfo is not None
+                else created_at.date()
+            )
+            qty = int(quantity_raw or 0)
+            key = _series_key(group_by, provider, model)
+            keys.add(key)
+            quantities[(key, day)] += qty
+            unit_price = _resolve_price(lookup, provider, model, metric)
+            if unit_price is not None:
+                amounts[(key, day)] += Decimal(qty) * unit_price * coefficient
 
     days: list[date] = []
     cursor = start.date()
@@ -814,3 +803,28 @@ def read_usage_timeseries(
     return UsageTimeseries(
         month=label, group_by=group_by, currency="EUR", series=series
     )
+
+
+@router.get("/timeseries", response_model=UsageTimeseries)
+def read_usage_timeseries(
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    month: str | None = None,
+    group_by: str = "none",
+) -> UsageTimeseries:
+    """Daily billable series of the caller's account (see _build_timeseries)."""
+    if group_by not in ("none", "model", "provider"):
+        raise AppException(
+            status_code=422,
+            code="invalid_group_by",
+            message="group_by must be one of: none, model, provider",
+        )
+    # White-label: per-model/per-provider breakdowns reveal the underlying
+    # stack — operator only. The total curve stays available to clients.
+    if group_by != "none" and not current_user.is_admin:
+        raise AppException(
+            status_code=403, code="admin_required", message="Admin access required"
+        )
+    account_id = resolve_account_id(db, current_user)
+    label, start, end = _parse_month(month)
+    return _build_timeseries(db, [account_id], label, start, end, group_by)

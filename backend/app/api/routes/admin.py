@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentAdminDep, SessionDep
 from app.api.exceptions import AppException
-from app.api.routes.usage import _build_by_job, _build_summary, _parse_month
+from app.api.routes.usage import (
+    _build_by_job,
+    _build_summary,
+    _build_timeseries,
+    _parse_month,
+)
 from app.api.schemas.admin import (
     AdminAccountActivity,
     AdminAccountSummary,
@@ -23,7 +28,7 @@ from app.api.schemas.admin import (
     AdminOverviewLine,
 )
 from app.api.schemas.settings import AccountSettings
-from app.api.schemas.usage import UsageByJob, UsageSummary
+from app.api.schemas.usage import UsageByJob, UsageSummary, UsageTimeseries
 from app.models import Account, EnrichmentItem, EnrichmentJob, ImportItem, User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -134,6 +139,54 @@ def read_overview(
             )
         )
     return AdminOverview(month=label, currency="EUR", lines=lines)
+
+
+# Groupements de série temporelle exposés à l'admin. "service" agrège les
+# providers par libellé neutre (Génération de texte / Traitement d'image /
+# Recherche produit) — même mapping que la vue client expurgée.
+_TIMESERIES_GROUPS = ("none", "service", "model", "provider")
+
+
+def _check_group_by(group_by: str) -> None:
+    if group_by not in _TIMESERIES_GROUPS:
+        raise AppException(
+            status_code=422,
+            code="invalid_group_by",
+            message="group_by must be one of: " + ", ".join(_TIMESERIES_GROUPS),
+        )
+
+
+@router.get("/timeseries", response_model=UsageTimeseries)
+def read_admin_timeseries(
+    db: SessionDep,
+    _current_user: CurrentAdminDep,
+    month: str | None = None,
+    group_by: str = "none",
+) -> UsageTimeseries:
+    """Daily billable series summed over ALL accounts (operator monitoring).
+
+    Amounts are billable (cost × each account's own coefficient), so the
+    total curve matches what the overview bills across the customer base.
+    """
+    _check_group_by(group_by)
+    label, start, end = _parse_month(month)
+    account_ids = list(db.scalars(select(Account.id).order_by(Account.id)).all())
+    return _build_timeseries(db, account_ids, label, start, end, group_by)
+
+
+@router.get("/accounts/{account_id}/timeseries", response_model=UsageTimeseries)
+def read_account_timeseries(
+    account_id: int,
+    db: SessionDep,
+    _current_user: CurrentAdminDep,
+    month: str | None = None,
+    group_by: str = "none",
+) -> UsageTimeseries:
+    """Daily billable series of ONE account (full operator view)."""
+    _check_group_by(group_by)
+    _get_account(db, account_id)
+    label, start, end = _parse_month(month)
+    return _build_timeseries(db, [account_id], label, start, end, group_by)
 
 
 @router.get("/accounts/{account_id}/usage", response_model=UsageSummary)

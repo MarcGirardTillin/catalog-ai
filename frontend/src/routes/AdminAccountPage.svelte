@@ -8,13 +8,15 @@
   import {
     getAdminAccountActivity,
     getAdminAccountSettings,
+    getAdminAccountTimeseries,
     getAdminAccountUsage,
     getAdminAccountUsageByJob,
     putAdminAccountSettings,
     type AdminAccountActivity,
     type AdminAccountSettings,
+    type AdminTimeseriesGroupBy,
   } from "@/lib/api/admin"
-  import type { UsageByJob, UsageSummary } from "@/lib/api/usage"
+  import type { UsageByJob, UsageSummary, UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -29,8 +31,10 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
+  import UsageChart from "@/lib/components/usage/UsageChart.svelte"
   import { formatRelativeDate } from "@/lib/format"
   import { prefs } from "@/lib/preferences.svelte"
+  import { metricLabel, serviceLabel } from "@/lib/usageLabels"
 
   let { appName, id }: { appName: string; id: string } = $props()
 
@@ -81,6 +85,72 @@
     getAdminAccountActivity(accountId).then(({ data }) => {
       activity = data ?? { account_id: accountId, entries: [] }
     })
+  })
+
+  // --- Graphique de consommation quotidienne du compte ---
+  const CHART_MODES: { value: AdminTimeseriesGroupBy; label: string }[] = [
+    { value: "none", label: "Total par jour" },
+    { value: "service", label: "Par service" },
+    { value: "model", label: "Par modèle" },
+  ]
+  let chartMode = $state<AdminTimeseriesGroupBy>("none")
+  let timeseries = $state<UsageTimeseries | null>(null)
+  let tsFailed = $state(false)
+
+  async function loadTimeseries() {
+    const target = `${month}|${chartMode}`
+    timeseries = null
+    tsFailed = false
+    const { data, error } = await getAdminAccountTimeseries(
+      accountId,
+      month,
+      chartMode,
+    )
+    if (target !== `${month}|${chartMode}`) return // paramètres rechangés
+    if (error || !data) {
+      tsFailed = true
+      return
+    }
+    timeseries = data
+  }
+
+  $effect(() => {
+    void month
+    void chartMode
+    loadTimeseries()
+  })
+
+  // --- Table « Par service » : lignes du summary agrégées par libellé de
+  // service neutre (le même regroupement que voit le client, mais avec les
+  // montants opérateur complets). ---
+  type ServiceRow = {
+    service: string
+    metric: string
+    quantity: number
+    cost: number
+    billable: number
+  }
+  const serviceRows = $derived.by<ServiceRow[]>(() => {
+    if (!summary) return []
+    const merged = new Map<string, ServiceRow>()
+    for (const line of summary.lines) {
+      const service = serviceLabel(line.provider)
+      const key = `${service}|${line.metric}`
+      const row = merged.get(key) ?? {
+        service,
+        metric: line.metric,
+        quantity: 0,
+        cost: 0,
+        billable: 0,
+      }
+      row.quantity += line.quantity
+      row.cost += Number(line.cost ?? 0)
+      row.billable += Number(line.billable ?? 0)
+      merged.set(key, row)
+    }
+    return [...merged.values()].sort(
+      (a, b) => a.service.localeCompare(b.service) || a.metric.localeCompare(b.metric),
+    )
   })
 
   // --- Réglages opérateur du compte (coefficient + temps gagné) ---
@@ -259,6 +329,76 @@
                 }}>grille tarifaire</a
               >.
             </p>
+          {/if}
+
+          <!-- Consommation quotidienne du compte -->
+          <Card size="sm" class="mt-1">
+            <CardHeader>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle class="font-title text-sm">Consommation quotidienne</CardTitle>
+                <div class="flex items-center gap-1" role="group" aria-label="Regroupement du graphique">
+                  {#each CHART_MODES as mode (mode.value)}
+                    <Button
+                      size="sm"
+                      variant={chartMode === mode.value ? "secondary" : "ghost"}
+                      aria-pressed={chartMode === mode.value}
+                      onclick={() => (chartMode = mode.value)}
+                    >
+                      {mode.label}
+                    </Button>
+                  {/each}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-3">
+              <UsageChart {timeseries} failed={tsFailed} {month} />
+            </CardContent>
+          </Card>
+
+          <!-- Détail par service (même regroupement neutre que la vue client,
+               mais avec coût et facturable opérateur) -->
+          <h2 class="font-title mt-1 text-sm font-bold">Par service</h2>
+          {#if serviceRows.length === 0}
+            <Card size="sm">
+              <CardContent class="text-muted-foreground py-4 text-center text-xs">
+                Aucune consommation sur ce mois.
+              </CardContent>
+            </Card>
+          {:else}
+            <Card class="py-0">
+              <CardContent class="overflow-x-auto px-0">
+                <table class="w-full min-w-xl text-sm">
+                  <thead>
+                    <tr class="border-border border-b">
+                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Service</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Type</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Quantité</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Coût</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Facturable</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each serviceRows as row (row.service + row.metric)}
+                      <tr class="border-border border-b last:border-b-0">
+                        <td class="px-4 {cellPad} whitespace-nowrap">{row.service}</td>
+                        <td class="text-muted-foreground px-4 {cellPad} whitespace-nowrap text-xs">
+                          {metricLabel(row.metric)}
+                        </td>
+                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                          {formatInt(row.quantity)}
+                        </td>
+                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                          {formatAmount(String(row.cost))}
+                        </td>
+                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                          {formatAmount(String(row.billable))}
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
           {/if}
 
           <!-- Détail par modèle (vue complète, non expurgée) -->
