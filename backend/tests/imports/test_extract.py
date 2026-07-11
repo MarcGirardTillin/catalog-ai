@@ -371,6 +371,147 @@ def test_huge_tabular_source_is_truncated_with_warning() -> None:
     assert "REF\t2000" not in text
 
 
+SECOND_EAN = "4006381333931"  # valid EAN-13, distinct from VALID_EAN
+
+
+def _second_tabular_document() -> RawDocument:
+    return RawDocument(
+        kind="tabular",
+        filename="codes.csv",
+        tables=[RawTable(sheet=None, rows=[["ref", "ean"], ["REF002", SECOND_EAN]])],
+    )
+
+
+def _one_variant_payload(**variant: str) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "ean": "",
+        "color": "",
+        "size": "",
+        "quantity": "",
+        "wholesale_price": "",
+        "retail_price": "",
+        "supplier_sku": "",
+        "confidence": {"ean": 0.5},
+    }
+    base.update(variant)
+    return {
+        "po_number": "PO-1",
+        "supplier": "L'Espion",
+        "products": [
+            {
+                "supplier_ref": "REF002",
+                "title": "Veste",
+                "brand": "",
+                "confidence": {},
+                "variants": [base],
+            }
+        ],
+    }
+
+
+def test_single_element_list_is_byte_identical_to_mono() -> None:
+    requests: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.content)
+        return httpx.Response(200, json=_api_response(_payload()))
+
+    mono = _extractor(handler)(_tabular_document())
+    listed = _extractor(handler)([_tabular_document()])
+
+    # Same request on the wire and same extraction: a one-element list is the
+    # historical single-file path.
+    assert requests[0] == requests[1]
+    assert listed.model_dump() == mono.model_dump()
+
+
+def test_multi_tabular_is_one_call_over_the_union() -> None:
+    captured: dict[str, httpx.Request] = {}
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        captured["request"] = request
+        # The EAN only exists in the SECOND file's cells.
+        return httpx.Response(
+            200, json=_api_response(_one_variant_payload(ean=SECOND_EAN))
+        )
+
+    result = _extractor(handler)([_tabular_document(), _second_tabular_document()])
+
+    # A single Claude call carrying BOTH files.
+    assert calls == [1]
+    content = json.loads(captured["request"].content)["messages"][0]["content"]
+    joined = "\n".join(block["text"] for block in content if block["type"] == "text")
+    assert "MÊME bon de commande" in joined
+    assert "commande.xlsx" in joined
+    assert "codes.csv" in joined
+    assert SECOND_EAN in joined
+
+    # EAN found only in the 2nd file's cells is kept and promoted to 1.0.
+    variant = result.products[0].variants[0]
+    assert variant.ean == SECOND_EAN
+    assert variant.confidence["ean"] == 1.0
+
+
+def test_multi_pdf_plus_tabular_validates_ean_by_check_digit() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        # VALID_EAN is a valid EAN-13 but is NOT in the tabular file's cells.
+        return httpx.Response(
+            200,
+            json=_api_response(_payload(ean=VALID_EAN, wholesale="39.9", retail="89")),
+        )
+
+    pdf = RawDocument(kind="pdf", filename="order.pdf", pdf_bytes=b"%PDF-1.4 fake")
+    tabular = RawDocument(
+        kind="tabular",
+        filename="other.csv",
+        tables=[RawTable(sheet=None, rows=[["ref"], ["REF001"]])],
+    )
+    result = _extractor(handler)([pdf, tabular])
+
+    variant = result.products[0].variants[0]
+    # Absent from the tabular pool, but the lot has a PDF -> check digit saves it.
+    assert variant.ean == VALID_EAN
+    assert variant.confidence["ean"] == 0.8  # model confidence preserved
+    # Prices are validated against the tabular pool (present here) -> removed.
+    assert variant.wholesale_price is None
+    assert variant.retail_price is None
+
+
+def test_multi_pdf_plus_tabular_drops_invalid_check_digit_ean() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_api_response(_payload(ean=INVALID_EAN)))
+
+    pdf = RawDocument(kind="pdf", filename="order.pdf", pdf_bytes=b"%PDF-1.4 fake")
+    tabular = RawDocument(
+        kind="tabular",
+        filename="other.csv",
+        tables=[RawTable(sheet=None, rows=[["ref"], ["REF001"]])],
+    )
+    result = _extractor(handler)([pdf, tabular])
+
+    variant = result.products[0].variants[0]
+    assert variant.ean is None
+    assert variant.confidence["ean"] == 0.0
+    assert any("EAN-13" in w for w in result.warnings)
+
+
+def test_multi_all_pdf_keeps_model_price_confidence() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_api_response(_payload()))
+
+    first = RawDocument(kind="pdf", filename="a.pdf", pdf_bytes=b"%PDF-1.4 a")
+    second = RawDocument(kind="pdf", filename="b.pdf", pdf_bytes=b"%PDF-1.4 b")
+    result = _extractor(handler)([first, second])
+
+    variant = result.products[0].variants[0]
+    # No tabular pool: prices survive with the model's own confidence.
+    assert variant.wholesale_price == Decimal("39.9")
+    assert variant.confidence["wholesale_price"] == 0.7
+    assert variant.ean == VALID_EAN
+
+
 def test_build_extractor_requires_api_key() -> None:
     with pytest.raises(NotConfiguredError):
         build_extractor("")

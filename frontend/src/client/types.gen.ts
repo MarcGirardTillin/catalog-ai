@@ -85,13 +85,17 @@ export type AssetSaveResult = {
  */
 export type BodyImportsCreateImport = {
     /**
-     * File
+     * Files
      */
-    file: Blob | File;
+    files: Array<Blob | File>;
     /**
      * Location Id
      */
     location_id?: number | null;
+    /**
+     * Profile Id
+     */
+    profile_id?: number | null;
 };
 
 /**
@@ -547,6 +551,10 @@ export type ImportJobPublic = {
      * File Name
      */
     file_name: string;
+    /**
+     * File Names
+     */
+    file_names?: Array<string>;
     counts: ImportJobCounts;
     totals?: ImportJobTotals;
     /**
@@ -2821,7 +2829,12 @@ export type ImportsDownloadImportFileData = {
          */
         import_id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Index
+         */
+        index?: number;
+    };
     url: '/imports/{import_id}/file';
 };
 
@@ -2849,7 +2862,12 @@ export type ImportsPreviewImportFileData = {
          */
         import_id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Index
+         */
+        index?: number;
+    };
     url: '/imports/{import_id}/file/preview';
 };
 

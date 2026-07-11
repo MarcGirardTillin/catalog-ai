@@ -34,8 +34,10 @@ class EnrichmentJob(Base):
     account_id: Mapped[int] = mapped_column(ForeignKey("account.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     # "enrichment" (catalog enrichment run) or "import" (supplier file import).
-    # Import jobs reference their uploaded file in selection_json:
-    # {"file_name": str, "file_path": str}.
+    # Import jobs reference their uploaded files in selection_json:
+    # {"files": [{"file_name": str, "file_path": str}, ...]} (legacy mono form
+    # {"file_name": str, "file_path": str} is still read — see
+    # app.imports.selection.stored_import_files).
     job_type: Mapped[str] = mapped_column(
         String(20), default="enrichment", server_default="enrichment"
     )

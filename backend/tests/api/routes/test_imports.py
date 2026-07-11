@@ -36,7 +36,7 @@ def import_client(
 def _upload(
     client: TestClient, name: str = "commande.pdf", data: bytes = b"%PDF-1.4 fake"
 ) -> dict[str, Any]:
-    response = client.post("/imports", files={"file": (name, data)})
+    response = client.post("/imports", files={"files": (name, data)})
     assert response.status_code == 201, response.text
     body: dict[str, Any] = response.json()
     return body
@@ -49,7 +49,7 @@ def _db() -> Any:
 def test_imports_require_authentication(client: TestClient, upload_dir: Path) -> None:
     assert client.get("/imports").status_code == 401
     assert (
-        client.post("/imports", files={"file": ("commande.pdf", b"%PDF")}).status_code
+        client.post("/imports", files={"files": ("commande.pdf", b"%PDF")}).status_code
         == 401
     )
     assert not upload_dir.exists()  # nothing was stored
@@ -76,13 +76,20 @@ def test_upload_creates_import_job_and_stores_file(
     assert stored[0].name != "Commande L'Espion.PDF"
     assert stored[0].read_bytes() == b"%PDF-1.4 espion"
 
-    # The job records both names.
+    # Single-name compat and the full list are both exposed.
+    assert job["file_names"] == ["Commande L'Espion.PDF"]
+
+    # The job records both names under the multi-file shape.
     db = _db()
     row = db.get(EnrichmentJob, job["id"])
     assert row.job_type == "import"
     assert row.selection_json == {
-        "file_name": "Commande L'Espion.PDF",
-        "file_path": str(stored[0]),
+        "files": [
+            {
+                "file_name": "Commande L'Espion.PDF",
+                "file_path": str(stored[0]),
+            }
+        ]
     }
 
 
@@ -100,7 +107,7 @@ def test_upload_schedules_background_runner(
 
 def test_upload_rejects_unsupported_extension(import_client: TestClient) -> None:
     for name in ("virus.exe", "notes.txt", "archive.pdf.zip", "sansextension"):
-        response = import_client.post("/imports", files={"file": (name, b"x")})
+        response = import_client.post("/imports", files={"files": (name, b"x")})
         assert response.status_code == 422, name
         assert response.json()["code"] == "unsupported_file_type"
 
@@ -109,7 +116,7 @@ def test_upload_rejects_files_over_20mb(
     import_client: TestClient, upload_dir: Path
 ) -> None:
     too_big = b"0" * (20 * 1024 * 1024 + 1)
-    response = import_client.post("/imports", files={"file": ("gros.csv", too_big)})
+    response = import_client.post("/imports", files={"files": ("gros.csv", too_big)})
     assert response.status_code == 413
     assert response.json()["code"] == "file_too_large"
     assert not upload_dir.exists()  # rejected before being stored
@@ -355,6 +362,141 @@ def test_imports_are_isolated_by_account(import_client: TestClient) -> None:
     assert import_client.get(f"/imports/{foreign_id}/file/preview").status_code == 404
 
 
+# -- multi-file upload + creation-time profile + retro-compat -----------------
+
+
+def test_upload_multiple_files_creates_one_import(
+    import_client: TestClient, upload_dir: Path
+) -> None:
+    response = import_client.post(
+        "/imports",
+        files=[
+            ("files", ("commande.pdf", b"%PDF-1.4 order")),
+            ("files", ("codes.csv", b"ref;ean\nR1;3607814866838\n")),
+        ],
+    )
+    assert response.status_code == 201, response.text
+    job = response.json()
+    # First name for the single-name frontend; the list carries both.
+    assert job["file_name"] == "commande.pdf"
+    assert job["file_names"] == ["commande.pdf", "codes.csv"]
+
+    # Both files stored, both recorded under selection_json["files"].
+    stored = sorted(p.suffix for p in upload_dir.iterdir())
+    assert stored == [".csv", ".pdf"]
+    db = _db()
+    files = db.get(EnrichmentJob, job["id"]).selection_json["files"]
+    assert [f["file_name"] for f in files] == ["commande.pdf", "codes.csv"]
+    assert len(files) == 2
+
+
+def test_upload_zero_files_is_422(import_client: TestClient) -> None:
+    # No `files` part at all -> validation error (at least one required).
+    response = import_client.post("/imports", data={"location_id": "1"})
+    assert response.status_code == 422
+
+
+def test_upload_with_profile_id_at_creation(import_client: TestClient) -> None:
+    profile_id = _create_profile(import_client)
+    response = import_client.post(
+        "/imports",
+        files={"files": ("commande.pdf", b"%PDF-1.4 fake")},
+        data={"profile_id": str(profile_id)},
+    )
+    assert response.status_code == 201, response.text
+    job = response.json()
+    assert job["profile_id"] == profile_id
+    db = _db()
+    assert db.get(EnrichmentJob, job["id"]).config_json["profile_id"] == profile_id
+
+
+def test_upload_with_foreign_profile_id_is_404(
+    import_client: TestClient, upload_dir: Path
+) -> None:
+    db = _db()
+    other = Account(name="other-shop")
+    db.add(other)
+    db.flush()
+    from app.models import ImportProfile
+
+    foreign = ImportProfile(account_id=other.id, name="Foreign", config_json={})
+    db.add(foreign)
+    db.commit()
+
+    response = import_client.post(
+        "/imports",
+        files={"files": ("commande.pdf", b"%PDF-1.4 fake")},
+        data={"profile_id": str(foreign.id)},
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+    # A rejected upload leaves no stored file behind.
+    assert not upload_dir.exists()
+
+
+def test_legacy_mono_selection_is_still_read(
+    import_client: TestClient, upload_dir: Path
+) -> None:
+    """A job stored under the old {file_name, file_path} shape stays usable."""
+    # An upload materializes the authenticated account.
+    seed = _upload(import_client)
+    stored = upload_dir / "legacy.csv"
+    stored.write_bytes(b"ref;ean\nR1;3607814866838\n")
+
+    db = _db()
+    account_id = db.get(EnrichmentJob, seed["id"]).account_id
+    job = EnrichmentJob(
+        account_id=account_id,
+        job_type="import",
+        selection_json={"file_name": "vieux.csv", "file_path": str(stored)},
+        config_json={},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    _add_item(job.id, {"supplier_ref": "REF-1"}, status="applied")
+
+    # _to_public normalizes the mono shape into file_name + file_names.
+    detail = import_client.get(f"/imports/{job.id}").json()
+    assert detail["file_name"] == "vieux.csv"
+    assert detail["file_names"] == ["vieux.csv"]
+
+    # download / preview / products all read the legacy shape.
+    assert import_client.get(f"/imports/{job.id}/file").status_code == 200
+    preview = import_client.get(f"/imports/{job.id}/file/preview").json()
+    assert preview["kind"] == "tabular"
+    products = import_client.get(f"/imports/{job.id}/products").json()
+    assert products["file_name"] == "vieux.csv"
+
+
+def test_download_and_preview_target_file_by_index(import_client: TestClient) -> None:
+    job = import_client.post(
+        "/imports",
+        files=[
+            ("files", ("first.csv", b"ref;ean\nR1;111\n")),
+            ("files", ("second.csv", b"ref;ean\nR2;222\n")),
+        ],
+    ).json()
+
+    # Default index 0 -> first file.
+    assert (
+        import_client.get(f"/imports/{job['id']}/file").content == b"ref;ean\nR1;111\n"
+    )
+    # Explicit index selects the second file.
+    second = import_client.get(f"/imports/{job['id']}/file", params={"index": 1})
+    assert second.content == b"ref;ean\nR2;222\n"
+    preview = import_client.get(
+        f"/imports/{job['id']}/file/preview", params={"index": 1}
+    ).json()
+    assert preview["file_name"] == "second.csv"
+    assert preview["sheets"][0]["rows"][1] == ["R2", "222"]
+    # Out-of-range index -> 404.
+    assert (
+        import_client.get(f"/imports/{job['id']}/file", params={"index": 2}).status_code
+        == 404
+    )
+
+
 # -- review edits (PATCH item) -----------------------------------------------
 
 
@@ -529,7 +671,7 @@ def test_put_profile_404_on_foreign_or_unknown_profile(
 def test_upload_with_location_id_stores_it(import_client: TestClient) -> None:
     response = import_client.post(
         "/imports",
-        files={"file": ("commande.pdf", b"%PDF-1.4 fake")},
+        files={"files": ("commande.pdf", b"%PDF-1.4 fake")},
         data={"location_id": "7"},
     )
     assert response.status_code == 201, response.text

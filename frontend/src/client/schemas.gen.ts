@@ -129,10 +129,13 @@ export const AssetSaveResultSchema = {
 
 export const Body_imports_create_importSchema = {
     properties: {
-        file: {
-            type: 'string',
-            contentMediaType: 'application/octet-stream',
-            title: 'File'
+        files: {
+            items: {
+                type: 'string',
+                contentMediaType: 'application/octet-stream'
+            },
+            type: 'array',
+            title: 'Files'
         },
         location_id: {
             anyOf: [
@@ -144,11 +147,22 @@ export const Body_imports_create_importSchema = {
                 }
             ],
             title: 'Location Id'
+        },
+        profile_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Profile Id'
         }
     },
     type: 'object',
     required: [
-        'file'
+        'files'
     ],
     title: 'Body_imports-create_import'
 } as const;
@@ -903,6 +917,13 @@ export const ImportJobPublicSchema = {
         file_name: {
             type: 'string',
             title: 'File Name'
+        },
+        file_names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'File Names'
         },
         counts: {
             $ref: '#/components/schemas/ImportJobCounts'

@@ -1,9 +1,9 @@
 """Supplier-file import routes: upload, list, detail, staged items.
 
-An import is an `enrichment_job` with `job_type="import"`. The uploaded file
-is stored under `settings.UPLOAD_DIR` with a generated name (the original
-name only lives in `selection_json["file_name"]`), then the background runner
-parses/extracts it and stages `import_item` rows for review.
+An import is an `enrichment_job` with `job_type="import"`. One or more uploaded
+files are stored under `settings.UPLOAD_DIR` with generated names (the original
+names only live in `selection_json["files"]`), then the background runner
+parses/extracts them together and stages `import_item` rows for review.
 """
 
 import re
@@ -13,7 +13,15 @@ from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Form, Query, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    Query,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select, update
@@ -43,6 +51,7 @@ from app.api.schemas.imports import (
 from app.api.services.accounts import resolve_account_id
 from app.core.config import settings
 from app.imports.schema import ImportedProduct
+from app.imports.selection import stored_import_files
 from app.imports.tillin_csv import (
     TILLIN_CSV_COLUMNS,
     products_from_payloads,
@@ -129,10 +138,13 @@ def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
     duration: float | None = None
     if job.started_at is not None and job.finished_at is not None:
         duration = (job.finished_at - job.started_at).total_seconds()
+    file_names = [entry["file_name"] for entry in stored_import_files(job)]
     return ImportJobPublic(
         id=job.id,
         status=job.status,
-        file_name=str((job.selection_json or {}).get("file_name") or ""),
+        # First file for the existing single-name frontend; full list alongside.
+        file_name=file_names[0] if file_names else "",
+        file_names=file_names,
         counts=_job_counts(db, job.id),
         totals=_job_totals(db, job.id),
         po_number=document.get("po_number"),
@@ -159,42 +171,75 @@ def _get_import_job(db: Session, *, account_id: int, job_id: int) -> EnrichmentJ
 
 @router.post("", response_model=ImportJobPublic, status_code=201)
 def create_import(
-    file: UploadFile,
+    files: Annotated[list[UploadFile], File()],
     db: SessionDep,
     current_user: CurrentUserDep,
     background: BackgroundTasks,
     run_import: ImportRunnerDep,
     location_id: Annotated[int | None, Form()] = None,
+    profile_id: Annotated[int | None, Form()] = None,
 ) -> ImportJobPublic:
-    """Upload a supplier file and start extracting products in the background."""
-    original_name = file.filename or ""
-    extension = Path(original_name).suffix.lower()
-    if extension not in ALLOWED_EXTENSIONS:
+    """Upload one or more supplier files and start extracting in the background.
+
+    Several files are supported so documents that cross-reference the same
+    purchase order (e.g. a PDF order + a barcode spreadsheet) are extracted and
+    reconciled in one pass. An optional `profile_id` selects the render profile
+    at creation time (validated for ownership).
+    """
+    if not files:
         raise AppException(
             status_code=422,
-            code="unsupported_file_type",
-            message="Unsupported file type: expected .pdf, .xlsx or .csv",
+            code="no_file",
+            message="At least one file is required",
         )
-    data = file.file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise AppException(
-            status_code=413,
-            code="file_too_large",
-            message="File exceeds the 20 MB upload limit",
-        )
-
-    # Stored under a generated name: no collisions, no hostile path segments.
-    upload_dir = Path(settings.UPLOAD_DIR)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    stored_path = upload_dir / f"{uuid4().hex}{extension}"
-    stored_path.write_bytes(data)
+    # Validate + read every file BEFORE touching disk: a rejected upload must
+    # leave no partial state (and not even create the upload directory).
+    prepared: list[tuple[str, bytes]] = []
+    for file in files:
+        original_name = file.filename or ""
+        extension = Path(original_name).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            raise AppException(
+                status_code=422,
+                code="unsupported_file_type",
+                message="Unsupported file type: expected .pdf, .xlsx or .csv",
+            )
+        data = file.file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise AppException(
+                status_code=413,
+                code="file_too_large",
+                message="File exceeds the 20 MB upload limit",
+            )
+        prepared.append((original_name, data))
 
     account_id = resolve_account_id(db, current_user)
+    config: dict[str, object] = {}
+    if location_id is not None:
+        config["location_id"] = location_id
+    if profile_id is not None:
+        profile = db.get(ImportProfile, profile_id)
+        if profile is None or profile.account_id != account_id:
+            raise AppException(
+                status_code=404, code="not_found", message="Import profile not found"
+            )
+        config["profile_id"] = profile.id
+
+    # Stored under generated names: no collisions, no hostile path segments.
+    upload_dir = Path(settings.UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_files: list[dict[str, str]] = []
+    for original_name, data in prepared:
+        extension = Path(original_name).suffix.lower()
+        stored_path = upload_dir / f"{uuid4().hex}{extension}"
+        stored_path.write_bytes(data)
+        stored_files.append({"file_name": original_name, "file_path": str(stored_path)})
+
     job = EnrichmentJob(
         account_id=account_id,
         job_type="import",
-        selection_json={"file_name": original_name, "file_path": str(stored_path)},
-        config_json={"location_id": location_id} if location_id is not None else {},
+        selection_json={"files": stored_files},
+        config_json=config,
     )
     db.add(job)
     db.commit()
@@ -241,28 +286,45 @@ def read_import(
     return _to_public(db, _get_import_job(db, account_id=account_id, job_id=import_id))
 
 
-def _get_stored_file(db: Session, *, account_id: int, job_id: int) -> tuple[Path, str]:
-    """Resolve the on-disk stored file for an import, or 404."""
+def _get_stored_file(
+    db: Session, *, account_id: int, job_id: int, index: int = 0
+) -> tuple[Path, str]:
+    """Resolve the on-disk stored file at `index` for an import, or 404."""
     job = _get_import_job(db, account_id=account_id, job_id=job_id)
-    selection = job.selection_json or {}
-    path = Path(str(selection.get("file_path") or ""))
+    files = stored_import_files(job)
+    if index < 0 or index >= len(files):
+        raise AppException(
+            status_code=404,
+            code="file_not_found",
+            message="Le fichier source de cet import n'est plus disponible",
+        )
+    entry = files[index]
+    path = Path(entry["file_path"])
     if not path.name or not path.is_file():
         raise AppException(
             status_code=404,
             code="file_not_found",
             message="Le fichier source de cet import n'est plus disponible",
         )
-    file_name = str(selection.get("file_name") or path.name)
+    file_name = entry["file_name"] or path.name
     return path, file_name
 
 
 @router.get("/{import_id}/file", response_class=FileResponse)
 def download_import_file(
-    import_id: int, db: SessionDep, current_user: CurrentUserDep
+    import_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    index: Annotated[int, Query(ge=0)] = 0,
 ) -> FileResponse:
-    """Stream the original uploaded file (inline, for preview or download)."""
+    """Stream an original uploaded file (inline, for preview or download).
+
+    `index` selects which of the import's files to stream (default 0).
+    """
     account_id = resolve_account_id(db, current_user)
-    path, file_name = _get_stored_file(db, account_id=account_id, job_id=import_id)
+    path, file_name = _get_stored_file(
+        db, account_id=account_id, job_id=import_id, index=index
+    )
     return FileResponse(
         path,
         media_type=MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream"),
@@ -273,11 +335,19 @@ def download_import_file(
 
 @router.get("/{import_id}/file/preview", response_model=ImportFilePreview)
 def preview_import_file(
-    import_id: int, db: SessionDep, current_user: CurrentUserDep
+    import_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    index: Annotated[int, Query(ge=0)] = 0,
 ) -> ImportFilePreview:
-    """First rows of a tabular source file; PDFs are previewed via /file."""
+    """First rows of a tabular source file; PDFs are previewed via /file.
+
+    `index` selects which of the import's files to preview (default 0).
+    """
     account_id = resolve_account_id(db, current_user)
-    path, file_name = _get_stored_file(db, account_id=account_id, job_id=import_id)
+    path, file_name = _get_stored_file(
+        db, account_id=account_id, job_id=import_id, index=index
+    )
     if path.suffix.lower() == ".pdf":
         return ImportFilePreview(kind="pdf", file_name=file_name)
 
@@ -676,9 +746,10 @@ def list_import_products(
                 linked_count += 1
             else:
                 unlinked_count += 1
+    file_names = [entry["file_name"] for entry in stored_import_files(job)]
     return ImportProducts(
         import_id=job.id,
-        file_name=str((job.selection_json or {}).get("file_name") or ""),
+        file_name=file_names[0] if file_names else "",
         items=lines,
         linked_count=linked_count,
         unlinked_count=unlinked_count,

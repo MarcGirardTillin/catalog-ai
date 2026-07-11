@@ -78,6 +78,16 @@ _USER_PROMPT = (
     "leurs variantes (couleur × taille), au format demandé."
 )
 
+# Appended when several files are extracted together: they describe the SAME
+# purchase order and must be reconciled, not concatenated.
+_MULTI_FILE_NOTE = (
+    "\n\nCes fichiers appartiennent au MÊME bon de commande fournisseur. "
+    "Réconcilie et fusionne leurs informations par référence fournisseur : "
+    "une même variante peut avoir sa référence dans un fichier et son EAN ou "
+    "son prix dans un autre. Ne duplique JAMAIS un produit — un produit = une "
+    "référence fournisseur, agrégée sur l'ensemble des fichiers."
+)
+
 
 def _normalize_label(value: str) -> str:
     """Casefold + collapse whitespace, for matching a category to the tree."""
@@ -295,9 +305,18 @@ class ClaudeExtractor:
             for path in self._known_categories
         }
 
-    def __call__(self, document: RawDocument) -> ExtractionResult:
+    def __call__(self, document: RawDocument | list[RawDocument]) -> ExtractionResult:
+        documents = [document] if isinstance(document, RawDocument) else list(document)
+        if not documents:
+            raise ValueError("extractor called with no document")
         warnings: list[str] = []
-        content = self._build_content(document, warnings)
+        # A single document (or a one-element list) keeps the historical,
+        # byte-identical single-file request; several documents are combined
+        # into ONE call so Claude reconciles them.
+        if len(documents) == 1:
+            content = self._build_content(documents[0], warnings)
+        else:
+            content = self._build_multi_content(documents, warnings)
 
         try:
             # Thinking is disabled: extraction is mechanical transcription —
@@ -344,10 +363,14 @@ class ClaudeExtractor:
             self._to_product(raw_product, warnings) for raw_product in raw.products
         ]
         self._canonicalize_categories(products)
-        if document.kind == "tabular":
-            self._cross_check_tabular(products, document, warnings)
+        if len(documents) == 1:
+            single = documents[0]
+            if single.kind == "tabular":
+                self._cross_check_tabular(products, single, warnings)
+            else:
+                self._cross_check_pdf(products, warnings)
         else:
-            self._cross_check_pdf(products, warnings)
+            self._cross_check_multi(products, documents, warnings)
 
         usage = [
             ExtractionUsage(
@@ -400,7 +423,54 @@ class ClaudeExtractor:
             }
         ]
 
-    def _serialize_tables(self, document: RawDocument, warnings: list[str]) -> str:
+    def _build_multi_content(
+        self, documents: list[RawDocument], warnings: list[str]
+    ) -> list[Any]:
+        """One combined request for several files of the same purchase order.
+
+        Each PDF becomes its own ``document`` block (preceded by a labeling text
+        block); each tabular file becomes a text block tagged with its name.
+        Claude sees everything at once and reconciles by supplier reference.
+        """
+        content: list[Any] = [
+            {"type": "text", "text": self._user_prompt() + _MULTI_FILE_NOTE}
+        ]
+        for document in documents:
+            if document.kind == "pdf":
+                if document.pdf_bytes is None:
+                    raise ValueError("pdf document has no pdf_bytes")
+                content.append(
+                    {"type": "text", "text": f"Fichier : {document.filename}"}
+                )
+                content.append(
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": base64.standard_b64encode(
+                                document.pdf_bytes
+                            ).decode("ascii"),
+                        },
+                    }
+                )
+            else:
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Fichier : {document.filename}\n\n"
+                            + self._serialize_tables(
+                                document, warnings, label=document.filename
+                            )
+                        ),
+                    }
+                )
+        return content
+
+    def _serialize_tables(
+        self, document: RawDocument, warnings: list[str], *, label: str | None = None
+    ) -> str:
         lines: list[str] = []
         remaining = MAX_TABLE_ROWS
         truncated = False
@@ -415,9 +485,12 @@ class ClaudeExtractor:
             if truncated:
                 break
         if truncated:
+            # In a multi-file lot, name the truncated file so the warning is
+            # actionable; single-file keeps the historical (unprefixed) text.
+            prefix = f"{label} : " if label else ""
             warnings.append(
-                f"Source tabulaire tronquée à {MAX_TABLE_ROWS} lignes pour "
-                "l'extraction — des produits peuvent manquer."
+                f"{prefix}Source tabulaire tronquée à {MAX_TABLE_ROWS} lignes "
+                "pour l'extraction — des produits peuvent manquer."
             )
         return "\n".join(lines)
 
@@ -577,6 +650,73 @@ class ClaudeExtractor:
                     )
                     variant.ean = None
                     variant.confidence["ean"] = 0.0
+
+    def _cross_check_multi(
+        self,
+        products: list[ImportedProduct],
+        documents: list[RawDocument],
+        warnings: list[str],
+    ) -> None:
+        """Cross-check against the UNION of every file in the lot.
+
+        EANs/prices are verified against the pooled cells of all tabular files.
+        An EAN absent from that pool is validated by its EAN-13 check digit when
+        the lot contains at least one PDF (best-effort, as for a lone PDF),
+        otherwise dropped. Prices absent from the tabular pool are dropped unless
+        the lot is 100% PDF, in which case the model's confidence is kept.
+        """
+        has_pdf = any(document.kind == "pdf" for document in documents)
+        tabular_docs = [d for d in documents if d.kind == "tabular"]
+        all_pdf = not tabular_docs
+        ean_cells: set[str] = set()
+        price_cells: set[Decimal] = set()
+        for document in tabular_docs:
+            for table in document.tables:
+                for row in table.rows:
+                    for cell in row:
+                        stripped = cell.strip()
+                        if not stripped:
+                            continue
+                        ean_cells.add(_normalize_ean(stripped))
+                        number = _parse_decimal(stripped)
+                        if number is not None:
+                            price_cells.add(number)
+
+        for product in products:
+            for variant in product.variants:
+                if variant.ean is not None:
+                    normalized = _normalize_ean(variant.ean.strip())
+                    if normalized in ean_cells:
+                        variant.confidence["ean"] = 1.0
+                    elif has_pdf and ean13_is_valid(normalized):
+                        pass  # unverifiable in text but plausible; keep as-is
+                    else:
+                        reason = (
+                            "invalide (clé de contrôle EAN-13)"
+                            if has_pdf
+                            else "introuvable dans la source"
+                        )
+                        warnings.append(f"EAN {variant.ean} {reason} — retiré")
+                        variant.ean = None
+                        variant.confidence["ean"] = 0.0
+                if all_pdf:
+                    # No tabular pool to verify prices against: keep the model's
+                    # own confidence, exactly like a lone PDF source.
+                    continue
+                for field in ("wholesale_price", "retail_price"):
+                    value: Decimal | None = getattr(variant, field)
+                    if value is None:
+                        continue
+                    if value not in price_cells:
+                        warnings.append(
+                            f"Prix {value} ({field}, réf "
+                            f"{product.supplier_ref}) introuvable dans la "
+                            "source — retiré"
+                        )
+                        setattr(variant, field, None)
+                        variant.confidence[field] = 0.0
+                    else:
+                        variant.confidence[field] = 1.0
 
 
 def build_extractor(

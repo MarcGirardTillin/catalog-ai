@@ -110,6 +110,15 @@ class ExtractionResult(BaseModel):
 
 
 class Extractor(Protocol):
-    """What the import job processor runs (implemented in app.imports)."""
+    """What the import job processor runs (implemented in app.imports).
 
-    def __call__(self, document: RawDocument) -> ExtractionResult: ...
+    Accepts either a single :class:`RawDocument` or a list of them: several
+    files can belong to the SAME purchase order and are reconciled into one
+    extraction (one product per supplier reference, aggregated across files).
+    A single document (or a one-element list) behaves identically to the
+    historical single-file extraction.
+    """
+
+    def __call__(
+        self, document: "RawDocument | list[RawDocument]"
+    ) -> ExtractionResult: ...

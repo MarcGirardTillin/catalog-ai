@@ -451,8 +451,10 @@ def read_usage_by_job(
         if job_id is None:
             label_text = "Hors job"
         elif job is not None and job.job_type == "import":
-            file_name = (job.selection_json or {}).get("file_name")
-            label_text = str(file_name) if file_name else f"Job #{job_id}"
+            from app.imports.selection import stored_import_files
+
+            names = [entry["file_name"] for entry in stored_import_files(job)]
+            label_text = names[0] if names else f"Job #{job_id}"
         else:
             label_text = f"Job #{job_id}"
         cost = bucket.cost.quantize(_CENTS) if bucket.priced else None

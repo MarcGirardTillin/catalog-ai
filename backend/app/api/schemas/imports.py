@@ -25,7 +25,10 @@ class ImportJobTotals(BaseModel):
 class ImportJobPublic(BaseModel):
     id: int
     status: str
+    # First uploaded file name (kept for the existing single-name frontend).
     file_name: str
+    # Every uploaded file name, in order (multi-file imports).
+    file_names: list[str] = Field(default_factory=list)
     counts: ImportJobCounts
     totals: ImportJobTotals = Field(default_factory=ImportJobTotals)
     # Document-level facts read from the file (purchase orders mostly).

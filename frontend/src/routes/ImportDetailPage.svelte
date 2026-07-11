@@ -543,9 +543,15 @@
     navigate(`/jobs/${jobData.id}`)
   }
 
-  // Fichier source : prévisualisation (PDF via blob, tabulaire via parse
-  // serveur, chargée au premier dépliage) et re-téléchargement.
-  const isPdf = $derived((job?.file_name ?? "").toLowerCase().endsWith(".pdf"))
+  // Fichier(s) source : un lot peut contenir plusieurs fichiers d'un même bon
+  // de commande. On prévisualise/télécharge celui sélectionné (index dans le
+  // lot). Rétro-compat : `file_names` absent → un seul fichier (file_name).
+  const fileNames = $derived(
+    (job?.file_names?.length ? job.file_names : job ? [job.file_name] : []),
+  )
+  let selectedFileIndex = $state(0)
+  const currentFileName = $derived(fileNames[selectedFileIndex] ?? job?.file_name ?? "")
+  const isPdf = $derived(currentFileName.toLowerCase().endsWith(".pdf"))
   let previewOpen = $state(false)
   let previewLoading = $state(false)
   let previewError = $state<string | null>(null)
@@ -557,8 +563,22 @@
     if (filePdfUrl) URL.revokeObjectURL(filePdfUrl)
   })
 
-  async function togglePreview() {
-    if (previewOpen) {
+  function resetFilePreview() {
+    if (filePdfUrl) URL.revokeObjectURL(filePdfUrl)
+    filePdfUrl = null
+    filePreview = null
+    previewError = null
+  }
+
+  function selectFileIndex(index: number) {
+    if (index === selectedFileIndex) return
+    selectedFileIndex = index
+    resetFilePreview()
+    if (previewOpen) void togglePreview(true)
+  }
+
+  async function togglePreview(forceOpen = false) {
+    if (previewOpen && !forceOpen) {
       previewOpen = false
       return
     }
@@ -567,11 +587,11 @@
     previewLoading = true
     previewError = null
     if (isPdf) {
-      const { data, error } = await getImportFile(Number(id))
+      const { data, error } = await getImportFile(Number(id), selectedFileIndex)
       if (error || !data) previewError = "Le fichier source n'est plus disponible."
       else filePdfUrl = URL.createObjectURL(data)
     } else {
-      const { data, error } = await previewImportFile(Number(id))
+      const { data, error } = await previewImportFile(Number(id), selectedFileIndex)
       if (error || !data) previewError = "Le fichier source n'est plus disponible."
       else filePreview = data
     }
@@ -581,7 +601,7 @@
   async function downloadFile() {
     if (!job || downloading) return
     downloading = true
-    const { data, error } = await getImportFile(Number(id))
+    const { data, error } = await getImportFile(Number(id), selectedFileIndex)
     downloading = false
     if (error || !data) {
       previewError = "Le fichier source n'est plus disponible."
@@ -591,7 +611,7 @@
     const url = URL.createObjectURL(data)
     const anchor = document.createElement("a")
     anchor.href = url
-    anchor.download = job.file_name || `import-${id}`
+    anchor.download = currentFileName || `import-${id}`
     anchor.click()
     URL.revokeObjectURL(url)
   }
@@ -933,14 +953,34 @@
                 </div>
               {/if}
 
-              <!-- Fichier source : aperçu à la demande + re-téléchargement. -->
+              <!-- Fichier(s) source : sélection dans le lot, aperçu à la
+                   demande + re-téléchargement. -->
               <div class="border-border flex flex-col gap-3 border-t pt-3">
+                {#if fileNames.length > 1}
+                  <div class="flex flex-wrap gap-1.5">
+                    {#each fileNames as name, index (index)}
+                      <button
+                        type="button"
+                        class={`max-w-56 truncate rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                          index === selectedFileIndex
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border text-muted-foreground hover:text-foreground"
+                        }`}
+                        title={name}
+                        onclick={() => selectFileIndex(index)}
+                      >
+                        {name}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <p class="text-muted-foreground text-xs">
-                    Fichier source : <span class="text-foreground font-medium">{job.file_name}</span>
+                    {fileNames.length > 1 ? "Fichier sélectionné" : "Fichier source"} :
+                    <span class="text-foreground font-medium">{currentFileName}</span>
                   </p>
                   <div class="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onclick={togglePreview}>
+                    <Button variant="outline" size="sm" onclick={() => togglePreview()}>
                       {#if previewLoading}
                         <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
                       {:else if previewOpen}
@@ -969,7 +1009,7 @@
                   {:else if filePdfUrl}
                     <iframe
                       src={filePdfUrl}
-                      title="Aperçu de {job.file_name}"
+                      title="Aperçu de {currentFileName}"
                       class="border-border h-128 w-full rounded-md border"
                     ></iframe>
                   {:else if filePreview}

@@ -25,7 +25,9 @@ export type ImportJobTotals = {
 export type ImportJobPublic = {
   id: number
   status: ImportJobStatus
+  // Nom du 1er fichier (compat) ; `file_names` liste tous les fichiers du lot.
   file_name: string
+  file_names: string[]
   counts: ImportJobCounts
   totals: ImportJobTotals
   // Infos lues sur le document lui-même (bons de commande surtout).
@@ -152,11 +154,18 @@ export type Paginated<T> = {
 // Le client généré attend TData sous forme de map { statut: type } et
 // renvoie `{ data, error }` (throwOnError = false par défaut).
 
-/** Upload multipart : axios sérialise le FormData et pose le boundary lui-même. */
-export function createImport(file: File, locationId?: number) {
+/** Upload multipart : plusieurs fichiers d'un même bon de commande sous le
+ * champ répété `files`, plus le magasin et le profil choisis au dépôt.
+ * Axios sérialise le FormData et pose le boundary lui-même. */
+export function createImport(
+  files: File[],
+  locationId?: number,
+  profileId?: number,
+) {
   const body = new FormData()
-  body.append("file", file)
+  for (const file of files) body.append("files", file, file.name)
   if (locationId != null) body.append("location_id", String(locationId))
+  if (profileId != null) body.append("profile_id", String(profileId))
   return client.post<{ 201: ImportJobPublic }, unknown>({
     responseType: "json",
     url: "/imports",
@@ -179,19 +188,22 @@ export function readImport(id: number) {
   })
 }
 
-/** Fichier source original, en blob (l'auth passe par les cookies axios). */
-export function getImportFile(id: number) {
+/** Fichier source original, en blob (l'auth passe par les cookies axios).
+ * `index` cible un fichier précis du lot (0 par défaut). */
+export function getImportFile(id: number, index = 0) {
   return client.get<{ 200: Blob }, unknown>({
     responseType: "blob",
     url: `/imports/${id}/file`,
+    query: index ? { index } : undefined,
   })
 }
 
-/** Premières lignes parsées d'un fichier tabulaire (xlsx/csv). */
-export function previewImportFile(id: number) {
+/** Premières lignes parsées d'un fichier tabulaire (xlsx/csv) du lot. */
+export function previewImportFile(id: number, index = 0) {
   return client.get<{ 200: ImportFilePreview }, unknown>({
     responseType: "json",
     url: `/imports/${id}/file/preview`,
+    query: index ? { index } : undefined,
   })
 }
 

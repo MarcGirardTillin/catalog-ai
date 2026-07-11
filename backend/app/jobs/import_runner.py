@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.api.services.usage import record_claude_usage
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.imports.selection import stored_import_files
 from app.models import EnrichmentJob, ImportItem
 
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Injection points (tests pass fakes; production uses the lazy defaults).
 ParseFile = Callable[[bytes, str], "RawDocument"]
-Extractor = Callable[["RawDocument"], "ExtractionResult"]
+Extractor = Callable[["RawDocument | list[RawDocument]"], "ExtractionResult"]
 BuildExtractor = Callable[[], Extractor]
 
 
@@ -117,16 +118,26 @@ def run_import_job(
 def _process(
     db: Session, job: EnrichmentJob, parse: ParseFile, build: BuildExtractor
 ) -> None:
-    """Parse -> extract -> stage items + usage; commit once at the end."""
-    file_path = str(job.selection_json.get("file_path") or "")
-    if not file_path:
-        raise ValueError("import job has no selection_json['file_path']")
-    file_name = str(job.selection_json.get("file_name") or Path(file_path).name)
-    data = Path(file_path).read_bytes()
+    """Parse -> extract -> stage items + usage; commit once at the end.
 
-    document = parse(data, file_name)
+    Several files can back a single import (documents of the same purchase
+    order): each is parsed, then ALL of them are handed to the extractor in
+    one call so Claude reconciles them into one product set.
+    """
+    stored_files = stored_import_files(job)
+    if not stored_files:
+        raise ValueError("import job has no stored source files")
+    documents: list[RawDocument] = []
+    for entry in stored_files:
+        file_path = entry["file_path"]
+        if not file_path:
+            raise ValueError("import job has a stored file with no path")
+        file_name = entry["file_name"] or Path(file_path).name
+        data = Path(file_path).read_bytes()
+        documents.append(parse(data, file_name))
+
     extractor = build()
-    result = extractor(document)
+    result = extractor(documents)
 
     for product in result.products:
         db.add(

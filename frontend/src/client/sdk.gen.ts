@@ -326,7 +326,12 @@ export const importsListImports = <ThrowOnError extends boolean = false>(options
 /**
  * Create Import
  *
- * Upload a supplier file and start extracting products in the background.
+ * Upload one or more supplier files and start extracting in the background.
+ *
+ * Several files are supported so documents that cross-reference the same
+ * purchase order (e.g. a PDF order + a barcode spreadsheet) are extracted and
+ * reconciled in one pass. An optional `profile_id` selects the render profile
+ * at creation time (validated for ownership).
  */
 export const importsCreateImport = <ThrowOnError extends boolean = false>(options: Options<ImportsCreateImportData, ThrowOnError>): RequestResult<ImportsCreateImportResponses, ImportsCreateImportErrors, ThrowOnError> => (options.client ?? client).post<ImportsCreateImportResponses, ImportsCreateImportErrors, ThrowOnError>({
     ...formDataBodySerializer,
@@ -351,7 +356,9 @@ export const importsReadImport = <ThrowOnError extends boolean = false>(options:
 /**
  * Download Import File
  *
- * Stream the original uploaded file (inline, for preview or download).
+ * Stream an original uploaded file (inline, for preview or download).
+ *
+ * `index` selects which of the import's files to stream (default 0).
  */
 export const importsDownloadImportFile = <ThrowOnError extends boolean = false>(options: Options<ImportsDownloadImportFileData, ThrowOnError>): RequestResult<ImportsDownloadImportFileResponses, ImportsDownloadImportFileErrors, ThrowOnError> => (options.client ?? client).get<ImportsDownloadImportFileResponses, ImportsDownloadImportFileErrors, ThrowOnError>({ url: '/imports/{import_id}/file', ...options });
 
@@ -359,6 +366,8 @@ export const importsDownloadImportFile = <ThrowOnError extends boolean = false>(
  * Preview Import File
  *
  * First rows of a tabular source file; PDFs are previewed via /file.
+ *
+ * `index` selects which of the import's files to preview (default 0).
  */
 export const importsPreviewImportFile = <ThrowOnError extends boolean = false>(options: Options<ImportsPreviewImportFileData, ThrowOnError>): RequestResult<ImportsPreviewImportFileResponses, ImportsPreviewImportFileErrors, ThrowOnError> => (options.client ?? client).get<ImportsPreviewImportFileResponses, ImportsPreviewImportFileErrors, ThrowOnError>({
     responseType: 'json',
