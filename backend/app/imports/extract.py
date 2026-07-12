@@ -23,6 +23,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from app.clients.base import ExternalServiceError, NotConfiguredError
+from app.clients.claude import MAX_RETRIES as CLAUDE_MAX_RETRIES
 from app.core.config import settings
 from app.imports.schema import (
     Confidence,
@@ -296,7 +297,10 @@ class ClaudeExtractor:
         if not api_key:
             raise NotConfiguredError("claude")
         self._model = model or settings.AI_DEFAULT_MODEL
-        self._client = anthropic.Anthropic(api_key=api_key, http_client=http_client)
+        # max_retries : rejoue 429/5xx avec backoff (même règle que ClaudeClient).
+        self._client = anthropic.Anthropic(
+            api_key=api_key, http_client=http_client, max_retries=CLAUDE_MAX_RETRIES
+        )
         # Boutique category tree (« parent > enfant » paths); when provided,
         # extracted categories are mapped onto it (prompt + canonicalization).
         self._known_categories = [c for c in (known_categories or []) if c.strip()]

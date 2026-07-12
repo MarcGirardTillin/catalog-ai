@@ -13,9 +13,10 @@
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal"
   import WandSparkles from "@lucide/svelte/icons/wand-sparkles"
   import X from "@lucide/svelte/icons/x"
+  import { createQuery } from "@tanstack/svelte-query"
   import { listen, navigate } from "svelte5-router"
 
-  import { authLogout } from "@/client"
+  import { authLogout, statsDashboardStats } from "@/client"
   import type { UserPublic } from "@/client"
   import {
     DropdownMenu,
@@ -145,6 +146,47 @@
       : BASE_NAV_GROUPS,
   )
 
+  // --- Pastilles d'état des traitements (menus Imports / Enrichissements) ---
+  // Polling léger des compteurs du dashboard ; le cache est partagé avec la
+  // page d'accueil (même queryKey). Remplace l'idée de notifications e-mail.
+  const statsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+    refetchInterval: 30_000,
+  }))
+
+  type NavDot = { tone: string; title: string }
+
+  // Une seule pastille par menu, la plus urgente : échec > à vérifier > en cours.
+  function navDot(failed: number, review: number, running: number): NavDot | null {
+    if (failed > 0) return { tone: "bg-destructive", title: `${failed} en échec` }
+    if (review > 0) return { tone: "bg-amber-500", title: `${review} à vérifier` }
+    if (running > 0)
+      return { tone: "bg-primary animate-pulse", title: `${running} en cours` }
+    return null
+  }
+
+  const navDots = $derived.by((): Record<string, NavDot | null> => {
+    const s = statsQuery.data
+    if (!s) return {}
+    return {
+      "/imports": navDot(
+        s.import_failed_items ?? 0,
+        s.imports_to_transfer ?? 0,
+        s.imports_processing ?? 0,
+      ),
+      "/jobs": navDot(
+        s.enrich_failed_items ?? 0,
+        s.ready_items ?? 0,
+        s.running_jobs ?? 0,
+      ),
+    }
+  })
+
   // Paramètres : section séparée en bas de la sidebar, au-dessus du bloc user.
   const settingsActive = $derived(pathname.startsWith("/settings"))
 
@@ -197,6 +239,15 @@
           >
             <item.icon size={16} class="shrink-0" />
             {item.label}
+            {#if navDots[item.href]}
+              {@const dot = navDots[item.href]}
+              <span
+                class="ml-auto size-2 shrink-0 rounded-full {dot?.tone}"
+                title={dot?.title}
+                role="status"
+                aria-label={dot?.title}
+              ></span>
+            {/if}
           </button>
         {/each}
       </div>

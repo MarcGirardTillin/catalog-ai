@@ -491,6 +491,14 @@ export type DashboardStats = {
      */
     failed_items?: number;
     /**
+     * Enrich Failed Items
+     */
+    enrich_failed_items?: number;
+    /**
+     * Import Failed Items
+     */
+    import_failed_items?: number;
+    /**
      * Applied This Month
      */
     applied_this_month?: number;

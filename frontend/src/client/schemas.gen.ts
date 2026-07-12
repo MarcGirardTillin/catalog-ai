@@ -797,6 +797,16 @@ export const DashboardStatsSchema = {
             title: 'Failed Items',
             default: 0
         },
+        enrich_failed_items: {
+            type: 'integer',
+            title: 'Enrich Failed Items',
+            default: 0
+        },
+        import_failed_items: {
+            type: 'integer',
+            title: 'Import Failed Items',
+            default: 0
+        },
         applied_this_month: {
             type: 'integer',
             title: 'Applied This Month',

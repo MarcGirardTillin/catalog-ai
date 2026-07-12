@@ -124,6 +124,8 @@ def test_dashboard_stats_covers_imports(auth_client: TestClient) -> None:
     assert body["imports_to_transfer"] == 2
     assert body["imports_processing"] == 1
     assert body["failed_items"] == 1
+    assert body["enrich_failed_items"] == 0
+    assert body["import_failed_items"] == 1
     assert body["imported_this_month"] == 1
     # 1 fiche importée × 2 min (défaut), aucun enrichissement appliqué.
     assert body["minutes_saved_this_month"] == 2

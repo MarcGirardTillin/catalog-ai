@@ -18,7 +18,7 @@ This is a **new project, separate from the Xano repo** (new Git repository, e.g.
 - **Transforms (all):** description+meta, images (bg+recolor+resize 4:5), **title by template**, **image filename by template**, **variant weights on existing products**.
 - **Write mode:** stage → **review queue** → approve → apply to Tillin (Xano) → Tillin syncs to Shopify.
 - **Selection:** a list of product IDs **or** a tag.
-- **Async, fire-and-forget:** you launch a job and **leave** — processing runs server-side on the worker, independent of the browser. You come back later (the job survives a closed tab / logout) and review staged results when they're ready. Optional **notification when the job finishes** (email/in-app).
+- **Async, fire-and-forget:** you launch a job and **leave** — processing runs server-side on the worker, independent of the browser. You come back later (the job survives a closed tab / logout) and review staged results when they're ready. In-app signal: **pastilles d'état sur les menus « Imports » et « Enrichissements »** (decision 2026-07-12 — replaces the earlier email/Brevo notification idea, dropped).
 
 > Per saved feedback for the Xano side: never auto-push (user does Ctrl+S + manual push), `enforce_hidden_fields = true` on every `db.add`/`db.edit`.
 
@@ -50,7 +50,7 @@ The pipeline is **fully asynchronous** — you do not wait on it:
 2. A **separate worker service** drains the queue on its own schedule (concurrency cap + per-host rate limit + retry). It keeps running whether or not anyone is connected.
 3. Each finished item flips to `ready_for_review` with its staged result persisted in Postgres. The job moves `pending → processing → completed/partial`.
 4. You return **any time later**, open `/jobs/[id]/review`, and approve/edit/reject staged results. Approval is itself fast and independent per item.
-5. Optional **"notify when done"** (email or in-app badge) so you don't have to poll manually.
+5. **In-app badge**: colored status dots on the "Imports" / "Enrichissements" sidebar menu entries (processing / to review / failed) so you don't have to poll manually. Email notifications (Brevo) were considered then **dropped** (user decision 2026-07-12).
 
 Because state lives in the app's Postgres (not the browser, not Xano), jobs are durable across logouts, restarts, and deploys, and can be resumed.
 
@@ -125,7 +125,7 @@ Cheap glue only; no pipeline compute on Xano:
 ## Phasing
 - **Phase 0 — skeleton:** repo + SvelteKit + FastAPI deployed on Railway/Render with Postgres; `xano_client` reads products by tag; login. Proves the read path.
 - **Phase 1 — pipeline correctness (run on one product):** Shopify JSON match by reference → Claude copy → Photoroom 4:5 image → title template → weight mapping → stage → review UI → approve → write back to Xano (desc/meta/title/weights/images). Validates every transform on a single product before scaling.
-- **Phase 2 — async batch (the real UX):** job/item queue + separate **worker service** so you launch a job, leave, and come back to review. Concurrency + rate limit + retry, progress page, apply-approved, optional notify-when-done.
+- **Phase 2 — async batch (the real UX):** job/item queue + separate **worker service** so you launch a job, leave, and come back to review. Concurrency + rate limit + retry, progress page, apply-approved, sidebar status dots (shipped 2026-07-12, replaces notify-when-done).
 - **Phase 3 — robust scraping — Firecrawl part SHIPPED 2026-07-10:** Firecrawl v2 fallback wired end-to-end: `FirecrawlClient.search` (POST /v2/search, 2 credits) + `extract_product` (POST /v2/scrape `formats:[{type:"json",schema}]` → `data.json`, 5 credits) ; resolver `method=auto` chains Shopify → Firecrawl (max 2 sites, reference then title queries — barcodes excluded from web search —, max 2 extracts/run; page carrying the product reference → `resolved` 0.9 `method_used=firecrawl`, else clean `needs_manual` with the found pages as candidates), `method=firecrawl|shopify_json` = per-job override via `config_json.scrape.default_method`; `stage_from_url` accepts ANY url (Shopify first, else Firecrawl extraction, score 0.9/0.5) — this is the salomon.com repair path (their main site is NOT Shopify; suggest.json 404 even following redirects). Shared brand-site client now follows redirects. Metering: `usage_event` provider `firecrawl` metric `credits` (search 2 / extract 5) with job/item ids. Source images deduped before Photoroom (LLM extraction can repeat URLs — seen live). Live-validated on salomon.com: auto fallback surfaces the right product pages as candidates (test product has no title/barcode, reference not indexed → needs_manual by design), manual URL restage extracts + normalizes 6 CDN images. Still open: **Bright Data Web Unlocker** for WAF sites (Farfetch/Asics) via the ready-made `unlocker.py` interface; frontend method-override control in review (« re-run with method X ») — the manual URL input already covers the practical need.
 - **Phase 4 — polish:** brand `website_urls` settings UI, optional direct Shopify push, run history + per-provider cost tracking.
 - **Steerable generation sprint ("Sprint B") — SHIPPED 2026-07-08:** move the account "Enrichissement" defaults out of the Paramètres page into their **own settings tab/section**, built around an **instruction library**: as many named editorial instructions/prompts as the user wants (CRUD + per-category defaults), selectable at job creation (or free-text one-off), instead of the single `editorial_instructions` default shipped 2026-07-08. Same tab hosts the per-client context (.md rules per boutique, à la L'Espion/Bambinoh), per-item extra source URLs + SEO keywords, and the title-template builder (clickable tokens + separator — the builder itself shipped early on the Paramètres page and moves here with the rest). Delivered: `instruction_template` table + /instructions CRUD, job-creation snapshot (`instruction_id` → editorial_instructions, per-category defaults via `category_instructions`), `client_context` account setting prefixed to the copy prompt, `seo_keywords` + `extra_website_urls` job config keys, parameterized `meta_max_length` (review counter reads it too), Paramètres tabs (Préférences / Enrichissement / Compte) with the instruction library UI and a shared JobOptionsPanel at job creation. Still open from this scope: per-ITEM source URLs/keywords overrides in review (job-level shipped; per-item manual URL resolution already existed) and the image dedupe guard to make `applied` items retryable.
@@ -133,7 +133,7 @@ Cheap glue only; no pipeline compute on Xano:
 - **Information architecture — SHIPPED 2026-07-09 (user-validated decisions):** the sidebar now tells the pipeline story: section **Pipeline** (Tableau de bord, Imports, Produits, Enrichissements — ex-« Jobs ») and section **Configuration** (Profils d'import, Instructions — ex-« Enrichissement », Consommation), Paramètres at the bottom; URLs unchanged. Harmonized status wording everywhere: « À vérifier » (ready_for_review), « Écarter/Écarté » (rejected — replaces both « Rejeter » and « Exclure »), final state stays contextual (« Transféré » for imports = creation, « Appliqué » for enrichments = update). Products page has two tabs: **Catalogue** (Tillin search + filters) and **Par import** (an import's products, isolated — resolved to Tillin by reference_code via POST /imports/{id}/link-products since /product_import returns no ids; stored on import_item.tillin_product_id, migration 0014). Product **side panel** (ProductPanel) on row click in both tabs: two completeness scores — « Prêt boutique » (titre, réf, ≥1 variante, prix, catégorie, marque) and « Prêt e-commerce » (≥1 image, description, meta, poids) + non-blocking « titre harmonisé » indicator — plus images gallery and « Enrichir ce produit ». Bridge from a transferred import: « Voir les produits créés » / « Enrichir les produits créés ». Dashboard gained « Imports à vérifier ». Orphan /jobs/new removed.
 - **Product panel expansion + read-mapping fixes — SHIPPED 2026-07-09:** the side panel got wider (`sm:w-[36rem]`), completeness moved to the **bottom**, and now shows description, meta description, a **variants table** (taille, couleur, EAN, SKU, prix d'achat, prix de vente), composition, tags, pays de fabrication, plus **local image upload + camera capture with real persistence** (« Enregistrer » posts the raw bytes to `POST /products/{id}/images` → proxied as repeated-`files` multipart to Tillin's `product_image/{id}/bulk`, which imports each into **Xano storage** and appends a `product_image` row; the Xano token never reaches the browser). No intermediate object storage: Xano is both host and destination. Validated end-to-end through the CatalogAI UI. The same bulk endpoint keeps its URL branch for already-hosted images (scraping/Photoroom output). Root-cause fix behind « saison/rayon vides »: `_map_product` (xano.py) never read `season_id`/`department_id`/`composition_id`/`tags_id`/`manufacturing_country` — now resolved via the classification maps (season/composition/tags) and a **static department map** `{1: Homme, 2: Femme, 3: Unisex}` (Tillin exposes no department titles: no `/department` endpoint, absent from get_all_informations). Variant **couleur/taille** are read from the positional `options` array aligned to `product_options` (`{name, position}`); variant **prix d'achat** from `wholesale_price.amount`. `Product`/`ProductVariant` schema + generated client extended accordingly. Verified live on real products (season « FW24 », rayon « Homme », real tags, split color/size, achat/vente).
 - **Import extraction → category tree matching — SHIPPED 2026-07-09:** the extractor now receives the boutique's own category tree (« parent > enfant » paths built from get_all_informations, best-effort via `_known_category_paths` in import_runner) and maps each product's supplier category onto an **existing** category (prompt instruction + deterministic leaf canonicalization to the tree's casing, confidence 1.0; unmatched labels kept verbatim for manual mapping). Extraction schema stays union-free (category remains a string). Previously extraction copied the raw supplier label with no tree awareness.
-- **Current priority order (user decision 2026-07-09):** 1. Usage metering M2/M3 and Enrichment workspace — both SHIPPED (see below); 2. infra/prod items (Railway deploy, rate-limit retry, Brevo, Firecrawl/Bright Data) — NOT started (`set_variant_weights` DONE, see above); 3. LAST: import I3 direct Xano creation (the /product_import CSV transfer covers the need for now — keep the I3 checkpoints/reminders when it comes up).
+- **Current priority order (user decision 2026-07-09):** 1. Usage metering M2/M3 and Enrichment workspace — both SHIPPED (see below); 2. infra/prod items (Railway deploy, Bright Data) — rate-limit retry (429 Anthropic) SHIPPED 2026-07-12 via SDK max_retries; Brevo email notifications DROPPED 2026-07-12 (replaced by sidebar status dots) (`set_variant_weights` DONE, see above); 3. LAST: import I3 direct Xano creation (the /product_import CSV transfer covers the need for now — keep the I3 checkpoints/reminders when it comes up).
 - **Enrichment workspace sprint — SHIPPED 2026-07-09:** the account "Enrichissement" defaults moved out of Paramètres into their own sidebar workspace `/enrichment` (menu label "Instructions" since the IA pass below), 3 internal tabs — Instructions (library + search + account default), Contexte boutique (client_context markdown + meta_max_length), Modèle de titre (token builder + separator + **title casing** — see below). Settings keeps only true preferences (Préférences / Marques / Compte). Components moved to `lib/components/enrichment/`.
 - **Title casing (user-requested 2026-07-09) — SHIPPED:** `AccountSettings.title_case` (none | upper | capitalize), snapshotted per job, applied in `apply_title_template`; `capitalize` upper-cases each word's first letter only, preserving acronyms/brand casing (e.g. "COTON", "ARMEDANGELS"). Builder in Modèle de titre has a case selector with live preview.
 
@@ -438,7 +438,8 @@ décisions durables). Livré en 9 commits (e885704→2e9b07d) :
 
 Reste hors périmètre (plans ultérieurs) : composants ui/ (select/tabs/switch/
 empty-state/confirm-button), Query sur les écrans restants, refonte dashboard
-admin avancée, notifications Brevo, déploiement Railway.
+admin avancée, déploiement Railway. (Notifications Brevo : abandonnées
+2026-07-12 au profit de pastilles d'état sur les menus Imports/Enrichissements.)
 
 ## Sprint imagerie configurable — SHIPPED 2026-07-12
 
@@ -461,9 +462,9 @@ Livré en 5 commits (66cc71e→…) sur la base des specs ci-dessous :
   save avec remplacement) ; onglet réglages « Imagerie ».
 - Grille tarifaire : ligne `photoroom / photoroom-segment-v1 / images` à
   0,02 € ajoutée (l'ancienne à 0,10 € couvre l'historique photoroom-v2).
-- Restes à suivre : filigrane sandbox jusqu'à la clé prod ; e2e save studio →
-  Tillin à rejouer sur un produit réel choisi par Marc ; idée « flat-lay avec
-  ombre » = génération FASHN (voir items 2-3 ci-dessous, non livrés).
+- Restes à suivre : filigrane sandbox jusqu'à la clé prod. (Save studio →
+  Tillin : validé par Marc 2026-07-12. Idée « flat-lay avec ombre » :
+  abandonnée 2026-07-12.)
 
 ### Spécifications d'origine (2026-07-12)
 
@@ -487,11 +488,8 @@ Chantiers liés au traitement/génération d'image :
    imagerie). Comparatif détourage seul (2026-07-12) : Photoroom remove-bg
    0,02 $ < FASHN background-remove (1 crédit = 0,075 $ à la demande,
    ~0,049 $ au palier max) < remove.bg (~0,20 $) — Photoroom confirmé.
-   *Idée à creuser, hors périmètre de la normalisation* : le « produit à
-   plat avec ombre » pensé comme une **génération d'image** côté FASHN
-   (comme le porté-mannequin), à rapprocher de l'item en attente
-   `generate_flat_photo` — les endpoints FASHN actuels font du porté, pas du
-   flat-lay ; à réévaluer quand un endpoint adapté existe.
+   (L'idée « produit à plat avec ombre » via une génération FASHN a été
+   **abandonnée** — décision utilisateur 2026-07-12.)
 
 1bis. **Traitements à la carte** (demandé 2026-07-12) : l'utilisateur choisit
    les opérations de SA normalisation au lieu d'un pipeline figé —
@@ -538,7 +536,9 @@ Chantiers liés au traitement/génération d'image :
    colonne d'options de traitement, aperçu avant/après grand format,
    éditeur de position, renommage inline + application du modèle de titre,
    enregistrement vers Tillin en lot.
-2. **Instruction de génération FASHN** : CONFIRMÉ (docs 2026-07-12) —
+2. **Instruction de génération FASHN — SHIPPED 2026-07-12** (réglages client
+   `imaging_generation_framing/scene/instructions` + carte « Porté mannequin »
+   du studio ; `build_generation_prompt` compose le prompt) : CONFIRMÉ (docs 2026-07-12) —
    `product-to-model` accepte un `prompt` texte (ex. "professional office
    setting") ainsi que `image_prompt` (image d'inspiration pose/décor),
    `background_reference` (ancre le décor), `face_reference` (identité du

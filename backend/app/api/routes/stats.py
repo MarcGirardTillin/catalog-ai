@@ -123,6 +123,8 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
         imports_processing=job_counts_typed.get(("import", "pending"), 0)
         + job_counts_typed.get(("import", "processing"), 0),
         failed_items=item_counts.get("failed", 0) + import_item_counts.get("failed", 0),
+        enrich_failed_items=item_counts.get("failed", 0),
+        import_failed_items=import_item_counts.get("failed", 0),
         applied_this_month=applied_this_month,
         imported_this_month=imported_this_month,
         minutes_saved_this_month=minutes_saved,

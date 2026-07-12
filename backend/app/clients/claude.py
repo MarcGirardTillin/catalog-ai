@@ -19,6 +19,11 @@ from app.core.config import settings
 
 MAX_TOKENS = 2048
 
+# Le SDK Anthropic rejoue nativement 429/5xx/timeouts avec backoff exponentiel
+# en honorant Retry-After ; 5 tentatives absorbent les pics de rate-limit des
+# jobs batch sans code maison (défaut SDK : 2).
+MAX_RETRIES = 5
+
 COPY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -67,7 +72,9 @@ class ClaudeClient:
         if not api_key:
             raise NotConfiguredError("claude")
         self._model = model or settings.AI_DEFAULT_MODEL
-        self._client = anthropic.Anthropic(api_key=api_key, http_client=http_client)
+        self._client = anthropic.Anthropic(
+            api_key=api_key, http_client=http_client, max_retries=MAX_RETRIES
+        )
 
     @classmethod
     def from_settings(

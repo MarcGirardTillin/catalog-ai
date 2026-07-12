@@ -28,6 +28,9 @@ class DashboardStats(BaseModel):
     imports_processing: int = 0
     # Failed items, enrichment + import combined.
     failed_items: int = 0
+    # Split of failed_items by pipeline (sidebar status dots need the split).
+    enrich_failed_items: int = 0
+    import_failed_items: int = 0
 
     # --- « Ce mois-ci » (current UTC month) ---
     # Enrichment items applied to Tillin, created this month.
