@@ -26,6 +26,9 @@
     parseImageTemplate,
     type TemplatePart,
   } from "@/lib/components/imaging/ImageTitleTemplateBuilder.svelte"
+  import GenerationOptions, {
+    type GenerationConfig,
+  } from "@/lib/components/imaging/GenerationOptions.svelte"
   import ProcessingOptions, {
     type StudioOptions,
   } from "@/lib/components/imaging/ProcessingOptions.svelte"
@@ -74,6 +77,11 @@
     max_kb: 300,
   })
   let imageTemplateParts = $state<TemplatePart[]>([])
+  let generationConfig = $state<GenerationConfig>({
+    framing: "full_body",
+    scene: "studio",
+    instructions: "",
+  })
 
   const imageTitleTemplate = $derived(buildImageTemplate(imageTemplateParts))
 
@@ -109,6 +117,11 @@
       imageTemplateParts = data.image_title_template
         ? parseImageTemplate(data.image_title_template)
         : []
+      generationConfig = {
+        framing: data.imaging_generation_framing ?? "full_body",
+        scene: data.imaging_generation_scene ?? "studio",
+        instructions: data.imaging_generation_instructions ?? "",
+      }
       accountLoaded = true
     })
   })
@@ -149,6 +162,10 @@
       imaging_max_kb: maxKb,
       image_title_template:
         imageTemplateParts.length > 0 ? imageTitleTemplate : null,
+      imaging_generation_framing: generationConfig.framing,
+      imaging_generation_scene: generationConfig.scene,
+      imaging_generation_instructions:
+        generationConfig.instructions.trim() || null,
     })
     savingAccount = false
     if (!ok) {
@@ -322,6 +339,25 @@
                 <Skeleton class="h-24 w-full" />
               {:else}
                 <ProcessingOptions bind:options={imagingOptions} />
+              {/if}
+            </CardContent>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">
+                Génération de visuels (porté mannequin)
+              </CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Instruction donnée au service de visuels pour chaque
+                génération ; ajustable au cas par cas dans le studio.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-4">
+              {#if !accountLoaded}
+                <Skeleton class="h-24 w-full" />
+              {:else}
+                <GenerationOptions bind:config={generationConfig} idPrefix="settings-gen" />
               {/if}
             </CardContent>
           </Card>

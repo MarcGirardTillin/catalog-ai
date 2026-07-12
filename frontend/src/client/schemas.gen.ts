@@ -158,6 +158,35 @@ export const AccountSettingsSchema = {
                 }
             ],
             title: 'Image Title Template'
+        },
+        imaging_generation_framing: {
+            type: 'string',
+            enum: [
+                'full_body',
+                'cropped_head'
+            ],
+            title: 'Imaging Generation Framing',
+            default: 'full_body'
+        },
+        imaging_generation_scene: {
+            type: 'string',
+            enum: [
+                'studio',
+                'lifestyle'
+            ],
+            title: 'Imaging Generation Scene',
+            default: 'studio'
+        },
+        imaging_generation_instructions: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Imaging Generation Instructions'
         }
     },
     type: 'object',
@@ -856,8 +885,48 @@ export const GenerateModelOptionsSchema = {
                     type: 'null'
                 }
             ],
-            title: 'Prompt',
-            default: 'studio photo, plain light neutral background'
+            title: 'Prompt'
+        },
+        framing: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'full_body',
+                        'cropped_head'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Framing'
+        },
+        scene: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'studio',
+                        'lifestyle'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scene'
+        },
+        instructions: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Instructions'
         },
         aspect_ratio: {
             type: 'string',
@@ -899,7 +968,7 @@ export const GenerateModelOptionsSchema = {
     },
     type: 'object',
     title: 'GenerateModelOptions',
-    description: 'Options of POST /products/{id}/images/generate-model (FASHN).'
+    description: 'Options of POST /products/{id}/images/generate-model (FASHN).\n\nThe instruction is resolved server-side: explicit `prompt` wins, else it\nis composed from framing/scene/instructions — each falling back to the\naccount\'s generation settings. (Without a prompt FASHN picks a free\nenvironment — confirmed live: outdoor scene.)'
 } as const;
 
 export const GenerateModelRequestSchema = {

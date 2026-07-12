@@ -86,6 +86,18 @@ export type AccountSettings = {
      * Image Title Template
      */
     image_title_template?: string | null;
+    /**
+     * Imaging Generation Framing
+     */
+    imaging_generation_framing?: 'full_body' | 'cropped_head';
+    /**
+     * Imaging Generation Scene
+     */
+    imaging_generation_scene?: 'studio' | 'lifestyle';
+    /**
+     * Imaging Generation Instructions
+     */
+    imaging_generation_instructions?: string | null;
 };
 
 /**
@@ -536,12 +548,29 @@ export type FilterOption = {
  * GenerateModelOptions
  *
  * Options of POST /products/{id}/images/generate-model (FASHN).
+ *
+ * The instruction is resolved server-side: explicit `prompt` wins, else it
+ * is composed from framing/scene/instructions — each falling back to the
+ * account's generation settings. (Without a prompt FASHN picks a free
+ * environment — confirmed live: outdoor scene.)
  */
 export type GenerateModelOptions = {
     /**
      * Prompt
      */
     prompt?: string | null;
+    /**
+     * Framing
+     */
+    framing?: 'full_body' | 'cropped_head' | null;
+    /**
+     * Scene
+     */
+    scene?: 'studio' | 'lifestyle' | null;
+    /**
+     * Instructions
+     */
+    instructions?: string | null;
     /**
      * Aspect Ratio
      */

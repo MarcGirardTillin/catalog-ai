@@ -63,13 +63,42 @@ class NormalizeOptions:
     scale: float = 1.0
 
 
+# Instruction (prompt) building blocks for the generative verb: the client's
+# framing/scene settings + free-form directives compose the FASHN prompt.
+FRAMING_PROMPTS = {
+    "full_body": "full body shot, the model fully visible",
+    "cropped_head": "framed from the neck down, the model's head cropped out of frame",
+}
+SCENE_PROMPTS = {
+    "studio": "studio photo, plain light neutral background",
+    "lifestyle": "lifestyle photo, natural in-context setting",
+}
+
+
+def build_generation_prompt(framing: str, scene: str, instructions: str | None) -> str:
+    """Compose the FASHN instruction from the structured config + free text.
+
+    Unknown values fall back to the historical default (studio, full body) —
+    without a prompt FASHN picks a free environment (confirmed live: outdoor
+    scene), which is never what a boutique wants by default.
+    """
+    parts = [
+        SCENE_PROMPTS.get(scene, SCENE_PROMPTS["studio"]),
+        FRAMING_PROMPTS.get(framing, FRAMING_PROMPTS["full_body"]),
+    ]
+    if instructions and instructions.strip():
+        parts.append(instructions.strip())
+    return ", ".join(parts)
+
+
 @dataclass
 class GenerateModelOptions:
     """Options of the generative verb (FASHN `product-to-model`).
 
     Without a prompt FASHN picks a free environment (confirmed live: outdoor
     scene) — the locked decision is "worn by a model on a plain background",
-    hence the default prompt.
+    hence the default prompt (callers usually pass one built by
+    :func:`build_generation_prompt` from the account settings).
     """
 
     prompt: str | None = "studio photo, plain light neutral background"

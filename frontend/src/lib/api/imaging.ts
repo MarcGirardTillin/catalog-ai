@@ -3,6 +3,7 @@
 // preview binaire est récupérée en blob (l'auth est un cookie httpOnly, un
 // <img src> cross-origin ne le porterait pas de façon fiable).
 import {
+  type GenerateModelOptions,
   type ImageAssetPublic,
   type NormalizeOptions,
   type RenderRequest,
@@ -16,7 +17,13 @@ import {
 } from "@/client"
 import { client } from "@/client/client.gen"
 
-export type { ImageAssetPublic, NormalizeOptions, RenderRequest, StagedFilePublic }
+export type {
+  GenerateModelOptions,
+  ImageAssetPublic,
+  NormalizeOptions,
+  RenderRequest,
+  StagedFilePublic,
+}
 
 export function normalizeImage(
   productId: number,
@@ -34,10 +41,11 @@ export function generateModelImage(
   productId: number,
   imageUrl: string,
   productImageId: number | null,
+  options?: GenerateModelOptions,
 ) {
   return productsGenerateModelImage({
     path: { product_id: productId },
-    body: { image_url: imageUrl, product_image_id: productImageId },
+    body: { image_url: imageUrl, product_image_id: productImageId, options },
   })
 }
 

@@ -6,7 +6,7 @@
   export type Work = {
     status: "idle" | "running" | "done" | "failed" | "saved"
     asset: ImageAssetPublic | null
-    previewUrl: string | null
+    previewUrls: string[]
     error: string | null
     filename: string
     replace: boolean
@@ -45,7 +45,11 @@
   } = $props()
 
   const outputFile = $derived(work.asset?.files?.[0] ?? null)
-  const canRender = $derived(work.asset?.can_render === true && !work.saving)
+  const multiOutput = $derived(work.previewUrls.length > 1)
+  // Le repositionnement ne s'applique qu'aux sorties uniques (normalisation).
+  const canRender = $derived(
+    work.asset?.can_render === true && !work.saving && !multiOutput,
+  )
   const saved = $derived(work.status === "saved")
 
   // --- Re-render (repositionnement) : débouncé, séquencé (1 à la fois) ---
@@ -78,8 +82,8 @@
     }
     work.asset = data
     const previews = await fetchAssetPreviews(data)
-    if (work.previewUrl) URL.revokeObjectURL(work.previewUrl)
-    work.previewUrl = previews[0] ?? null
+    for (const url of work.previewUrls) URL.revokeObjectURL(url)
+    work.previewUrls = previews
     work.rendering = false
     if (renderQueued) {
       renderQueued = false
@@ -157,41 +161,57 @@
           </span>
         </figcaption>
       </figure>
-      <!-- Après (drag pour repositionner) -->
+      <!-- Après (drag pour repositionner quand sortie unique) -->
       <figure class="flex flex-col gap-1">
-        <div
-          class="relative overflow-hidden rounded-md {canRender
-            ? 'cursor-grab'
-            : ''} {dragging ? 'cursor-grabbing' : ''}"
-          role="presentation"
-          onpointerdown={onPointerDown}
-          onpointermove={onPointerMove}
-          onpointerup={onPointerUp}
-          onpointercancel={onPointerUp}
-        >
-          {#if work.previewUrl}
-            <img
-              bind:this={afterImg}
-              src={work.previewUrl}
-              alt="Après"
-              draggable="false"
-              class="bg-muted aspect-4/5 w-full object-contain select-none {work.rendering
-                ? 'opacity-60'
-                : ''}"
-            />
-          {:else}
-            <div class="bg-muted aspect-4/5 w-full animate-pulse rounded-md"></div>
-          {/if}
-          {#if work.rendering}
-            <span
-              class="bg-card/80 absolute right-1.5 bottom-1.5 rounded-full px-2 py-0.5 text-[10px]"
-            >
-              Recomposition…
-            </span>
-          {/if}
-        </div>
+        {#if multiOutput}
+          <div class="grid grid-cols-2 gap-2">
+            {#each work.previewUrls as preview, index (preview)}
+              <img
+                src={preview}
+                alt={`Visuel généré ${index + 1}`}
+                class="bg-muted aspect-4/5 w-full rounded-md object-contain"
+              />
+            {/each}
+          </div>
+        {:else}
+          <div
+            class="relative overflow-hidden rounded-md {canRender
+              ? 'cursor-grab'
+              : ''} {dragging ? 'cursor-grabbing' : ''}"
+            role="presentation"
+            onpointerdown={onPointerDown}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+          >
+            {#if work.previewUrls[0]}
+              <img
+                bind:this={afterImg}
+                src={work.previewUrls[0]}
+                alt="Après"
+                draggable="false"
+                class="bg-muted aspect-4/5 w-full object-contain select-none {work.rendering
+                  ? 'opacity-60'
+                  : ''}"
+              />
+            {:else}
+              <div class="bg-muted aspect-4/5 w-full animate-pulse rounded-md"></div>
+            {/if}
+            {#if work.rendering}
+              <span
+                class="bg-card/80 absolute right-1.5 bottom-1.5 rounded-full px-2 py-0.5 text-[10px]"
+              >
+                Recomposition…
+              </span>
+            {/if}
+          </div>
+        {/if}
         <figcaption class="text-muted-foreground flex justify-between text-xs">
-          <span>Après{canRender ? " — glissez pour repositionner" : ""}</span>
+          <span>
+            {multiOutput
+              ? `Visuels générés (${work.previewUrls.length})`
+              : `Après${canRender ? " — glissez pour repositionner" : ""}`}
+          </span>
           <span class="tabular-nums">
             {outputFile?.width ? `${outputFile.width}×${outputFile.height}` : ""}
             {outputFile?.size_bytes
@@ -231,17 +251,26 @@
 
     <!-- Nom de fichier + enregistrement -->
     <div class="flex flex-wrap items-end gap-2">
-      <div class="flex min-w-48 grow flex-col gap-1">
-        <label class="text-muted-foreground text-xs" for={`rename-${image.url}`}>
-          Nom du fichier (optionnel)
-        </label>
-        <Input
-          id={`rename-${image.url}`}
-          placeholder={filenamePlaceholder || "nom-automatique"}
-          disabled={saved || work.saving}
-          bind:value={work.filename}
-        />
-      </div>
+      {#if !multiOutput}
+        <div class="flex min-w-48 grow flex-col gap-1">
+          <label
+            class="text-muted-foreground text-xs"
+            for={`rename-${work.asset?.id ?? image.url}`}
+          >
+            Nom du fichier (optionnel)
+          </label>
+          <Input
+            id={`rename-${work.asset?.id ?? image.url}`}
+            placeholder={filenamePlaceholder || "nom-automatique"}
+            disabled={saved || work.saving}
+            bind:value={work.filename}
+          />
+        </div>
+      {:else}
+        <p class="text-muted-foreground grow self-center text-xs">
+          Plusieurs visuels : les noms suivent le modèle de titre d'image.
+        </p>
+      {/if}
       {#if image.id != null}
         <label class="flex h-9 items-center gap-2 text-sm">
           <input

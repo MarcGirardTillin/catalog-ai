@@ -63,6 +63,11 @@ class AccountSettings(BaseModel):
     # Image filename template ({reference}/{color}/{position}/{brand}/{title}),
     # rendered then slugged at save time; None = default technical names.
     image_title_template: str | None = None
+    # --- Génération de visuels (porté mannequin) : traduits en instruction
+    # (prompt) à chaque génération ; surchargables au lancement (studio). ---
+    imaging_generation_framing: Literal["full_body", "cropped_head"] = "full_body"
+    imaging_generation_scene: Literal["studio", "lifestyle"] = "studio"
+    imaging_generation_instructions: str | None = None
 
 
 class ConnectionStatus(BaseModel):

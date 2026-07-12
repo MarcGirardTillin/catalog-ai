@@ -220,6 +220,24 @@ def test_fashn_credits_unknown_combo_raises() -> None:
         fashn_credits("8k", "balanced", 1)
 
 
+def test_build_generation_prompt_composes_scene_framing_and_directives() -> None:
+    from app.imaging.service import build_generation_prompt
+
+    assert build_generation_prompt("full_body", "studio", None) == (
+        "studio photo, plain light neutral background, "
+        "full body shot, the model fully visible"
+    )
+    assert build_generation_prompt("cropped_head", "lifestyle", "  denim vibe ") == (
+        "lifestyle photo, natural in-context setting, "
+        "framed from the neck down, the model's head cropped out of frame, "
+        "denim vibe"
+    )
+    # Unknown values fall back to the historical default.
+    assert build_generation_prompt("??", "??", None).startswith(
+        "studio photo, plain light neutral background"
+    )
+
+
 def test_generate_flat_photo_is_reserved() -> None:
     with pytest.raises(NotImplementedError):
         generate_flat_photo()

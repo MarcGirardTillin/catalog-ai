@@ -30,6 +30,7 @@ from app.api.schemas import (
 )
 from app.api.services.accounts import resolve_account_id
 from app.api.services.imaging import (
+    account_settings,
     merged_normalize_options,
     run_generate_model,
     run_normalize,
@@ -199,6 +200,21 @@ def generate_model_image(
     """
     account_id = resolve_account_id(db, current_user)
     options = body.options or GenerateModelOptionsSchema()
+    if options.prompt is None:
+        # Instruction composée : champs explicites de la requête, repli sur
+        # les réglages de génération du compte champ par champ.
+        stored = account_settings(db, account_id)
+        options = options.model_copy(
+            update={
+                "prompt": imaging_service.build_generation_prompt(
+                    options.framing or stored.imaging_generation_framing,
+                    options.scene or stored.imaging_generation_scene,
+                    options.instructions
+                    if options.instructions is not None
+                    else stored.imaging_generation_instructions,
+                )
+            }
+        )
     asset = ImageAsset(
         account_id=account_id,
         product_id=product_id,

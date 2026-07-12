@@ -357,6 +357,55 @@ def test_generate_model_202_then_background_completes(
         db.close()
 
 
+def test_generate_model_prompt_comes_from_account_generation_settings(
+    auth_client: TestClient,
+    override_fashn: Callable[[Handler], None],
+) -> None:
+    runs: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/run":
+            runs.append(json.loads(request.content))
+        return _fashn_ok_handler(request)
+
+    override_fashn(handler)
+    put = auth_client.put(
+        "/settings/account",
+        json={
+            "imaging_generation_framing": "cropped_head",
+            "imaging_generation_scene": "lifestyle",
+            "imaging_generation_instructions": "urban street style",
+        },
+    )
+    assert put.status_code == 200
+
+    # Sans options : instruction composée depuis les réglages du compte.
+    response = auth_client.post(
+        "/products/101/images/generate-model",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
+    )
+    assert response.status_code == 202
+    assert runs[0]["inputs"]["prompt"] == (
+        "lifestyle photo, natural in-context setting, "
+        "framed from the neck down, the model's head cropped out of frame, "
+        "urban street style"
+    )
+
+    # Overrides ponctuels champ par champ (directives vidées explicitement).
+    response = auth_client.post(
+        "/products/101/images/generate-model",
+        json={
+            "image_url": "https://cdn.tillin/vm01-1.jpg",
+            "options": {"scene": "studio", "instructions": ""},
+        },
+    )
+    assert response.status_code == 202
+    assert runs[1]["inputs"]["prompt"] == (
+        "studio photo, plain light neutral background, "
+        "framed from the neck down, the model's head cropped out of frame"
+    )
+
+
 def test_generate_model_failure_marks_asset_failed(
     auth_client: TestClient,
     override_fashn: Callable[[Handler], None],

@@ -11,6 +11,7 @@
   import { settingsReadAccountSettings, type ProductImage } from "@/client"
   import {
     fetchAssetPreviews,
+    generateModelImage,
     normalizeImage,
     saveAsset,
     waitForAsset,
@@ -28,6 +29,9 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import AssetResult, { type Work } from "@/lib/components/imaging/AssetResult.svelte"
+  import GenerationOptions, {
+    type GenerationConfig,
+  } from "@/lib/components/imaging/GenerationOptions.svelte"
   import ImageGrid, { type WorkStatus } from "@/lib/components/imaging/ImageGrid.svelte"
   import ProcessingOptions, {
     type StudioOptions,
@@ -74,6 +78,13 @@
     max_kb: 300,
   })
   let hasImageTemplate = $state(false)
+  // Config de génération (porté mannequin), pré-remplie des réglages.
+  let genConfig = $state<GenerationConfig>({
+    framing: "full_body",
+    scene: "studio",
+    instructions: "",
+  })
+  let genCount = $state(1)
 
   $effect(() => {
     settingsReadAccountSettings().then(({ data }) => {
@@ -88,6 +99,11 @@
         max_kb: data.imaging_max_kb ?? 300,
       }
       hasImageTemplate = Boolean(data.image_title_template)
+      genConfig = {
+        framing: data.imaging_generation_framing ?? "full_body",
+        scene: data.imaging_generation_scene ?? "studio",
+        instructions: data.imaging_generation_instructions ?? "",
+      }
     })
   })
 
@@ -95,18 +111,26 @@
   let works = $state<Record<string, Work>>({})
   let selected = $state<string[]>([])
 
+  // Clé de travail : URL source pour la normalisation, suffixe ::gen pour la
+  // génération (les deux peuvent coexister sur la même image).
+  const GEN_SUFFIX = "::gen"
+
   const statuses = $derived(
     Object.fromEntries(
-      Object.entries(works).map(([url, work]) => [url, work.status]),
+      images.map((image) => [image.url, works[image.url]?.status ?? "idle"]),
     ) as Record<string, WorkStatus>,
   )
   const runningCount = $derived(
     Object.values(works).filter((w) => w.status === "running").length,
   )
   const results = $derived(
-    images.filter((image) => {
-      const status = works[image.url]?.status
-      return status && status !== "idle"
+    images.flatMap((image) => {
+      const pairs: { key: string; image: ProductImage; work: Work }[] = []
+      for (const key of [image.url, image.url + GEN_SUFFIX]) {
+        const work = works[key]
+        if (work && work.status !== "idle") pairs.push({ key, image, work })
+      }
+      return pairs
     }),
   )
 
@@ -121,11 +145,11 @@
   }
 
   function freshWork(previous?: Work): Work {
-    if (previous?.previewUrl) URL.revokeObjectURL(previous.previewUrl)
+    for (const url of previous?.previewUrls ?? []) URL.revokeObjectURL(url)
     return {
       status: "running",
       asset: null,
-      previewUrl: null,
+      previewUrls: [],
       error: null,
       filename: previous?.filename ?? "",
       replace: previous?.replace ?? false,
@@ -137,20 +161,18 @@
     }
   }
 
-  async function runOne(image: ProductImage) {
-    const key = image.url
+  /** Lance une opération 202 + polling et installe le résultat dans works. */
+  async function runWork(
+    key: string,
+    launch: () => ReturnType<typeof normalizeImage>,
+    failMessage: string,
+  ) {
     if (works[key]?.status === "running") return
     works[key] = freshWork(works[key])
-    const { data, error } = await normalizeImage(
-      productId,
-      image.url,
-      image.id ?? null,
-      { ...options },
-    )
+    const { data, error } = await launch()
     if (error || !data) {
       works[key].status = "failed"
-      works[key].error =
-        "Lancement impossible (service d'imagerie indisponible ?)."
+      works[key].error = failMessage
       return
     }
     const final = await waitForAsset(data.id, { intervalMs: 1500 })
@@ -159,10 +181,31 @@
       works[key].error = final?.error ?? "Le traitement n'a pas abouti."
       return
     }
-    const previews = await fetchAssetPreviews(final)
     works[key].asset = final
-    works[key].previewUrl = previews[0] ?? null
+    works[key].previewUrls = await fetchAssetPreviews(final)
     works[key].status = "done"
+  }
+
+  function runOne(image: ProductImage) {
+    return runWork(
+      image.url,
+      () => normalizeImage(productId, image.url, image.id ?? null, { ...options }),
+      "Lancement impossible (service d'imagerie indisponible ?).",
+    )
+  }
+
+  function runGenerate(image: ProductImage) {
+    return runWork(
+      image.url + GEN_SUFFIX,
+      () =>
+        generateModelImage(productId, image.url, image.id ?? null, {
+          framing: genConfig.framing,
+          scene: genConfig.scene,
+          instructions: genConfig.instructions,
+          num_images: genCount,
+        }),
+      "Lancement impossible (service de visuels indisponible ?).",
+    )
   }
 
   async function runSelected() {
@@ -172,15 +215,22 @@
     await Promise.all(targets.map((image) => runOne(image)))
   }
 
-  async function saveOne(image: ProductImage) {
-    const work = works[image.url]
+  async function runGenerateSelected() {
+    const targets = images.filter((image) => selected.includes(image.url))
+    if (targets.length === 0) return
+    selected = []
+    await Promise.all(targets.map((image) => runGenerate(image)))
+  }
+
+  async function saveOne(key: string) {
+    const work = works[key]
     const asset = work?.asset
     if (!work || !asset || work.saving) return
     work.saving = true
     const replace = work.replace && asset.source_product_image_id != null
-    const { data, error } = await saveAsset(asset.id, replace, [
-      work.filename.trim() || null,
-    ])
+    const filenames =
+      work.previewUrls.length <= 1 ? [work.filename.trim() || null] : undefined
+    const { data, error } = await saveAsset(asset.id, replace, filenames)
     work.saving = false
     if (error || !data) {
       toast.error("Échec de l'enregistrement dans Tillin.")
@@ -189,7 +239,7 @@
     work.status = "saved"
     work.asset = { ...asset, can_render: false }
     toast.success(
-      `Image enregistrée${data.deactivated > 0 ? ", originale remplacée" : ""}`,
+      `${data.created} image${data.created > 1 ? "s" : ""} enregistrée${data.created > 1 ? "s" : ""}${data.deactivated > 0 ? ", originale remplacée" : ""}`,
     )
     await loadProduct() // la galerie Tillin a changé
   }
@@ -198,7 +248,7 @@
   $effect(() => {
     return () => {
       for (const work of Object.values(works)) {
-        if (work.previewUrl) URL.revokeObjectURL(work.previewUrl)
+        for (const url of work.previewUrls) URL.revokeObjectURL(url)
       }
     }
   })
@@ -271,6 +321,42 @@
             </CardContent>
           </Card>
 
+          <!-- Génération de visuels (porté mannequin) -->
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">
+                Porté mannequin (génération)
+              </CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Génère un visuel porté à partir de l'image produit. Instruction
+                pré-remplie avec vos réglages ; chaque visuel consomme des
+                crédits de génération.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-3">
+              <GenerationOptions
+                bind:config={genConfig}
+                disabled={runningCount > 0}
+                idPrefix="studio-gen"
+              />
+              <div class="flex items-center gap-2">
+                <label class="text-muted-foreground text-xs" for="gen-count">
+                  Visuels par image
+                </label>
+                <select
+                  id="gen-count"
+                  class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-md border px-2 text-sm transition-colors outline-none focus-visible:ring-1"
+                  disabled={runningCount > 0}
+                  bind:value={genCount}
+                >
+                  {#each [1, 2, 3, 4] as n (n)}
+                    <option value={n}>{n}</option>
+                  {/each}
+                </select>
+              </div>
+            </CardContent>
+          </Card>
+
           <!-- Grille de sélection -->
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h2 class="font-title text-sm font-bold">
@@ -281,6 +367,14 @@
                 {selected.length === images.length
                   ? "Tout désélectionner"
                   : "Tout sélectionner"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={selected.length === 0 || runningCount > 0}
+                onclick={runGenerateSelected}
+              >
+                {`Porté mannequin (${selected.length})`}
               </Button>
               <Button
                 size="sm"
@@ -304,33 +398,40 @@
           <!-- Résultats -->
           {#if results.length > 0}
             <h2 class="font-title mt-1 text-sm font-bold">Résultats</h2>
-            {#each results as image (image.url)}
-              {@const work = works[image.url]}
-              {#if work.status === "running"}
+            {#each results as pair (pair.key)}
+              {@const isGeneration = pair.key.endsWith(GEN_SUFFIX)}
+              {#if pair.work.status === "running"}
                 <Card size="sm">
                   <CardContent class="text-muted-foreground py-6 text-center text-sm">
-                    Traitement en cours…
+                    {isGeneration
+                      ? "Génération du visuel en cours (10 s à 1 min)…"
+                      : "Traitement en cours…"}
                   </CardContent>
                 </Card>
-              {:else if work.status === "failed"}
+              {:else if pair.work.status === "failed"}
                 <Card size="sm">
                   <CardContent class="flex items-center justify-between gap-3 py-4">
                     <p class="text-destructive text-sm" role="alert">
-                      {work.error ?? "Traitement échoué."}
+                      {pair.work.error ?? "Traitement échoué."}
                     </p>
-                    <Button variant="outline" size="sm" onclick={() => runOne(image)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onclick={() =>
+                        isGeneration ? runGenerate(pair.image) : runOne(pair.image)}
+                    >
                       Réessayer
                     </Button>
                   </CardContent>
                 </Card>
               {:else}
                 <AssetResult
-                  {image}
-                  {work}
+                  image={pair.image}
+                  work={pair.work}
                   filenamePlaceholder={hasImageTemplate
                     ? "selon le modèle de titre d'image"
                     : ""}
-                  onSave={() => saveOne(image)}
+                  onSave={() => saveOne(pair.key)}
                 />
               {/if}
             {/each}
