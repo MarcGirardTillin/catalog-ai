@@ -22,6 +22,7 @@
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import ReferenceSelect from "@/lib/components/app/ReferenceSelect.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import { prefs } from "@/lib/preferences.svelte"
@@ -56,8 +57,6 @@
   } = $props()
 
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
-  const selectClass =
-    "border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
 
   let expanded = $state<Set<number>>(new Set())
 
@@ -506,9 +505,9 @@
                             {field.label}
                           </Label>
                           {#if field.kind === "gender"}
-                            <select
+                            <Select
                               id="item-{item.id}-{field.key}"
-                              class="{selectClass} h-8 text-xs"
+                              class="h-8 text-xs"
                               bind:value={drafts[item.id][field.key]}
                             >
                               <option value="">—</option>
@@ -520,7 +519,7 @@
                               {#each GENDER_OPTIONS as gender (gender)}
                                 <option value={gender}>{gender}</option>
                               {/each}
-                            </select>
+                            </Select>
                           {:else if field.referential}
                             <ReferenceSelect
                               id="item-{item.id}-{field.key}"

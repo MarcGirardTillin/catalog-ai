@@ -7,6 +7,7 @@
   import { listInstructions } from "@/lib/api/instructions"
   import type { InstructionPublic } from "@/lib/api/instructions"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import TagInput from "@/lib/components/app/TagInput.svelte"
 
   const uid = $props.id()
@@ -90,17 +91,13 @@
 
   <div class="flex flex-col gap-1.5">
     <Label for="{uid}-instruction">Instructions éditoriales</Label>
-    <select
-      id="{uid}-instruction"
-      class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-      bind:value={instructionChoice}
-    >
+    <Select id="{uid}-instruction" bind:value={instructionChoice}>
       <option value="">Automatique (défauts par catégorie)</option>
       {#each instructions as instruction (instruction.id)}
         <option value={String(instruction.id)}>{instruction.name}</option>
       {/each}
       <option value="custom">Texte libre…</option>
-    </select>
+    </Select>
     {#if libraryUnavailable}
       <p class="text-muted-foreground text-xs">
         Bibliothèque d'instructions indisponible pour le moment.

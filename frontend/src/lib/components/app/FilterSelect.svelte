@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FilterOption } from "@/client"
+  import { Select } from "@/lib/components/ui/select"
 
   // A compact native <select> for a classification filter. Value is the
   // selected option id (or null for "all").
@@ -18,14 +19,10 @@
 
 <label class="flex min-w-0 flex-1 flex-col gap-1">
   <span class="text-foreground text-xs font-medium">{label}</span>
-  <select
-    class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2 text-sm transition-colors outline-none focus-visible:ring-1"
-    bind:value
-    onchange={() => onchange?.()}
-  >
+  <Select class="px-2" bind:value onchange={() => onchange?.()}>
     <option value={null}>Tous</option>
     {#each options as option (option.id)}
       <option value={option.id}>{option.title}</option>
     {/each}
-  </select>
+  </Select>
 </label>

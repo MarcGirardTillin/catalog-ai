@@ -6,6 +6,7 @@
 
   import { listInstructions, type InstructionPublic } from "@/lib/api/instructions"
   import { Button } from "@/lib/components/ui/button"
+  import { Select } from "@/lib/components/ui/select"
 
   type Transforms = {
     copy: boolean
@@ -91,15 +92,12 @@
       </label>
       <label class="flex flex-col gap-1 text-xs">
         Instructions éditoriales
-        <select
-          class="border-input bg-card text-foreground h-8 w-full rounded-md border px-2 text-xs outline-none"
-          bind:value={instructionId}
-        >
+        <Select class="h-8 px-2 text-xs" bind:value={instructionId}>
           <option value="">Automatique (défauts du compte)</option>
           {#each instructions as instruction (instruction.id)}
             <option value={String(instruction.id)}>{instruction.name}</option>
           {/each}
-        </select>
+        </Select>
       </label>
       <Button size="sm" disabled={none || busy} onclick={launch}>
         {launchLabel}

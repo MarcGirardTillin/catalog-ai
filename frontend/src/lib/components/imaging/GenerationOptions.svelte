@@ -11,6 +11,7 @@
 
 <script lang="ts">
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
 
   let {
     config = $bindable(),
@@ -24,27 +25,17 @@
   <div class="grid gap-3 sm:grid-cols-2">
     <div class="flex flex-col gap-1.5">
       <Label for="{idPrefix}-framing">Cadrage du mannequin</Label>
-      <select
-        id="{idPrefix}-framing"
-        class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-        {disabled}
-        bind:value={config.framing}
-      >
+      <Select id="{idPrefix}-framing" {disabled} bind:value={config.framing}>
         <option value="full_body">Mannequin entier</option>
         <option value="cropped_head">Tête coupée (sans visage)</option>
-      </select>
+      </Select>
     </div>
     <div class="flex flex-col gap-1.5">
       <Label for="{idPrefix}-scene">Ambiance</Label>
-      <select
-        id="{idPrefix}-scene"
-        class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-        {disabled}
-        bind:value={config.scene}
-      >
+      <Select id="{idPrefix}-scene" {disabled} bind:value={config.scene}>
         <option value="studio">Photo studio (fond neutre)</option>
         <option value="lifestyle">Mise en scène (lifestyle)</option>
-      </select>
+      </Select>
     </div>
   </div>
   <div class="flex flex-col gap-1.5">

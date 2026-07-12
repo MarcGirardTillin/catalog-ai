@@ -26,6 +26,7 @@
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
   import ImportProfileForm from "@/lib/components/app/ImportProfileForm.svelte"
@@ -48,9 +49,6 @@
     /** Le rendu CSV dépend du profil : invalide l'aperçu côté export. */
     onRenderConfigChanged: () => void
   } = $props()
-
-  const selectClass =
-    "border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
 
   const running = $derived(job.status === "pending" || job.status === "processing")
 
@@ -318,9 +316,9 @@
           </p>
         {:else}
           <div class="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               id="import-profile"
-              class="{selectClass} sm:max-w-80"
+              class="sm:max-w-80"
               disabled={settingProfile}
               value={selectedProfileId == null ? "" : String(selectedProfileId)}
               onchange={changeProfile}
@@ -329,7 +327,7 @@
               {#each profiles as profile (profile.id)}
                 <option value={String(profile.id)}>{profile.name}</option>
               {/each}
-            </select>
+            </Select>
             {#if selectedProfile !== null}
               <Button
                 variant="outline"
@@ -406,9 +404,9 @@
     {#if locations !== null && locations.length > 0}
       <div class="border-border flex flex-col gap-1.5 border-t pt-3">
         <Label for="job-location">Magasin de destination</Label>
-        <select
+        <Select
           id="job-location"
-          class="{selectClass} sm:max-w-80"
+          class="sm:max-w-80"
           disabled={settingLocation}
           value={job.location_id == null ? "" : String(job.location_id)}
           onchange={changeLocation}
@@ -417,7 +415,7 @@
           {#each locations as location (location.id)}
             <option value={String(location.id)}>{location.title}</option>
           {/each}
-        </select>
+        </Select>
         <p class="text-muted-foreground text-xs">
           Pré-sélectionné lors du transfert vers Tillin — corrigez ici
           en cas d'erreur au dépôt.

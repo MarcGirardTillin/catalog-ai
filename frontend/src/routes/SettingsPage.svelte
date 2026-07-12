@@ -17,7 +17,10 @@
   } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { Switch } from "@/lib/components/ui/switch"
+  import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
@@ -43,18 +46,14 @@
   // ouverture (puis le composant reste monté).
   // Les profils d'import ont leur propre page (/profiles).
   let brandsOpened = $state(false)
+  $effect(() => {
+    if (tab === "brands") brandsOpened = true
+  })
 
-  function selectTab(key: TabKey) {
-    tab = key
-    if (key === "brands") brandsOpened = true
-  }
-
-  // --- Réglages de compte (Notifications ; la sauvegarde partielle
-  // préserve les champs gérés par les pages Enrichissement et Consommation). ---
+  // --- Réglages de compte (la sauvegarde partielle préserve les champs
+  // gérés par les pages Enrichissement et Consommation). ---
   let accountLoaded = $state(false)
   let savingAccount = $state(false)
-  let notifyOnJobDone = $state(false)
-  let notifyEmail = $state("")
   // Jour de facturation (1..28) : la conso d'un mois est figée ce jour du
   // mois suivant. Stocké dans AccountSettings (extension locale du type).
   let billingDay = $state(1)
@@ -75,8 +74,6 @@
         toast.error("Impossible de charger les réglages du compte.")
         return
       }
-      notifyOnJobDone = data.notify_on_job_done ?? false
-      notifyEmail = data.notify_email ?? ""
       billingDay = (data as AccountSettingsExtended).billing_day ?? 1
       accountLoaded = true
     })
@@ -92,11 +89,7 @@
       return
     }
     savingAccount = true
-    const ok = await saveAccountSettingsPartial({
-      notify_on_job_done: notifyOnJobDone,
-      notify_email: notifyEmail.trim() || null,
-      billing_day: day,
-    })
+    const ok = await saveAccountSettingsPartial({ billing_day: day })
     savingAccount = false
     if (!ok) {
       toast.error("Enregistrement impossible.")
@@ -135,7 +128,7 @@
   }
 </script>
 
-<!-- Toggle accessible maison (pas de primitive switch dans ui/). -->
+<!-- Ligne de réglage booléen (label + description + interrupteur ui/). -->
 {#snippet toggleRow(options: {
   label: string
   description?: string
@@ -150,24 +143,12 @@
         <span class="text-muted-foreground text-xs">{options.description}</span>
       {/if}
     </div>
-    <button
-      type="button"
-      role="switch"
-      aria-checked={options.checked}
-      aria-label={options.label}
+    <Switch
+      checked={options.checked}
       disabled={options.disabled}
-      class="relative h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors disabled:cursor-default disabled:opacity-50 {options.checked
-        ? 'bg-primary'
-        : 'bg-muted-foreground/25'}"
-      onclick={options.onToggle}
-    >
-      <span
-        class="bg-card absolute top-0.5 left-0.5 size-4 rounded-full shadow-sm transition-transform {options.checked
-          ? 'translate-x-4'
-          : ''}"
-        aria-hidden="true"
-      ></span>
-    </button>
+      aria-label={options.label}
+      onchange={options.onToggle}
+    />
   </div>
 {/snippet}
 
@@ -188,27 +169,7 @@
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <h1 class="font-title text-lg font-bold">Paramètres</h1>
 
-        <!-- Barre d'onglets sobre (pas de composant tabs dans ui/). -->
-        <div
-          class="border-border flex gap-4 border-b"
-          role="tablist"
-          aria-label="Sections des paramètres"
-        >
-          {#each TABS as t (t.key)}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              class="-mb-px cursor-pointer border-b-2 px-1 pb-2 text-sm font-medium transition-colors {tab ===
-              t.key
-                ? 'border-primary text-foreground'
-                : 'text-muted-foreground hover:text-foreground border-transparent'}"
-              onclick={() => selectTab(t.key)}
-            >
-              {t.label}
-            </button>
-          {/each}
-        </div>
+        <TabBar tabs={TABS} bind:value={tab} label="Sections des paramètres" />
 
         <!-- Onglet Préférences (perso, sauvegarde immédiate) -->
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "preferences"}>
@@ -240,28 +201,26 @@
               <div class="grid gap-4 sm:grid-cols-2">
                 <div class="flex flex-col gap-1.5">
                   <Label for="pref-density">Densité des tables</Label>
-                  <select
+                  <Select
                     id="pref-density"
-                    class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
                     bind:value={prefs.density}
                     onchange={() => savePreferences()}
                   >
                     <option value="comfortable">Confortable</option>
                     <option value="compact">Compact</option>
-                  </select>
+                  </Select>
                 </div>
                 <div class="flex flex-col gap-1.5">
                   <Label for="pref-per-page">Produits par page</Label>
-                  <select
+                  <Select
                     id="pref-per-page"
-                    class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
                     bind:value={prefs.products_per_page}
                     onchange={() => savePreferences()}
                   >
                     <option value={20}>20</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
             </CardContent>
@@ -344,43 +303,8 @@
             </CardContent>
           </Card>
 
-          <!-- Notifications (même objet AccountSettings, même bouton Enregistrer) -->
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle class="font-title flex items-center gap-2 text-sm">
-                Notifications
-                <span
-                  class="text-muted-foreground rounded-full border px-2 py-0.5 text-[10px] font-normal"
-                >
-                  Bientôt actif
-                </span>
-              </CardTitle>
-              <CardDescription class="text-muted-foreground text-xs">
-                Le réglage est sauvegardé, mais l'envoi d'emails n'est pas encore branché.
-              </CardDescription>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-4">
-              {#if !accountLoaded}
-                <Skeleton class="h-9 w-full" />
-              {:else}
-                {@render toggleRow({
-                  label: "M'avertir par email en fin de job",
-                  checked: notifyOnJobDone,
-                  onToggle: () => (notifyOnJobDone = !notifyOnJobDone),
-                })}
-                <div class="flex flex-col gap-1.5 sm:max-w-80">
-                  <Label for="notify-email">Email de notification</Label>
-                  <Input
-                    id="notify-email"
-                    type="email"
-                    placeholder={user.email}
-                    disabled={!notifyOnJobDone}
-                    bind:value={notifyEmail}
-                  />
-                </div>
-              {/if}
-            </CardContent>
-          </Card>
+          <!-- Notifications e-mail : abandonnées (2026-07-12) au profit des
+               pastilles d'état de la sidebar (menus Imports / Enrichissements). -->
 
           {@render saveAccountRow()}
 

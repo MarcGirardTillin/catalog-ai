@@ -26,6 +26,8 @@
   // le reste est de la composition locale.
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
+  import { Switch } from "@/lib/components/ui/switch"
 
   let {
     options = $bindable(),
@@ -41,24 +43,14 @@
 </script>
 
 <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-  <label class="flex items-center gap-2 text-sm">
-    <input
-      type="checkbox"
-      class="accent-primary size-4"
-      {disabled}
-      bind:checked={options.remove_bg}
-    />
-    Détourer le produit
-  </label>
-  <label class="flex items-center gap-2 text-sm">
-    <input
-      type="checkbox"
-      class="accent-primary size-4"
-      {disabled}
-      bind:checked={options.center}
-    />
-    Centrer le produit
-  </label>
+  <div class="flex items-center gap-2">
+    <Switch id="opt-removebg" {disabled} bind:checked={options.remove_bg} />
+    <Label for="opt-removebg" class="font-normal">Détourer le produit</Label>
+  </div>
+  <div class="flex items-center gap-2">
+    <Switch id="opt-center" {disabled} bind:checked={options.center} />
+    <Label for="opt-center" class="font-normal">Centrer le produit</Label>
+  </div>
   <div class="flex items-center gap-2">
     <Label for="opt-bg" class="shrink-0">Fond</Label>
     <input
@@ -78,29 +70,19 @@
   </div>
   <div class="flex items-center gap-2">
     <Label for="opt-ratio" class="shrink-0">Format</Label>
-    <select
-      id="opt-ratio"
-      class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-      {disabled}
-      bind:value={options.ratio}
-    >
+    <Select id="opt-ratio" {disabled} bind:value={options.ratio}>
       {#each Object.entries(RATIO_LABELS) as [value, label] (value)}
         <option {value}>{label}</option>
       {/each}
-    </select>
+    </Select>
   </div>
   <div class="flex items-center gap-2">
     <Label for="opt-format" class="shrink-0">Fichier</Label>
-    <select
-      id="opt-format"
-      class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-      {disabled}
-      bind:value={options.format}
-    >
+    <Select id="opt-format" {disabled} bind:value={options.format}>
       <option value="webp">WebP (recommandé)</option>
       <option value="jpeg">JPEG</option>
       <option value="png">PNG</option>
-    </select>
+    </Select>
   </div>
   <div class="flex items-center gap-2">
     <Label for="opt-quality" class="shrink-0">Qualité</Label>

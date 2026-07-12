@@ -28,6 +28,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
+  import { Select } from "@/lib/components/ui/select"
 
   let {
     importId,
@@ -52,9 +53,6 @@
     /** Transfert réussi : la page recharge job + items. */
     onTransferred: () => void
   } = $props()
-
-  const selectClass =
-    "border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
 
   // Combien de produits partiront (non écartés) vs écartés vs déjà transférés.
   // Dérivé des counts SERVEUR : le transfert couvre tout le job, pas la page.
@@ -367,15 +365,11 @@
         {:else}
           <div class="flex flex-col gap-1.5 sm:max-w-80">
             <Label for="transfer-location">Magasin</Label>
-            <select
-              id="transfer-location"
-              class={selectClass}
-              bind:value={selectedLocationId}
-            >
+            <Select id="transfer-location" bind:value={selectedLocationId}>
               {#each locations as location (location.id)}
                 <option value={String(location.id)}>{location.title}</option>
               {/each}
-            </select>
+            </Select>
           </div>
           <p class="text-muted-foreground text-xs">
             <span class="text-foreground font-medium"

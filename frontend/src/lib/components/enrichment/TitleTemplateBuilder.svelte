@@ -39,6 +39,7 @@
 
 <script lang="ts">
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
 
   let {
     tokens = $bindable(),
@@ -152,28 +153,20 @@
   <div class="flex flex-wrap gap-3">
     <div class="flex flex-col gap-1.5 sm:max-w-56">
       <Label for="template-separator">Séparateur entre tokens</Label>
-      <select
-        id="template-separator"
-        class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-        bind:value={separator}
-      >
+      <Select id="template-separator" bind:value={separator}>
         {#each SEPARATORS as sep (sep.value)}
           <option value={sep.value}>{sep.label}</option>
         {/each}
-      </select>
+      </Select>
     </div>
 
     <div class="flex flex-col gap-1.5 sm:max-w-56">
       <Label for="template-case">Casse du titre</Label>
-      <select
-        id="template-case"
-        class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-        bind:value={titleCase}
-      >
+      <Select id="template-case" bind:value={titleCase}>
         {#each CASE_OPTIONS as opt (opt.value)}
           <option value={opt.value}>{opt.label}</option>
         {/each}
-      </select>
+      </Select>
     </div>
   </div>
 

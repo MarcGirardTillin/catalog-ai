@@ -27,6 +27,7 @@
   import { Button } from "@/lib/components/ui/button"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Separator } from "@/lib/components/ui/separator"
 
   let {
@@ -45,9 +46,6 @@
   } = $props()
 
   const uid = `ipf-${++instanceCounter}`
-
-  const selectClass =
-    "border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
 
   // Référentiel de classification pour les datalists (échec silencieux →
   // simples champs texte, la saisie libre reste toujours possible).
@@ -230,10 +228,10 @@
   <div class="grid gap-3 sm:grid-cols-2">
     <div class="flex flex-col gap-1.5">
       <Label for="{uid}-price-mode">Mode de prix (vente)</Label>
-      <select id="{uid}-price-mode" class={selectClass} bind:value={form.price_mode}>
+      <Select id="{uid}-price-mode" bind:value={form.price_mode}>
         <option value="retail_as_is">Prix conseillé tel quel</option>
         <option value="coefficient">Coefficient sur le prix de gros</option>
-      </select>
+      </Select>
       <p class="text-muted-foreground text-xs">
         Coefficient : prix de vente = prix de gros × coefficient, arrondi au
         multiple supérieur.
@@ -272,10 +270,10 @@
 
   <div class="flex flex-col gap-1.5 sm:max-w-96">
     <Label for="{uid}-barcode-mode">Codes-barres</Label>
-    <select id="{uid}-barcode-mode" class={selectClass} bind:value={form.barcode_mode}>
+    <Select id="{uid}-barcode-mode" bind:value={form.barcode_mode}>
       <option value="ean">EAN du fournisseur</option>
       <option value="constructed">Construits automatiquement</option>
-    </select>
+    </Select>
     <p class="text-muted-foreground text-xs">
       « Construits » : un code REF-COULEUR-TAILLE est généré quand l'EAN manque.
     </p>

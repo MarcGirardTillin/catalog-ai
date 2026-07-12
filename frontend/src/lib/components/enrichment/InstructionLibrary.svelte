@@ -16,6 +16,7 @@
   } from "@/lib/api/instructions"
   import type { InstructionPublic } from "@/lib/api/instructions"
   import { Button } from "@/lib/components/ui/button"
+  import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import {
     Card,
     CardContent,
@@ -49,10 +50,6 @@
   let categories = $state<string[]>([])
   let formError = $state<string | null>(null)
   let saving = $state(false)
-
-  // Suppression en deux temps (même pattern que le rejet en review).
-  let confirmingDeleteId = $state<number | null>(null)
-  let deleteTimer: ReturnType<typeof setTimeout> | undefined
 
   onMount(async () => {
     const { data, error } = await listInstructions()
@@ -124,15 +121,7 @@
     closeForm()
   }
 
-  async function onDeleteClick(id: number) {
-    clearTimeout(deleteTimer)
-    if (confirmingDeleteId !== id) {
-      // First activation arms the button; it disarms after a short delay.
-      confirmingDeleteId = id
-      deleteTimer = setTimeout(() => (confirmingDeleteId = null), 3000)
-      return
-    }
-    confirmingDeleteId = null
+  async function onDelete(id: number) {
     const { error } = await deleteInstruction(id)
     if (error !== undefined) {
       toast.error("Suppression impossible.")
@@ -215,13 +204,10 @@
                 <Button variant="ghost" size="sm" onclick={() => openEdit(instruction)}>
                   Modifier
                 </Button>
-                <Button
-                  variant={confirmingDeleteId === instruction.id ? "destructive" : "ghost"}
-                  size="sm"
-                  onclick={() => onDeleteClick(instruction.id)}
-                >
-                  {confirmingDeleteId === instruction.id ? "Confirmer ?" : "Supprimer"}
-                </Button>
+                <ConfirmButton
+                  label="Supprimer"
+                  onconfirm={() => onDelete(instruction.id)}
+                />
               </div>
             </li>
           {/each}

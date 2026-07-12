@@ -17,6 +17,7 @@
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import {
     Card,
     CardContent,
@@ -282,17 +283,12 @@
             {#if profiles.length > 0}
               <div class="flex flex-col gap-1.5 sm:max-w-80">
                 <Label for="import-profile">Profil d'import</Label>
-                <select
-                  id="import-profile"
-                  class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-                  disabled={submitting}
-                  bind:value={selectedProfileId}
-                >
+                <Select id="import-profile" disabled={submitting} bind:value={selectedProfileId}>
                   <option value="">Automatique (selon le fournisseur)</option>
                   {#each profiles as profile (profile.id)}
                     <option value={String(profile.id)}>{profile.name}</option>
                   {/each}
-                </select>
+                </Select>
                 <p class="text-muted-foreground text-xs">
                   Règles d'export vers Tillin (prix, marque, code-barres). Modifiable
                   ensuite sur la page de l'import.
@@ -303,17 +299,12 @@
             {#if locations !== null && locations.length > 0}
               <div class="flex flex-col gap-1.5 sm:max-w-80">
                 <Label for="import-location">Magasin de destination</Label>
-                <select
-                  id="import-location"
-                  class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
-                  disabled={submitting}
-                  bind:value={selectedLocationId}
-                >
+                <Select id="import-location" disabled={submitting} bind:value={selectedLocationId}>
                   <option value="">À choisir plus tard</option>
                   {#each locations as location (location.id)}
                     <option value={String(location.id)}>{location.title}</option>
                   {/each}
-                </select>
+                </Select>
                 <p class="text-muted-foreground text-xs">
                   Modifiable ensuite sur la page de l'import, avant le transfert
                   vers Tillin.

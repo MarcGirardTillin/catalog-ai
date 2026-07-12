@@ -6,6 +6,7 @@
   import type { JobPublic } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
+  import { EmptyState } from "@/lib/components/ui/empty-state"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -107,16 +108,13 @@
           <Skeleton class="h-10 w-full" />
           <Skeleton class="h-10 w-full" />
         {:else if jobs.length === 0}
-          <Card>
-            <CardContent class="flex flex-col items-center gap-3 py-8 text-center">
-              <p class="text-muted-foreground text-sm">
-                Aucun enrichissement — créez le premier depuis la recherche produits.
-              </p>
-              <Button onclick={() => navigate("/products?intent=enrich")}>
-                Enrichir des produits
-              </Button>
-            </CardContent>
-          </Card>
+          <EmptyState
+            message="Aucun enrichissement — créez le premier depuis la recherche produits."
+          >
+            <Button onclick={() => navigate("/products?intent=enrich")}>
+              Enrichir des produits
+            </Button>
+          </EmptyState>
         {:else}
           <Card class="py-0">
             <CardContent class="overflow-x-auto px-0">
