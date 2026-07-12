@@ -86,7 +86,10 @@ def test_offsets_shift_the_product_on_the_canvas() -> None:
 
 def test_scale_shrinks_or_grows_the_product() -> None:
     def product_pixels(img: Image.Image) -> int:
-        return sum(1 for pixel in img.getdata() if pixel == PRODUCT)
+        # getcolors plutôt que getdata : les stubs Pillow ne typent pas
+        # ImagingCore comme itérable.
+        colors = img.getcolors(img.width * img.height) or []
+        return sum(count for count, color in colors if color == PRODUCT)
 
     full = product_pixels(_compose_png())
     half = product_pixels(_compose_png(scale=0.5))
