@@ -5,8 +5,10 @@
   import ChartColumn from "@lucide/svelte/icons/chart-column"
   import Plus from "@lucide/svelte/icons/plus"
   import RotateCcw from "@lucide/svelte/icons/rotate-ccw"
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { toast } from "svelte-sonner"
 
+  import { listAdminUsageMetrics, type AdminUsageMetric } from "@/lib/api/admin"
   import {
     createUsagePrice,
     deleteUsagePrice,
@@ -77,6 +79,28 @@
     loadPrices()
   })
 
+  // --- Consommations réellement enregistrées (source du sélecteur) ---
+  // Le rapprochement tarif ↔ conso est une égalité stricte : proposer les
+  // combos réels évite les tarifs « orphelins » (métrique mal orthographiée).
+  let usageMetrics = $state<AdminUsageMetric[] | null>(null)
+
+  async function loadUsageMetrics() {
+    const { data } = await listAdminUsageMetrics()
+    usageMetrics = data ?? []
+  }
+
+  $effect(() => {
+    loadUsageMetrics()
+  })
+
+  const unpricedMetrics = $derived(
+    (usageMetrics ?? []).filter((m) => !m.priced),
+  )
+
+  function comboLabel(m: AdminUsageMetric): string {
+    return `${m.provider} · ${m.model ?? "tous les modèles"} · ${m.metric}`
+  }
+
   // Formulaire inline créer/modifier : editingId === null → création.
   let formOpen = $state(false)
   let editingId = $state<number | null>(null)
@@ -88,6 +112,26 @@
   let formError = $state<string | null>(null)
   let savingPrice = $state(false)
 
+  // Sélection dans le picker : index dans usageMetrics, ou "manual" pour la
+  // saisie libre (pré-provisionner une métrique pas encore consommée).
+  let formSelection = $state("")
+  const formIsManual = $derived(formSelection === "manual")
+
+  function applySelection(value: string) {
+    formSelection = value
+    if (value === "manual") {
+      formProvider = ""
+      formModel = ""
+      formMetric = ""
+      return
+    }
+    const combo = (usageMetrics ?? [])[Number(value)]
+    if (!combo) return
+    formProvider = combo.provider
+    formModel = combo.model ?? ""
+    formMetric = combo.metric
+  }
+
   const formIsTokenMetric = $derived(isTokenMetric(formMetric))
 
   // Suppression en deux temps (même pattern que la bibliothèque d'instructions).
@@ -96,6 +140,7 @@
 
   function openCreate() {
     editingId = null
+    formSelection = ""
     formProvider = ""
     formModel = ""
     formMetric = ""
@@ -104,8 +149,24 @@
     formOpen = true
   }
 
+  /** « Tarifer » depuis la liste des consommations sans tarif : formulaire
+   *  pré-rempli avec le combo exact, il ne reste que le prix à saisir. */
+  function openCreateFor(combo: AdminUsageMetric) {
+    openCreate()
+    const index = (usageMetrics ?? []).indexOf(combo)
+    applySelection(index >= 0 ? String(index) : "manual")
+    if (index < 0) {
+      formProvider = combo.provider
+      formModel = combo.model ?? ""
+      formMetric = combo.metric
+    }
+  }
+
   function openEdit(price: UsagePrice) {
     editingId = price.id
+    // En modification les clés restent éditables (saisie libre) : c'est le
+    // chemin de réparation d'un tarif orphelin existant.
+    formSelection = "manual"
     formProvider = price.provider
     formModel = price.model ?? ""
     formMetric = price.metric
@@ -165,7 +226,7 @@
       toast.success("Tarif mis à jour")
     }
     closeForm()
-    await loadPrices()
+    await Promise.all([loadPrices(), loadUsageMetrics()])
   }
 
   async function onDeletePriceClick(id: number) {
@@ -184,7 +245,7 @@
     }
     if (editingId === id) closeForm()
     toast.success("Tarif supprimé")
-    await loadPrices()
+    await Promise.all([loadPrices(), loadUsageMetrics()])
   }
 
   // --- Re-figement d'un mois facturé ---
@@ -234,6 +295,35 @@
     >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <h1 class="font-title text-lg font-bold">Tarification</h1>
+
+        <!-- Consommations enregistrées qu'aucun tarif ne couvre -->
+        {#if unpricedMetrics.length > 0}
+          <div
+            class="border-warning-dot/40 bg-warning flex flex-col gap-2 rounded-md border p-3"
+            role="alert"
+          >
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <TriangleAlert size={15} class="text-warning-foreground shrink-0" aria-hidden="true" />
+              {unpricedMetrics.length} consommation{unpricedMetrics.length > 1 ? "s" : ""}
+              sans tarif — les coûts correspondants sont comptés à zéro.
+            </span>
+            <ul class="flex flex-col gap-1.5">
+              {#each unpricedMetrics as combo (comboLabel(combo))}
+                <li class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span class="font-mono">{comboLabel(combo)}</span>
+                  <span class="flex items-center gap-2">
+                    <span class="text-muted-foreground tabular-nums">
+                      {combo.quantity.toLocaleString("fr-FR")} unités enregistrées
+                    </span>
+                    <Button size="sm" variant="outline" onclick={() => openCreateFor(combo)}>
+                      Tarifer
+                    </Button>
+                  </span>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
 
         <!-- Grille tarifaire -->
         <Card size="sm">
@@ -319,30 +409,65 @@
                     {editingId === null ? "Nouveau tarif" : "Modifier le tarif"}
                   </span>
                   <div class="grid gap-3 sm:grid-cols-2">
-                    <div class="flex flex-col gap-1.5">
-                      <Label for="price-provider">Provider</Label>
-                      <Input
-                        id="price-provider"
-                        placeholder="Ex. claude"
-                        bind:value={formProvider}
-                      />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <Label for="price-model">Modèle</Label>
-                      <Input
-                        id="price-model"
-                        placeholder="Vide = tous les modèles"
-                        bind:value={formModel}
-                      />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <Label for="price-metric">Métrique</Label>
-                      <Input
-                        id="price-metric"
-                        placeholder="Ex. input_tokens"
-                        bind:value={formMetric}
-                      />
-                    </div>
+                    {#if editingId === null}
+                      <!-- Le picker propose uniquement les combos réellement
+                           enregistrés : le tarif créé correspond forcément à
+                           une consommation existante. -->
+                      <div class="flex flex-col gap-1.5 sm:col-span-2">
+                        <Label for="price-combo">Consommation</Label>
+                        <select
+                          id="price-combo"
+                          class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+                          value={formSelection}
+                          onchange={(e) => applySelection(e.currentTarget.value)}
+                        >
+                          <option value="" disabled>Choisir une consommation enregistrée…</option>
+                          {#each usageMetrics ?? [] as combo, index (comboLabel(combo))}
+                            <option value={String(index)}>
+                              {comboLabel(combo)}{combo.priced ? "" : " — sans tarif"}
+                            </option>
+                          {/each}
+                          <option value="manual">Autre (saisie manuelle)…</option>
+                        </select>
+                      </div>
+                    {/if}
+                    {#if formIsManual || editingId !== null}
+                      <div class="flex flex-col gap-1.5">
+                        <Label for="price-provider">Provider</Label>
+                        <Input
+                          id="price-provider"
+                          placeholder="Ex. claude"
+                          bind:value={formProvider}
+                        />
+                      </div>
+                      <div class="flex flex-col gap-1.5">
+                        <Label for="price-model">Modèle</Label>
+                        <Input
+                          id="price-model"
+                          placeholder="Vide = tous les modèles"
+                          bind:value={formModel}
+                        />
+                      </div>
+                      <div class="flex flex-col gap-1.5">
+                        <Label for="price-metric">Métrique</Label>
+                        <Input
+                          id="price-metric"
+                          placeholder="Ex. input_tokens"
+                          bind:value={formMetric}
+                        />
+                      </div>
+                      <p class="text-muted-foreground text-xs sm:col-span-2">
+                        Attention : provider et métrique doivent correspondre
+                        exactement aux identifiants techniques enregistrés
+                        (ex. <code>photoroom</code> / <code>images</code>),
+                        sinon le tarif ne s'appliquera pas.
+                      </p>
+                    {:else if formMetric}
+                      <p class="text-muted-foreground text-xs sm:col-span-2">
+                        Tarif pour <span class="font-mono">{formProvider}
+                          · {formModel || "tous les modèles"} · {formMetric}</span>
+                      </p>
+                    {/if}
                     <div class="flex flex-col gap-1.5">
                       <Label for="price-value">
                         {formIsTokenMetric ? "Prix (€ / million de tokens)" : "Prix (€ / unité)"}

@@ -100,6 +100,7 @@ def test_admin_routes_forbidden_for_regular_user(auth_client: TestClient) -> Non
     assert auth_client.put("/admin/accounts/1/settings", json={}).status_code == 403
     assert auth_client.get("/admin/timeseries").status_code == 403
     assert auth_client.get("/admin/accounts/1/timeseries").status_code == 403
+    assert auth_client.get("/admin/usage-metrics").status_code == 403
 
 
 def test_usage_admin_surfaces_forbidden_for_regular_user(
@@ -278,6 +279,36 @@ def test_admin_timeseries_by_service_and_cross_account(
     assert "claude-opus-4-8" in model_keys
 
     assert admin_client.get("/admin/timeseries?group_by=nope").status_code == 422
+
+
+def test_admin_usage_metrics_lists_recorded_combos(
+    admin_client: TestClient,
+) -> None:
+    account_id = _account_id(admin_client)
+    _seed_priced_events(account_id)
+    # Une conso sans aucun tarif correspondant → doit remonter priced=False.
+    db = _db()
+    db.add(
+        UsageEvent(
+            account_id=account_id,
+            source="research",
+            provider="firecrawl",
+            model=None,
+            metric="credits",
+            quantity=30,
+        )
+    )
+    db.commit()
+
+    metrics = admin_client.get("/admin/usage-metrics").json()
+    by_key = {(m["provider"], m["model"], m["metric"]): m for m in metrics}
+    # Tarifé par le repli « tous modèles » du provider.
+    opus = by_key[("claude", "claude-opus-4-8", "input_tokens")]
+    assert opus["priced"] is True and opus["quantity"] == 1_000_000
+    # Aucun tarif firecrawl → non tarifé, trié en tête de liste.
+    firecrawl = by_key[("firecrawl", None, "credits")]
+    assert firecrawl["priced"] is False
+    assert metrics[0]["priced"] is False
 
 
 def test_client_settings_put_cannot_touch_admin_fields(

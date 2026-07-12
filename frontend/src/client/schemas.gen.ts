@@ -295,6 +295,48 @@ export const AdminOverviewLineSchema = {
     description: 'Per-account monthly monitoring line (money as decimal strings).'
 } as const;
 
+export const AdminUsageMetricSchema = {
+    properties: {
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        metric: {
+            type: 'string',
+            title: 'Metric'
+        },
+        quantity: {
+            type: 'integer',
+            title: 'Quantity'
+        },
+        priced: {
+            type: 'boolean',
+            title: 'Priced'
+        }
+    },
+    type: 'object',
+    required: [
+        'provider',
+        'model',
+        'metric',
+        'quantity',
+        'priced'
+    ],
+    title: 'AdminUsageMetric',
+    description: 'One (provider, model, metric) combo actually recorded by the app.\n\nFeeds the pricing page: the metric picker offers only real combos, and\n`priced=False` rows surface as "consumption without a price" alerts.'
+} as const;
+
 export const AssetSaveRequestSchema = {
     properties: {
         replace: {

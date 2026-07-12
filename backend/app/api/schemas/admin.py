@@ -40,6 +40,20 @@ class AdminOverview(BaseModel):
     lines: list[AdminOverviewLine]
 
 
+class AdminUsageMetric(BaseModel):
+    """One (provider, model, metric) combo actually recorded by the app.
+
+    Feeds the pricing page: the metric picker offers only real combos, and
+    `priced=False` rows surface as "consumption without a price" alerts.
+    """
+
+    provider: str
+    model: str | None
+    metric: str
+    quantity: int  # all-time recorded quantity (sanity signal)
+    priced: bool  # resolvable against the caller's price grid
+
+
 class AdminActivityEntry(BaseModel):
     """One recent job/import of an account (monitoring feed)."""
 

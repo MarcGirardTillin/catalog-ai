@@ -34,7 +34,7 @@
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
   import { formatRelativeDate } from "@/lib/format"
   import { prefs } from "@/lib/preferences.svelte"
-  import { metricLabel, serviceLabel } from "@/lib/usageLabels"
+  import { IMAGE_SERVICE_LABEL, metricLabel, serviceLabel } from "@/lib/usageLabels"
 
   let { appName, id }: { appName: string; id: string } = $props()
 
@@ -246,6 +246,29 @@
     if (jobType === "enrichment") return `/jobs/${jobId}`
     return null
   }
+
+  // Mêmes colonnes que le tableau « Par traitement » de l'onglet Consommation
+  // client — ici les other_metrics portent les providers bruts, le pivot
+  // image passe donc par le mapping provider → service.
+  function jobTypeLabel(jobType: string | null): string {
+    if (jobType === "import") return "Import fichier"
+    if (jobType === "enrichment") return "Enrichissement"
+    return "—"
+  }
+  function jobImages(job: UsageByJob["jobs"][number]): number {
+    return job.other_metrics
+      .filter((m) => serviceLabel(m.provider) === IMAGE_SERVICE_LABEL)
+      .reduce((acc, m) => acc + m.quantity, 0)
+  }
+  function jobCredits(job: UsageByJob["jobs"][number]): number {
+    return (
+      job.input_tokens +
+      job.output_tokens +
+      job.other_metrics
+        .filter((m) => serviceLabel(m.provider) !== IMAGE_SERVICE_LABEL)
+        .reduce((acc, m) => acc + m.quantity, 0)
+    )
+  }
 </script>
 
 <RequireAdmin>
@@ -454,12 +477,12 @@
             </Card>
           {/if}
 
-          <!-- Détail par job (complet) -->
-          <h2 class="font-title mt-1 text-sm font-bold">Par job</h2>
+          <!-- Détail par traitement (complet) -->
+          <h2 class="font-title mt-1 text-sm font-bold">Par traitement</h2>
           {#if byJob.jobs.length === 0}
             <Card size="sm">
               <CardContent class="text-muted-foreground py-4 text-center text-xs">
-                Aucun job sur ce mois.
+                Aucun traitement sur ce mois.
               </CardContent>
             </Card>
           {:else}
@@ -468,10 +491,11 @@
                 <table class="w-full min-w-2xl text-sm">
                   <thead>
                     <tr class="border-border border-b">
-                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Job</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Traitement</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Type</th>
                       <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Date</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Tokens entrée</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Tokens sortie</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Crédits de génération</th>
+                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Images traitées</th>
                       <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Coût</th>
                       <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Facturable</th>
                     </tr>
@@ -499,14 +523,17 @@
                             </span>
                           {/if}
                         </td>
+                        <td class="text-muted-foreground px-4 {cellPad} text-xs whitespace-nowrap">
+                          {jobTypeLabel(job.job_type)}
+                        </td>
                         <td class="text-muted-foreground px-4 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
                           {job.created_at != null ? formatRelativeDate(job.created_at) : "—"}
                         </td>
                         <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(job.input_tokens)}
+                          {formatInt(jobCredits(job))}
                         </td>
                         <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(job.output_tokens)}
+                          {formatInt(jobImages(job))}
                         </td>
                         <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                           {formatAmount(job.cost)}

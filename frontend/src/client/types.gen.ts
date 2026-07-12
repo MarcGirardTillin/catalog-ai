@@ -197,6 +197,37 @@ export type AdminOverviewLine = {
 };
 
 /**
+ * AdminUsageMetric
+ *
+ * One (provider, model, metric) combo actually recorded by the app.
+ *
+ * Feeds the pricing page: the metric picker offers only real combos, and
+ * `priced=False` rows surface as "consumption without a price" alerts.
+ */
+export type AdminUsageMetric = {
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model: string | null;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Priced
+     */
+    priced: boolean;
+};
+
+/**
  * AssetSaveRequest
  *
  * POST /imaging/assets/{id}/save body.
@@ -4624,6 +4655,33 @@ export type AdminReadOverviewResponses = {
 };
 
 export type AdminReadOverviewResponse = AdminReadOverviewResponses[keyof AdminReadOverviewResponses];
+
+export type AdminListUsageMetricsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/admin/usage-metrics';
+};
+
+export type AdminListUsageMetricsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListUsageMetricsError = AdminListUsageMetricsErrors[keyof AdminListUsageMetricsErrors];
+
+export type AdminListUsageMetricsResponses = {
+    /**
+     * Response Admin-List Usage Metrics
+     *
+     * Successful Response
+     */
+    200: Array<AdminUsageMetric>;
+};
+
+export type AdminListUsageMetricsResponse = AdminListUsageMetricsResponses[keyof AdminListUsageMetricsResponses];
 
 export type AdminReadAdminTimeseriesData = {
     body?: never;

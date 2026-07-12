@@ -19,6 +19,8 @@ from app.api.routes.usage import (
     _build_summary,
     _build_timeseries,
     _parse_month,
+    _price_lookup,
+    _resolve_price,
 )
 from app.api.schemas.admin import (
     AdminAccountActivity,
@@ -26,10 +28,19 @@ from app.api.schemas.admin import (
     AdminActivityEntry,
     AdminOverview,
     AdminOverviewLine,
+    AdminUsageMetric,
 )
 from app.api.schemas.settings import AccountSettings
 from app.api.schemas.usage import UsageByJob, UsageSummary, UsageTimeseries
-from app.models import Account, EnrichmentItem, EnrichmentJob, ImportItem, User
+from app.api.services.accounts import resolve_account_id
+from app.models import (
+    Account,
+    EnrichmentItem,
+    EnrichmentJob,
+    ImportItem,
+    UsageEvent,
+    User,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -139,6 +150,41 @@ def read_overview(
             )
         )
     return AdminOverview(month=label, currency="EUR", lines=lines)
+
+
+@router.get("/usage-metrics", response_model=list[AdminUsageMetric])
+def list_usage_metrics(
+    db: SessionDep, current_user: CurrentAdminDep
+) -> list[AdminUsageMetric]:
+    """Every (provider, model, metric) combo the app has actually recorded.
+
+    Source of truth for the pricing form's metric picker: prices created from
+    this list always match real events (free-text metrics caused silent
+    "unpriced" gaps). `priced` resolves against the caller's grid with the
+    same exact-then-model-null fallback as the billing code.
+    """
+    account_id = resolve_account_id(db, current_user)
+    lookup = _price_lookup(db, account_id)
+    rows = db.execute(
+        select(
+            UsageEvent.provider,
+            UsageEvent.model,
+            UsageEvent.metric,
+            func.sum(UsageEvent.quantity),
+        ).group_by(UsageEvent.provider, UsageEvent.model, UsageEvent.metric)
+    ).all()
+    metrics = [
+        AdminUsageMetric(
+            provider=provider,
+            model=model,
+            metric=metric,
+            quantity=int(quantity or 0),
+            priced=_resolve_price(lookup, provider, model, metric) is not None,
+        )
+        for provider, model, metric, quantity in rows
+    ]
+    metrics.sort(key=lambda m: (m.priced, m.provider, m.model or "", m.metric))
+    return metrics
 
 
 # Groupements de série temporelle exposés à l'admin. "service" agrège les

@@ -2,6 +2,7 @@
 // OpenAPI généré — types et appels viennent de src/client, zéro redéfinition.
 import {
   adminListAccounts,
+  adminListUsageMetrics,
   adminReadAccountActivity,
   adminReadAccountSettingsAdmin,
   adminReadAccountTimeseries,
@@ -19,12 +20,18 @@ export type {
   AdminActivityEntry,
   AdminOverview,
   AdminOverviewLine,
+  AdminUsageMetric,
 } from "@/client"
 // Réglages complets d'un compte, vue opérateur.
 export type AdminAccountSettings = AccountSettings
 
 export function listAdminAccounts() {
   return adminListAccounts()
+}
+
+/** Combos (provider, modèle, métrique) réellement enregistrés + état tarifé. */
+export function listAdminUsageMetrics() {
+  return adminListUsageMetrics()
 }
 
 export function getAdminOverview(month?: string) {
