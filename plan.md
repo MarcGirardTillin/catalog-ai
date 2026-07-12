@@ -453,15 +453,19 @@ dédié :
    `/v2/edit` fait déjà détourage + fond + 4:5 + padding 10 %, mais la couleur
    est en dur (`FFFFFF` dans `PhotoroomClient.edit_image`) et l'API d'édition
    coûte 0,10 $/image en prod (clé actuelle = sandbox avec filigrane). La
-   « solution » à trouver = brancher le hex client sur le pipeline existant
-   ET arbitrer le provider (Photoroom Plus vs alternative moins chère type
-   remove-bg 0,02 $ + recadrage/centrage Pillow maison via le cutout RGBA —
-   item déjà ouvert dans le sprint imagerie). **Ombre produit souhaitée**
-   (échange 2026-07-12) : `/v2/edit` la génère nativement via `shadow.mode`
-   (`ai.preset-soft` / `ai.preset-hard` / `ai.auto-with-overrides`, modèle
-   2026-04-15) — même appel, inclus dans le prix. Une ombre réaliste est
-   infaisable en Pillow (fausse ombre floutée seulement) : si l'ombre est
-   retenue, l'arbitrage penche vers rester sur l'API d'édition Photoroom.
+   **Process retenu (décision 2026-07-12)** : Photoroom **Remove Background à
+   0,02 $/image** (cutout RGBA) + **Pillow maison** pour le reste — canevas
+   4:5 (1600×2000) rempli avec le hex du client, centrage du produit via la
+   boîte englobante, export WebP/JPEG. **L'ombre n'est PAS prise en compte**
+   dans cette normalisation (elle imposerait l'API d'édition à 0,10 $ via
+   `shadow.mode` — écarté pour l'instant). Prérequis technique : confirmer la
+   récupération du cutout transparent (item RGBA déjà ouvert au sprint
+   imagerie).
+   *Idée à creuser, hors périmètre de la normalisation* : le « produit à
+   plat avec ombre » pensé comme une **génération d'image** côté FASHN
+   (comme le porté-mannequin), à rapprocher de l'item en attente
+   `generate_flat_photo` — les endpoints FASHN actuels font du porté, pas du
+   flat-lay ; à réévaluer quand un endpoint adapté existe.
 2. **Instruction de génération FASHN** : CONFIRMÉ (docs 2026-07-12) —
    `product-to-model` accepte un `prompt` texte (ex. "professional office
    setting") ainsi que `image_prompt` (image d'inspiration pose/décor),
