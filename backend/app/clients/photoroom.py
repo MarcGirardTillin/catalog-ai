@@ -1,14 +1,11 @@
-"""Photoroom client — segment (cutout RGBA) and legacy full edit.
+"""Photoroom client — segment: cutout RGBA (Remove Background plan).
 
-Two endpoints, two hosts:
-- `POST https://sdk.photoroom.com/v1/segment` (multipart `image_file`) —
-  Remove Background plan, ~0.02 $/image. Confirmed live (2026-07-12): returns
-  a PNG **RGBA** whose alpha isolates the product; sandbox keys answer 200 but
-  tile a semi-transparent watermark over the whole frame.
-- `GET https://image-api.photoroom.com/v2/edit` — legacy all-in-one edit
-  (cutout + bg + 4:5), ~0.10 $/image. Confirmed live (2026-07-10): params as
-  query params; JSON POST rejected 400. Kept until the Pillow pipeline fully
-  replaces it.
+`POST https://sdk.photoroom.com/v1/segment` (multipart `image_file`),
+~0.02 $/image. Confirmed live (2026-07-12): returns a PNG **RGBA** whose alpha
+isolates the product; sandbox keys answer 200 but tile a semi-transparent
+watermark over the whole frame. Everything downstream (background, ratio,
+centering, compression) is local Pillow (`app.imaging.compose`) — the legacy
+all-in-one `/v2/edit` (0.10 $/image) was removed with the Pillow pipeline.
 """
 
 import httpx
@@ -17,8 +14,7 @@ from app.clients.base import ExternalServiceError, NotConfiguredError
 from app.core.config import settings
 
 BASE_URL = "https://image-api.photoroom.com"
-# The segment endpoint lives on a DIFFERENT host than /v2/edit (absolute URL
-# per request; the client's base_url stays on image-api).
+# The segment endpoint lives on its own host (absolute URL per request).
 SEGMENT_URL = "https://sdk.photoroom.com/v1/segment"
 
 
@@ -65,41 +61,6 @@ class PhotoroomClient:
                     "image_file": (filename, image_bytes, "application/octet-stream")
                 },
             )
-        except httpx.HTTPError as exc:
-            raise ExternalServiceError("photoroom", "Photoroom is unreachable") from exc
-        if response.status_code >= 400:
-            raise ExternalServiceError(
-                "photoroom",
-                "Photoroom returned an error response",
-                detail={"upstream_status": response.status_code},
-            )
-        return response.content
-
-    def edit_image(
-        self,
-        image_url: str,
-        *,
-        background_color: str = "FFFFFF",
-        output_size: str = "1600x2000",
-        padding: str = "10%",
-        export_format: str = "webp",
-        quality: int | None = None,
-    ) -> bytes:
-        """Cut out the product, recolor the background, pad to 4:5.
-
-        Returns the processed image bytes; storage is the caller's concern.
-        """
-        params: dict[str, str | int] = {
-            "imageUrl": image_url,
-            "background.color": background_color,
-            "outputSize": output_size,
-            "padding": padding,
-            "export.format": export_format,
-        }
-        if quality is not None:
-            params["export.quality"] = quality
-        try:
-            response = self._client.get("/v2/edit", params=params)
         except httpx.HTTPError as exc:
             raise ExternalServiceError("photoroom", "Photoroom is unreachable") from exc
         if response.status_code >= 400:

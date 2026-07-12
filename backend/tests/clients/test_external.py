@@ -121,23 +121,6 @@ def test_claude_requires_api_key() -> None:
 # ---- Photoroom ----
 
 
-def test_photoroom_edit_image_returns_bytes() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        # Confirmed live: /v2/edit takes its parameters as GET query params
-        # (a JSON POST is rejected with 400 "Only multipart form data...").
-        assert request.method == "GET"
-        assert request.url.path == "/v2/edit"
-        assert request.headers["x-api-key"] == "pr-key"
-        assert request.url.params["outputSize"] == "1600x2000"
-        assert request.url.params["background.color"] == "FFFFFF"
-        return httpx.Response(200, content=b"\x89WEBP-bytes")
-
-    with PhotoroomClient("pr-key", transport=httpx.MockTransport(handler)) as client:
-        data = client.edit_image("https://img/1.jpg")
-
-    assert data == b"\x89WEBP-bytes"
-
-
 def test_photoroom_remove_background_posts_multipart_to_sdk_host() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         # Confirmed live (2026-07-12): multipart POST on the sdk host.
@@ -156,8 +139,6 @@ def test_photoroom_error_raises() -> None:
     with PhotoroomClient(
         "pr-key", transport=httpx.MockTransport(lambda r: httpx.Response(402))
     ) as client:
-        with pytest.raises(ExternalServiceError):
-            client.edit_image("https://img/1.jpg")
         with pytest.raises(ExternalServiceError):
             client.remove_background(b"source-bytes")
     with pytest.raises(NotConfiguredError):

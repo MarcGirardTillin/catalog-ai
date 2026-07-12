@@ -440,10 +440,34 @@ Reste hors périmètre (plans ultérieurs) : composants ui/ (select/tabs/switch/
 empty-state/confirm-button), Query sur les écrans restants, refonte dashboard
 admin avancée, notifications Brevo, déploiement Railway.
 
-## Sprint à planifier — Imagerie configurable par client (demandé 2026-07-12)
+## Sprint imagerie configurable — SHIPPED 2026-07-12
 
-Chantiers liés au traitement/génération d'image, à cadrer dans un sprint
-dédié :
+Livré en 5 commits (66cc71e→…) sur la base des specs ci-dessous :
+- **P1** : Photoroom `/v1/segment` (0,02 $/image, spike live : PNG RGBA,
+  filigrane sandbox) + moteur Pillow local `app/imaging/compose.py` (canevas
+  4:5/1:1/3:4/16:9/original, fond hex, centrage bbox alpha seuil 8,
+  offset/échelle, boucle de compression max_kb) ; verbe normalize réécrit
+  (bytes|URL, `NormalizeOutcome{output+dims+poids, cutout, source}`, usage
+  event seulement si détourage) ; `/v2/edit` supprimé en P6.
+- **P2** : `staged_files_json` (migration 0017, rôle source/cutout/output +
+  octets/dimensions), normalize en 202+BackgroundTask, `POST
+  /imaging/assets/{id}/render` (recomposition locale, gardes 409, `?r=`
+  cache-busting), save avec `filenames` slugifiés.
+- **P3** : `AccountSettings.imaging_*` (défauts client, non admin-only) +
+  `image_title_template` ; défauts injectés partout (à la carte, batch,
+  review) ; noms rendus par le modèle au save et à l'apply (best effort).
+- **P4-P5** : studio `/products/:id/images` (options à la carte, sélection
+  multiple, avant/après avec poids, drag+zoom → re-render gratuit, renommage,
+  save avec remplacement) ; onglet réglages « Imagerie ».
+- Grille tarifaire : ligne `photoroom / photoroom-segment-v1 / images` à
+  0,02 € ajoutée (l'ancienne à 0,10 € couvre l'historique photoroom-v2).
+- Restes à suivre : filigrane sandbox jusqu'à la clé prod ; e2e save studio →
+  Tillin à rejouer sur un produit réel choisi par Marc ; idée « flat-lay avec
+  ombre » = génération FASHN (voir items 2-3 ci-dessous, non livrés).
+
+### Spécifications d'origine (2026-07-12)
+
+Chantiers liés au traitement/génération d'image :
 
 1. **Normalisation produit configurable** : trouver une solution pérenne pour
    le traitement d'image produit — mise au format **4:5**, **fond uni dont la

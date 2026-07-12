@@ -706,3 +706,29 @@ e885704→2e9b07d). Décisions durables :
   adopté sur les listes + détails du pipeline, à étendre aux écrans restants
   au fil de l'eau. Les compteurs affichés viennent TOUJOURS du serveur
   (job.counts, DashboardStats), jamais d'une page paginée.
+
+## 2026-07-12 — Sprint imagerie configurable
+
+- **Normalisation = segment + Pillow local** : Photoroom `/v1/segment`
+  (0,02 $/image, seule étape facturée, modèle usage `photoroom-segment-v1`)
+  fournit le cutout RGBA ; TOUTE la géométrie (fond hex, ratio, centrage
+  bbox alpha seuil 8, offset/échelle, compression max_kb) est du Pillow
+  maison (`app/imaging/compose.py`). `/v2/edit` (0,10 $) supprimé. Ombre
+  produit écartée (imposerait l'API d'édition) — repensée comme génération
+  FASHN future.
+- **Le cutout et la source restent en staging** jusqu'au save : le
+  repositionnement (`POST /imaging/assets/{id}/render`) recompose localement
+  sans jamais re-payer le provider. `staged_files_json` porte rôle + octets +
+  dimensions par fichier (assets legacy lus en repli sur staged_paths_json).
+- **Toute opération d'image longue = 202 + BackgroundTask + polling**
+  (normalize aligné sur generate-model) ; le re-render local reste synchrone.
+- **Défauts d'imagerie par client dans AccountSettings** (`imaging_*`,
+  éditables par le client, PAS admin-only) ; fusion défauts → champs
+  explicitement envoyés (`exclude_unset`) → overrides config de job.
+- **Nom d'image** : priorité nom saisi > modèle `image_title_template`
+  (tokens {reference}/{color}/{position}/{brand}/{title}, rendu via le moteur
+  de titre produit puis TOUJOURS slugifié — pas de casse pour un fichier) >
+  défaut technique ; le rendu de nom ne fait jamais échouer un apply.
+- **Filigrane sandbox Photoroom** : tuilé semi-transparent → pollue la bbox
+  de centrage en dessous du seuil alpha ; les validations visuelles sandbox
+  sont approximatives, la clé prod est requise pour le rendu final.
