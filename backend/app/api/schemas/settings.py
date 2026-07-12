@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.api.schemas.imaging import FormatOption, RatioOption
+
 # How the rendered title is cased: left as-is, UPPER CASE, or Capitalized.
 TitleCase = Literal["none", "upper", "capitalize"]
 
@@ -50,6 +52,17 @@ class AccountSettings(BaseModel):
     # prices frozen) on this day of the FOLLOWING month. 1 = frozen as soon
     # as the month rolls over.
     billing_day: int = Field(1, ge=1, le=28)
+    # --- Imaging: the boutique's normalization defaults (à la carte) ---
+    imaging_remove_bg: bool = True
+    imaging_bg_color: str = Field("FFFFFF", pattern=r"^#?[0-9a-fA-F]{6}$")
+    imaging_ratio: RatioOption = "4:5"
+    imaging_center: bool = True
+    imaging_format: FormatOption = "webp"
+    imaging_quality: int = Field(80, ge=1, le=100)
+    imaging_max_kb: int = Field(300, ge=1, le=5000)
+    # Image filename template ({reference}/{color}/{position}/{brand}/{title}),
+    # rendered then slugged at save time; None = default technical names.
+    image_title_template: str | None = None
 
 
 class ConnectionStatus(BaseModel):

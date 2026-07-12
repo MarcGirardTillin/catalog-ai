@@ -234,6 +234,67 @@ def test_normalize_provider_error_marks_asset_failed(
         db.close()
 
 
+@pytest.mark.usefixtures("patch_source_download")
+def test_normalize_uses_account_imaging_defaults(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+    staging_dir: Path,
+) -> None:
+    override_photoroom(lambda r: httpx.Response(200, content=cutout_png()))
+    # The client configures its imaging defaults (regular settings PUT).
+    put = auth_client.put(
+        "/settings/account",
+        json={
+            "imaging_bg_color": "112233",
+            "imaging_format": "png",
+            "imaging_remove_bg": False,
+        },
+    )
+    assert put.status_code == 200
+
+    # No options in the request → account defaults apply (fully local here).
+    response = auth_client.post(
+        "/products/101/images/normalize",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
+    )
+    assert response.status_code == 202
+    asset_id = response.json()["id"]
+    body = auth_client.get(f"/imaging/assets/{asset_id}").json()
+    assert body["status"] == "completed"
+    assert body["provider"] == "local"  # remove_bg off by account default
+    assert (staging_dir / str(asset_id) / "0.png").is_file()
+    db = _db(db_session_factory)
+    try:
+        asset = db.get(ImageAsset, asset_id)
+        assert asset is not None
+        options = asset.params_json["options"]
+        assert options["bg_color"] == "112233"
+        assert options["format"] == "png"
+        assert options["remove_bg"] is False
+        assert db.scalar(select(UsageEvent)) is None  # fully local, unmetered
+    finally:
+        db.close()
+
+    # A partial override wins field by field, the rest keeps the defaults.
+    override = auth_client.post(
+        "/products/101/images/normalize",
+        json={
+            "image_url": "https://cdn.tillin/vm01-1.jpg",
+            "options": {"bg_color": "445566"},
+        },
+    )
+    partial = auth_client.get(f"/imaging/assets/{override.json()['id']}").json()
+    db = _db(db_session_factory)
+    try:
+        asset = db.get(ImageAsset, partial["id"])
+        assert asset is not None
+        assert asset.params_json["options"]["bg_color"] == "445566"
+        assert asset.params_json["options"]["format"] == "png"  # default kept
+    finally:
+        db.close()
+
+
 # ---- POST /products/{id}/images/generate-model (202 + background) ----
 
 

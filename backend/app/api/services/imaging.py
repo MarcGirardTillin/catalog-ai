@@ -10,6 +10,7 @@ from app.api.exceptions import AppException
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.schemas import ImageAssetPublic, StagedFilePublic
 from app.api.schemas import NormalizeOptions as NormalizeOptionsSchema
+from app.api.schemas.settings import AccountSettings
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.db import SessionLocal
@@ -21,7 +22,7 @@ from app.imaging.service import (
     generate_model_photo,
     normalize_product_image,
 )
-from app.models import ImageAsset
+from app.models import Account, ImageAsset
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,45 @@ def to_normalize_service_options(options: NormalizeOptionsSchema) -> NormalizeOp
         quality=options.quality,
         max_kb=options.max_kb,
     )
+
+
+def account_settings(db: Session, account_id: int) -> AccountSettings:
+    """The account's stored settings (defaults when empty)."""
+    account = db.get(Account, account_id)
+    return AccountSettings.model_validate(
+        (account.settings_json if account else None) or {}
+    )
+
+
+def account_normalize_defaults(db: Session, account_id: int) -> NormalizeOptionsSchema:
+    """The account's imaging defaults as normalize options."""
+    stored = account_settings(db, account_id)
+    return NormalizeOptionsSchema(
+        remove_bg=stored.imaging_remove_bg,
+        bg_color=stored.imaging_bg_color,
+        ratio=stored.imaging_ratio,
+        center=stored.imaging_center,
+        format=stored.imaging_format,
+        quality=stored.imaging_quality,
+        max_kb=stored.imaging_max_kb,
+    )
+
+
+def merged_normalize_options(
+    db: Session, account_id: int, override: NormalizeOptionsSchema | None
+) -> NormalizeOptionsSchema:
+    """Account defaults overridden by the request's EXPLICITLY SET fields."""
+    defaults = account_normalize_defaults(db, account_id)
+    if override is None:
+        return defaults
+    return defaults.model_copy(update=override.model_dump(exclude_unset=True))
+
+
+def account_normalize_service_defaults(
+    db: Session, account_id: int
+) -> NormalizeOptions:
+    """Account imaging defaults as the verb's dataclass (batch pipeline base)."""
+    return to_normalize_service_options(account_normalize_defaults(db, account_id))
 
 
 def stage_normalize_outcome(asset: ImageAsset, outcome: NormalizeOutcome) -> None:

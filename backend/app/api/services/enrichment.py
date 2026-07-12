@@ -214,9 +214,18 @@ def normalize_item_image(
                 code="already_normalized",
                 message="This image is already normalized",
             )
+        from app.api.services.imaging import account_normalize_service_defaults
+
         config = item.job.config_json or {}
         normalized = normalize_staged_entry(
-            db, item, photoroom, url, position, _normalize_options(config)
+            db,
+            item,
+            photoroom,
+            url,
+            position,
+            _normalize_options(
+                config, account_normalize_service_defaults(db, item.account_id)
+            ),
         )
         if normalized is None:
             raise AppException(

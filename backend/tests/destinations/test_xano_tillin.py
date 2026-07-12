@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.exceptions import AppException
-from app.api.schemas import ProductImage
+from app.api.schemas import Product, ProductImage, ProductVariant
 from app.clients.xano import FilePart
 from app.core.config import settings
 from app.destinations.xano_tillin import XanoTillinDestination, _selected_weights
@@ -21,6 +21,10 @@ class _FakeXano:
         self.uploads: tuple[int, list[FilePart]] | None = None
         self.enrich: dict[str, Any] | None = None
         self.weight: tuple[list[int], float, str] | None = None
+        self.product: Product | None = None  # returned by get_product
+
+    def get_product(self, product_id: int) -> Product | None:
+        return self.product
 
     def add_product_images(self, product_id: int, image_urls: list[str]) -> None:
         self.images = (product_id, image_urls)
@@ -314,6 +318,40 @@ def test_apply_uploads_normalized_bytes_and_adds_raw_urls(staged_db: Session) ->
     assert asset.tillin_image_ids_json == [9000]
     with pytest.raises(FileNotFoundError):
         staging.load(f"{asset.id}/0.webp")
+
+
+def test_apply_uses_image_title_template_for_upload_names(
+    staged_db: Session,
+) -> None:
+    item, _asset = _seed_normalized_item(staged_db)
+    account = staged_db.get(Account, item.account_id)
+    assert account is not None
+    account.settings_json = {"image_title_template": "{reference} {color} {position}"}
+    staged_db.commit()
+    fake = _FakeXano()
+    fake.product = Product(
+        id=1911,
+        title="G-Short",
+        reference_code="G5FU-T081",
+        variants=[ProductVariant(id=1, sku="S", color="Navy")],
+    )
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.uploads is not None
+    assert [part[0] for part in fake.uploads[1]] == ["g5fu-t081-navy-1.webp"]
+
+
+def test_apply_template_falls_back_when_product_missing(staged_db: Session) -> None:
+    item, asset = _seed_normalized_item(staged_db)
+    account = staged_db.get(Account, item.account_id)
+    assert account is not None
+    account.settings_json = {"image_title_template": "{reference}"}
+    staged_db.commit()
+    fake = _FakeXano()  # get_product renvoie None
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.uploads is not None
+    assert [part[0] for part in fake.uploads[1]] == [f"normalize_{asset.id}_1.webp"]
 
 
 def test_apply_selection_keeps_only_selected_normalized_entry(

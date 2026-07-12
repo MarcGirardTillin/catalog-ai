@@ -22,6 +22,7 @@ from app.api.schemas import (
 from app.api.services.accounts import resolve_account_id
 from app.api.services.imaging import (
     MEDIA_TYPES,
+    account_settings,
     file_by_role,
     get_asset,
     output_files,
@@ -29,7 +30,7 @@ from app.api.services.imaging import (
 )
 from app.imaging import staging
 from app.imaging.compose import compose
-from app.imaging.naming import build_filename
+from app.imaging.naming import build_filename, render_image_filename
 from app.models import ImageAsset
 
 router = APIRouter(
@@ -212,8 +213,17 @@ def save_asset(
             message="This asset was already saved to Tillin",
         )
     filenames = body.filenames or []
+    outputs = output_files(asset)
+    # Filename resolution: explicit name > image title template > technical
+    # default. The product is fetched once, only when the template is needed.
+    template = (account_settings(db, account_id).image_title_template or "").strip()
+    template_product = None
+    if template and any(
+        index >= len(filenames) or not filenames[index] for index in range(len(outputs))
+    ):
+        template_product = xano.get_product(asset.product_id)
     parts: list[tuple[str, bytes, str]] = []
-    for index, entry in enumerate(output_files(asset)):
+    for index, entry in enumerate(outputs):
         relpath = str(entry["path"])
         try:
             data = staging.load(relpath)
@@ -225,13 +235,18 @@ def save_asset(
             )
         extension = PurePosixPath(relpath).suffix.lstrip(".").lower()
         custom = filenames[index] if index < len(filenames) else None
+        default_stem = f"{asset.verb}_{asset.id}_{index}"
+        if not custom and template_product is not None:
+            try:
+                default_stem = (
+                    render_image_filename(template_product, index + 1, template)
+                    or default_stem
+                )
+            except ValueError:  # unknown token in a hand-edited template
+                pass
         parts.append(
             (
-                build_filename(
-                    custom,
-                    extension,
-                    default_stem=f"{asset.verb}_{asset.id}_{index}",
-                ),
+                build_filename(custom, extension, default_stem=default_stem),
                 data,
                 MEDIA_TYPES.get(extension, "application/octet-stream"),
             )

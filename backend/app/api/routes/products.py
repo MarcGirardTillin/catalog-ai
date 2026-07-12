@@ -23,14 +23,18 @@ from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.schemas import (
     GenerateModelRequest,
     ImageAssetPublic,
-    NormalizeOptions,
     NormalizeRequest,
     PaginatedResponse,
     Product,
     ProductImagesUploadResult,
 )
 from app.api.services.accounts import resolve_account_id
-from app.api.services.imaging import run_generate_model, run_normalize, to_public
+from app.api.services.imaging import (
+    merged_normalize_options,
+    run_generate_model,
+    run_normalize,
+    to_public,
+)
 from app.imaging import service as imaging_service
 from app.models import ImageAsset
 
@@ -154,7 +158,8 @@ def normalize_image(
     no zombie asset.
     """
     account_id = resolve_account_id(db, current_user)
-    options = body.options or NormalizeOptions()
+    # Account imaging defaults, overridden by the explicitly-sent fields only.
+    options = merged_normalize_options(db, account_id, body.options)
     asset = ImageAsset(
         account_id=account_id,
         product_id=product_id,

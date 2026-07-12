@@ -21,9 +21,10 @@ from typing import Any
 from sqlalchemy.orm import Session, object_session
 
 from app.api.exceptions import AppException
-from app.api.services.imaging import MEDIA_TYPES
+from app.api.services.imaging import MEDIA_TYPES, account_settings
 from app.clients.xano import FilePart, XanoClient
 from app.imaging import staging
+from app.imaging.naming import render_image_filename
 from app.models import EnrichmentItem, ImageAsset
 
 logger = logging.getLogger(__name__)
@@ -153,8 +154,9 @@ class XanoTillinDestination:
                     code="staging_unavailable",
                     message="Cannot load normalized images: item has no session",
                 )
-            for entry in asset_entries:
-                uploads.append(self._load_upload(db, entry))
+            stems = self._template_stems(db, item, asset_entries)
+            for entry, stem in zip(asset_entries, stems, strict=True):
+                uploads.append(self._load_upload(db, entry, stem=stem))
 
         if raw_urls:
             self._client.add_product_images(item.tillin_product_id, raw_urls)
@@ -168,8 +170,36 @@ class XanoTillinDestination:
                     asset.tillin_image_ids_json = [created_ids[index]]
                 staging.purge_asset(asset.id)
 
+    def _template_stems(
+        self, db: Session, item: EnrichmentItem, entries: list[dict[str, Any]]
+    ) -> list[str | None]:
+        """File stems rendered by the account's image title template.
+
+        None entries fall back to the technical default. Best effort: a
+        missing product or a template error never fails the apply.
+        """
+        template = (
+            account_settings(db, item.account_id).image_title_template or ""
+        ).strip()
+        if not template:
+            return [None] * len(entries)
+        try:
+            product = self._client.get_product(item.tillin_product_id)
+        except Exception:  # pragma: no cover - defensive (network)
+            product = None
+        if product is None:
+            return [None] * len(entries)
+        stems: list[str | None] = []
+        for index, entry in enumerate(entries):
+            position = int(entry.get("position") or index + 1)
+            try:
+                stems.append(render_image_filename(product, position, template) or None)
+            except ValueError:  # unknown token in a hand-edited template
+                stems.append(None)
+        return stems
+
     def _load_upload(
-        self, db: Session, entry: dict[str, Any]
+        self, db: Session, entry: dict[str, Any], *, stem: str | None = None
     ) -> tuple[ImageAsset, FilePart]:
         """Resolve one normalized entry to (asset, multipart file part)."""
         asset_id = int(entry["asset_id"])
@@ -198,6 +228,6 @@ class XanoTillinDestination:
             ) from exc
         extension = relpath.rsplit(".", 1)[-1].lower()
         position = entry.get("position") or 0
-        filename = f"normalize_{asset_id}_{position}.{extension}"
+        filename = f"{stem or f'normalize_{asset_id}_{position}'}.{extension}"
         content_type = MEDIA_TYPES.get(extension, "application/octet-stream")
         return asset, (filename, data, content_type)

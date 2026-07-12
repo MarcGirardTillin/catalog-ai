@@ -20,7 +20,7 @@ resolution chain (auto | shopify_json | firecrawl; default auto).
 
 import logging
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
+from app.api.services.imaging import account_normalize_service_defaults
 from app.api.services.usage import record_claude_usage, record_usage
 from app.clients.base import ExternalServiceError
 from app.clients.claude import ClaudeClient
@@ -78,12 +79,18 @@ def _transforms(config: dict[str, Any]) -> dict[str, bool]:
     return {key: bool(raw.get(key, True)) for key in _TRANSFORM_KEYS}
 
 
-def _normalize_options(config: dict[str, Any]) -> NormalizeOptions:
-    """Map `config_json["image"]` onto the verb's options (defaults preserved)."""
+def _normalize_options(
+    config: dict[str, Any], base: NormalizeOptions | None = None
+) -> NormalizeOptions:
+    """Map `config_json["image"]` onto the verb's options.
+
+    `base` carries the account's imaging defaults (settings); job config
+    overrides win on top. No base = the verb's built-in defaults.
+    """
+    options = replace(base) if base is not None else NormalizeOptions()
     raw = config.get("image")
     if not isinstance(raw, dict):
-        return NormalizeOptions()
-    options = NormalizeOptions()
+        return options
     if raw.get("bg_color"):
         options.bg_color = str(raw["bg_color"])
     if raw.get("ratio"):
@@ -386,7 +393,12 @@ class EnrichmentPipeline:
         auto_normalize = bool(
             isinstance(image_config, dict) and image_config.get("auto_normalize")
         )
-        options = _normalize_options(config)
+        base = (
+            account_normalize_service_defaults(db, item.account_id)
+            if db is not None
+            else None
+        )
+        options = _normalize_options(config, base)
         entries: list[dict[str, Any]] = []
         for position, url in enumerate(sources, start=1):
             entry: dict[str, Any] | None = None
