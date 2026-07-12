@@ -7,8 +7,11 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.imaging.service as imaging_service
+from app.clients.base import ExternalServiceError
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
+from app.imaging.compose import probe
 from app.imaging.service import (
     GenerateModelOptions,
     NormalizeOptions,
@@ -18,6 +21,7 @@ from app.imaging.service import (
     normalize_product_image,
 )
 from app.models import Account, UsageEvent
+from tests.images import cutout_png, source_jpeg
 
 
 @pytest.fixture
@@ -41,51 +45,107 @@ def _usage_events(db: Session) -> list[UsageEvent]:
     return list(db.execute(select(UsageEvent)).scalars())
 
 
-def test_normalize_calls_photoroom_and_meters_one_image(
+def _segment_photoroom(captured: dict[str, httpx.Request]) -> PhotoroomClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(200, content=cutout_png())
+
+    return PhotoroomClient("pr-key", transport=httpx.MockTransport(handler))
+
+
+def test_normalize_segments_composes_and_meters_one_image(
     db: Session, account_id: int
 ) -> None:
     captured: dict[str, httpx.Request] = {}
+    outcome = normalize_product_image(
+        source_jpeg(),
+        options=NormalizeOptions(bg_color="F5F5F5", fmt="png"),
+        photoroom=_segment_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    db.commit()
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured["request"] = request
-        return httpx.Response(200, content=b"processed-webp")
+    result = outcome.output
+    # Dims are real now (Pillow) and follow the 4:5 default canvas.
+    assert (result.width, result.height) == (1600, 2000)
+    assert result.format == "png"
+    assert probe(result.data) == (1600, 2000, "png")
+    assert result.trace["provider"] == "photoroom"
+    assert result.trace["steps"] == ["remove_bg", "compose"]
+    assert result.trace["params"]["bg_color"] == "F5F5F5"
+    # The cutout is kept for re-renders; the source was probed.
+    assert outcome.cutout is not None
+    assert (outcome.source.width, outcome.source.height) == (800, 1000)
+    assert outcome.source.format == "jpeg"
+    # Confirmed live: segment is a multipart POST on the sdk host.
+    request = captured["request"]
+    assert request.method == "POST"
+    assert request.url.host == "sdk.photoroom.com"
+    assert request.url.path == "/v1/segment"
 
-    photoroom = PhotoroomClient("pr-key", transport=httpx.MockTransport(handler))
-    result = normalize_product_image(
-        "https://cdn.tillin/vm01-1.jpg",
-        options=NormalizeOptions(bg_color="F5F5F5", quality=90),
+    events = _usage_events(db)
+    assert [(e.provider, e.metric, e.quantity, e.source) for e in events] == [
+        ("photoroom", "images", 1, "imaging")
+    ]
+    assert events[0].model == "photoroom-segment-v1"
+    assert events[0].account_id == account_id
+
+
+def test_normalize_without_remove_bg_is_fully_local(
+    db: Session, account_id: int
+) -> None:
+    def refuse(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("Photoroom must not be called with remove_bg=False")
+
+    photoroom = PhotoroomClient("pr-key", transport=httpx.MockTransport(refuse))
+    outcome = normalize_product_image(
+        source_jpeg(),
+        options=NormalizeOptions(remove_bg=False),
         photoroom=photoroom,
         db=db,
         account_id=account_id,
     )
     db.commit()
 
-    assert result.data == b"processed-webp"
-    assert result.format == "webp"
-    assert result.width is None and result.height is None  # no Pillow in deps
-    assert result.trace["provider"] == "photoroom"
-    assert result.trace["params"]["bg_color"] == "F5F5F5"
-    # Confirmed live: Photoroom /v2/edit reads its params from the GET query.
-    assert captured["request"].method == "GET"
-    assert captured["request"].url.params["background.color"] == "F5F5F5"
-    assert captured["request"].url.params["export.quality"] == "90"
-
-    events = _usage_events(db)
-    assert [(e.provider, e.metric, e.quantity, e.source) for e in events] == [
-        ("photoroom", "images", 1, "imaging")
-    ]
-    assert events[0].model == "photoroom-v2"
-    assert events[0].account_id == account_id
+    assert outcome.cutout is None
+    assert outcome.output.trace["provider"] == "local"
+    assert outcome.output.trace["steps"] == ["compose"]
+    assert _usage_events(db) == []  # no provider call, nothing metered
 
 
-def test_normalize_rejects_raw_bytes_for_now(db: Session, account_id: int) -> None:
+def test_normalize_downloads_url_sources(
+    db: Session, account_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloaded: list[str] = []
+
+    def fake_download(url: str) -> bytes:
+        downloaded.append(url)
+        return source_jpeg()
+
+    monkeypatch.setattr(imaging_service, "_download_source", fake_download)
+    outcome = normalize_product_image(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=NormalizeOptions(remove_bg=False),
+        photoroom=PhotoroomClient(
+            "pr-key", transport=httpx.MockTransport(lambda r: httpx.Response(500))
+        ),
+        db=db,
+        account_id=account_id,
+    )
+    assert downloaded == ["https://cdn.tillin/vm01-1.jpg"]
+    assert outcome.source.format == "jpeg"
+
+
+def test_normalize_rejects_unreadable_sources(db: Session, account_id: int) -> None:
     photoroom = PhotoroomClient(
         "pr-key", transport=httpx.MockTransport(lambda r: httpx.Response(200))
     )
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ExternalServiceError) as excinfo:
         normalize_product_image(
-            b"raw-bytes", photoroom=photoroom, db=db, account_id=account_id
+            b"not-an-image", photoroom=photoroom, db=db, account_id=account_id
         )
+    assert excinfo.value.status_code == 422
 
 
 def _fashn_transport(outputs: list[str]) -> httpx.MockTransport:

@@ -38,7 +38,7 @@ from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
 from app.imaging import staging
 from app.imaging.service import (
-    PHOTOROOM_MODEL,
+    PHOTOROOM_SEGMENT_MODEL,
     NormalizeOptions,
     normalize_product_image,
 )
@@ -86,16 +86,18 @@ def _normalize_options(config: dict[str, Any]) -> NormalizeOptions:
     options = NormalizeOptions()
     if raw.get("bg_color"):
         options.bg_color = str(raw["bg_color"])
-    if raw.get("output_size"):
-        options.output_size = str(raw["output_size"])
-    if raw.get("padding"):
-        options.padding = str(raw["padding"])
+    if raw.get("ratio"):
+        options.ratio = str(raw["ratio"])
     if raw.get("format"):
         options.fmt = str(raw["format"])
     if raw.get("quality") is not None:
         options.quality = int(raw["quality"])
     if raw.get("max_kb") is not None:
         options.max_kb = int(raw["max_kb"])
+    if raw.get("remove_bg") is not None:
+        options.remove_bg = bool(raw["remove_bg"])
+    if raw.get("center") is not None:
+        options.center = bool(raw["center"])
     return options
 
 
@@ -125,7 +127,7 @@ def normalize_staged_entry(
         product_id=item.tillin_product_id,
         verb="normalize",
         provider="photoroom",
-        model=PHOTOROOM_MODEL,
+        model=PHOTOROOM_SEGMENT_MODEL,
         status="processing",
         source_image=url,
         params_json={"options": asdict(options)},
@@ -133,7 +135,7 @@ def normalize_staged_entry(
     db.add(asset)
     db.flush()  # the staging path needs the asset id
     try:
-        result = normalize_product_image(
+        outcome = normalize_product_image(
             url,
             options=options,
             photoroom=photoroom,
@@ -153,6 +155,7 @@ def normalize_staged_entry(
         asset.error = str(exc)
         asset.finished_at = datetime.now(UTC)
         return None
+    result = outcome.output
     asset.staged_paths_json = [staging.store(asset.id, 0, result.data, result.format)]
     asset.status = "completed"
     asset.finished_at = datetime.now(UTC)

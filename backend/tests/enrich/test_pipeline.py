@@ -8,6 +8,7 @@ import httpx
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.imaging.service as imaging_service
 from app.api.schemas import Brand, Product, ProductVariant
 from app.clients.claude import ClaudeUsage, CopyResult
 from app.clients.firecrawl import FirecrawlClient
@@ -15,8 +16,10 @@ from app.clients.photoroom import PhotoroomClient
 from app.core.config import settings
 from app.enrich.pipeline import EnrichmentPipeline
 from app.imaging import staging
+from app.imaging.compose import probe
 from app.jobs.worker import process_one
 from app.models import Account, EnrichmentItem, EnrichmentJob, ImageAsset, UsageEvent
+from tests.images import cutout_png, source_jpeg
 
 SITE = "https://gramicci.example"
 
@@ -503,6 +506,7 @@ def _photoroom(handler: Any) -> PhotoroomClient:
 @pytest.mark.usefixtures("imaging_dir")
 def test_pipeline_normalizes_source_images_with_photoroom(
     db_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = db_session_factory()
     item = _seed_item(
@@ -512,12 +516,12 @@ def test_pipeline_normalizes_source_images_with_photoroom(
         # an explicit opt-in.
         config={"image": {"bg_color": "F5F5F5", "quality": 90, "auto_normalize": True}},
     )
+    monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        source = request.url.params["imageUrl"]
-        return httpx.Response(200, content=b"norm:" + source.encode())
+        return httpx.Response(200, content=cutout_png())
 
     _run(db, photoroom=_photoroom(handler))
 
@@ -549,14 +553,18 @@ def test_pipeline_normalizes_source_images_with_photoroom(
         assert asset.source_image == f"{SITE}/cdn/{source}"
         assert asset.params_json["options"]["bg_color"] == "F5F5F5"
         assert asset.params_json["trace"]["provider"] == "photoroom"
-        # The normalized bytes are staged on disk under the asset id.
-        assert staging.load(asset.staged_paths_json[0]) == (
-            b"norm:" + f"{SITE}/cdn/{source}".encode()
+        # The composed output is staged on disk under the asset id (real 4:5).
+        assert probe(staging.load(asset.staged_paths_json[0])) == (
+            1600,
+            2000,
+            "webp",
         )
-    # The job options reached Photoroom (format→fmt mapping kept the default).
-    assert seen[0].url.params["background.color"] == "F5F5F5"
-    assert seen[0].url.params["export.quality"] == "90"
-    assert seen[0].url.params["export.format"] == "webp"
+        # The job options reached the compose step.
+        assert asset.params_json["trace"]["params"]["quality"] == 90
+    # One segment call per image, on the sdk host (multipart POST).
+    assert [
+        (request.method, request.url.host, request.url.path) for request in seen
+    ] == [("POST", "sdk.photoroom.com", "/v1/segment")] * 2
 
     # Metering: one photoroom event per image, tied to the job and item.
     events = [
@@ -575,17 +583,19 @@ def test_pipeline_normalizes_source_images_with_photoroom(
 @pytest.mark.usefixtures("imaging_dir")
 def test_pipeline_normalization_failure_falls_back_to_raw_url(
     db_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One image failing keeps its raw URL; the others stay normalized."""
     db = db_session_factory()
     item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        if "1.jpg" in str(request.url.params["imageUrl"]):
-            return httpx.Response(500)
-        return httpx.Response(200, content=b"normalized")
+    def fake_download(url: str) -> bytes:
+        if "1.jpg" in url:
+            raise RuntimeError("source unreachable")
+        return source_jpeg()
 
-    _run(db, photoroom=_photoroom(handler))
+    monkeypatch.setattr(imaging_service, "_download_source", fake_download)
+    _run(db, photoroom=_photoroom(lambda r: httpx.Response(200, content=cutout_png())))
 
     db.refresh(item)
     assets = db.query(ImageAsset).order_by(ImageAsset.id).all()
@@ -678,17 +688,17 @@ def _forbidden_firecrawl() -> FirecrawlClient:
 @pytest.mark.usefixtures("imaging_dir")
 def test_pipeline_firecrawl_fallback_end_to_end(
     db_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Shopify KO on a non-Shopify site → firecrawl resolves, images are
     normalized from the extracted URLs, copy sees the source description."""
     db = db_session_factory()
     item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
     claude = _FakeClaude()
+    monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
 
-    def photoroom_handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, content=b"norm:" + str(request.url.params["imageUrl"]).encode()
-        )
+    def photoroom_handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=cutout_png())
 
     with (
         httpx.Client(transport=_store({})) as http_client,  # suggest.json empty

@@ -12,13 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.api.services.imaging as imaging_services
+import app.imaging.service as imaging_service
 from app.api.deps import get_fashn_client, get_photoroom_client, get_xano_client
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
 from app.clients.xano import XanoClient
 from app.core.config import settings
+from app.imaging.compose import probe
 from app.main import app
 from app.models import Account, ImageAsset, UsageEvent
+from tests.images import cutout_png, source_jpeg
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -36,6 +39,12 @@ def _background_sessions(
 ) -> None:
     """Point the background task's own sessions at the test database."""
     monkeypatch.setattr(imaging_services, "SessionLocal", db_session_factory)
+
+
+@pytest.fixture
+def patch_source_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The verb downloads the source itself: keep the tests off the network."""
+    monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
 
 
 @pytest.fixture
@@ -125,13 +134,14 @@ def test_normalize_requires_authentication(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+@pytest.mark.usefixtures("patch_source_download")
 def test_normalize_creates_completed_asset_with_preview(
     auth_client: TestClient,
     override_photoroom: Callable[[Handler], None],
     db_session_factory: sessionmaker[Session],
     staging_dir: Path,
 ) -> None:
-    override_photoroom(lambda r: httpx.Response(200, content=b"processed-webp"))
+    override_photoroom(lambda r: httpx.Response(200, content=cutout_png()))
 
     response = auth_client.post(
         "/products/101/images/normalize",
@@ -151,18 +161,21 @@ def test_normalize_creates_completed_asset_with_preview(
     assert body["source_product_image_id"] == 501
     assert body["preview_urls"] == [f"/imaging/assets/{body['id']}/files/0"]
     assert body["finished_at"] is not None
-    # The bytes are staged on disk and the usage event is committed.
-    assert (staging_dir / str(body["id"]) / "0.webp").read_bytes() == b"processed-webp"
+    # The composed output is staged on disk (real 4:5 webp) and metered.
+    staged = (staging_dir / str(body["id"]) / "0.webp").read_bytes()
+    assert probe(staged) == (1600, 2000, "webp")
     db = _db(db_session_factory)
     try:
         events = list(db.execute(select(UsageEvent)).scalars())
         assert [(e.provider, e.metric, e.quantity) for e in events] == [
             ("photoroom", "images", 1)
         ]
+        assert events[0].model == "photoroom-segment-v1"
     finally:
         db.close()
 
 
+@pytest.mark.usefixtures("patch_source_download")
 def test_normalize_provider_error_marks_asset_failed(
     auth_client: TestClient,
     override_photoroom: Callable[[Handler], None],

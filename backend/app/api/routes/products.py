@@ -156,7 +156,7 @@ def normalize_image(
         product_id=product_id,
         verb="normalize",
         provider="photoroom",
-        model=imaging_service.PHOTOROOM_MODEL,
+        model=imaging_service.PHOTOROOM_SEGMENT_MODEL,
         status="processing",
         source_image=body.image_url,
         source_product_image_id=body.product_image_id,
@@ -166,12 +166,10 @@ def normalize_image(
     db.commit()
     db.refresh(asset)
     try:
-        result = imaging_service.normalize_product_image(
+        outcome = imaging_service.normalize_product_image(
             body.image_url,
             options=imaging_service.NormalizeOptions(
                 bg_color=options.bg_color,
-                output_size=options.output_size,
-                padding=options.padding,
                 fmt=options.format,
                 quality=options.quality,
                 max_kb=options.max_kb,
@@ -187,6 +185,7 @@ def normalize_image(
         asset.finished_at = datetime.now(UTC)
         db.commit()
         raise
+    result = outcome.output
     asset.staged_paths_json = [staging.store(asset.id, 0, result.data, result.format)]
     asset.status = "completed"
     asset.finished_at = datetime.now(UTC)

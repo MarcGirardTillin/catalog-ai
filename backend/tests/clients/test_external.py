@@ -138,12 +138,28 @@ def test_photoroom_edit_image_returns_bytes() -> None:
     assert data == b"\x89WEBP-bytes"
 
 
+def test_photoroom_remove_background_posts_multipart_to_sdk_host() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Confirmed live (2026-07-12): multipart POST on the sdk host.
+        assert request.method == "POST"
+        assert request.url.host == "sdk.photoroom.com"
+        assert request.url.path == "/v1/segment"
+        assert request.headers["x-api-key"] == "pr-key"
+        assert b"image_file" in request.content
+        return httpx.Response(200, content=b"\x89PNG-rgba")
+
+    with PhotoroomClient("pr-key", transport=httpx.MockTransport(handler)) as client:
+        assert client.remove_background(b"source-bytes") == b"\x89PNG-rgba"
+
+
 def test_photoroom_error_raises() -> None:
     with PhotoroomClient(
         "pr-key", transport=httpx.MockTransport(lambda r: httpx.Response(402))
     ) as client:
         with pytest.raises(ExternalServiceError):
             client.edit_image("https://img/1.jpg")
+        with pytest.raises(ExternalServiceError):
+            client.remove_background(b"source-bytes")
     with pytest.raises(NotConfiguredError):
         PhotoroomClient("")
 

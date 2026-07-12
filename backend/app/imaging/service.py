@@ -6,22 +6,32 @@ wrapper level; pipelines stay metering-agnostic). Like the rest of the usage
 layer, the verbs do NOT commit — the caller owns the transaction so usage and
 results land atomically.
 
-Note on dimensions: Pillow is not a backend dependency (checked pyproject), so
-`ImagingResult.width/height` stay None for now — adding Pillow is a separate
-decision (the `local` provider will need it).
+Normalization is a two-step pipeline since 2026-07-12: Photoroom `/v1/segment`
+(cutout RGBA, 0.02 $/image) + local Pillow composition (`app.imaging.compose`)
+for canvas/bg/centering/compression — every geometric option is ours, so a
+re-render (new options, manual reposition) never re-bills the provider.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.api.services.usage import record_usage
+from app.clients.base import ExternalServiceError
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
+from app.imaging.compose import compose, probe
 
 FASHN_PRODUCT_TO_MODEL = "product-to-model"
-PHOTOROOM_MODEL = "photoroom-v2"
+PHOTOROOM_MODEL = "photoroom-v2"  # legacy /v2/edit (kept for old traces)
+PHOTOROOM_SEGMENT_MODEL = "photoroom-segment-v1"
+
+# Source download guards — the verb fetches the image itself: segment wants
+# multipart bytes, and the source weight/dims are part of the outcome.
+SOURCE_TIMEOUT = 30.0
+SOURCE_MAX_BYTES = 30 * 1024 * 1024
 
 # FASHN credits per image: resolution -> generation_mode -> credits.
 FASHN_CREDITS: dict[str, dict[str, int]] = {
@@ -33,15 +43,24 @@ FASHN_CREDITS: dict[str, dict[str, int]] = {
 
 @dataclass
 class NormalizeOptions:
-    """Options of the deterministic verb (Photoroom)."""
+    """Options of the deterministic verb (segment + local compose).
 
+    Every step is opt-out (à la carte): `remove_bg` gates the only provider
+    call; `offset_x/offset_y/scale` are the manual-repositioning knobs (used
+    by re-renders, 0/0/1.0 on a first pass).
+    """
+
+    remove_bg: bool = True
     bg_color: str = "FFFFFF"
     ratio: str = "4:5"
-    output_size: str = "1600x2000"
-    padding: str = "10%"
+    center: bool = True
+    margin_pct: float = 0.10
     fmt: str = "webp"
     quality: int = 80
-    max_kb: int = 200
+    max_kb: int = 300
+    offset_x: int = 0
+    offset_y: int = 0
+    scale: float = 1.0
 
 
 @dataclass
@@ -73,6 +92,29 @@ class ImagingResult:
     trace: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class SourceInfo:
+    """The downloaded source image and its probed characteristics."""
+
+    data: bytes
+    width: int
+    height: int
+    format: str
+
+
+@dataclass
+class NormalizeOutcome:
+    """Everything a caller may want to stage after a normalization.
+
+    `cutout` (RGBA PNG) is what re-renders recompose from — staging it means
+    repositioning never pays Photoroom again. None when `remove_bg` was off.
+    """
+
+    output: ImagingResult
+    cutout: bytes | None
+    source: SourceInfo
+
+
 def fashn_credits(resolution: str, generation_mode: str, num_images: int) -> int:
     """Static credits grid (FASHN does not report consumption in /status)."""
     per_image = FASHN_CREDITS.get(resolution, {}).get(generation_mode)
@@ -84,6 +126,27 @@ def fashn_credits(resolution: str, generation_mode: str, num_images: int) -> int
     return per_image * num_images
 
 
+def _download_source(url: str) -> bytes:
+    """Fetch the source image (30 s timeout, 30 MB cap, redirects followed)."""
+    try:
+        response = httpx.get(url, timeout=SOURCE_TIMEOUT, follow_redirects=True)
+    except httpx.HTTPError as exc:
+        raise ExternalServiceError(
+            "source_image", "Source image is unreachable"
+        ) from exc
+    if response.status_code >= 400:
+        raise ExternalServiceError(
+            "source_image",
+            "Source image returned an error",
+            detail={"upstream_status": response.status_code},
+        )
+    if len(response.content) > SOURCE_MAX_BYTES:
+        raise ExternalServiceError(
+            "source_image", "Source image is too large", status_code=422
+        )
+    return response.content
+
+
 def normalize_product_image(
     src: bytes | str,
     *,
@@ -93,59 +156,72 @@ def normalize_product_image(
     account_id: int,
     job_id: int | None = None,
     item_id: int | None = None,
-) -> ImagingResult:
-    """Deterministic pipeline: cutout + solid bg + pad to 4:5 + format/weight.
+) -> NormalizeOutcome:
+    """Deterministic pipeline: segment cutout (opt-out) + local Pillow compose.
 
-    `src` is the source image URL; raw bytes are not supported yet (whether
-    Photoroom v2 accepts multipart input is an open item to confirm live, like
-    the v2 parameter names).
+    `src` is the source image URL or its raw bytes. Only the cutout step bills
+    Photoroom (one usage_event per image); with `remove_bg=False` the pipeline
+    is fully local and meters nothing.
 
     `job_id`/`item_id` attach the metered usage_event to an enrichment run
     when the verb is called from the batch pipeline (None for à la carte).
     """
-    if isinstance(src, bytes):
-        raise NotImplementedError(
-            "normalize_product_image only accepts a source URL for now "
-            "(Photoroom v2 multipart input is unconfirmed)"
-        )
     options = options or NormalizeOptions()
-    data = photoroom.edit_image(
-        src,
-        background_color=options.bg_color,
-        output_size=options.output_size,
-        padding=options.padding,
-        export_format=options.fmt,
+    data = src if isinstance(src, bytes) else _download_source(src)
+    try:
+        src_width, src_height, src_format = probe(data)
+    except Exception as exc:
+        raise ExternalServiceError(
+            "source_image", "Source is not a readable image", status_code=422
+        ) from exc
+
+    cutout: bytes | None = None
+    if options.remove_bg:
+        cutout = photoroom.remove_background(data)
+        record_usage(
+            db,
+            account_id=account_id,
+            source="imaging",
+            provider="photoroom",
+            metric="images",
+            quantity=1,
+            job_id=job_id,
+            item_id=item_id,
+            model=PHOTOROOM_SEGMENT_MODEL,
+        )
+
+    composed = compose(
+        cutout if cutout is not None else data,
+        has_alpha=cutout is not None,
+        bg_color=options.bg_color,
+        ratio=options.ratio,
+        center=options.center,
+        margin_pct=options.margin_pct,
+        offset_x=options.offset_x,
+        offset_y=options.offset_y,
+        scale=options.scale,
+        fmt=options.fmt,
         quality=options.quality,
+        max_kb=options.max_kb,
     )
-    record_usage(
-        db,
-        account_id=account_id,
-        source="imaging",
-        provider="photoroom",
-        metric="images",
-        quantity=1,
-        job_id=job_id,
-        item_id=item_id,
-        model=PHOTOROOM_MODEL,
-    )
-    return ImagingResult(
-        data=data,
-        width=None,
-        height=None,
-        format=options.fmt,
+    output = ImagingResult(
+        data=composed.data,
+        width=composed.width,
+        height=composed.height,
+        format=composed.format,
         trace={
-            "provider": "photoroom",
-            "model": PHOTOROOM_MODEL,
-            "params": {
-                "bg_color": options.bg_color,
-                "ratio": options.ratio,
-                "output_size": options.output_size,
-                "padding": options.padding,
-                "format": options.fmt,
-                "quality": options.quality,
-                "max_kb": options.max_kb,
-            },
+            "provider": "photoroom" if options.remove_bg else "local",
+            "model": PHOTOROOM_SEGMENT_MODEL if options.remove_bg else None,
+            "steps": (["remove_bg"] if options.remove_bg else []) + ["compose"],
+            "params": asdict(options),
         },
+    )
+    return NormalizeOutcome(
+        output=output,
+        cutout=cutout,
+        source=SourceInfo(
+            data=data, width=src_width, height=src_height, format=src_format
+        ),
     )
 
 

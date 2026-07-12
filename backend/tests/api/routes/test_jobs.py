@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -400,15 +401,21 @@ def test_apply_writes_to_destination_and_marks_applied(
         app.dependency_overrides.pop(get_xano_client, None)
 
 
-def test_normalize_item_image_per_entry_and_revert(auth_client: TestClient) -> None:
+def test_normalize_item_image_per_entry_and_revert(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Reviewer-chosen per-image normalization (originals staged by default):
     normalize one entry, selection follows the new url, revert restores it."""
     import httpx
 
+    import app.imaging.service as imaging_service
     from app.api.deps import get_db, get_photoroom_client
     from app.clients.photoroom import PhotoroomClient
     from app.main import app
     from app.models import EnrichmentItem, ImageAsset, UsageEvent
+    from tests.images import cutout_png, source_jpeg
+
+    monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
 
     job = _create_job(auth_client, [1911])
     db = next(app.dependency_overrides[get_db]())
@@ -426,7 +433,7 @@ def test_normalize_item_image_per_entry_and_revert(auth_client: TestClient) -> N
     photoroom = PhotoroomClient(
         "pr-key",
         transport=httpx.MockTransport(
-            lambda r: httpx.Response(200, content=b"normalized-bytes")
+            lambda r: httpx.Response(200, content=cutout_png())
         ),
     )
     app.dependency_overrides[get_photoroom_client] = lambda: photoroom
