@@ -440,6 +440,39 @@ Reste hors périmètre (plans ultérieurs) : composants ui/ (select/tabs/switch/
 empty-state/confirm-button), Query sur les écrans restants, refonte dashboard
 admin avancée, notifications Brevo, déploiement Railway.
 
+## Sprint à planifier — Imagerie configurable par client (demandé 2026-07-12)
+
+Trois chantiers liés au traitement/génération d'image, à cadrer dans un sprint
+dédié :
+
+1. **Normalisation produit configurable** : trouver une solution pérenne pour
+   le traitement d'image produit — mise au format **4:5**, **fond uni dont la
+   couleur (code hex) est configurable dans les paramètres du client**
+   (nouveau champ `AccountSettings`, ex. `imaging_background_color`, exposé
+   dans les réglages), et **centrage du produit**. État des lieux : Photoroom
+   `/v2/edit` fait déjà détourage + fond + 4:5 + padding 10 %, mais la couleur
+   est en dur (`FFFFFF` dans `PhotoroomClient.edit_image`) et l'API d'édition
+   coûte 0,10 $/image en prod (clé actuelle = sandbox avec filigrane). La
+   « solution » à trouver = brancher le hex client sur le pipeline existant
+   ET arbitrer le provider (Photoroom Plus vs alternative moins chère type
+   remove-bg 0,02 $ + recadrage/centrage Pillow maison via le cutout RGBA —
+   item déjà ouvert dans le sprint imagerie).
+2. **Instruction de génération FASHN** : CONFIRMÉ (docs 2026-07-12) —
+   `product-to-model` accepte un `prompt` texte (ex. "professional office
+   setting") ainsi que `image_prompt` (image d'inspiration pose/décor),
+   `background_reference` (ancre le décor), `face_reference` (identité du
+   mannequin), `num_outputs` (1-4) et `seed`. Aujourd'hui le prompt est en dur
+   dans `GenerateModelOptions` ("studio photo, plain light neutral
+   background") : il faut pouvoir passer une instruction à FASHN depuis
+   l'app.
+3. **Config d'instruction globale de génération** (dépend du 2) : réglage
+   par client (dans les paramètres / réglages d'enrichissement) décrivant le
+   rendu attendu des visuels générés — mannequin entier ou cadrage tête
+   coupée, photo studio ou mise en scène (lifestyle), et autres directives
+   libres — traduit en `prompt` FASHN à chaque génération. Prévoir le défaut
+   actuel (studio, fond neutre) comme valeur initiale, et l'articulation avec
+   le futur verbe « in-scene / lifestyle » (section Future ci-dessous).
+
 ## Future / separate sprints (out of scope here)
 - **In-scene / lifestyle imagery:** generative scene from a text prompt (e.g.
   Photoroom **AI Backgrounds** or a FASHN background endpoint) — a possible later

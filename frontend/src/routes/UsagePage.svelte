@@ -8,29 +8,22 @@
   import Download from "@lucide/svelte/icons/download"
   import Lock from "@lucide/svelte/icons/lock"
   import { toast } from "svelte-sonner"
-  import { navigate } from "svelte5-router"
 
   import {
-    getUsageByJob,
     getUsageExport,
     getUsageSummary,
     getUsageTimeseries,
   } from "@/lib/api/usage"
-  import type { UsageByJob, UsageSummary, UsageTimeseries } from "@/lib/api/usage"
+  import type { UsageSummary, UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
-  import { formatRelativeDate } from "@/lib/format"
-  import { prefs } from "@/lib/preferences.svelte"
   import { IMAGE_SERVICE_LABEL } from "@/lib/usageLabels"
 
   let { appName }: { appName: string } = $props()
-
-  // Densité des tables : padding vertical des cellules selon la préférence.
-  const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
   // --- Mois sélectionné (AAAA-MM, borné au mois courant) ---
   function monthOf(date: Date): string {
@@ -41,31 +34,20 @@
 
   // --- Données du mois ---
   let summary = $state<UsageSummary | null>(null)
-  let byJob = $state<UsageByJob | null>(null)
   let loadFailed = $state(false)
 
   async function loadMonth() {
     summary = null
-    byJob = null
     loadFailed = false
     const target = month
-    const [summaryResult, byJobResult] = await Promise.all([
-      getUsageSummary(target),
-      getUsageByJob(target),
-    ])
+    const { data, error } = await getUsageSummary(target)
     if (target !== month) return // le mois a changé entre-temps
-    if (
-      summaryResult.error ||
-      summaryResult.data === undefined ||
-      byJobResult.error ||
-      byJobResult.data === undefined
-    ) {
+    if (error || data === undefined) {
       loadFailed = true
       toast.error("Impossible de charger la consommation du mois.")
       return
     }
-    summary = summaryResult.data
-    byJob = byJobResult.data
+    summary = data
   }
 
   $effect(() => {
@@ -136,29 +118,6 @@
       .reduce((acc, l) => acc + l.quantity, 0) ?? null,
   )
 
-  // Mêmes compteurs par traitement (les other_metrics expurgés portent le
-  // libellé de service dans `provider`).
-  function jobImages(job: UsageByJob["jobs"][number]): number {
-    return job.other_metrics
-      .filter((m) => m.provider === IMAGE_SERVICE_LABEL)
-      .reduce((acc, m) => acc + m.quantity, 0)
-  }
-  function jobCredits(job: UsageByJob["jobs"][number]): number {
-    return (
-      job.input_tokens +
-      job.output_tokens +
-      job.other_metrics
-        .filter((m) => m.provider !== IMAGE_SERVICE_LABEL)
-        .reduce((acc, m) => acc + m.quantity, 0)
-    )
-  }
-
-  function jobTypeLabel(jobType: string | null): string {
-    if (jobType === "import") return "Import fichier"
-    if (jobType === "enrichment") return "Enrichissement"
-    return "—"
-  }
-
   // --- Export CSV (blob → ancre de téléchargement) ---
   let exporting = $state(false)
 
@@ -178,13 +137,6 @@
     URL.revokeObjectURL(url)
   }
 
-  // --- Lien vers le job (import ou enrichissement) ---
-  function jobHref(jobType: string | null, jobId: number | null): string | null {
-    if (jobId == null) return null
-    if (jobType === "import") return `/imports/${jobId}`
-    if (jobType === "enrichment") return `/jobs/${jobId}`
-    return null
-  }
 </script>
 
 <RequireAuth>
@@ -218,7 +170,7 @@
           <p class="text-destructive text-xs" role="alert">
             Impossible de charger la consommation du mois.
           </p>
-        {:else if summary === null || byJob === null}
+        {:else if summary === null}
           <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
@@ -292,73 +244,6 @@
             </CardContent>
           </Card>
 
-          <!-- Table Par job -->
-          <h2 class="font-title mt-1 text-sm font-bold">Par traitement</h2>
-          {#if byJob.jobs.length === 0}
-            <Card size="sm">
-              <CardContent class="text-muted-foreground py-4 text-center text-xs">
-                Aucun traitement sur ce mois.
-              </CardContent>
-            </Card>
-          {:else}
-            <Card class="py-0">
-              <CardContent class="overflow-x-auto px-0">
-                <table class="w-full min-w-2xl text-sm">
-                  <thead>
-                    <tr class="border-border border-b">
-                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Traitement</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Type</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Date</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Crédits de génération</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Images traitées</th>
-                      <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Montant</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each byJob.jobs as job, index (index)}
-                      {@const href = jobHref(job.job_type, job.job_id)}
-                      <tr class="border-border border-b last:border-b-0">
-                        <td class="max-w-60 px-4 {cellPad}">
-                          {#if href}
-                            <a
-                              {href}
-                              class="text-primary block truncate font-medium underline-offset-2 hover:underline"
-                              title={job.label}
-                              onclick={(e) => {
-                                e.preventDefault()
-                                navigate(href)
-                              }}
-                            >
-                              {job.label}
-                            </a>
-                          {:else}
-                            <span class="block truncate font-medium" title={job.label}>
-                              {job.label}
-                            </span>
-                          {/if}
-                        </td>
-                        <td class="text-muted-foreground px-4 {cellPad} text-xs whitespace-nowrap">
-                          {jobTypeLabel(job.job_type)}
-                        </td>
-                        <td class="text-muted-foreground px-4 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
-                          {job.created_at != null ? formatRelativeDate(job.created_at) : "—"}
-                        </td>
-                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(jobCredits(job))}
-                        </td>
-                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatInt(jobImages(job))}
-                        </td>
-                        <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
-                          {formatAmount(job.billable)}
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          {/if}
         {/if}
       </div>
     </AppShell>
