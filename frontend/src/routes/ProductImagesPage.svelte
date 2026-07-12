@@ -56,6 +56,12 @@
   })
 
   const images = $derived(product?.images ?? [])
+  // Les titres Tillin peuvent être vides : même repli que la liste produits.
+  const productLabel = $derived(
+    product
+      ? product.title?.trim() || product.reference_code || `Produit #${id}`
+      : `Produit #${id}`,
+  )
 
   // --- Options de traitement (défauts du compte, modifiables à la volée) ---
   let options = $state<StudioOptions>({
@@ -205,8 +211,7 @@
       {user}
       breadcrumbs={[
         { label: "Produits", href: "/products" },
-        { label: product?.title ?? `Produit #${id}` },
-        { label: "Studio images" },
+        { label: `Studio images — ${productLabel}` },
       ]}
     >
       <div class="mx-auto flex max-w-5xl flex-col gap-3 p-4">
@@ -222,9 +227,9 @@
             </Button>
             <h1
               class="font-title min-w-0 truncate text-lg font-bold"
-              title={product?.title}
+              title={productLabel}
             >
-              Studio images{product ? ` — ${product.title}` : ""}
+              Studio images — {productLabel}
             </h1>
           </div>
         </div>

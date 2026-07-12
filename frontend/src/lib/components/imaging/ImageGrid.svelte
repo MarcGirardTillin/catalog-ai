@@ -49,9 +49,13 @@
         class="bg-muted aspect-square w-full object-contain"
         loading="lazy"
       />
+      <!-- Les classes bg/border vivent ENTIÈREMENT dans le conditionnel :
+           deux utilitaires bg-* concurrents laisseraient l'ordre CSS décider. -->
       <span
-        class="border-input absolute top-1.5 left-1.5 flex size-4 items-center justify-center rounded-sm border bg-white/90 text-[10px] font-bold
-          {checked ? 'border-primary bg-primary text-primary-foreground' : 'text-transparent'}"
+        class="absolute top-1.5 left-1.5 flex size-4.5 items-center justify-center rounded-full border text-[11px] font-bold shadow-sm
+          {checked
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-input bg-white/90 text-transparent'}"
         aria-hidden="true"
       >
         ✓

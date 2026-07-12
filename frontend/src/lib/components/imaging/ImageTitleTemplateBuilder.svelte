@@ -1,8 +1,12 @@
 <script lang="ts" module>
-  // Constructeur du modèle de titre d'image (même principe que le modèle de
-  // titre produit : tokens cliquables, pas de saisie libre). Le nom rendu est
-  // TOUJOURS slugifié côté serveur (minuscules, tirets) — pas de casse ni de
-  // séparateur à choisir.
+  // Constructeur du modèle de titre d'image : séquence ordonnée de tokens
+  // cliquables ET de textes libres ({title} mon-texte {position}). Le moteur
+  // backend rend les {tokens} et garde le texte littéral tel quel, puis
+  // slugifie tout (minuscules, tirets) — pas de casse ni de séparateur.
+  export type TemplatePart =
+    | { type: "token"; key: string }
+    | { type: "text"; value: string }
+
   export const IMAGE_TOKENS = [
     { key: "reference", label: "Référence" },
     { key: "color", label: "Couleur" },
@@ -11,18 +15,36 @@
     { key: "title", label: "Titre" },
   ] as const
 
-  /** Tokens d'un modèle stocké (les inconnus sont ignorés). */
-  export function parseImageTemplate(template: string): string[] {
-    return [...template.matchAll(/\{(\w+)\}/g)]
-      .map((match) => match[1])
-      .filter((key) => IMAGE_TOKENS.some((token) => token.key === key))
+  /** Segments d'un modèle stocké : tokens connus + textes libres. */
+  export function parseImageTemplate(template: string): TemplatePart[] {
+    const parts: TemplatePart[] = []
+    let last = 0
+    for (const match of template.matchAll(/\{(\w+)\}/g)) {
+      const literal = template.slice(last, match.index).trim()
+      if (literal) parts.push({ type: "text", value: literal })
+      if (IMAGE_TOKENS.some((token) => token.key === match[1])) {
+        parts.push({ type: "token", key: match[1] })
+      }
+      last = (match.index ?? 0) + match[0].length
+    }
+    const tail = template.slice(last).trim()
+    if (tail) parts.push({ type: "text", value: tail })
+    return parts
+  }
+
+  /** Modèle string depuis les segments (séparés par des espaces). */
+  export function buildImageTemplate(parts: TemplatePart[]): string {
+    return parts
+      .map((part) => (part.type === "token" ? `{${part.key}}` : part.value))
+      .join(" ")
   }
 </script>
 
 <script lang="ts">
+  import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
 
-  let { tokens = $bindable() }: { tokens: string[] } = $props()
+  let { parts = $bindable() }: { parts: TemplatePart[] } = $props()
 
   const TOKEN_SAMPLE: Record<string, string> = {
     reference: "30008362",
@@ -32,11 +54,13 @@
     title: "Polo rayé en coton bio",
   }
 
-  const template = $derived(tokens.map((key) => `{${key}}`).join(" "))
+  const template = $derived(buildImageTemplate(parts))
   // Miroir de la slugification backend (minuscules, tirets, sans accents).
   const preview = $derived(
-    tokens
-      .map((key) => TOKEN_SAMPLE[key] ?? "")
+    parts
+      .map((part) =>
+        part.type === "token" ? (TOKEN_SAMPLE[part.key] ?? "") : part.value,
+      )
       .join(" ")
       .normalize("NFKD")
       .replace(/[̀-ͯ]/g, "")
@@ -45,15 +69,28 @@
       .toLowerCase(),
   )
   const availableTokens = $derived(
-    IMAGE_TOKENS.filter((token) => !tokens.includes(token.key)),
+    IMAGE_TOKENS.filter(
+      (token) =>
+        !parts.some((part) => part.type === "token" && part.key === token.key),
+    ),
   )
 
+  let freeText = $state("")
+
   function addToken(key: string) {
-    if (!tokens.includes(key)) tokens = [...tokens, key]
+    parts = [...parts, { type: "token", key }]
   }
 
-  function removeToken(key: string) {
-    tokens = tokens.filter((k) => k !== key)
+  function addFreeText() {
+    // Les accolades sont réservées aux tokens : on les retire du texte libre.
+    const value = freeText.replaceAll(/[{}]/g, "").trim()
+    if (!value) return
+    parts = [...parts, { type: "text", value }]
+    freeText = ""
+  }
+
+  function removeAt(index: number) {
+    parts = parts.filter((_, i) => i !== index)
   }
 </script>
 
@@ -61,21 +98,28 @@
   <Label>Modèle de nom des images</Label>
 
   <div class="flex flex-wrap items-center gap-1.5">
-    {#if tokens.length === 0}
+    {#if parts.length === 0}
       <span class="text-muted-foreground text-xs italic">
-        Aucun token — les images gardent un nom technique automatique.
+        Aucun segment — les images gardent un nom technique automatique.
       </span>
     {/if}
-    {#each tokens as key (key)}
+    {#each parts as part, index (index)}
       <span
-        class="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium"
+        class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+          {part.type === 'token'
+          ? 'bg-primary/10 text-primary'
+          : 'bg-muted text-foreground'}"
       >
-        {IMAGE_TOKENS.find((t) => t.key === key)?.label ?? key}
+        {part.type === "token"
+          ? (IMAGE_TOKENS.find((t) => t.key === part.key)?.label ?? part.key)
+          : `« ${part.value} »`}
         <button
           type="button"
-          class="hover:bg-primary/20 -mr-1 cursor-pointer rounded-full p-0.5"
-          aria-label={`Retirer le token ${key}`}
-          onclick={() => removeToken(key)}
+          class="{part.type === 'token'
+            ? 'hover:bg-primary/20'
+            : 'hover:bg-muted-foreground/20'} -mr-1 cursor-pointer rounded-full p-0.5"
+          aria-label="Retirer ce segment"
+          onclick={() => removeAt(index)}
         >
           <svg
             width="10"
@@ -91,22 +135,42 @@
     {/each}
   </div>
 
-  {#if availableTokens.length > 0}
-    <div class="flex flex-wrap items-center gap-1.5">
-      <span class="text-muted-foreground text-xs">Ajouter :</span>
-      {#each availableTokens as token (token.key)}
-        <button
-          type="button"
-          class="text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer rounded-full border border-dashed px-2.5 py-0.5 text-xs transition-colors"
-          onclick={() => addToken(token.key)}
-        >
-          + {token.label}
-        </button>
-      {/each}
+  <div class="flex flex-wrap items-center gap-1.5">
+    <span class="text-muted-foreground text-xs">Ajouter :</span>
+    {#each availableTokens as token (token.key)}
+      <button
+        type="button"
+        class="text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer rounded-full border border-dashed px-2.5 py-0.5 text-xs transition-colors"
+        onclick={() => addToken(token.key)}
+      >
+        + {token.label}
+      </button>
+    {/each}
+    <!-- Texte libre inséré à la position courante (fin de séquence). -->
+    <div class="flex items-center gap-1">
+      <Input
+        class="h-7 w-36 text-xs"
+        placeholder="Texte libre…"
+        bind:value={freeText}
+        onkeydown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            addFreeText()
+          }
+        }}
+      />
+      <button
+        type="button"
+        class="text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer rounded-full border border-dashed px-2.5 py-0.5 text-xs transition-colors"
+        disabled={!freeText.trim()}
+        onclick={addFreeText}
+      >
+        + Texte
+      </button>
     </div>
-  {/if}
+  </div>
 
-  {#if tokens.length > 0}
+  {#if parts.length > 0}
     <p class="text-muted-foreground text-xs">
       Modèle : <code class="font-mono">{template}</code>
       <br />

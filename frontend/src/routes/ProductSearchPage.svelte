@@ -2,6 +2,7 @@
   import ChevronDown from "@lucide/svelte/icons/chevron-down"
   import ChevronUp from "@lucide/svelte/icons/chevron-up"
   import ImageIcon from "@lucide/svelte/icons/image"
+  import Images from "@lucide/svelte/icons/images"
   import Link2 from "@lucide/svelte/icons/link-2"
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
   import PackageSearch from "@lucide/svelte/icons/package-search"
@@ -591,6 +592,9 @@
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">
                       Variantes
                     </th>
+                    <th class="px-2 py-2.5">
+                      <span class="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -662,6 +666,21 @@
                       </td>
                       <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {product.variants?.length ?? 0}
+                      </td>
+                      <td class="px-2 {cellPad} text-right whitespace-nowrap">
+                        <!-- Accès direct au studio images, sans ouvrir le panneau. -->
+                        <button
+                          type="button"
+                          class="text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer rounded-md p-1.5 transition-colors"
+                          title="Studio images"
+                          aria-label={`Ouvrir le studio images de ${label(product)}`}
+                          onclick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/products/${product.id}/images`)
+                          }}
+                        >
+                          <Images size={15} aria-hidden="true" />
+                        </button>
                       </td>
                     </tr>
                   {/each}

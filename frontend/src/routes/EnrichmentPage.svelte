@@ -22,7 +22,9 @@
     parseTemplate,
   } from "@/lib/components/enrichment/TitleTemplateBuilder.svelte"
   import ImageTitleTemplateBuilder, {
+    buildImageTemplate,
     parseImageTemplate,
+    type TemplatePart,
   } from "@/lib/components/imaging/ImageTitleTemplateBuilder.svelte"
   import ProcessingOptions, {
     type StudioOptions,
@@ -71,11 +73,9 @@
     quality: 80,
     max_kb: 300,
   })
-  let imageTemplateTokens = $state<string[]>([])
+  let imageTemplateParts = $state<TemplatePart[]>([])
 
-  const imageTitleTemplate = $derived(
-    imageTemplateTokens.map((key) => `{${key}}`).join(" "),
-  )
+  const imageTitleTemplate = $derived(buildImageTemplate(imageTemplateParts))
 
   $effect(() => {
     settingsReadAccountSettings().then(({ data, error }) => {
@@ -106,7 +106,7 @@
         quality: data.imaging_quality ?? 80,
         max_kb: data.imaging_max_kb ?? 300,
       }
-      imageTemplateTokens = data.image_title_template
+      imageTemplateParts = data.image_title_template
         ? parseImageTemplate(data.image_title_template)
         : []
       accountLoaded = true
@@ -148,7 +148,7 @@
       imaging_quality: quality,
       imaging_max_kb: maxKb,
       image_title_template:
-        imageTemplateTokens.length > 0 ? imageTitleTemplate : null,
+        imageTemplateParts.length > 0 ? imageTitleTemplate : null,
     })
     savingAccount = false
     if (!ok) {
@@ -339,7 +339,7 @@
               {#if !accountLoaded}
                 <Skeleton class="h-16 w-full" />
               {:else}
-                <ImageTitleTemplateBuilder bind:tokens={imageTemplateTokens} />
+                <ImageTitleTemplateBuilder bind:parts={imageTemplateParts} />
               {/if}
             </CardContent>
           </Card>

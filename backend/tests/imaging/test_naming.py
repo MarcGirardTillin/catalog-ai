@@ -42,6 +42,13 @@ def test_render_image_filename_renders_and_slugs_tokens() -> None:
     assert stem == "g5fu-t081-bleu-marine-2-gramicci"
 
 
+def test_render_image_filename_keeps_free_text_segments() -> None:
+    # Le builder front autorise du texte libre entre les tokens : le moteur
+    # le rend tel quel puis tout est slugifié.
+    stem = render_image_filename(PRODUCT, 3, "{reference} Face avant {position}")
+    assert stem == "g5fu-t081-face-avant-3"
+
+
 def test_render_image_filename_empty_template_and_unknown_token() -> None:
     assert render_image_filename(PRODUCT, 1, "{color}") == "bleu-marine"
     empty = Product(id=1, title="", variants=[])
