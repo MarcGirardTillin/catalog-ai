@@ -442,7 +442,7 @@ admin avancée, notifications Brevo, déploiement Railway.
 
 ## Sprint à planifier — Imagerie configurable par client (demandé 2026-07-12)
 
-Trois chantiers liés au traitement/génération d'image, à cadrer dans un sprint
+Chantiers liés au traitement/génération d'image, à cadrer dans un sprint
 dédié :
 
 1. **Normalisation produit configurable** : trouver une solution pérenne pour
@@ -452,7 +452,7 @@ dédié :
    dans les réglages), et **centrage du produit**. État des lieux : Photoroom
    `/v2/edit` fait déjà détourage + fond + 4:5 + padding 10 %, mais la couleur
    est en dur (`FFFFFF` dans `PhotoroomClient.edit_image`) et l'API d'édition
-   coûte 0,10 $/image en prod (clé actuelle = sandbox avec filigrane). La
+   coûte 0,10 $/image en prod (clé actuelle = sandbox avec filigrane).
    **Process retenu (décision 2026-07-12)** : Photoroom **Remove Background à
    0,02 $/image** (cutout RGBA) + **Pillow maison** pour le reste — canevas
    4:5 (1600×2000) rempli avec le hex du client, centrage du produit via la
@@ -460,12 +460,60 @@ dédié :
    dans cette normalisation (elle imposerait l'API d'édition à 0,10 $ via
    `shadow.mode` — écarté pour l'instant). Prérequis technique : confirmer la
    récupération du cutout transparent (item RGBA déjà ouvert au sprint
-   imagerie).
+   imagerie). Comparatif détourage seul (2026-07-12) : Photoroom remove-bg
+   0,02 $ < FASHN background-remove (1 crédit = 0,075 $ à la demande,
+   ~0,049 $ au palier max) < remove.bg (~0,20 $) — Photoroom confirmé.
    *Idée à creuser, hors périmètre de la normalisation* : le « produit à
    plat avec ombre » pensé comme une **génération d'image** côté FASHN
    (comme le porté-mannequin), à rapprocher de l'item en attente
    `generate_flat_photo` — les endpoints FASHN actuels font du porté, pas du
    flat-lay ; à réévaluer quand un endpoint adapté existe.
+
+1bis. **Traitements à la carte** (demandé 2026-07-12) : l'utilisateur choisit
+   les opérations de SA normalisation au lieu d'un pipeline figé —
+   **détourage** on/off, **fond uni** (hex), **ratio** (4:5 par défaut,
+   autres formats : 1:1, 3:4, 16:9, original), **format d'export**
+   (WebP/JPEG/PNG), **centrage** on/off, **compression** (qualité / poids
+   cible). Le pipeline Pillow retenu rend chaque étape débrayable
+   naturellement (c'est notre code) ; seul le détourage appelle Photoroom.
+   Défauts par client dans les réglages (`AccountSettings.imaging_*`),
+   ajustables au lancement d'un traitement ; options persistées dans
+   `ImageAsset.params_json` (existe déjà).
+
+1ter. **Poids, noms et modèle de titre d'image** (demandé 2026-07-12) :
+   - **Poids affiché** : taille (Ko) des images produites ET des sources —
+     stocker les octets dans les métadonnées de staging (aujourd'hui
+     `staged_paths_json` ne garde que les chemins) et les exposer dans
+     l'API ; le poids cible de compression devient vérifiable d'un coup
+     d'œil.
+   - **Renommage** : nom de fichier éditable image par image avant
+     l'enregistrement vers Tillin.
+   - **Modèle de titre d'image** : même mécanique que le modèle de titre
+     produit (builder + variables + casse), appliqué à toutes les images
+     d'un produit — variables proposées de longue date `{reference}`,
+     `{color}`, `{position}` (cf. Open items). Config dans les réglages
+     d'enrichissement, à côté du modèle de titre produit.
+
+1quater. **Repositionnement manuel du produit** (question 2026-07-12 —
+   réponse : OUI, coût raisonnable AVEC le pipeline Pillow) : comme on
+   compose nous-mêmes le cutout RGBA sur le canevas, il suffit d'exposer
+   offset x/y + échelle — le front affiche l'aperçu avec le produit
+   déplaçable/zoomable (drag + slider), le back recompose depuis le cutout
+   conservé en staging (aucun nouvel appel Photoroom : re-render Pillow
+   instantané et gratuit). Infaisable proprement avec l'appel unique
+   `/v2/edit` — argument supplémentaire pour le process retenu. Conserver le
+   cutout RGBA en staging tant que l'asset n'est pas enregistré.
+
+1quinquies. **Interface — sortir du panneau latéral** (question 2026-07-12) :
+   le panneau produit reste pour les actions rapides (normaliser avec les
+   défauts, générer un porté), mais options à la carte + avant/après +
+   poids + renommage + repositionnement ne tiennent pas dans ~400 px.
+   Décision : **espace de travail image dédié** (page
+   `/products/{id}/images` ou modale plein écran ouverte depuis le
+   panneau) — grille des images avec poids et statut, sélection multiple,
+   colonne d'options de traitement, aperçu avant/après grand format,
+   éditeur de position, renommage inline + application du modèle de titre,
+   enregistrement vers Tillin en lot.
 2. **Instruction de génération FASHN** : CONFIRMÉ (docs 2026-07-12) —
    `product-to-model` accepte un `prompt` texte (ex. "professional office
    setting") ainsi que `image_prompt` (image d'inspiration pose/décor),
