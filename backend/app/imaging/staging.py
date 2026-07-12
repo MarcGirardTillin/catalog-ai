@@ -1,7 +1,8 @@
 """Ephemeral disk staging for processed/generated images.
 
-Files live under ``settings.IMAGING_DIR`` as ``{asset_id}/{index}.{fmt}`` and
-are purged after save (or by a simple TTL sweep later). Paths handed back to
+Files live under ``settings.IMAGING_DIR`` as ``{asset_id}/{stem}.{fmt}`` —
+stems are output indexes ("0", "1", …) or roles ("cutout", "source") — and are
+purged after save (or by a simple TTL sweep later). Paths handed back to
 callers are always staging-relative; ``load`` refuses anything that resolves
 outside the staging root (path traversal).
 """
@@ -15,14 +16,14 @@ def _base_dir() -> Path:
     return Path(settings.IMAGING_DIR)
 
 
-def store(asset_id: int, index: int, data: bytes, fmt: str) -> str:
-    """Write one produced image; returns its staging-relative path."""
+def store(asset_id: int, stem: int | str, data: bytes, fmt: str) -> str:
+    """Write one staged file; returns its staging-relative path."""
     extension = fmt.lstrip(".").lower() or "bin"
     directory = _base_dir() / str(asset_id)
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{index}.{extension}"
+    path = directory / f"{stem}.{extension}"
     path.write_bytes(data)
-    return f"{asset_id}/{index}.{extension}"
+    return f"{asset_id}/{stem}.{extension}"
 
 
 def load(relpath: str) -> bytes:

@@ -6,7 +6,6 @@ from that selection. The Xano bearer token never reaches the browser — the
 backend proxies the call behind the session cookie.
 """
 
-from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
@@ -31,9 +30,8 @@ from app.api.schemas import (
     ProductImagesUploadResult,
 )
 from app.api.services.accounts import resolve_account_id
-from app.api.services.imaging import run_generate_model, to_public
+from app.api.services.imaging import run_generate_model, run_normalize, to_public
 from app.imaging import service as imaging_service
-from app.imaging import staging
 from app.models import ImageAsset
 
 # Guardrails for the upload route (a boutique adds a handful of shots at a time).
@@ -135,19 +133,25 @@ def upload_product_images(
     return ProductImagesUploadResult(created=len(created), images=created)
 
 
-@router.post("/{product_id}/images/normalize", response_model=ImageAssetPublic)
+@router.post(
+    "/{product_id}/images/normalize",
+    response_model=ImageAssetPublic,
+    status_code=202,
+)
 def normalize_image(
     product_id: int,
     body: NormalizeRequest,
     db: SessionDep,
     current_user: CurrentUserDep,
     photoroom: PhotoroomDep,
+    background: BackgroundTasks,
 ) -> ImageAssetPublic:
-    """Deterministic pipeline, synchronous (Photoroom answers in seconds).
+    """Deterministic pipeline, async (download + segment + Pillow ≈ seconds).
 
-    Creates the asset, runs the verb, stages the result and settles the asset
-    in one request. Provider errors mark the asset failed and surface as the
-    usual 502/503 (ExternalServiceError handlers).
+    Same 202 + BackgroundTask + polling contract as generate-model — the
+    studio launches several normalizations in parallel. The Photoroom
+    dependency resolves BEFORE any write: a missing key is a clean 503 with
+    no zombie asset.
     """
     account_id = resolve_account_id(db, current_user)
     options = body.options or NormalizeOptions()
@@ -155,9 +159,9 @@ def normalize_image(
         account_id=account_id,
         product_id=product_id,
         verb="normalize",
-        provider="photoroom",
-        model=imaging_service.PHOTOROOM_SEGMENT_MODEL,
-        status="processing",
+        provider="photoroom" if options.remove_bg else "local",
+        model=imaging_service.PHOTOROOM_SEGMENT_MODEL if options.remove_bg else None,
+        status="pending",
         source_image=body.image_url,
         source_product_image_id=body.product_image_id,
         params_json={"options": options.model_dump()},
@@ -165,33 +169,7 @@ def normalize_image(
     db.add(asset)
     db.commit()
     db.refresh(asset)
-    try:
-        outcome = imaging_service.normalize_product_image(
-            body.image_url,
-            options=imaging_service.NormalizeOptions(
-                bg_color=options.bg_color,
-                fmt=options.format,
-                quality=options.quality,
-                max_kb=options.max_kb,
-            ),
-            photoroom=photoroom,
-            db=db,
-            account_id=account_id,
-        )
-    except Exception as exc:
-        db.rollback()
-        asset.status = "failed"
-        asset.error = str(exc)
-        asset.finished_at = datetime.now(UTC)
-        db.commit()
-        raise
-    result = outcome.output
-    asset.staged_paths_json = [staging.store(asset.id, 0, result.data, result.format)]
-    asset.status = "completed"
-    asset.finished_at = datetime.now(UTC)
-    asset.params_json = {**(asset.params_json or {}), "trace": result.trace}
-    db.commit()
-    db.refresh(asset)
+    background.add_task(run_normalize, asset.id, body.image_url, options, photoroom)
     return to_public(asset)
 
 

@@ -7,16 +7,24 @@ from pydantic import BaseModel, Field
 
 from app.api.schemas.product import ProductImage
 
+RatioOption = Literal["4:5", "1:1", "3:4", "16:9", "original"]
+FormatOption = Literal["webp", "jpeg", "jpg", "png"]
+
 
 class NormalizeOptions(BaseModel):
-    """Options of POST /products/{id}/images/normalize (Photoroom)."""
+    """Options of POST /products/{id}/images/normalize (segment + Pillow).
 
-    bg_color: str = "FFFFFF"
-    output_size: str = "1600x2000"
-    padding: str = "10%"
-    format: str = "webp"
+    Every treatment is à la carte: cutout (the only billed step), solid
+    background, canvas ratio, centering, export format and compression.
+    """
+
+    remove_bg: bool = True
+    bg_color: str = Field(default="FFFFFF", pattern=r"^#?[0-9a-fA-F]{6}$")
+    ratio: RatioOption = "4:5"
+    center: bool = True
+    format: FormatOption = "webp"
     quality: int = Field(default=80, ge=1, le=100)
-    max_kb: int = Field(default=200, ge=1)
+    max_kb: int = Field(default=300, ge=1)
 
 
 class NormalizeRequest(BaseModel):
@@ -45,6 +53,16 @@ class GenerateModelRequest(BaseModel):
     options: GenerateModelOptions | None = None
 
 
+class StagedFilePublic(BaseModel):
+    """Metadata of one staged OUTPUT file (weight/dimensions display)."""
+
+    index: int
+    size_bytes: int | None = None  # None on legacy assets (pre-metadata)
+    width: int | None = None
+    height: int | None = None
+    format: str | None = None
+
+
 class ImageAssetPublic(BaseModel):
     """One imaging operation: status + provenance + staged previews."""
 
@@ -57,12 +75,40 @@ class ImageAssetPublic(BaseModel):
     status: str
     error: str | None = None
     # Authenticated preview routes (/imaging/assets/{id}/files/{i}), one per
-    # staged file — empty until the operation completes.
+    # staged file — empty until the operation completes. A `?r={rev}` suffix
+    # busts caches after a re-render.
     preview_urls: list[str] = Field(default_factory=list)
+    # Output files metadata (aligned with preview_urls indexes).
+    files: list[StagedFilePublic] = Field(default_factory=list)
+    # Source image characteristics (when the pipeline probed it).
+    source_size_bytes: int | None = None
+    source_width: int | None = None
+    source_height: int | None = None
+    # True when a staged cutout/source allows POST /render (reposition, new
+    # options) without a new provider call.
+    can_render: bool = False
     source_image: str | None = None
     source_product_image_id: int | None = None
     created_at: datetime
     finished_at: datetime | None = None
+
+
+class RenderRequest(BaseModel):
+    """POST /imaging/assets/{id}/render body — local Pillow recompose.
+
+    Offsets are canvas pixels, scale multiplies the fitted size. Any other
+    field left to None keeps the option the asset was produced with.
+    """
+
+    offset_x: int = Field(default=0, ge=-4000, le=4000)
+    offset_y: int = Field(default=0, ge=-4000, le=4000)
+    scale: float = Field(default=1.0, gt=0, le=4)
+    bg_color: str | None = Field(default=None, pattern=r"^#?[0-9a-fA-F]{6}$")
+    ratio: RatioOption | None = None
+    center: bool | None = None
+    format: FormatOption | None = None
+    quality: int | None = Field(default=None, ge=1, le=100)
+    max_kb: int | None = Field(default=None, ge=1)
 
 
 class AssetSaveRequest(BaseModel):
@@ -70,6 +116,9 @@ class AssetSaveRequest(BaseModel):
 
     # Also deactivate the original Tillin image (needs source_product_image_id).
     replace: bool = False
+    # Optional custom filenames aligned with the output indexes (None entries
+    # fall back to the default naming); slugged server-side, extension imposed.
+    filenames: list[str | None] | None = None
 
 
 class AssetSaveResult(BaseModel):

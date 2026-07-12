@@ -156,7 +156,20 @@ def normalize_staged_entry(
         asset.finished_at = datetime.now(UTC)
         return None
     result = outcome.output
-    asset.staged_paths_json = [staging.store(asset.id, 0, result.data, result.format)]
+    output_path = staging.store(asset.id, 0, result.data, result.format)
+    asset.staged_paths_json = [output_path]
+    # Batch keeps only the output (no reposition flow): metadata for display.
+    asset.staged_files_json = [
+        {
+            "role": "output",
+            "path": output_path,
+            "bytes": len(result.data),
+            "width": result.width,
+            "height": result.height,
+            "format": result.format,
+            "index": 0,
+        }
+    ]
     asset.status = "completed"
     asset.finished_at = datetime.now(UTC)
     asset.params_json = {**(asset.params_json or {}), "trace": result.trace}

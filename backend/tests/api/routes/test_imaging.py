@@ -96,6 +96,7 @@ def _make_asset(
     factory: sessionmaker[Session],
     *,
     status: str = "completed",
+    verb: str = "normalize",
     staged_paths: list[str] | None = None,
     source_product_image_id: int | None = None,
     tillin_image_ids: list[int] | None = None,
@@ -110,7 +111,7 @@ def _make_asset(
         asset = ImageAsset(
             account_id=account.id,
             product_id=101,
-            verb="normalize",
+            verb=verb,
             provider="photoroom",
             status=status,
             staged_paths_json=staged_paths or [],
@@ -124,7 +125,21 @@ def _make_asset(
         db.close()
 
 
-# ---- POST /products/{id}/images/normalize (sync) ----
+def _normalized_asset_id(auth_client: TestClient) -> int:
+    """Run the real normalize flow (mocks installed by the caller)."""
+    response = auth_client.post(
+        "/products/101/images/normalize",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg", "product_image_id": 501},
+    )
+    assert response.status_code == 202, response.text
+    asset_id: int = response.json()["id"]
+    assert auth_client.get(f"/imaging/assets/{asset_id}").json()["status"] == (
+        "completed"
+    )
+    return asset_id
+
+
+# ---- POST /products/{id}/images/normalize (202 + background) ----
 
 
 def test_normalize_requires_authentication(client: TestClient) -> None:
@@ -135,7 +150,7 @@ def test_normalize_requires_authentication(client: TestClient) -> None:
 
 
 @pytest.mark.usefixtures("patch_source_download")
-def test_normalize_creates_completed_asset_with_preview(
+def test_normalize_202_then_background_completes_with_metadata(
     auth_client: TestClient,
     override_photoroom: Callable[[Handler], None],
     db_session_factory: sessionmaker[Session],
@@ -152,18 +167,36 @@ def test_normalize_creates_completed_asset_with_preview(
         },
     )
 
-    assert response.status_code == 200, response.text
-    body = response.json()
+    # 202; the TestClient runs the BackgroundTask before returning, so the
+    # asset has already settled by the time we poll it.
+    assert response.status_code == 202, response.text
+    asset_id = response.json()["id"]
+    assert response.json()["verb"] == "normalize"
+
+    body = auth_client.get(f"/imaging/assets/{asset_id}").json()
     assert body["status"] == "completed"
-    assert body["verb"] == "normalize"
     assert body["provider"] == "photoroom"
     assert body["product_id"] == 101
     assert body["source_product_image_id"] == 501
-    assert body["preview_urls"] == [f"/imaging/assets/{body['id']}/files/0"]
+    assert body["preview_urls"] == [f"/imaging/assets/{asset_id}/files/0"]
     assert body["finished_at"] is not None
-    # The composed output is staged on disk (real 4:5 webp) and metered.
-    staged = (staging_dir / str(body["id"]) / "0.webp").read_bytes()
+    # Weight/dimensions metadata: output AND source; render is possible.
+    assert body["files"] == [
+        {
+            "index": 0,
+            "size_bytes": (staging_dir / str(asset_id) / "0.webp").stat().st_size,
+            "width": 1600,
+            "height": 2000,
+            "format": "webp",
+        }
+    ]
+    assert body["source_width"] == 800 and body["source_height"] == 1000
+    assert body["source_size_bytes"] and body["can_render"] is True
+    # Output, source and cutout are all staged (re-render needs them).
+    staged = (staging_dir / str(asset_id) / "0.webp").read_bytes()
     assert probe(staged) == (1600, 2000, "webp")
+    assert (staging_dir / str(asset_id) / "cutout.png").is_file()
+    assert (staging_dir / str(asset_id) / "source.jpeg").is_file()
     db = _db(db_session_factory)
     try:
         events = list(db.execute(select(UsageEvent)).scalars())
@@ -188,14 +221,13 @@ def test_normalize_provider_error_marks_asset_failed(
         json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
     )
 
-    assert response.status_code == 502
-    assert response.json()["code"] == "photoroom_error"
+    assert response.status_code == 202  # the failure lands on the asset
+    polled = auth_client.get(f"/imaging/assets/{response.json()['id']}").json()
+    assert polled["status"] == "failed"
+    assert polled["error"]
+    assert polled["can_render"] is False
     db = _db(db_session_factory)
     try:
-        asset = db.scalar(select(ImageAsset))
-        assert asset is not None
-        assert asset.status == "failed"
-        assert asset.error
         # No usage row for a failed provider call.
         assert db.scalar(select(UsageEvent)) is None
     finally:
@@ -362,6 +394,84 @@ def test_read_file_rejects_path_traversal(
     assert response.status_code == 404  # traversal is refused, never served
 
 
+# ---- POST /imaging/assets/{id}/render ----
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_render_recomposes_locally_without_provider(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+    staging_dir: Path,
+) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, content=cutout_png())
+
+    override_photoroom(handler)
+    asset_id = _normalized_asset_id(auth_client)
+    assert calls == ["/v1/segment"]
+
+    response = auth_client.post(
+        f"/imaging/assets/{asset_id}/render",
+        json={"offset_x": 200, "scale": 0.8, "bg_color": "102030", "format": "png"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Cache busting + new output metadata (format changed to png).
+    assert body["preview_urls"] == [f"/imaging/assets/{asset_id}/files/0?r=1"]
+    assert body["files"][0]["format"] == "png"
+    assert probe((staging_dir / str(asset_id) / "0.png").read_bytes()) == (
+        1600,
+        2000,
+        "png",
+    )
+    # NO new provider call, NO new usage event.
+    assert calls == ["/v1/segment"]
+    db = _db(db_session_factory)
+    try:
+        assert db.query(UsageEvent).count() == 1
+    finally:
+        db.close()
+
+    # A second render bumps the revision again.
+    again = auth_client.post(f"/imaging/assets/{asset_id}/render", json={})
+    assert again.json()["preview_urls"][0].endswith("?r=2")
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_render_guards_409(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    def expect(asset_id: int, code: str) -> None:
+        response = auth_client.post(f"/imaging/assets/{asset_id}/render", json={})
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == code
+
+    # Legacy asset (no staged cutout/source metadata) → staging_expired.
+    expect(
+        _make_asset(db_session_factory, staged_paths=["1/0.webp"]), "staging_expired"
+    )
+    expect(_make_asset(db_session_factory, status="processing"), "asset_not_completed")
+    expect(
+        _make_asset(db_session_factory, tillin_image_ids=[900]), "asset_already_saved"
+    )
+    expect(_make_asset(db_session_factory, verb="generate_model"), "unsupported_verb")
+
+    # Cutout referenced but purged from disk → staging_expired.
+    override_photoroom(lambda r: httpx.Response(200, content=cutout_png()))
+    asset_id = _normalized_asset_id(auth_client)
+    from app.imaging import staging as staging_module
+
+    staging_module.purge_asset(asset_id)
+    expect(asset_id, "staging_expired")
+
+
 # ---- POST /imaging/assets/{id}/save ----
 
 
@@ -472,6 +582,44 @@ def test_save_with_replace_deactivates_the_original(
     request = captured["deactivate"]
     assert request.method == "PUT"
     assert json.loads(request.content) == {"product_image_ids": [501]}
+
+
+def test_save_with_custom_filenames_slugs_and_imposes_extension(
+    auth_client: TestClient,
+    override_xano: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/bulk"):
+            captured.append(request)
+            return httpx.Response(200, json=_bulk_response())
+        return httpx.Response(404)
+
+    override_xano(handler)
+
+    from app.imaging import staging as staging_module
+
+    asset_id = _make_asset(db_session_factory)
+    relpath = staging_module.store(asset_id, 0, b"processed", "webp")
+    db = _db(db_session_factory)
+    try:
+        asset = db.get(ImageAsset, asset_id)
+        assert asset is not None
+        asset.staged_paths_json = [relpath]
+        db.commit()
+    finally:
+        db.close()
+
+    response = auth_client.post(
+        f"/imaging/assets/{asset_id}/save",
+        json={"filenames": ["Photo Été #1.webp"]},
+    )
+
+    assert response.status_code == 200, response.text
+    # Slugged (accents/spaces/#), the known extension deduplicated.
+    assert b'filename="photo-ete-1.webp"' in captured[0].content
 
 
 def test_save_409_when_not_completed(

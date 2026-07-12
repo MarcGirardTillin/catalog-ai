@@ -134,15 +134,30 @@
     imagingVerb = "normalize"
     disposeImagingResult()
     const { data, error } = await normalizeImage(id, sel.url, sel.id)
-    imagingBusy = false
     if (error || !data) {
+      imagingBusy = false
       toast.error(
         "Échec du traitement de l'image (service d'imagerie indisponible ?).",
       )
       return
     }
-    imagingAsset = data
-    imagingPreviews = await fetchAssetPreviews(data)
+    // 202 : le pipeline (détourage + composition) tourne côté serveur —
+    // même mécanique de polling que la génération.
+    pollAborter = new AbortController()
+    const signal = pollAborter.signal
+    const final = await waitForAsset(data.id, { signal, intervalMs: 1500 })
+    if (signal.aborted) return // le panneau a changé de produit entre-temps
+    imagingBusy = false
+    if (!final) {
+      toast.error("Le traitement n'a pas abouti dans le temps imparti.")
+      return
+    }
+    if (final.status !== "completed") {
+      toast.error(final.error ?? "Traitement échoué.")
+      return
+    }
+    imagingAsset = final
+    imagingPreviews = await fetchAssetPreviews(final)
   }
 
   async function runGenerateModel() {

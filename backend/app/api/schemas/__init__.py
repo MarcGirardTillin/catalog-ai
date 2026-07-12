@@ -8,6 +8,8 @@ from app.api.schemas.imaging import (
     ImageAssetPublic,
     NormalizeOptions,
     NormalizeRequest,
+    RenderRequest,
+    StagedFilePublic,
 )
 from app.api.schemas.pagination import (
     PaginatedResponse,
@@ -39,6 +41,8 @@ __all__ = [
     "ProductImage",
     "ProductImagesUploadResult",
     "ProductVariant",
+    "RenderRequest",
     "SortingParams",
+    "StagedFilePublic",
     "UserPublic",
 ]

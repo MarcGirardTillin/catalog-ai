@@ -43,6 +43,11 @@ class ImageAsset(Base):
     source_product_image_id: Mapped[int | None] = mapped_column(default=None)
     # Staging-relative paths of the produced files (see app.imaging.staging).
     staged_paths_json: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # Staged files metadata, one entry per file: {role: source|cutout|output,
+    # path, bytes, width, height, format, index}. The cutout entry is what
+    # re-renders recompose from. NULL on legacy assets (fallback on
+    # staged_paths_json).
+    staged_files_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     # Tillin `product_image` ids created at save time (None = not saved yet).
     tillin_image_ids_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     error: Mapped[str | None] = mapped_column(default=None)

@@ -7,15 +7,30 @@ bulk upload, optional replacement of the original image).
 """
 
 from pathlib import PurePosixPath
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
 from app.api.deps import CurrentUserDep, SessionDep, XanoDep, get_current_user
 from app.api.exceptions import AppException
-from app.api.schemas import AssetSaveRequest, AssetSaveResult, ImageAssetPublic
+from app.api.schemas import (
+    AssetSaveRequest,
+    AssetSaveResult,
+    ImageAssetPublic,
+    RenderRequest,
+)
 from app.api.services.accounts import resolve_account_id
-from app.api.services.imaging import MEDIA_TYPES, get_asset, to_public
+from app.api.services.imaging import (
+    MEDIA_TYPES,
+    file_by_role,
+    get_asset,
+    output_files,
+    to_public,
+)
 from app.imaging import staging
+from app.imaging.compose import compose
+from app.imaging.naming import build_filename
+from app.models import ImageAsset
 
 router = APIRouter(
     prefix="/imaging",
@@ -57,6 +72,118 @@ def read_asset_file(
     return Response(content=data, media_type=media_type)
 
 
+def _renderable_asset(db: SessionDep, account_id: int, asset_id: int) -> ImageAsset:
+    """Load an asset eligible for a local re-render (guards → 409)."""
+    asset = get_asset(db, account_id=account_id, asset_id=asset_id)
+    if asset.verb != "normalize":
+        raise AppException(
+            status_code=409,
+            code="unsupported_verb",
+            message="Only normalize assets can be re-rendered",
+        )
+    if asset.status != "completed":
+        raise AppException(
+            status_code=409,
+            code="asset_not_completed",
+            message="Only completed assets can be re-rendered",
+        )
+    if asset.tillin_image_ids_json is not None:
+        raise AppException(
+            status_code=409,
+            code="asset_already_saved",
+            message="This asset was already saved to Tillin",
+        )
+    return asset
+
+
+@router.post("/assets/{asset_id}/render", response_model=ImageAssetPublic)
+def render_asset(
+    asset_id: int,
+    body: RenderRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ImageAssetPublic:
+    """Recompose the output locally (reposition / new options) — no provider.
+
+    Rebuilds from the staged cutout (or the source when the cutout was
+    skipped), overwrites the output file and bumps `render_rev` so preview
+    URLs bust their caches. Synchronous: pure Pillow, sub-second.
+    """
+    account_id = resolve_account_id(db, current_user)
+    asset = _renderable_asset(db, account_id, asset_id)
+
+    base_entry = file_by_role(asset, "cutout") or file_by_role(asset, "source")
+    if base_entry is None:  # legacy asset: nothing staged to recompose from
+        raise AppException(
+            status_code=409,
+            code="staging_expired",
+            message="No staged cutout/source to re-render from",
+        )
+    try:
+        base = staging.load(str(base_entry["path"]))
+    except (FileNotFoundError, ValueError):
+        raise AppException(
+            status_code=409,
+            code="staging_expired",
+            message="The staged files are no longer available",
+        )
+
+    # Effective options: the asset's stored ones overridden by the request.
+    params = dict(asset.params_json or {})
+    stored: dict[str, Any] = dict(params.get("options") or {})
+    options = {
+        "bg_color": body.bg_color or stored.get("bg_color", "FFFFFF"),
+        "ratio": body.ratio or stored.get("ratio", "4:5"),
+        "center": body.center
+        if body.center is not None
+        else bool(stored.get("center", True)),
+        "format": body.format or stored.get("format", "webp"),
+        "quality": body.quality or int(stored.get("quality", 80)),
+        "max_kb": body.max_kb or int(stored.get("max_kb", 300)),
+    }
+    composed = compose(
+        base,
+        has_alpha=base_entry.get("role") == "cutout",
+        bg_color=str(options["bg_color"]),
+        ratio=str(options["ratio"]),
+        center=bool(options["center"]),
+        offset_x=body.offset_x,
+        offset_y=body.offset_y,
+        scale=body.scale,
+        fmt=str(options["format"]),
+        quality=int(options["quality"]),
+        max_kb=int(options["max_kb"]),
+    )
+
+    output_path = staging.store(asset.id, 0, composed.data, composed.format)
+    output_entry = {
+        "role": "output",
+        "path": output_path,
+        "bytes": len(composed.data),
+        "width": composed.width,
+        "height": composed.height,
+        "format": composed.format,
+        "index": 0,
+    }
+    asset.staged_paths_json = [output_path]
+    asset.staged_files_json = [
+        entry
+        for entry in (asset.staged_files_json or [])
+        if entry.get("role") != "output"
+    ] + [output_entry]
+    params["options"] = {**stored, **options}
+    params["render"] = {
+        "offset_x": body.offset_x,
+        "offset_y": body.offset_y,
+        "scale": body.scale,
+    }
+    params["render_rev"] = int(params.get("render_rev") or 0) + 1
+    asset.params_json = params
+    db.commit()
+    db.refresh(asset)
+    return to_public(asset)
+
+
 @router.post("/assets/{asset_id}/save", response_model=AssetSaveResult)
 def save_asset(
     asset_id: int,
@@ -84,9 +211,10 @@ def save_asset(
             code="asset_already_saved",
             message="This asset was already saved to Tillin",
         )
-    staged = [str(path) for path in (asset.staged_paths_json or [])]
+    filenames = body.filenames or []
     parts: list[tuple[str, bytes, str]] = []
-    for index, relpath in enumerate(staged):
+    for index, entry in enumerate(output_files(asset)):
+        relpath = str(entry["path"])
         try:
             data = staging.load(relpath)
         except (FileNotFoundError, ValueError):
@@ -96,9 +224,14 @@ def save_asset(
                 message="The staged files are no longer available",
             )
         extension = PurePosixPath(relpath).suffix.lstrip(".").lower()
+        custom = filenames[index] if index < len(filenames) else None
         parts.append(
             (
-                f"{asset.verb}_{asset.id}_{index}.{extension}",
+                build_filename(
+                    custom,
+                    extension,
+                    default_stem=f"{asset.verb}_{asset.id}_{index}",
+                ),
                 data,
                 MEDIA_TYPES.get(extension, "application/octet-stream"),
             )
