@@ -436,10 +436,35 @@ décisions durables). Livré en 9 commits (e885704→2e9b07d) :
    adaptateurs du client OpenAPI généré (payload typé ImportedProduct de bout
    en bout) ; TanStack Query v6 sur listes + détails du pipeline.
 
-Reste hors périmètre (plans ultérieurs) : composants ui/ (select/tabs/switch/
-empty-state/confirm-button), Query sur les écrans restants, refonte dashboard
-admin avancée, déploiement Railway. (Notifications Brevo : abandonnées
-2026-07-12 au profit de pastilles d'état sur les menus Imports/Enrichissements.)
+Reste hors périmètre (plans ultérieurs) : alertes de monitoring admin (pics de
+conso, taux d'échec, inactivité — à brancher sur les pastilles/menu ou un
+centre de notifications in-app), déploiement Railway. (Notifications Brevo :
+abandonnées 2026-07-12 au profit de pastilles d'état sur les menus
+Imports/Enrichissements.)
+
+## Sprint chantiers app — SHIPPED 2026-07-12 (soir)
+
+1. **Retry 429 Anthropic** : `max_retries=5` sur les deux clients SDK
+   (ClaudeClient + ClaudeExtractor) — backoff natif du SDK honorant
+   Retry-After sur 429/5xx/timeouts.
+2. **Pastilles d'état sidebar** (remplace les notifs e-mail Brevo, abandonnées) :
+   AppShell interroge /stats/dashboard (TanStack Query, refetchInterval 30 s,
+   cache partagé avec le dashboard) et affiche une pastille par menu —
+   échec (rouge) > à vérifier (ambre) > en cours (pulsation) ; DashboardStats
+   gagne enrich_failed_items / import_failed_items. La carte « Notifications »
+   (e-mail, « Bientôt actif ») de Paramètres > Compte a été retirée.
+3. **Composants ui/ factorisés** : select (natif stylé), tabs (TabBar),
+   switch, empty-state, confirm-button (confirmation en deux temps) — adoptés
+   partout (selects natifs dupliqués, barres d'onglets des pages Réglages/
+   Paramètres/Produits, toggles, suppressions armées de Profils/Tarification/
+   Instructions). Exception assumée : le rejet d'ItemReviewPage garde son
+   pattern local (couplé aux raccourcis clavier + rendu kbd).
+4. **TanStack Query généralisé** : toutes les lectures serveur des écrans
+   restants migrées (dashboard, produits/catalogue+par-import, profils,
+   réglages d'enrichissement, consommation, admin ×3, studio images) —
+   pattern createQuery(() => ({...})), paramètres dans les queryKeys,
+   invalidateQueries après mutations, keepPreviousData sur la recherche
+   catalogue. Les workflows du studio (works/polling) restent de l'état local.
 
 ## Sprint imagerie configurable — SHIPPED 2026-07-12
 

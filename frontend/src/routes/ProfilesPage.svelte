@@ -5,7 +5,7 @@
   // d'import (ImportProfileForm).
   import Plus from "@lucide/svelte/icons/plus"
   import Search from "@lucide/svelte/icons/search"
-  import { onMount } from "svelte"
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
 
   import {
@@ -15,6 +15,7 @@
     type ImportProfilePublic,
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
+  import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import {
     Card,
     CardContent,
@@ -31,31 +32,25 @@
 
   let { appName }: { appName: string } = $props()
 
-  let profiles = $state<ImportProfilePublic[] | null>(null)
-  let loadFailed = $state(false)
+  const queryClient = useQueryClient()
+
+  const profilesQuery = createQuery(() => ({
+    queryKey: ["profiles", "list"],
+    queryFn: async () => {
+      const { data, error } = await listImportProfiles()
+      if (error || data === undefined) throw new Error("profiles_load_failed")
+      return data
+    },
+  }))
+  const profiles = $derived(profilesQuery.data ?? null)
+  const loadFailed = $derived(profilesQuery.isError)
 
   // Formulaire : null = fermé, "new" = création, sinon id du profil édité.
   type FormTarget = null | "new" | number
   let formTarget = $state<FormTarget>(null)
-  // Suppression en deux temps : premier clic arme la confirmation.
-  let confirmingDeleteId = $state<number | null>(null)
   let deletingId = $state<number | null>(null)
 
   let search = $state("")
-
-  async function load() {
-    profiles = null
-    loadFailed = false
-    const { data, error } = await listImportProfiles()
-    if (error || data === undefined) {
-      loadFailed = true
-      profiles = []
-      return
-    }
-    profiles = data
-  }
-
-  onMount(load)
 
   const editedProfile = $derived(
     typeof formTarget === "number"
@@ -75,12 +70,8 @@
     )
   })
 
-  function onSaved(saved: ImportProfilePublic, isNew: boolean) {
-    if (isNew) {
-      profiles = [...(profiles ?? []), saved]
-    } else {
-      profiles = (profiles ?? []).map((p) => (p.id === saved.id ? saved : p))
-    }
+  function onSaved(_saved: ImportProfilePublic, _isNew: boolean) {
+    queryClient.invalidateQueries({ queryKey: ["profiles", "list"] })
     formTarget = null
   }
 
@@ -88,13 +79,12 @@
     deletingId = profile.id
     const { error } = await deleteImportProfile(profile.id)
     deletingId = null
-    confirmingDeleteId = null
     if (error) {
       toast.error("Suppression impossible.")
       return
     }
-    profiles = (profiles ?? []).filter((p) => p.id !== profile.id)
     if (formTarget === profile.id) formTarget = null
+    queryClient.invalidateQueries({ queryKey: ["profiles", "list"] })
     toast.success("Profil supprimé")
   }
 
@@ -113,13 +103,7 @@
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Profils d'import</h1>
-          <Button
-            size="sm"
-            onclick={() => {
-              formTarget = "new"
-              confirmingDeleteId = null
-            }}
-          >
+          <Button size="sm" onclick={() => (formTarget = "new")}>
             <Plus size={14} aria-hidden="true" />
             Nouveau profil
           </Button>
@@ -180,18 +164,22 @@
               />
             </div>
 
-            {#if profiles === null}
-              <Skeleton class="h-12 w-full" />
-              <Skeleton class="h-12 w-full" />
-            {:else if loadFailed}
+            {#if loadFailed}
               <div class="flex flex-col items-start gap-2">
                 <p class="text-destructive text-xs" role="alert">
                   Impossible de charger les profils d'import.
                 </p>
-                <Button variant="secondary" size="sm" onclick={load}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onclick={() => profilesQuery.refetch()}
+                >
                   Réessayer
                 </Button>
               </div>
+            {:else if profiles === null}
+              <Skeleton class="h-12 w-full" />
+              <Skeleton class="h-12 w-full" />
             {:else if profiles.length === 0}
               <p class="text-muted-foreground text-sm">
                 Aucun profil pour l'instant. Créez-en un pour automatiser vos
@@ -219,43 +207,19 @@
                       </span>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
-                      {#if confirmingDeleteId === profile.id}
-                        <span class="text-destructive text-xs">Supprimer ?</span>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={deletingId === profile.id}
-                          onclick={() => remove(profile)}
-                        >
-                          {deletingId === profile.id ? "…" : "Oui, supprimer"}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onclick={() => (confirmingDeleteId = null)}
-                        >
-                          Annuler
-                        </Button>
-                      {:else}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onclick={() => {
-                            formTarget = profile.id
-                            confirmingDeleteId = null
-                          }}
-                        >
-                          Modifier
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Supprimer le profil ${profile.name}`}
-                          onclick={() => (confirmingDeleteId = profile.id)}
-                        >
-                          Supprimer
-                        </Button>
-                      {/if}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => (formTarget = profile.id)}
+                      >
+                        Modifier
+                      </Button>
+                      <ConfirmButton
+                        label="Supprimer"
+                        confirmLabel="Confirmer ?"
+                        disabled={deletingId === profile.id}
+                        onconfirm={() => remove(profile)}
+                      />
                     </div>
                   </li>
                 {/each}

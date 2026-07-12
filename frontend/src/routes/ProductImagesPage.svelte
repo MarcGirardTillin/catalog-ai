@@ -5,6 +5,7 @@
   // Le panneau produit garde l'action rapide ; tout le réglage fin vit ici.
   import ArrowLeft from "@lucide/svelte/icons/arrow-left"
   import Images from "@lucide/svelte/icons/images"
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
@@ -16,7 +17,7 @@
     saveAsset,
     waitForAsset,
   } from "@/lib/api/imaging"
-  import { getProduct, type ProductDetail } from "@/lib/api/products"
+  import { getProduct } from "@/lib/api/products"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -25,6 +26,7 @@
     CardHeader,
     CardTitle,
   } from "@/lib/components/ui/card"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
@@ -41,23 +43,18 @@
 
   const productId = $derived(Number(id))
 
-  // --- Produit + images sources ---
-  let product = $state<ProductDetail | null>(null)
-  let loadFailed = $state(false)
-
-  async function loadProduct() {
-    const { data, error } = await getProduct(productId)
-    if (error || !data) {
-      loadFailed = true
-      return
-    }
-    product = data
-  }
-
-  $effect(() => {
-    void productId
-    loadProduct()
-  })
+  // --- Produit + images sources (cache TanStack ; l'id est dans la clé) ---
+  const queryClient = useQueryClient()
+  const productQuery = createQuery(() => ({
+    queryKey: ["product", productId],
+    queryFn: async () => {
+      const { data, error } = await getProduct(productId)
+      if (error || !data) throw new Error("product_load_failed")
+      return data
+    },
+  }))
+  const product = $derived(productQuery.data ?? null)
+  const loadFailed = $derived(productQuery.isError)
 
   const images = $derived(product?.images ?? [])
   // Les titres Tillin peuvent être vides : même repli que la liste produits.
@@ -241,7 +238,8 @@
     toast.success(
       `${data.created} image${data.created > 1 ? "s" : ""} enregistrée${data.created > 1 ? "s" : ""}${data.deactivated > 0 ? ", originale remplacée" : ""}`,
     )
-    await loadProduct() // la galerie Tillin a changé
+    // La galerie Tillin a changé : rafraîchit le cache produit.
+    await queryClient.invalidateQueries({ queryKey: ["product", productId] })
   }
 
   // Révoque les aperçus blob au démontage.
@@ -343,16 +341,16 @@
                 <label class="text-muted-foreground text-xs" for="gen-count">
                   Visuels par image
                 </label>
-                <select
+                <Select
                   id="gen-count"
-                  class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-md border px-2 text-sm transition-colors outline-none focus-visible:ring-1"
+                  class="h-8 w-auto px-2"
                   disabled={runningCount > 0}
                   bind:value={genCount}
                 >
                   {#each [1, 2, 3, 4] as n (n)}
                     <option value={n}>{n}</option>
                   {/each}
-                </select>
+                </Select>
               </div>
             </CardContent>
           </Card>

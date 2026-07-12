@@ -9,6 +9,11 @@
   import Search from "@lucide/svelte/icons/search"
   import Sparkles from "@lucide/svelte/icons/sparkles"
   import X from "@lucide/svelte/icons/x"
+  import {
+    createQuery,
+    keepPreviousData,
+    useQueryClient,
+  } from "@tanstack/svelte-query"
   import { onMount } from "svelte"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
@@ -18,20 +23,21 @@
     jobsCreateEnrichmentJob,
     productsListProducts,
   } from "@/client"
-  import type { CatalogFilters, FilterOption, Product } from "@/client"
+  import type { FilterOption, Product } from "@/client"
   import {
     getImportProducts,
     linkImportProducts,
     listImports,
-    type ImportJobPublic,
     type ImportProductItem,
-    type ImportProductsResponse,
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
+  import { EmptyState } from "@/lib/components/ui/empty-state"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { TabBar } from "@/lib/components/ui/tabs"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import FilterSelect from "@/lib/components/app/FilterSelect.svelte"
@@ -58,21 +64,78 @@
   // dès qu'une sélection existe (le geste est compris).
   let enrichIntent = $state(false)
 
+  const queryClient = useQueryClient()
+
+  // Texte tapé (input) vs texte soumis (débounce 350 ms) : la query ne
+  // dépend que des critères soumis, comme l'ancien load() différé.
   let search = $state("")
+  let submittedSearch = $state("")
   let page = $state(1)
-  let products = $state<Product[] | null>(null)
-  let total = $state(0)
-  let totalPages = $state(0)
-  let loading = $state(false)
-  let errorMessage = $state<string | null>(null)
 
   // Filter options (loaded once) + current selections.
-  let filters = $state<CatalogFilters | null>(null)
   let brand = $state<number | null>(null)
   let category = $state<number | null>(null)
   let season = $state<number | null>(null)
   let supplier = $state<number | null>(null)
   let tag = $state<number | null>(null)
+
+  // Options de filtres (une seule lecture, cache TanStack).
+  const filtersQuery = createQuery(() => ({
+    queryKey: ["catalog", "filters"],
+    queryFn: async () => {
+      const { data, error } = await catalogGetFilters()
+      if (error || !data) throw new Error("filters_load_failed")
+      return data
+    },
+  }))
+  const filters = $derived(filtersQuery.data ?? null)
+
+  // Recherche catalogue (Xano) : tous les critères soumis sont dans la clé ;
+  // keepPreviousData conserve la table visible (opacité réduite) pendant le
+  // chargement d'une nouvelle page, comme avant.
+  const productsQuery = createQuery(() => ({
+    queryKey: [
+      "catalog",
+      "search",
+      {
+        q: submittedSearch,
+        page,
+        perPage: prefs.products_per_page,
+        brand,
+        category,
+        season,
+        supplier,
+        tag,
+      },
+    ],
+    queryFn: async () => {
+      const { data, error } = await productsListProducts({
+        query: {
+          search: submittedSearch || null,
+          brand,
+          category,
+          season,
+          supplier,
+          tag,
+          page,
+          per_page: prefs.products_per_page,
+        },
+      })
+      if (error || !data) throw new Error("catalog_search_failed")
+      return data
+    },
+    placeholderData: keepPreviousData,
+  }))
+  // « Donnée null = chargement » ; en erreur, liste vide + message (comme avant).
+  const products = $derived(
+    productsQuery.isError ? [] : (productsQuery.data?.items ?? null),
+  )
+  const total = $derived(productsQuery.data?.total ?? 0)
+  const totalPages = $derived(productsQuery.data?.total_pages ?? 0)
+  const loading = $derived(productsQuery.isFetching)
+  const errorMessage = $derived(
+    productsQuery.isError ? "Recherche impossible. Vérifiez la connexion Xano." : null,
+  )
 
   // Selected product ids persist across pages/searches until the job is created.
   let selected = $state<Set<number>>(new Set())
@@ -101,8 +164,10 @@
         key: "search",
         label: `Recherche : « ${query} »`,
         clear: () => {
+          clearTimeout(searchTimer)
           search = ""
-          onFilterChange()
+          submittedSearch = ""
+          page = 1
         },
       })
     }
@@ -134,43 +199,14 @@
   })
 
   function clearAll() {
+    clearTimeout(searchTimer)
     search = ""
+    submittedSearch = ""
     brand = category = season = supplier = tag = null
-    onFilterChange()
-  }
-
-  async function load() {
-    loading = true
-    errorMessage = null
-    const { data, error } = await productsListProducts({
-      query: {
-        search: search.trim() || null,
-        brand,
-        category,
-        season,
-        supplier,
-        tag,
-        page,
-        // Lu au moment de l'appel : suit la préférence « produits par page ».
-        per_page: prefs.products_per_page,
-      },
-    })
-    loading = false
-    if (error || !data) {
-      errorMessage = "Recherche impossible. Vérifiez la connexion Xano."
-      products = []
-      return
-    }
-    products = data.items
-    total = data.total
-    totalPages = data.total_pages
+    page = 1
   }
 
   onMount(() => {
-    load()
-    catalogGetFilters().then(({ data }) => {
-      if (data) filters = data
-    })
     // Arrivée depuis un CTA « Enrichir des produits » (?intent=enrich) :
     // bandeau qui explique le geste sélection → barre d'action.
     const params = new URLSearchParams(window.location.search)
@@ -182,21 +218,19 @@
     if (Number.isFinite(importId)) {
       tab = "import"
       selectedImportId = importId
-      loadImportProducts(importId)
     }
-    loadImportsList()
   })
 
+  // Les critères sont réactifs : changer un filtre relance la query (clé).
   function onFilterChange() {
     page = 1
-    load()
   }
 
   function onSearchInput() {
     clearTimeout(searchTimer)
     searchTimer = setTimeout(() => {
       page = 1
-      load()
+      submittedSearch = search.trim()
     }, 350)
   }
 
@@ -237,7 +271,6 @@
 
   function goToPage(next: number) {
     page = Math.max(1, Math.min(totalPages || 1, next))
-    load()
   }
 
   function label(product: Product): string {
@@ -270,45 +303,51 @@
   }
 
   // --- Onglet « Par import » : produits créés dans Tillin par un import. ---
-  let importsList = $state<ImportJobPublic[] | null>(null)
   let selectedImportId = $state<number | null>(null)
-  let importProducts = $state<ImportProductsResponse | null>(null)
-  let importLoading = $state(false)
-  let importError = $state<string | null>(null)
   let linking = $state(false)
   // Références restées introuvables au dernier « Relier » (détail sous le bandeau).
   let linkNotFound = $state<string[]>([])
 
-  async function loadImportsList() {
-    const { data } = await listImports({ page: 1, page_size: 100 })
-    // Seuls les imports terminés ont des produits exploitables ; l'API
-    // renvoie déjà les plus récents en premier.
-    importsList = (data?.items ?? []).filter((i) => i.status === "completed")
-  }
+  const importsListQuery = createQuery(() => ({
+    queryKey: ["imports", "list"],
+    queryFn: async () => {
+      const { data, error } = await listImports({ page: 1, page_size: 100 })
+      if (error || !data) throw new Error("imports_load_failed")
+      return data
+    },
+  }))
+  // Seuls les imports terminés ont des produits exploitables ; l'API
+  // renvoie déjà les plus récents en premier. En erreur : liste vide
+  // (même tolérance qu'avant).
+  const importsList = $derived(
+    importsListQuery.isError
+      ? []
+      : (importsListQuery.data?.items.filter((i) => i.status === "completed") ??
+          null),
+  )
 
-  async function loadImportProducts(id: number) {
-    importLoading = true
-    importError = null
-    const { data, error } = await getImportProducts(id)
-    importLoading = false
-    if (error || !data) {
-      importProducts = null
-      importError = "Impossible de charger les produits de cet import."
-      return
-    }
-    importProducts = data
-  }
+  const importProductsQuery = createQuery(() => ({
+    queryKey: ["import", selectedImportId, "products"],
+    enabled: selectedImportId != null,
+    queryFn: async () => {
+      if (selectedImportId == null) throw new Error("no_import_selected")
+      const { data, error } = await getImportProducts(selectedImportId)
+      if (error || !data) throw new Error("import_products_load_failed")
+      return data
+    },
+  }))
+  const importProducts = $derived(importProductsQuery.data ?? null)
+  const importLoading = $derived(importProductsQuery.isLoading)
+  const importError = $derived(
+    importProductsQuery.isError
+      ? "Impossible de charger les produits de cet import."
+      : null,
+  )
 
   function changeImport(event: Event) {
     const raw = (event.currentTarget as HTMLSelectElement).value
     linkNotFound = []
-    importProducts = null
-    if (raw === "") {
-      selectedImportId = null
-      return
-    }
-    selectedImportId = Number(raw)
-    loadImportProducts(selectedImportId)
+    selectedImportId = raw === "" ? null : Number(raw)
   }
 
   async function linkProducts() {
@@ -331,7 +370,9 @@
         `${data.already_linked} déjà relié${data.already_linked > 1 ? "s" : ""}, ` +
         `${data.not_found.length} introuvable${data.not_found.length > 1 ? "s" : ""}`,
     )
-    await loadImportProducts(selectedImportId)
+    await queryClient.invalidateQueries({
+      queryKey: ["import", selectedImportId, "products"],
+    })
   }
 
   function importItemLabel(item: ImportProductItem): string {
@@ -445,27 +486,7 @@
           </div>
         {/if}
 
-        <!-- Barre d'onglets sobre (même pattern qu'EnrichmentPage). -->
-        <div
-          class="border-border flex gap-4 border-b"
-          role="tablist"
-          aria-label="Sources de produits"
-        >
-          {#each TABS as t (t.key)}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              class="-mb-px cursor-pointer border-b-2 px-1 pb-2 text-sm font-medium transition-colors {tab ===
-              t.key
-                ? 'border-primary text-foreground'
-                : 'text-muted-foreground hover:text-foreground border-transparent'}"
-              onclick={() => (tab = t.key)}
-            >
-              {t.label}
-            </button>
-          {/each}
-        </div>
+        <TabBar tabs={TABS} bind:value={tab} label="Sources de produits" />
 
         {#if tab === "catalog"}
         <div class="relative">
@@ -723,9 +744,8 @@
                 Aucun import terminé pour l'instant.
               </p>
             {:else}
-              <select
+              <Select
                 id="import-select"
-                class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
                 value={selectedImportId == null ? "" : String(selectedImportId)}
                 onchange={changeImport}
               >
@@ -733,18 +753,16 @@
                 {#each importsList as imp (imp.id)}
                   <option value={String(imp.id)}>{imp.file_name}</option>
                 {/each}
-              </select>
+              </Select>
             {/if}
           </div>
 
           {#if importError}
             <p class="text-destructive text-xs" role="alert">{importError}</p>
           {:else if selectedImportId === null}
-            <Card>
-              <CardContent class="text-muted-foreground py-8 text-center text-sm">
-                Choisissez un import pour voir les produits créés dans Tillin.
-              </CardContent>
-            </Card>
+            <EmptyState
+              message="Choisissez un import pour voir les produits créés dans Tillin."
+            />
           {:else if importLoading || importProducts === null}
             <Skeleton class="h-16 w-full" />
             <Skeleton class="h-16 w-full" />
@@ -795,11 +813,7 @@
             </div>
 
             {#if importProducts.items.length === 0}
-              <Card>
-                <CardContent class="text-muted-foreground py-8 text-center text-sm">
-                  Aucun produit dans cet import.
-                </CardContent>
-              </Card>
+              <EmptyState message="Aucun produit dans cet import." />
             {:else}
               <Card class="py-0">
                 <CardContent class="overflow-x-auto px-0">

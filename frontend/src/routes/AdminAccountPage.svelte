@@ -2,6 +2,7 @@
   // Console admin — détail d'un client : consommation COMPLÈTE (modèles,
   // coûts, marge), activité récente, et réglages opérateur (coefficient,
   // minutes « temps gagné »).
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
@@ -12,11 +13,10 @@
     getAdminAccountUsage,
     getAdminAccountUsageByJob,
     putAdminAccountSettings,
-    type AdminAccountActivity,
     type AdminAccountSettings,
     type AdminTimeseriesGroupBy,
   } from "@/lib/api/admin"
-  import type { UsageByJob, UsageSummary, UsageTimeseries } from "@/lib/api/usage"
+  import type { UsageByJob } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -38,6 +38,7 @@
 
   let { appName, id }: { appName: string; id: string } = $props()
 
+  const queryClient = useQueryClient()
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
   const accountId = $derived(Number(id))
 
@@ -47,45 +48,36 @@
   const currentMonth = monthOf(new Date())
   let month = $state(monthOf(new Date()))
 
-  let summary = $state<UsageSummary | null>(null)
-  let byJob = $state<UsageByJob | null>(null)
-  let activity = $state<AdminAccountActivity | null>(null)
-  let loadFailed = $state(false)
+  // Consommation du compte : mois et id dans les clés, les changements de
+  // paramètres refetchent automatiquement.
+  const summaryQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "usage", month],
+    queryFn: async () => {
+      const { data, error } = await getAdminAccountUsage(accountId, month)
+      if (error || !data) throw new Error("admin_account_usage_load_failed")
+      return data
+    },
+  }))
+  const byJobQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "by-job", month],
+    queryFn: async () => {
+      const { data, error } = await getAdminAccountUsageByJob(accountId, month)
+      if (error || !data) throw new Error("admin_account_by_job_load_failed")
+      return data
+    },
+  }))
+  const summary = $derived(summaryQuery.data ?? null)
+  const byJob = $derived(byJobQuery.data ?? null)
+  const loadFailed = $derived(summaryQuery.isError || byJobQuery.isError)
 
-  async function loadUsage() {
-    summary = null
-    byJob = null
-    loadFailed = false
-    const target = month
-    const [summaryResult, byJobResult] = await Promise.all([
-      getAdminAccountUsage(accountId, target),
-      getAdminAccountUsageByJob(accountId, target),
-    ])
-    if (target !== month) return
-    if (
-      summaryResult.error ||
-      !summaryResult.data ||
-      byJobResult.error ||
-      !byJobResult.data
-    ) {
-      loadFailed = true
-      toast.error("Impossible de charger la consommation du client.")
-      return
-    }
-    summary = summaryResult.data
-    byJob = byJobResult.data
-  }
-
-  $effect(() => {
-    void month
-    loadUsage()
-  })
-
-  $effect(() => {
-    getAdminAccountActivity(accountId).then(({ data }) => {
-      activity = data ?? { account_id: accountId, entries: [] }
-    })
-  })
+  const activityQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "activity"],
+    queryFn: async () => {
+      const { data } = await getAdminAccountActivity(accountId)
+      return data ?? { account_id: accountId, entries: [] }
+    },
+  }))
+  const activity = $derived(activityQuery.data ?? null)
 
   // --- Graphique de consommation quotidienne du compte ---
   const CHART_MODES: { value: AdminTimeseriesGroupBy; label: string }[] = [
@@ -94,31 +86,21 @@
     { value: "model", label: "Par modèle" },
   ]
   let chartMode = $state<AdminTimeseriesGroupBy>("none")
-  let timeseries = $state<UsageTimeseries | null>(null)
-  let tsFailed = $state(false)
 
-  async function loadTimeseries() {
-    const target = `${month}|${chartMode}`
-    timeseries = null
-    tsFailed = false
-    const { data, error } = await getAdminAccountTimeseries(
-      accountId,
-      month,
-      chartMode,
-    )
-    if (target !== `${month}|${chartMode}`) return // paramètres rechangés
-    if (error || !data) {
-      tsFailed = true
-      return
-    }
-    timeseries = data
-  }
-
-  $effect(() => {
-    void month
-    void chartMode
-    loadTimeseries()
-  })
+  const timeseriesQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "timeseries", month, chartMode],
+    queryFn: async () => {
+      const { data, error } = await getAdminAccountTimeseries(
+        accountId,
+        month,
+        chartMode,
+      )
+      if (error || !data) throw new Error("admin_account_timeseries_load_failed")
+      return data
+    },
+  }))
+  const timeseries = $derived(timeseriesQuery.data ?? null)
+  const tsFailed = $derived(timeseriesQuery.isError)
 
   // --- Table « Par service » : lignes du summary agrégées par libellé de
   // service neutre (le même regroupement que voit le client, mais avec les
@@ -154,17 +136,26 @@
   })
 
   // --- Réglages opérateur du compte (coefficient + temps gagné) ---
+  // Le formulaire édite une copie locale (bind:value) hydratée depuis la query.
   let settings = $state<AdminAccountSettings | null>(null)
   let savingSettings = $state(false)
 
+  const settingsQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "settings"],
+    queryFn: async () => {
+      const { data, error } = await getAdminAccountSettings(accountId)
+      if (error || !data) throw new Error("admin_account_settings_load_failed")
+      return data
+    },
+  }))
   $effect(() => {
-    getAdminAccountSettings(accountId).then(({ data, error }) => {
-      if (error || !data) {
-        toast.error("Impossible de charger les réglages du client.")
-        return
-      }
-      settings = data
-    })
+    const data = settingsQuery.data
+    if (data) settings = { ...data }
+  })
+  $effect(() => {
+    if (settingsQuery.isError) {
+      toast.error("Impossible de charger les réglages du client.")
+    }
   })
 
   async function saveSettings() {
@@ -198,9 +189,16 @@
       toast.error("Enregistrement des réglages impossible.")
       return
     }
-    settings = data
+    settings = { ...data }
     toast.success("Réglages du client enregistrés")
-    await loadUsage() // le coefficient change le facturable affiché
+    // Le coefficient change le facturable affiché : on invalide les lectures
+    // de consommation du compte (summary, par traitement, série quotidienne).
+    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "usage"] })
+    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "by-job"] })
+    queryClient.invalidateQueries({
+      queryKey: ["admin", "account", id, "timeseries"],
+    })
+    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "settings"] })
   }
 
   // --- Formatage ---

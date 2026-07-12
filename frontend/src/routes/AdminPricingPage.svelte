@@ -2,9 +2,9 @@
   // Console admin — tarification : grille des prix providers (CRUD) et
   // re-figement d'un mois facturé. Déplacé de la page Consommation (les
   // clients ne doivent jamais voir providers, modèles ni prix d'achat).
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import ChartColumn from "@lucide/svelte/icons/chart-column"
   import Plus from "@lucide/svelte/icons/plus"
-  import RotateCcw from "@lucide/svelte/icons/rotate-ccw"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { toast } from "svelte-sonner"
 
@@ -25,8 +25,10 @@
     CardHeader,
     CardTitle,
   } from "@/lib/components/ui/card"
+  import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
@@ -34,6 +36,7 @@
 
   let { appName }: { appName: string } = $props()
 
+  const queryClient = useQueryClient()
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
   /** Les métriques *_tokens sont tarifées à l'unité mais lues par million. */
@@ -63,35 +66,44 @@
   }
 
   // --- Grille tarifaire ---
-  let prices = $state<UsagePrice[] | null>(null)
-
-  async function loadPrices() {
-    const { data, error } = await listUsagePrices()
-    if (error || data === undefined) {
-      prices = []
-      toast.error("Impossible de charger la grille tarifaire.")
-      return
-    }
-    prices = data
-  }
-
+  const pricesQuery = createQuery(() => ({
+    queryKey: ["admin", "prices"],
+    queryFn: async () => {
+      const { data, error } = await listUsagePrices()
+      if (error || data === undefined) throw new Error("prices_load_failed")
+      return data
+    },
+  }))
+  // En erreur : grille vide (comme avant), avec le toast d'origine.
+  const prices = $derived<UsagePrice[] | null>(
+    pricesQuery.isError ? [] : (pricesQuery.data ?? null),
+  )
   $effect(() => {
-    loadPrices()
+    if (pricesQuery.isError) {
+      toast.error("Impossible de charger la grille tarifaire.")
+    }
   })
 
   // --- Consommations réellement enregistrées (source du sélecteur) ---
   // Le rapprochement tarif ↔ conso est une égalité stricte : proposer les
   // combos réels évite les tarifs « orphelins » (métrique mal orthographiée).
-  let usageMetrics = $state<AdminUsageMetric[] | null>(null)
+  const usageMetricsQuery = createQuery(() => ({
+    queryKey: ["admin", "usage-metrics"],
+    queryFn: async () => {
+      const { data } = await listAdminUsageMetrics()
+      return data ?? []
+    },
+  }))
+  const usageMetrics = $derived<AdminUsageMetric[] | null>(
+    usageMetricsQuery.data ?? null,
+  )
 
-  async function loadUsageMetrics() {
-    const { data } = await listAdminUsageMetrics()
-    usageMetrics = data ?? []
+  /** Rafraîchit grille et combos après une mutation (création, édition,
+   *  suppression de tarif). */
+  function invalidatePricing() {
+    queryClient.invalidateQueries({ queryKey: ["admin", "prices"] })
+    queryClient.invalidateQueries({ queryKey: ["admin", "usage-metrics"] })
   }
-
-  $effect(() => {
-    loadUsageMetrics()
-  })
 
   const unpricedMetrics = $derived(
     (usageMetrics ?? []).filter((m) => !m.priced),
@@ -133,10 +145,6 @@
   }
 
   const formIsTokenMetric = $derived(isTokenMetric(formMetric))
-
-  // Suppression en deux temps (même pattern que la bibliothèque d'instructions).
-  let confirmingDeleteId = $state<number | null>(null)
-  let deleteTimer: ReturnType<typeof setTimeout> | undefined
 
   function openCreate() {
     editingId = null
@@ -226,18 +234,10 @@
       toast.success("Tarif mis à jour")
     }
     closeForm()
-    await Promise.all([loadPrices(), loadUsageMetrics()])
+    invalidatePricing()
   }
 
-  async function onDeletePriceClick(id: number) {
-    clearTimeout(deleteTimer)
-    if (confirmingDeleteId !== id) {
-      // Première activation : arme le bouton, qui se désarme après un délai.
-      confirmingDeleteId = id
-      deleteTimer = setTimeout(() => (confirmingDeleteId = null), 3000)
-      return
-    }
-    confirmingDeleteId = null
+  async function deletePrice(id: number) {
     const { error } = await deleteUsagePrice(id)
     if (error !== undefined) {
       toast.error("Suppression impossible.")
@@ -245,7 +245,7 @@
     }
     if (editingId === id) closeForm()
     toast.success("Tarif supprimé")
-    await Promise.all([loadPrices(), loadUsageMetrics()])
+    invalidatePricing()
   }
 
   // --- Re-figement d'un mois facturé ---
@@ -255,21 +255,12 @@
   const currentMonth = monthOf(new Date())
   let refreezeMonth = $state("")
   let refreezing = $state(false)
-  let confirmingRefreeze = $state(false)
-  let refreezeTimer: ReturnType<typeof setTimeout> | undefined
 
-  async function onRefreezeClick() {
-    clearTimeout(refreezeTimer)
+  async function refreeze() {
     if (refreezeMonth === "") {
       toast.error("Choisissez le mois à re-figer.")
       return
     }
-    if (!confirmingRefreeze) {
-      confirmingRefreeze = true
-      refreezeTimer = setTimeout(() => (confirmingRefreeze = false), 3000)
-      return
-    }
-    confirmingRefreeze = false
     refreezing = true
     const { data, error } = await refreezeUsageMonth(refreezeMonth)
     refreezing = false
@@ -384,13 +375,10 @@
                               <Button variant="ghost" size="sm" onclick={() => openEdit(price)}>
                                 Modifier
                               </Button>
-                              <Button
-                                variant={confirmingDeleteId === price.id ? "destructive" : "ghost"}
-                                size="sm"
-                                onclick={() => onDeletePriceClick(price.id)}
-                              >
-                                {confirmingDeleteId === price.id ? "Confirmer ?" : "Supprimer"}
-                              </Button>
+                              <ConfirmButton
+                                label="Supprimer"
+                                onconfirm={() => deletePrice(price.id)}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -415,9 +403,8 @@
                            une consommation existante. -->
                       <div class="flex flex-col gap-1.5 sm:col-span-2">
                         <Label for="price-combo">Consommation</Label>
-                        <select
+                        <Select
                           id="price-combo"
-                          class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
                           value={formSelection}
                           onchange={(e) => applySelection(e.currentTarget.value)}
                         >
@@ -428,7 +415,7 @@
                             </option>
                           {/each}
                           <option value="manual">Autre (saisie manuelle)…</option>
-                        </select>
+                        </Select>
                       </div>
                     {/if}
                     {#if formIsManual || editingId !== null}
@@ -529,19 +516,13 @@
                 bind:value={refreezeMonth}
               />
             </div>
-            <Button
-              variant={confirmingRefreeze ? "destructive" : "outline"}
-              size="sm"
+            <ConfirmButton
+              variant="outline"
               disabled={refreezing}
-              onclick={onRefreezeClick}
-            >
-              <RotateCcw size={14} aria-hidden="true" data-icon="inline-start" />
-              {refreezing
-                ? "Re-figement…"
-                : confirmingRefreeze
-                  ? "Confirmer le re-figement ?"
-                  : "Re-figer avec les tarifs actuels"}
-            </Button>
+              label={refreezing ? "Re-figement…" : "Re-figer avec les tarifs actuels"}
+              confirmLabel="Confirmer le re-figement ?"
+              onconfirm={refreeze}
+            />
           </CardContent>
         </Card>
       </div>

@@ -1,18 +1,17 @@
 <script lang="ts">
   // Console admin — vue d'ensemble clients : par compte et par mois, coût
   // brut vs facturable (= la marge), volumes de jobs/imports et échecs.
-  import { toast } from "svelte-sonner"
+  import { createQuery } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
   import {
     getAdminOverview,
     getAdminTimeseries,
-    type AdminOverview,
     type AdminTimeseriesGroupBy,
   } from "@/lib/api/admin"
-  import type { UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
+  import { EmptyState } from "@/lib/components/ui/empty-state"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
@@ -29,27 +28,18 @@
   const currentMonth = monthOf(new Date())
   let month = $state(monthOf(new Date()))
 
-  let overview = $state<AdminOverview | null>(null)
-  let loadFailed = $state(false)
-
-  async function load() {
-    overview = null
-    loadFailed = false
-    const target = month
-    const { data, error } = await getAdminOverview(target)
-    if (target !== month) return
-    if (error || !data) {
-      loadFailed = true
-      toast.error("Impossible de charger la vue d'ensemble.")
-      return
-    }
-    overview = data
-  }
-
-  $effect(() => {
-    void month
-    load()
-  })
+  // Vue d'ensemble du mois : le mois est dans la clé, changer de mois
+  // refetch automatiquement.
+  const overviewQuery = createQuery(() => ({
+    queryKey: ["admin", "overview", month],
+    queryFn: async () => {
+      const { data, error } = await getAdminOverview(month)
+      if (error || !data) throw new Error("admin_overview_load_failed")
+      return data
+    },
+  }))
+  const overview = $derived(overviewQuery.data ?? null)
+  const loadFailed = $derived(overviewQuery.isError)
 
   // --- Graphique de consommation, tous clients confondus ---
   const CHART_MODES: { value: AdminTimeseriesGroupBy; label: string }[] = [
@@ -58,27 +48,17 @@
     { value: "model", label: "Par modèle" },
   ]
   let chartMode = $state<AdminTimeseriesGroupBy>("none")
-  let timeseries = $state<UsageTimeseries | null>(null)
-  let tsFailed = $state(false)
 
-  async function loadTimeseries() {
-    const target = `${month}|${chartMode}`
-    timeseries = null
-    tsFailed = false
-    const { data, error } = await getAdminTimeseries(month, chartMode)
-    if (target !== `${month}|${chartMode}`) return // paramètres rechangés
-    if (error || !data) {
-      tsFailed = true
-      return
-    }
-    timeseries = data
-  }
-
-  $effect(() => {
-    void month
-    void chartMode
-    loadTimeseries()
-  })
+  const timeseriesQuery = createQuery(() => ({
+    queryKey: ["admin", "timeseries", month, chartMode],
+    queryFn: async () => {
+      const { data, error } = await getAdminTimeseries(month, chartMode)
+      if (error || !data) throw new Error("admin_timeseries_load_failed")
+      return data
+    },
+  }))
+  const timeseries = $derived(timeseriesQuery.data ?? null)
+  const tsFailed = $derived(timeseriesQuery.isError)
 
   function formatAmount(value: string): string {
     const n = Number(value)
@@ -146,11 +126,7 @@
           <Skeleton class="h-10 w-full" />
           <Skeleton class="h-10 w-full" />
         {:else if overview.lines.length === 0}
-          <Card>
-            <CardContent class="text-muted-foreground py-8 text-center text-sm">
-              Aucun compte client.
-            </CardContent>
-          </Card>
+          <EmptyState message="Aucun compte client." />
         {:else}
           <Card class="py-0">
             <CardContent class="overflow-x-auto px-0">

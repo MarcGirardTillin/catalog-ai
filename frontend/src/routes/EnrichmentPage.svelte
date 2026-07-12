@@ -2,6 +2,7 @@
   // Workspace Enrichissement : la bibliothèque d'instructions, le contexte
   // boutique et le modèle de titre sortent des Paramètres pour devenir une
   // section à part entière (comme les Profils d'import).
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
 
   import { settingsReadAccountSettings } from "@/client"
@@ -15,6 +16,7 @@
   } from "@/lib/components/ui/card"
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import InstructionLibrary from "@/lib/components/enrichment/InstructionLibrary.svelte"
@@ -85,45 +87,60 @@
 
   const imageTitleTemplate = $derived(buildImageTemplate(imageTemplateParts))
 
+  // Lecture des réglages du compte (cache TanStack). Les valeurs chargées
+  // sont copiées UNE FOIS dans les champs éditables locaux ci-dessus : un
+  // refetch (invalidation, focus) ne doit pas écraser une saisie en cours.
+  const queryClient = useQueryClient()
+  const settingsQuery = createQuery(() => ({
+    queryKey: ["settings", "account"],
+    queryFn: async () => {
+      const { data, error } = await settingsReadAccountSettings()
+      if (error || !data) throw new Error("settings_load_failed")
+      return data
+    },
+  }))
+
   $effect(() => {
-    settingsReadAccountSettings().then(({ data, error }) => {
-      if (error || !data) {
-        toast.error("Impossible de charger les réglages d'enrichissement.")
-        return
+    if (settingsQuery.isError && !accountLoaded) {
+      toast.error("Impossible de charger les réglages d'enrichissement.")
+    }
+  })
+
+  $effect(() => {
+    const data = settingsQuery.data
+    if (!data || accountLoaded) return
+    if (data.title_template) {
+      const parsed = parseTemplate(data.title_template)
+      if (parsed) {
+        templateTokens = parsed.tokens
+        templateSeparator = parsed.separator
       }
-      if (data.title_template) {
-        const parsed = parseTemplate(data.title_template)
-        if (parsed) {
-          templateTokens = parsed.tokens
-          templateSeparator = parsed.separator
-        }
-      }
-      const loadedCase = (data as { title_case?: string }).title_case
-      if (loadedCase === "upper" || loadedCase === "capitalize") {
-        titleCase = loadedCase
-      }
-      editorialInstructions = data.editorial_instructions ?? ""
-      clientContext = data.client_context ?? ""
-      metaMaxLength = data.meta_max_length ?? 160
-      imagingOptions = {
-        remove_bg: data.imaging_remove_bg ?? true,
-        bg_color: data.imaging_bg_color ?? "FFFFFF",
-        ratio: data.imaging_ratio ?? "4:5",
-        center: data.imaging_center ?? true,
-        format: data.imaging_format ?? "webp",
-        quality: data.imaging_quality ?? 80,
-        max_kb: data.imaging_max_kb ?? 300,
-      }
-      imageTemplateParts = data.image_title_template
-        ? parseImageTemplate(data.image_title_template)
-        : []
-      generationConfig = {
-        framing: data.imaging_generation_framing ?? "full_body",
-        scene: data.imaging_generation_scene ?? "studio",
-        instructions: data.imaging_generation_instructions ?? "",
-      }
-      accountLoaded = true
-    })
+    }
+    const loadedCase = (data as { title_case?: string }).title_case
+    if (loadedCase === "upper" || loadedCase === "capitalize") {
+      titleCase = loadedCase
+    }
+    editorialInstructions = data.editorial_instructions ?? ""
+    clientContext = data.client_context ?? ""
+    metaMaxLength = data.meta_max_length ?? 160
+    imagingOptions = {
+      remove_bg: data.imaging_remove_bg ?? true,
+      bg_color: data.imaging_bg_color ?? "FFFFFF",
+      ratio: data.imaging_ratio ?? "4:5",
+      center: data.imaging_center ?? true,
+      format: data.imaging_format ?? "webp",
+      quality: data.imaging_quality ?? 80,
+      max_kb: data.imaging_max_kb ?? 300,
+    }
+    imageTemplateParts = data.image_title_template
+      ? parseImageTemplate(data.image_title_template)
+      : []
+    generationConfig = {
+      framing: data.imaging_generation_framing ?? "full_body",
+      scene: data.imaging_generation_scene ?? "studio",
+      instructions: data.imaging_generation_instructions ?? "",
+    }
+    accountLoaded = true
   })
 
   async function saveAccount() {
@@ -172,6 +189,7 @@
       toast.error("Enregistrement impossible.")
       return
     }
+    queryClient.invalidateQueries({ queryKey: ["settings", "account"] })
     toast.success("Réglages d'enrichissement enregistrés")
   }
 </script>
@@ -192,27 +210,7 @@
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <h1 class="font-title text-lg font-bold">Réglages d'enrichissement</h1>
 
-        <!-- Barre d'onglets sobre (pas de composant tabs dans ui/). -->
-        <div
-          class="border-border flex gap-4 border-b"
-          role="tablist"
-          aria-label="Sections de l'enrichissement"
-        >
-          {#each TABS as t (t.key)}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              class="-mb-px cursor-pointer border-b-2 px-1 pb-2 text-sm font-medium transition-colors {tab ===
-              t.key
-                ? 'border-primary text-foreground'
-                : 'text-muted-foreground hover:text-foreground border-transparent'}"
-              onclick={() => (tab = t.key)}
-            >
-              {t.label}
-            </button>
-          {/each}
-        </div>
+        <TabBar tabs={TABS} bind:value={tab} label="Sections de l'enrichissement" />
 
         <!-- Onglet Instructions (bibliothèque + défaut du compte) -->
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "instructions"}>

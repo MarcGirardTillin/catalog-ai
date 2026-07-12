@@ -732,3 +732,30 @@ e885704→2e9b07d). Décisions durables :
 - **Filigrane sandbox Photoroom** : tuilé semi-transparent → pollue la bbox
   de centrage en dessous du seuil alpha ; les validations visuelles sandbox
   sont approximatives, la clé prod est requise pour le rendu final.
+
+## 2026-07-12 — Sprint chantiers app (soir)
+
+- **Notifications e-mail (Brevo) abandonnées** au profit de **pastilles
+  d'état sur les menus Imports/Enrichissements** : AppShell interroge
+  /stats/dashboard toutes les 30 s (TanStack Query, cache partagé avec le
+  dashboard — même queryKey ["stats","dashboard"]) ; une seule pastille par
+  menu, priorité échec (rouge) > à vérifier (ambre) > en cours (pulsation).
+  Le client Brevo (app/clients/brevo.py) reste en place mais rien ne l'appelle.
+- **Retry 429 Anthropic via le SDK, pas de code maison** : `max_retries=5`
+  sur anthropic.Anthropic (backoff exponentiel natif, honore Retry-After).
+  Constante partagée `app/clients/claude.py::MAX_RETRIES`, réutilisée par
+  l'extracteur d'imports.
+- **Composants ui/ : primitives natives stylées, pas de lib headless** —
+  select = <select> natif stylé (cn + classes de l'Input), tabs = TabBar
+  (barre sobre role=tablist, panneaux à la charge de la page), switch =
+  bouton role=switch (labellisable via <label for>), empty-state (message +
+  action), confirm-button (armement destructif + retombée auto). Règle
+  d'adoption : on ne convertit PAS un usage dont le rendu/les interactions
+  divergent du composant (état vide avec icône, rejet de review couplé aux
+  raccourcis clavier).
+- **TanStack Query = pattern unique pour toute lecture serveur** :
+  createQuery(() => ({...})) (options-fonction, réactivité Svelte 5), tous
+  les paramètres dans la queryKey, mutations impératives + invalidateQueries,
+  keepPreviousData pour les tables paginées/filtrées, formulaires = copie
+  locale $state hydratée une fois depuis query.data (jamais de bind sur le
+  cache). L'état de travail (studio images, sélections) reste du $state local.

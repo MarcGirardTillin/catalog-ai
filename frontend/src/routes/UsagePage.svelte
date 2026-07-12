@@ -4,6 +4,7 @@
   // Tout ce qui est opérateur (grille tarifaire, coefficient, re-figement,
   // vues par modèle/provider) vit dans la section /admin — et le backend
   // expurge de toute façon les réponses des non-admins.
+  import { createQuery } from "@tanstack/svelte-query"
   import ChartColumn from "@lucide/svelte/icons/chart-column"
   import Download from "@lucide/svelte/icons/download"
   import Lock from "@lucide/svelte/icons/lock"
@@ -14,7 +15,6 @@
     getUsageSummary,
     getUsageTimeseries,
   } from "@/lib/api/usage"
-  import type { UsageSummary, UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
@@ -32,50 +32,30 @@
   const currentMonth = monthOf(new Date())
   let month = $state(monthOf(new Date()))
 
-  // --- Données du mois ---
-  let summary = $state<UsageSummary | null>(null)
-  let loadFailed = $state(false)
-
-  async function loadMonth() {
-    summary = null
-    loadFailed = false
-    const target = month
-    const { data, error } = await getUsageSummary(target)
-    if (target !== month) return // le mois a changé entre-temps
-    if (error || data === undefined) {
-      loadFailed = true
-      toast.error("Impossible de charger la consommation du mois.")
-      return
-    }
-    summary = data
-  }
-
-  $effect(() => {
-    void month // recharge à chaque changement de mois
-    loadMonth()
-  })
+  // --- Données du mois (TanStack Query : le mois est dans la clé, changer
+  // de mois refetch automatiquement) ---
+  const summaryQuery = createQuery(() => ({
+    queryKey: ["usage", "summary", month],
+    queryFn: async () => {
+      const { data, error } = await getUsageSummary(month)
+      if (error || data === undefined) throw new Error("usage_summary_load_failed")
+      return data
+    },
+  }))
+  const summary = $derived(summaryQuery.data ?? null)
+  const loadFailed = $derived(summaryQuery.isError)
 
   // --- Série temporelle quotidienne (courbe totale uniquement) ---
-  let timeseries = $state<UsageTimeseries | null>(null)
-  let tsFailed = $state(false)
-
-  async function loadTimeseries() {
-    const targetMonth = month
-    timeseries = null
-    tsFailed = false
-    const { data, error } = await getUsageTimeseries(targetMonth, "none")
-    if (targetMonth !== month) return // rechangé
-    if (error || data === undefined) {
-      tsFailed = true
-      return
-    }
-    timeseries = data
-  }
-
-  $effect(() => {
-    void month
-    loadTimeseries()
-  })
+  const timeseriesQuery = createQuery(() => ({
+    queryKey: ["usage", "timeseries", month, "none"],
+    queryFn: async () => {
+      const { data, error } = await getUsageTimeseries(month, "none")
+      if (error || data === undefined) throw new Error("usage_timeseries_load_failed")
+      return data
+    },
+  }))
+  const timeseries = $derived(timeseriesQuery.data ?? null)
+  const tsFailed = $derived(timeseriesQuery.isError)
 
   /** Étiquette de date longue fr-FR depuis "YYYY-MM-DD". */
   function formatLongDate(iso: string): string {

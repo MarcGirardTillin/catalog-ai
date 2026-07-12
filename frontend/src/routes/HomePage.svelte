@@ -9,11 +9,12 @@
   import Send from "@lucide/svelte/icons/send"
   import Sparkles from "@lucide/svelte/icons/sparkles"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
+  import { createQuery } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
   import { jobsListJobs, statsDashboardStats } from "@/client"
   import type { Component } from "svelte"
-  import type { DashboardStats, JobPublic } from "@/client"
+  import type { JobPublic } from "@/client"
   import { listImports, type ImportJobPublic } from "@/lib/api/imports"
   import { getUsageSummary } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
@@ -26,10 +27,20 @@
 
   let { appName }: { appName: string } = $props()
 
-  let stats = $state<DashboardStats | null>(null)
-  let errorMessage = $state<string | null>(null)
-  // Facturable du mois courant, déjà formaté en EUR ("—" tant que non chargé).
-  let usageBillable = $state("—")
+  // Indicateurs du dashboard — cache PARTAGÉ avec AppShell (pastilles de la
+  // sidebar) via la même queryKey ; AppShell porte le refetchInterval.
+  const statsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
+  const stats = $derived(statsQuery.data ?? null)
+  const errorMessage = $derived(
+    statsQuery.isError ? "Impossible de charger les indicateurs." : null,
+  )
 
   // Activité récente : enrichissements + imports fusionnés par date.
   type ActivityEntry = {
@@ -41,7 +52,6 @@
     detail: string
     created_at: string
   }
-  let activity = $state<ActivityEntry[] | null>(null)
 
   function jobChips(counts: JobPublic["counts"]): string {
     const parts: string[] = []
@@ -63,58 +73,82 @@
     return parts.join(" · ") || `${imp.counts.total} produit${imp.counts.total > 1 ? "s" : ""}`
   }
 
-  $effect(() => {
-    statsDashboardStats().then(({ data, error }) => {
-      if (error || !data) {
-        errorMessage = "Impossible de charger les indicateurs."
-        return
-      }
-      stats = data
-    })
-    // Activité récente fusionnée (5 entrées max, tous types confondus).
-    Promise.all([
-      jobsListJobs({ query: { page_size: 5 } }),
-      listImports({ page: 1, page_size: 5 }),
-    ]).then(([jobsResult, importsResult]) => {
-      const entries: ActivityEntry[] = []
-      for (const job of jobsResult.data?.items ?? []) {
-        entries.push({
-          key: `job-${job.id}`,
-          kind: "enrichment",
-          id: job.id,
-          label: `Enrichissement #${job.id}`,
-          status: job.status,
-          detail: jobChips(job.counts),
-          created_at: job.created_at,
+  // Activité récente fusionnée (5 entrées max, tous types confondus) : deux
+  // lectures cachées séparément — clés distinctes de ["jobs","list"] et
+  // ["imports","list"] car les paramètres diffèrent des pages listes.
+  const recentJobsQuery = createQuery(() => ({
+    queryKey: ["jobs", "list", { page_size: 5 }],
+    queryFn: async () => {
+      const { data, error } = await jobsListJobs({ query: { page_size: 5 } })
+      if (error || !data) throw new Error("jobs_load_failed")
+      return data
+    },
+  }))
+  const recentImportsQuery = createQuery(() => ({
+    queryKey: ["imports", "list", { page: 1, page_size: 5 }],
+    queryFn: async () => {
+      const { data, error } = await listImports({ page: 1, page_size: 5 })
+      if (error || !data) throw new Error("imports_load_failed")
+      return data
+    },
+  }))
+  // null = chargement (Skeletons) tant que les deux lectures ne sont pas
+  // arrivées ; une lecture en erreur contribue simplement zéro entrée
+  // (même tolérance que l'ancien Promise.all).
+  const activity = $derived.by<ActivityEntry[] | null>(() => {
+    const jobsPending = recentJobsQuery.data === undefined && !recentJobsQuery.isError
+    const importsPending =
+      recentImportsQuery.data === undefined && !recentImportsQuery.isError
+    if (jobsPending || importsPending) return null
+    const entries: ActivityEntry[] = []
+    for (const job of recentJobsQuery.data?.items ?? []) {
+      entries.push({
+        key: `job-${job.id}`,
+        kind: "enrichment",
+        id: job.id,
+        label: `Enrichissement #${job.id}`,
+        status: job.status,
+        detail: jobChips(job.counts),
+        created_at: job.created_at,
+      })
+    }
+    for (const imp of recentImportsQuery.data?.items ?? []) {
+      entries.push({
+        key: `import-${imp.id}`,
+        kind: "import",
+        id: imp.id,
+        label: imp.file_name,
+        status: imp.status,
+        detail: importChips(imp),
+        created_at: imp.created_at,
+      })
+    }
+    entries.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return entries.slice(0, 5)
+  })
+
+  // Consommation du mois courant (facturable) — tuile vers /usage.
+  const now = new Date()
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  const usageQuery = createQuery(() => ({
+    queryKey: ["usage", "summary", month],
+    queryFn: async () => {
+      const { data, error } = await getUsageSummary(month)
+      if (error || !data) throw new Error("usage_load_failed")
+      return data
+    },
+  }))
+  // Facturable du mois courant, déjà formaté en EUR ("—" tant que non chargé).
+  const usageBillable = $derived.by(() => {
+    const data = usageQuery.data
+    if (!data) return "—"
+    const billable = Number(data.totals.billable)
+    return Number.isFinite(billable)
+      ? billable.toLocaleString("fr-FR", {
+          style: "currency",
+          currency: data.currency || "EUR",
         })
-      }
-      for (const imp of importsResult.data?.items ?? []) {
-        entries.push({
-          key: `import-${imp.id}`,
-          kind: "import",
-          id: imp.id,
-          label: imp.file_name,
-          status: imp.status,
-          detail: importChips(imp),
-          created_at: imp.created_at,
-        })
-      }
-      entries.sort((a, b) => b.created_at.localeCompare(a.created_at))
-      activity = entries.slice(0, 5)
-    })
-    // Consommation du mois courant (facturable) — tuile vers /usage.
-    const now = new Date()
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-    getUsageSummary(month).then(({ data, error }) => {
-      if (error || !data) return
-      const billable = Number(data.totals.billable)
-      usageBillable = Number.isFinite(billable)
-        ? billable.toLocaleString("fr-FR", {
-            style: "currency",
-            currency: data.currency || "EUR",
-          })
-        : "—"
-    })
+      : "—"
   })
 
   // --- « À traiter » : cartes actionnables (masquées à zéro). ---
