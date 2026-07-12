@@ -23,6 +23,7 @@
   import LoginPage from "./routes/LoginPage.svelte"
   import MaintenancePage from "./routes/MaintenancePage.svelte"
   import NotFoundPage from "./routes/NotFoundPage.svelte"
+  import ProductImagesPage from "./routes/ProductImagesPage.svelte"
   import ProductSearchPage from "./routes/ProductSearchPage.svelte"
   import ProfilesPage from "./routes/ProfilesPage.svelte"
   import SettingsPage from "./routes/SettingsPage.svelte"
@@ -50,6 +51,11 @@
       <Router>
         <Route path="/" component={HomePage} {appName} />
         <Route path="/login" component={LoginPage} {appName} />
+        <Route path="/products/:id/images">
+          {#snippet children(params)}
+            <ProductImagesPage {appName} id={params.id} />
+          {/snippet}
+        </Route>
         <Route path="/products" component={ProductSearchPage} {appName} />
         <Route path="/jobs/:id">
           {#snippet children(params)}

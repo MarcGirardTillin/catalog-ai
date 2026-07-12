@@ -5,6 +5,7 @@
   import Camera from "@lucide/svelte/icons/camera"
   import Check from "@lucide/svelte/icons/check"
   import ImageIcon from "@lucide/svelte/icons/image"
+  import Images from "@lucide/svelte/icons/images"
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
   import PersonStanding from "@lucide/svelte/icons/person-standing"
   import Scissors from "@lucide/svelte/icons/scissors"
@@ -12,6 +13,7 @@
   import X from "@lucide/svelte/icons/x"
   import { untrack } from "svelte"
   import { toast } from "svelte-sonner"
+  import { navigate } from "svelte5-router"
   import { fade, fly } from "svelte/transition"
 
   import { type ProductImage, settingsReadAccountSettings } from "@/client"
@@ -620,7 +622,8 @@
             </p>
           {/if}
 
-          <!-- Traitements sur l'image sélectionnée (Photoroom / FASHN). -->
+          <!-- Traitements sur l'image sélectionnée (défauts du compte) ;
+               le réglage fin (options, position, noms) vit au studio. -->
           {#if (product.images ?? []).length > 0}
             <div class="flex flex-wrap gap-2">
               <Button
@@ -630,7 +633,7 @@
                 onclick={runNormalize}
               >
                 <Scissors size={14} aria-hidden="true" />
-                Normaliser (fond uni 4:5)
+                Normaliser (réglages par défaut)
               </Button>
               <Button
                 variant="outline"
@@ -640,6 +643,17 @@
               >
                 <PersonStanding size={14} aria-hidden="true" />
                 Porté mannequin
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => {
+                  const id = productId
+                  if (id != null) navigate(`/products/${id}/images`)
+                }}
+              >
+                <Images size={14} aria-hidden="true" />
+                Ouvrir le studio
               </Button>
             </div>
             {#if imagingBusy}

@@ -54,6 +54,38 @@ export type AccountSettings = {
      * Billing Day
      */
     billing_day?: number;
+    /**
+     * Imaging Remove Bg
+     */
+    imaging_remove_bg?: boolean;
+    /**
+     * Imaging Bg Color
+     */
+    imaging_bg_color?: string;
+    /**
+     * Imaging Ratio
+     */
+    imaging_ratio?: '4:5' | '1:1' | '3:4' | '16:9' | 'original';
+    /**
+     * Imaging Center
+     */
+    imaging_center?: boolean;
+    /**
+     * Imaging Format
+     */
+    imaging_format?: 'webp' | 'jpeg' | 'jpg' | 'png';
+    /**
+     * Imaging Quality
+     */
+    imaging_quality?: number;
+    /**
+     * Imaging Max Kb
+     */
+    imaging_max_kb?: number;
+    /**
+     * Image Title Template
+     */
+    image_title_template?: string | null;
 };
 
 /**
@@ -237,6 +269,10 @@ export type AssetSaveRequest = {
      * Replace
      */
     replace?: boolean;
+    /**
+     * Filenames
+     */
+    filenames?: Array<string | null> | null;
 };
 
 /**
@@ -611,6 +647,26 @@ export type ImageAssetPublic = {
      * Preview Urls
      */
     preview_urls?: Array<string>;
+    /**
+     * Files
+     */
+    files?: Array<StagedFilePublic>;
+    /**
+     * Source Size Bytes
+     */
+    source_size_bytes?: number | null;
+    /**
+     * Source Width
+     */
+    source_width?: number | null;
+    /**
+     * Source Height
+     */
+    source_height?: number | null;
+    /**
+     * Can Render
+     */
+    can_render?: boolean;
     /**
      * Source Image
      */
@@ -1757,25 +1813,32 @@ export type LoginRequest = {
 /**
  * NormalizeOptions
  *
- * Options of POST /products/{id}/images/normalize (Photoroom).
+ * Options of POST /products/{id}/images/normalize (segment + Pillow).
+ *
+ * Every treatment is à la carte: cutout (the only billed step), solid
+ * background, canvas ratio, centering, export format and compression.
  */
 export type NormalizeOptions = {
+    /**
+     * Remove Bg
+     */
+    remove_bg?: boolean;
     /**
      * Bg Color
      */
     bg_color?: string;
     /**
-     * Output Size
+     * Ratio
      */
-    output_size?: string;
+    ratio?: '4:5' | '1:1' | '3:4' | '16:9' | 'original';
     /**
-     * Padding
+     * Center
      */
-    padding?: string;
+    center?: boolean;
     /**
      * Format
      */
-    format?: string;
+    format?: 'webp' | 'jpeg' | 'jpg' | 'png';
     /**
      * Quality
      */
@@ -2088,6 +2151,81 @@ export type ProductVariant = {
      * Wholesale Price
      */
     wholesale_price?: string | null;
+};
+
+/**
+ * RenderRequest
+ *
+ * POST /imaging/assets/{id}/render body — local Pillow recompose.
+ *
+ * Offsets are canvas pixels, scale multiplies the fitted size. Any other
+ * field left to None keeps the option the asset was produced with.
+ */
+export type RenderRequest = {
+    /**
+     * Offset X
+     */
+    offset_x?: number;
+    /**
+     * Offset Y
+     */
+    offset_y?: number;
+    /**
+     * Scale
+     */
+    scale?: number;
+    /**
+     * Bg Color
+     */
+    bg_color?: string | null;
+    /**
+     * Ratio
+     */
+    ratio?: '4:5' | '1:1' | '3:4' | '16:9' | 'original' | null;
+    /**
+     * Center
+     */
+    center?: boolean | null;
+    /**
+     * Format
+     */
+    format?: 'webp' | 'jpeg' | 'jpg' | 'png' | null;
+    /**
+     * Quality
+     */
+    quality?: number | null;
+    /**
+     * Max Kb
+     */
+    max_kb?: number | null;
+};
+
+/**
+ * StagedFilePublic
+ *
+ * Metadata of one staged OUTPUT file (weight/dimensions display).
+ */
+export type StagedFilePublic = {
+    /**
+     * Index
+     */
+    index: number;
+    /**
+     * Size Bytes
+     */
+    size_bytes?: number | null;
+    /**
+     * Width
+     */
+    width?: number | null;
+    /**
+     * Height
+     */
+    height?: number | null;
+    /**
+     * Format
+     */
+    format?: string | null;
 };
 
 /**
@@ -2815,7 +2953,7 @@ export type ProductsNormalizeImageResponses = {
     /**
      * Successful Response
      */
-    200: ImageAssetPublic;
+    202: ImageAssetPublic;
 };
 
 export type ProductsNormalizeImageResponse = ProductsNormalizeImageResponses[keyof ProductsNormalizeImageResponses];
@@ -2911,6 +3049,36 @@ export type ImagingReadAssetFileResponses = {
      */
     200: unknown;
 };
+
+export type ImagingRenderAssetData = {
+    body: RenderRequest;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/render';
+};
+
+export type ImagingRenderAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingRenderAssetError = ImagingRenderAssetErrors[keyof ImagingRenderAssetErrors];
+
+export type ImagingRenderAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ImagingRenderAssetResponse = ImagingRenderAssetResponses[keyof ImagingRenderAssetResponses];
 
 export type ImagingSaveAssetData = {
     body: AssetSaveRequest;

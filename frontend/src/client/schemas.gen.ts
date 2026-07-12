@@ -94,6 +94,70 @@ export const AccountSettingsSchema = {
             minimum: 1,
             title: 'Billing Day',
             default: 1
+        },
+        imaging_remove_bg: {
+            type: 'boolean',
+            title: 'Imaging Remove Bg',
+            default: true
+        },
+        imaging_bg_color: {
+            type: 'string',
+            pattern: '^#?[0-9a-fA-F]{6}$',
+            title: 'Imaging Bg Color',
+            default: 'FFFFFF'
+        },
+        imaging_ratio: {
+            type: 'string',
+            enum: [
+                '4:5',
+                '1:1',
+                '3:4',
+                '16:9',
+                'original'
+            ],
+            title: 'Imaging Ratio',
+            default: '4:5'
+        },
+        imaging_center: {
+            type: 'boolean',
+            title: 'Imaging Center',
+            default: true
+        },
+        imaging_format: {
+            type: 'string',
+            enum: [
+                'webp',
+                'jpeg',
+                'jpg',
+                'png'
+            ],
+            title: 'Imaging Format',
+            default: 'webp'
+        },
+        imaging_quality: {
+            type: 'integer',
+            maximum: 100,
+            minimum: 1,
+            title: 'Imaging Quality',
+            default: 80
+        },
+        imaging_max_kb: {
+            type: 'integer',
+            maximum: 5000,
+            minimum: 1,
+            title: 'Imaging Max Kb',
+            default: 300
+        },
+        image_title_template: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Image Title Template'
         }
     },
     type: 'object',
@@ -343,6 +407,27 @@ export const AssetSaveRequestSchema = {
             type: 'boolean',
             title: 'Replace',
             default: false
+        },
+        filenames: {
+            anyOf: [
+                {
+                    items: {
+                        anyOf: [
+                            {
+                                type: 'string'
+                            },
+                            {
+                                type: 'null'
+                            }
+                        ]
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Filenames'
         }
     },
     type: 'object',
@@ -949,6 +1034,51 @@ export const ImageAssetPublicSchema = {
             },
             type: 'array',
             title: 'Preview Urls'
+        },
+        files: {
+            items: {
+                $ref: '#/components/schemas/StagedFilePublic'
+            },
+            type: 'array',
+            title: 'Files'
+        },
+        source_size_bytes: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Size Bytes'
+        },
+        source_width: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Width'
+        },
+        source_height: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Height'
+        },
+        can_render: {
+            type: 'boolean',
+            title: 'Can Render',
+            default: false
         },
         source_image: {
             anyOf: [
@@ -3044,23 +3174,42 @@ export const LoginRequestSchema = {
 
 export const NormalizeOptionsSchema = {
     properties: {
+        remove_bg: {
+            type: 'boolean',
+            title: 'Remove Bg',
+            default: true
+        },
         bg_color: {
             type: 'string',
+            pattern: '^#?[0-9a-fA-F]{6}$',
             title: 'Bg Color',
             default: 'FFFFFF'
         },
-        output_size: {
+        ratio: {
             type: 'string',
-            title: 'Output Size',
-            default: '1600x2000'
+            enum: [
+                '4:5',
+                '1:1',
+                '3:4',
+                '16:9',
+                'original'
+            ],
+            title: 'Ratio',
+            default: '4:5'
         },
-        padding: {
-            type: 'string',
-            title: 'Padding',
-            default: '10%'
+        center: {
+            type: 'boolean',
+            title: 'Center',
+            default: true
         },
         format: {
             type: 'string',
+            enum: [
+                'webp',
+                'jpeg',
+                'jpg',
+                'png'
+            ],
             title: 'Format',
             default: 'webp'
         },
@@ -3075,12 +3224,12 @@ export const NormalizeOptionsSchema = {
             type: 'integer',
             minimum: 1,
             title: 'Max Kb',
-            default: 200
+            default: 300
         }
     },
     type: 'object',
     title: 'NormalizeOptions',
-    description: 'Options of POST /products/{id}/images/normalize (Photoroom).'
+    description: 'Options of POST /products/{id}/images/normalize (segment + Pillow).\n\nEvery treatment is à la carte: cutout (the only billed step), solid\nbackground, canvas ratio, centering, export format and compression.'
 } as const;
 
 export const NormalizeRequestSchema = {
@@ -3648,6 +3797,177 @@ export const ProductVariantSchema = {
     type: 'object',
     title: 'ProductVariant',
     description: 'A single sellable variant (style x color x size) of a product.'
+} as const;
+
+export const RenderRequestSchema = {
+    properties: {
+        offset_x: {
+            type: 'integer',
+            maximum: 4000,
+            minimum: -4000,
+            title: 'Offset X',
+            default: 0
+        },
+        offset_y: {
+            type: 'integer',
+            maximum: 4000,
+            minimum: -4000,
+            title: 'Offset Y',
+            default: 0
+        },
+        scale: {
+            type: 'number',
+            maximum: 4,
+            exclusiveMinimum: 0,
+            title: 'Scale',
+            default: 1
+        },
+        bg_color: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^#?[0-9a-fA-F]{6}$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Bg Color'
+        },
+        ratio: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        '4:5',
+                        '1:1',
+                        '3:4',
+                        '16:9',
+                        'original'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ratio'
+        },
+        center: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Center'
+        },
+        format: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'webp',
+                        'jpeg',
+                        'jpg',
+                        'png'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Format'
+        },
+        quality: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    maximum: 100,
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Quality'
+        },
+        max_kb: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Kb'
+        }
+    },
+    type: 'object',
+    title: 'RenderRequest',
+    description: 'POST /imaging/assets/{id}/render body — local Pillow recompose.\n\nOffsets are canvas pixels, scale multiplies the fitted size. Any other\nfield left to None keeps the option the asset was produced with.'
+} as const;
+
+export const StagedFilePublicSchema = {
+    properties: {
+        index: {
+            type: 'integer',
+            title: 'Index'
+        },
+        size_bytes: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Size Bytes'
+        },
+        width: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Width'
+        },
+        height: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Height'
+        },
+        format: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Format'
+        }
+    },
+    type: 'object',
+    required: [
+        'index'
+    ],
+    title: 'StagedFilePublic',
+    description: 'Metadata of one staged OUTPUT file (weight/dimensions display).'
 } as const;
 
 export const UsageByJobSchema = {

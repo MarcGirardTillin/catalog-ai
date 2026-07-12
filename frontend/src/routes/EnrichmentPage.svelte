@@ -21,6 +21,12 @@
   import TitleTemplateBuilder, {
     parseTemplate,
   } from "@/lib/components/enrichment/TitleTemplateBuilder.svelte"
+  import ImageTitleTemplateBuilder, {
+    parseImageTemplate,
+  } from "@/lib/components/imaging/ImageTitleTemplateBuilder.svelte"
+  import ProcessingOptions, {
+    type StudioOptions,
+  } from "@/lib/components/imaging/ProcessingOptions.svelte"
   import { saveAccountSettingsPartial } from "@/lib/accountSettings.svelte"
 
   let { appName }: { appName: string } = $props()
@@ -32,6 +38,7 @@
     { key: "instructions", label: "Instructions" },
     { key: "context", label: "Contexte boutique" },
     { key: "title", label: "Modèle de titre" },
+    { key: "imaging", label: "Imagerie" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("instructions")
@@ -54,6 +61,22 @@
     templateTokens.map((key) => `{${key}}`).join(templateSeparator),
   )
 
+  // --- Imagerie : défauts de normalisation + modèle de nom des images ---
+  let imagingOptions = $state<StudioOptions>({
+    remove_bg: true,
+    bg_color: "FFFFFF",
+    ratio: "4:5",
+    center: true,
+    format: "webp",
+    quality: 80,
+    max_kb: 300,
+  })
+  let imageTemplateTokens = $state<string[]>([])
+
+  const imageTitleTemplate = $derived(
+    imageTemplateTokens.map((key) => `{${key}}`).join(" "),
+  )
+
   $effect(() => {
     settingsReadAccountSettings().then(({ data, error }) => {
       if (error || !data) {
@@ -74,6 +97,18 @@
       editorialInstructions = data.editorial_instructions ?? ""
       clientContext = data.client_context ?? ""
       metaMaxLength = data.meta_max_length ?? 160
+      imagingOptions = {
+        remove_bg: data.imaging_remove_bg ?? true,
+        bg_color: data.imaging_bg_color ?? "FFFFFF",
+        ratio: data.imaging_ratio ?? "4:5",
+        center: data.imaging_center ?? true,
+        format: data.imaging_format ?? "webp",
+        quality: data.imaging_quality ?? 80,
+        max_kb: data.imaging_max_kb ?? 300,
+      }
+      imageTemplateTokens = data.image_title_template
+        ? parseImageTemplate(data.image_title_template)
+        : []
       accountLoaded = true
     })
   })
@@ -84,6 +119,20 @@
       toast.error("La longueur max de la meta doit être entre 50 et 320.")
       return
     }
+    const quality = Math.round(Number(imagingOptions.quality))
+    const maxKb = Math.round(Number(imagingOptions.max_kb))
+    if (!Number.isFinite(quality) || quality < 1 || quality > 100) {
+      toast.error("La qualité d'image doit être entre 1 et 100.")
+      return
+    }
+    if (!Number.isFinite(maxKb) || maxKb < 1 || maxKb > 5000) {
+      toast.error("Le poids max doit être entre 1 et 5000 Ko.")
+      return
+    }
+    if (!/^#?[0-9a-fA-F]{6}$/.test(imagingOptions.bg_color)) {
+      toast.error("La couleur de fond doit être un code hex (ex. FFFFFF).")
+      return
+    }
     savingAccount = true
     const ok = await saveAccountSettingsPartial({
       title_template: templateTokens.length > 0 ? titleTemplate : null,
@@ -91,6 +140,15 @@
       editorial_instructions: editorialInstructions.trim() || null,
       client_context: clientContext.trim() || null,
       meta_max_length: metaMax,
+      imaging_remove_bg: imagingOptions.remove_bg,
+      imaging_bg_color: imagingOptions.bg_color.replace(/^#/, "").toUpperCase(),
+      imaging_ratio: imagingOptions.ratio,
+      imaging_center: imagingOptions.center,
+      imaging_format: imagingOptions.format,
+      imaging_quality: quality,
+      imaging_max_kb: maxKb,
+      image_title_template:
+        imageTemplateTokens.length > 0 ? imageTitleTemplate : null,
     })
     savingAccount = false
     if (!ok) {
@@ -239,6 +297,49 @@
                   bind:separator={templateSeparator}
                   bind:titleCase
                 />
+              {/if}
+            </CardContent>
+          </Card>
+
+          {@render saveAccountRow()}
+        </div>
+
+        <!-- Onglet Imagerie (défauts de normalisation + nom des images) -->
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "imaging"}>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">
+                Normalisation des images
+              </CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Défauts appliqués à chaque traitement d'image (studio, panneau
+                produit et enrichissements) ; ajustables au cas par cas dans le
+                studio.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-4">
+              {#if !accountLoaded}
+                <Skeleton class="h-24 w-full" />
+              {:else}
+                <ProcessingOptions bind:options={imagingOptions} />
+              {/if}
+            </CardContent>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">Nom des images</CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Nom de fichier appliqué aux images enregistrées dans Tillin
+                (studio et enrichissements) ; un nom saisi à la main dans le
+                studio reste prioritaire.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-4">
+              {#if !accountLoaded}
+                <Skeleton class="h-16 w-full" />
+              {:else}
+                <ImageTitleTemplateBuilder bind:tokens={imageTemplateTokens} />
               {/if}
             </CardContent>
           </Card>

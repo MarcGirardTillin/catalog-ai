@@ -4,7 +4,11 @@
 // <img src> cross-origin ne le porterait pas de façon fiable).
 import {
   type ImageAssetPublic,
+  type NormalizeOptions,
+  type RenderRequest,
+  type StagedFilePublic,
   imagingReadAsset,
+  imagingRenderAsset,
   imagingSaveAsset,
   itemsNormalizeItemImageRoute,
   productsGenerateModelImage,
@@ -12,16 +16,17 @@ import {
 } from "@/client"
 import { client } from "@/client/client.gen"
 
-export type { ImageAssetPublic }
+export type { ImageAssetPublic, NormalizeOptions, RenderRequest, StagedFilePublic }
 
 export function normalizeImage(
   productId: number,
   imageUrl: string,
   productImageId: number | null,
+  options?: NormalizeOptions,
 ) {
   return productsNormalizeImage({
     path: { product_id: productId },
-    body: { image_url: imageUrl, product_image_id: productImageId },
+    body: { image_url: imageUrl, product_image_id: productImageId, options },
   })
 }
 
@@ -40,11 +45,21 @@ export function getAsset(assetId: number) {
   return imagingReadAsset({ path: { asset_id: assetId } })
 }
 
-export function saveAsset(assetId: number, replace: boolean) {
+export function saveAsset(
+  assetId: number,
+  replace: boolean,
+  filenames?: (string | null)[],
+) {
   return imagingSaveAsset({
     path: { asset_id: assetId },
-    body: { replace },
+    body: { replace, filenames },
   })
+}
+
+/** Recomposition locale (repositionnement / options) — aucun nouvel appel
+ *  provider, réponse synchrone avec l'asset à jour (`?r=` sur les previews). */
+export function renderAsset(assetId: number, body: RenderRequest) {
+  return imagingRenderAsset({ path: { asset_id: assetId }, body })
 }
 
 /** Normalise (ou rétablit) UNE image stagée d'un item d'enrichissement —
@@ -62,10 +77,12 @@ export async function fetchAssetPreviews(
   asset: ImageAssetPublic,
 ): Promise<string[]> {
   const urls: string[] = []
-  for (const [index] of (asset.preview_urls ?? []).entries()) {
+  // Les preview_urls portent un `?r={rev}` après re-render : les utiliser
+  // telles quelles évite tout cache HTTP périmé.
+  for (const previewUrl of asset.preview_urls ?? []) {
     const { data } = await client.get<{ 200: Blob }, unknown>({
       responseType: "blob",
-      url: `/imaging/assets/${asset.id}/files/${index}`,
+      url: previewUrl,
     })
     if (data instanceof Blob) urls.push(URL.createObjectURL(data))
   }
