@@ -456,7 +456,12 @@ dédié :
    « solution » à trouver = brancher le hex client sur le pipeline existant
    ET arbitrer le provider (Photoroom Plus vs alternative moins chère type
    remove-bg 0,02 $ + recadrage/centrage Pillow maison via le cutout RGBA —
-   item déjà ouvert dans le sprint imagerie).
+   item déjà ouvert dans le sprint imagerie). **Ombre produit souhaitée**
+   (échange 2026-07-12) : `/v2/edit` la génère nativement via `shadow.mode`
+   (`ai.preset-soft` / `ai.preset-hard` / `ai.auto-with-overrides`, modèle
+   2026-04-15) — même appel, inclus dans le prix. Une ombre réaliste est
+   infaisable en Pillow (fausse ombre floutée seulement) : si l'ombre est
+   retenue, l'arbitrage penche vers rester sur l'API d'édition Photoroom.
 2. **Instruction de génération FASHN** : CONFIRMÉ (docs 2026-07-12) —
    `product-to-model` accepte un `prompt` texte (ex. "professional office
    setting") ainsi que `image_prompt` (image d'inspiration pose/décor),
