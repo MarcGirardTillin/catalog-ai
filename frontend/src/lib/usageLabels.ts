@@ -18,6 +18,15 @@ export function serviceLabel(provider: string): string {
   return SERVICE_LABELS[provider] ?? "Autre"
 }
 
+/** Normalise un champ provider en libellé de service, que le payload soit
+ *  expurgé (provider = déjà un libellé, conservé tel quel) ou complet
+ *  (provider brut type "photoroom" → mappé). Un admin qui consulte la page
+ *  Consommation client reçoit le payload complet : sans cette normalisation,
+ *  les compteurs par service tombent à zéro. */
+export function toServiceLabel(provider: string): string {
+  return SERVICE_LABELS[provider] ?? provider
+}
+
 // Libellés fr des métriques techniques (repli : nom brut).
 export const METRIC_LABELS: Record<string, string> = {
   input_tokens: "Unités de texte (entrée)",

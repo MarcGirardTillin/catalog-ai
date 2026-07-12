@@ -21,7 +21,7 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
-  import { IMAGE_SERVICE_LABEL } from "@/lib/usageLabels"
+  import { IMAGE_SERVICE_LABEL, toServiceLabel } from "@/lib/usageLabels"
 
   let { appName }: { appName: string } = $props()
 
@@ -105,16 +105,17 @@
 
   // Deux compteurs client, sans vocabulaire technique : « Crédits de
   // génération » (texte + recherches, en unités opaques) et « Images
-  // traitées ». Le pivot est le libellé de service neutre renvoyé par le
-  // backend expurgé (line.provider = service).
+  // traitées ». Le pivot est le libellé de service — normalisé, car un admin
+  // reçoit ici le payload complet (providers bruts) là où un client reçoit
+  // les libellés déjà expurgés.
   const imagesTotal = $derived(
     summary?.lines
-      .filter((l) => l.provider === IMAGE_SERVICE_LABEL)
+      .filter((l) => toServiceLabel(l.provider) === IMAGE_SERVICE_LABEL)
       .reduce((acc, l) => acc + l.quantity, 0) ?? null,
   )
   const creditsTotal = $derived(
     summary?.lines
-      .filter((l) => l.provider !== IMAGE_SERVICE_LABEL)
+      .filter((l) => toServiceLabel(l.provider) !== IMAGE_SERVICE_LABEL)
       .reduce((acc, l) => acc + l.quantity, 0) ?? null,
   )
 
