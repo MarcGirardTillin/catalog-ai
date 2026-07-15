@@ -1,31 +1,27 @@
 <script lang="ts">
-  // Page Consommation (vue CLIENT, marque blanche) : montants facturables du
-  // mois, courbe quotidienne totale, détail par service et par job, export CSV.
-  // Tout ce qui est opérateur (grille tarifaire, coefficient, re-figement,
-  // vues par modèle/provider) vit dans la section /admin — et le backend
-  // expurge de toute façon les réponses des non-admins.
+  // Page Consommation (vue CLIENT, marque blanche) : modèle CRÉDITS prépayés.
+  // Solde, consommation du mois par action, courbe quotidienne en crédits,
+  // packs disponibles, mouvements du mois et historique des générations.
+  // Les montants € (coûts, marge, grille) restent réservés à la section
+  // /admin — seul le prix des packs est visible ici.
   import { createQuery } from "@tanstack/svelte-query"
-  import ChartColumn from "@lucide/svelte/icons/chart-column"
-  import Download from "@lucide/svelte/icons/download"
-  import Lock from "@lucide/svelte/icons/lock"
-  import { toast } from "svelte-sonner"
-
+  import Coins from "@lucide/svelte/icons/coins"
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { navigate } from "svelte5-router"
 
-  import { listAssets } from "@/lib/api/imaging"
   import {
-    getUsageExport,
-    getUsageSummary,
-    getUsageTimeseries,
-  } from "@/lib/api/usage"
-  import { Button } from "@/lib/components/ui/button"
+    getCredits,
+    getCreditTimeseries,
+    type CreditEntryPublic,
+  } from "@/lib/api/credits"
+  import { listAssets } from "@/lib/api/imaging"
+  import type { UsageTimeseries } from "@/lib/api/usage"
   import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import AssetThumb from "@/lib/components/imaging/AssetThumb.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
-  import { IMAGE_SERVICE_LABEL, toServiceLabel } from "@/lib/usageLabels"
 
   let { appName }: { appName: string } = $props()
 
@@ -36,30 +32,72 @@
   const currentMonth = monthOf(new Date())
   let month = $state(monthOf(new Date()))
 
-  // --- Données du mois (TanStack Query : le mois est dans la clé, changer
-  // de mois refetch automatiquement) ---
-  const summaryQuery = createQuery(() => ({
-    queryKey: ["usage", "summary", month],
+  // --- Solde + agrégats du mois (le mois est dans la clé de query) ---
+  const creditsQuery = createQuery(() => ({
+    queryKey: ["credits", month],
     queryFn: async () => {
-      const { data, error } = await getUsageSummary(month)
-      if (error || data === undefined) throw new Error("usage_summary_load_failed")
+      const { data, error } = await getCredits(month)
+      if (error || !data) throw new Error("credits_load_failed")
       return data
     },
   }))
-  const summary = $derived(summaryQuery.data ?? null)
-  const loadFailed = $derived(summaryQuery.isError)
+  const credits = $derived(creditsQuery.data ?? null)
+  const loadFailed = $derived(creditsQuery.isError)
 
-  // --- Série temporelle quotidienne (courbe totale uniquement) ---
+  // --- Série quotidienne en crédits, adaptée à la forme UsageChart ---
   const timeseriesQuery = createQuery(() => ({
-    queryKey: ["usage", "timeseries", month, "none"],
+    queryKey: ["credits", "timeseries", month],
     queryFn: async () => {
-      const { data, error } = await getUsageTimeseries(month, "none")
-      if (error || data === undefined) throw new Error("usage_timeseries_load_failed")
+      const { data, error } = await getCreditTimeseries(month)
+      if (error || !data) throw new Error("credit_timeseries_load_failed")
       return data
     },
   }))
-  const timeseries = $derived(timeseriesQuery.data ?? null)
+  const timeseries = $derived.by<UsageTimeseries | null>(() => {
+    const ts = timeseriesQuery.data
+    if (!ts) return null
+    return {
+      month: ts.month,
+      group_by: "action",
+      currency: "EUR", // ignoré : le graphique est rendu avec unit="credits"
+      series: ts.series.map((s) => ({
+        key: s.key,
+        points: s.points.map((p) => ({
+          date: p.date,
+          amount: String(p.credits ?? 0),
+          quantity: p.credits ?? 0,
+        })),
+      })),
+    }
+  })
   const tsFailed = $derived(timeseriesQuery.isError)
+
+  // --- Tuiles de consommation par action ---
+  const ACTION_TILES: { key: string; label: string }[] = [
+    { key: "import_product", label: "Produits importés" },
+    { key: "enrich_item", label: "Fiches enrichies" },
+    { key: "image_process", label: "Images traitées" },
+    { key: "image_generate", label: "Visuels générés" },
+  ]
+
+  // Alerte de solde : rouge à 0, ambre sous le seuil.
+  const balanceTone = $derived.by(() => {
+    if (!credits) return "text-foreground"
+    if (credits.balance <= 0) return "text-destructive"
+    if (credits.balance < credits.low_credit_threshold)
+      return "text-amber-600 dark:text-amber-400"
+    return "text-foreground"
+  })
+
+  const CREDIT_KIND_LABELS: Record<string, string> = {
+    purchase: "Achat de pack",
+    grant: "Crédits offerts",
+    subscription: "Crédits mensuels",
+    adjustment: "Ajustement",
+  }
+  function creditKindLabel(entry: CreditEntryPublic): string {
+    return CREDIT_KIND_LABELS[entry.kind] ?? entry.kind
+  }
 
   // --- Historique des générations mannequin du mois (revenir dessus) ---
   const generationsQuery = createQuery(() => ({
@@ -108,67 +146,13 @@
     })
   }
 
-  /** Étiquette de date longue fr-FR depuis "YYYY-MM-DD". */
-  function formatLongDate(iso: string): string {
-    const d = new Date(`${iso}T00:00:00`)
-    if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleDateString("fr-FR", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    })
-  }
-
-  // --- Formatage fr-FR ---
-  const currency = $derived(summary?.currency ?? "EUR")
-
-  /** "12,34 €" depuis une chaîne décimale JSON, "—" si null/invalide. */
-  function formatAmount(value: string | null): string {
-    if (value == null) return "—"
-    const n = Number(value)
-    if (!Number.isFinite(n)) return "—"
-    return n.toLocaleString("fr-FR", { style: "currency", currency })
-  }
-
   function formatInt(n: number): string {
     return n.toLocaleString("fr-FR")
   }
 
-  // Deux compteurs client, sans vocabulaire technique : « Crédits de
-  // génération » (texte + recherches, en unités opaques) et « Images
-  // traitées ». Le pivot est le libellé de service — normalisé, car un admin
-  // reçoit ici le payload complet (providers bruts) là où un client reçoit
-  // les libellés déjà expurgés.
-  const imagesTotal = $derived(
-    summary?.lines
-      .filter((l) => toServiceLabel(l.provider) === IMAGE_SERVICE_LABEL)
-      .reduce((acc, l) => acc + l.quantity, 0) ?? null,
-  )
-  const creditsTotal = $derived(
-    summary?.lines
-      .filter((l) => toServiceLabel(l.provider) !== IMAGE_SERVICE_LABEL)
-      .reduce((acc, l) => acc + l.quantity, 0) ?? null,
-  )
-
-  // --- Export CSV (blob → ancre de téléchargement) ---
-  let exporting = $state(false)
-
-  async function exportCsv() {
-    exporting = true
-    const { data, error } = await getUsageExport(month)
-    exporting = false
-    if (error || !(data instanceof Blob)) {
-      toast.error("Export du CSV impossible.")
-      return
-    }
-    const url = URL.createObjectURL(data)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = `consommation_${month}.csv`
-    anchor.click()
-    URL.revokeObjectURL(url)
+  function formatEur(n: number): string {
+    return n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })
   }
-
 </script>
 
 <RequireAuth>
@@ -186,15 +170,6 @@
               class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
               bind:value={month}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={exporting || summary === null}
-              onclick={exportCsv}
-            >
-              <Download size={14} aria-hidden="true" data-icon="inline-start" />
-              {exporting ? "Export…" : "Exporter le CSV"}
-            </Button>
           </div>
         </div>
 
@@ -202,8 +177,10 @@
           <p class="text-destructive text-xs" role="alert">
             Impossible de charger la consommation du mois.
           </p>
-        {:else if summary === null}
-          <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        {:else if credits === null}
+          <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <Skeleton class="h-24 w-full" />
+            <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
@@ -211,70 +188,140 @@
           <Skeleton class="h-32 w-full" />
           <Skeleton class="h-32 w-full" />
         {:else}
-          <!-- Bandeau de statut du mois (facturé ou à venir) -->
-          {#if summary.frozen}
+          <!-- Alerte solde épuisé / bas -->
+          {#if credits.balance <= 0}
             <div
-              class="border-border bg-muted/40 flex items-start gap-2.5 rounded-md border p-3 text-sm"
+              class="border-destructive/40 bg-destructive/10 flex items-start gap-2.5 rounded-md border p-3 text-sm"
+              role="alert"
             >
-              <Lock
-                size={16}
-                class="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-500"
-                aria-hidden="true"
-              />
+              <TriangleAlert size={16} class="text-destructive mt-0.5 shrink-0" aria-hidden="true" />
               <span class="font-medium">
-                Mois facturé le {formatLongDate(summary.billing_date)}.
+                Crédits épuisés — les nouveaux traitements sont bloqués.
+                Contactez-nous pour recharger votre compte.
               </span>
             </div>
-          {:else}
+          {:else if credits.balance < credits.low_credit_threshold}
             <div
-              class="border-border bg-muted/40 flex items-start gap-2.5 rounded-md border p-3 text-sm"
+              class="flex items-start gap-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
             >
-              <ChartColumn
+              <TriangleAlert
                 size={16}
-                class="text-muted-foreground mt-0.5 shrink-0"
+                class="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
                 aria-hidden="true"
               />
-              <span>Sera facturé le {formatLongDate(summary.billing_date)}.</span>
+              <span>
+                Solde bas : il vous reste {formatInt(credits.balance)} crédits.
+              </span>
             </div>
           {/if}
 
-          <!-- Cartes de synthèse -->
-          <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <!-- Solde + consommation du mois par action -->
+          <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Card size="sm">
               <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground text-xs">Consommation du mois</span>
-                <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
-                  {formatAmount(summary.totals.billable)}
+                <span class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                  <Coins size={13} aria-hidden="true" />
+                  Solde de crédits
+                </span>
+                <span class="text-2xl font-semibold tabular-nums sm:text-3xl {balanceTone}">
+                  {formatInt(credits.balance)}
                 </span>
               </CardContent>
             </Card>
-            <Card size="sm">
-              <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground text-xs">Crédits de génération</span>
-                <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
-                  {creditsTotal != null ? formatInt(creditsTotal) : "—"}
-                </span>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground text-xs">Images traitées</span>
-                <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
-                  {imagesTotal != null ? formatInt(imagesTotal) : "—"}
-                </span>
-              </CardContent>
-            </Card>
+            {#each ACTION_TILES as tile (tile.key)}
+              <Card size="sm">
+                <CardContent class="flex flex-col gap-1 py-4">
+                  <span class="text-muted-foreground text-xs">{tile.label}</span>
+                  <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
+                    {formatInt(credits.month.by_action?.[tile.key] ?? 0)}
+                  </span>
+                </CardContent>
+              </Card>
+            {/each}
           </div>
 
-          <!-- Évolution quotidienne (graphique SVG inline, total) -->
+          <!-- Évolution quotidienne des crédits consommés -->
           <Card size="sm" class="mt-1">
             <CardHeader>
-              <CardTitle class="font-title text-sm">Évolution quotidienne</CardTitle>
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <CardTitle class="font-title text-sm">Évolution quotidienne</CardTitle>
+                <span class="text-muted-foreground text-xs">
+                  {formatInt(credits.month.consumed_total ?? 0)} crédits consommés ce mois
+                </span>
+              </div>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
-              <UsageChart {timeseries} failed={tsFailed} {month} />
+              <UsageChart {timeseries} failed={tsFailed} {month} unit="credits" />
             </CardContent>
           </Card>
+
+          <!-- Packs de crédits disponibles -->
+          {#if (credits.packs ?? []).length > 0}
+            <Card size="sm" class="mt-1">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">Packs de crédits</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {#each credits.packs ?? [] as pack, index (index)}
+                    <div class="border-border flex flex-col gap-0.5 rounded-md border p-3">
+                      <span class="text-foreground text-lg font-semibold tabular-nums">
+                        {formatInt(pack.credits)} crédits
+                      </span>
+                      <span class="text-muted-foreground text-xs tabular-nums">
+                        {formatEur(pack.price_eur)}
+                      </span>
+                    </div>
+                  {/each}
+                </div>
+                <p class="text-muted-foreground mt-2 text-xs">
+                  Pour recharger votre compte, contactez votre interlocuteur —
+                  les crédits sont ajoutés à réception.
+                </p>
+              </CardContent>
+            </Card>
+          {/if}
+
+          <!-- Mouvements du mois (achats, octrois, allocation mensuelle) -->
+          {#if (credits.entries ?? []).length > 0}
+            <Card size="sm" class="mt-1">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">Mouvements du mois</CardTitle>
+              </CardHeader>
+              <CardContent class="px-0">
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-md text-sm">
+                    <thead>
+                      <tr class="border-border border-b">
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Date</th>
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Type</th>
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Libellé</th>
+                        <th class="text-muted-foreground px-4 py-2 text-right text-xs font-medium">Crédits</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each credits.entries ?? [] as entry (entry.id)}
+                        <tr class="border-border border-b last:border-b-0">
+                          <td class="text-muted-foreground px-4 py-1.5 text-xs whitespace-nowrap tabular-nums">
+                            {formatDateTime(entry.created_at)}
+                          </td>
+                          <td class="px-4 py-1.5 text-xs whitespace-nowrap">
+                            {creditKindLabel(entry)}
+                          </td>
+                          <td class="text-muted-foreground max-w-60 truncate px-4 py-1.5 text-xs">
+                            {entry.label ?? "—"}
+                          </td>
+                          <td class="px-4 py-1.5 text-right font-medium whitespace-nowrap tabular-nums {entry.credits < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}">
+                            {entry.credits > 0 ? `+${formatInt(entry.credits)}` : formatInt(entry.credits)}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          {/if}
 
           <!-- Historique des générations mannequin (revenir sur un visuel) -->
           <Card size="sm" class="mt-1">

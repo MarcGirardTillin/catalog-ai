@@ -21,6 +21,7 @@
   } from "@/client"
   import type { ItemPublic, Product } from "@/client"
   import { client } from "@/client/client.gen"
+  import { insufficientCreditsMessage } from "@/lib/api/credits"
   import { normalizeItemImage } from "@/lib/api/imaging"
   import { Button } from "@/lib/components/ui/button"
   import {
@@ -188,9 +189,10 @@
     normalizingUrl = null
     if (error || !data) {
       toast.error(
-        revert
-          ? "Impossible de rétablir l'originale."
-          : "Échec de la normalisation (service d'imagerie indisponible ?).",
+        insufficientCreditsMessage(error) ??
+          (revert
+            ? "Impossible de rétablir l'originale."
+            : "Échec de la normalisation (service d'imagerie indisponible ?)."),
       )
       return
     }

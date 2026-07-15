@@ -12,10 +12,14 @@
     timeseries,
     failed = false,
     month,
+    unit = "eur",
   }: {
     timeseries: UsageTimeseries | null
     failed?: boolean
     month: string
+    // "eur" (montants facturables) ou "credits" (crédits consommés) : ne
+    // change que le formatage des axes/infobulles, la géométrie est commune.
+    unit?: "eur" | "credits"
   } = $props()
 
   // Couleurs de séries : ordre fixe, jamais recyclé — les séries arrivent
@@ -121,16 +125,26 @@
   const showLegend = $derived((timeseries?.series.length ?? 0) > 1)
   const currency = $derived(timeseries?.currency ?? "EUR")
 
-  /** Montant court pour l'axe Y : « 12 € », « 1,2 k€ ». */
+  /** Montant court pour l'axe Y : « 12 € » / « 1,2 k€ », ou nombre nu en crédits. */
   function formatShortEur(n: number): string {
     if (!Number.isFinite(n)) return ""
+    const suffix = unit === "eur" ? "€" : ""
     if (n >= 1000) {
-      return `${(n / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} k€`
+      const compact = (n / 1000).toLocaleString("fr-FR", {
+        maximumFractionDigits: 1,
+      })
+      return suffix ? `${compact} k${suffix}` : `${compact} k`
     }
-    return `${n.toLocaleString("fr-FR", { maximumFractionDigits: n < 10 ? 1 : 0 })} €`
+    const value = n.toLocaleString("fr-FR", {
+      maximumFractionDigits: n < 10 ? 1 : 0,
+    })
+    return suffix ? `${value} ${suffix}` : value
   }
 
   function formatAmount(n: number): string {
+    if (unit === "credits") {
+      return `${n.toLocaleString("fr-FR")} crédit${n >= 2 ? "s" : ""}`
+    }
     return n.toLocaleString("fr-FR", { style: "currency", currency })
   }
 
@@ -190,7 +204,9 @@
     class="text-muted-foreground h-auto w-full"
     style="max-width:100%"
     role="img"
-    aria-label="Évolution quotidienne du montant en euros pour {month}"
+    aria-label="Évolution quotidienne {unit === 'credits'
+      ? 'des crédits consommés'
+      : 'du montant en euros'} pour {month}"
     onpointerleave={() => (hoveredDay = null)}
   >
     <!-- Graduations et axe Y -->

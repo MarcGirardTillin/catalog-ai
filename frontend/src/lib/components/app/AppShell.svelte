@@ -170,6 +170,16 @@
     return null
   }
 
+  // Pastille de solde de crédits sur « Consommation » : rouge à 0 (bloquant),
+  // ambre sous le seuil configuré pour le compte.
+  function creditDot(balance: number, threshold: number): NavDot | null {
+    if (balance <= 0)
+      return { tone: "bg-destructive", title: "Crédits épuisés" }
+    if (balance < threshold)
+      return { tone: "bg-amber-500", title: `Solde bas : ${balance} crédits` }
+    return null
+  }
+
   const navDots = $derived.by((): Record<string, NavDot | null> => {
     const s = statsQuery.data
     if (!s) return {}
@@ -184,6 +194,7 @@
         s.ready_items ?? 0,
         s.running_jobs ?? 0,
       ),
+      "/usage": creditDot(s.credit_balance ?? 0, s.low_credit_threshold ?? 0),
     }
   })
 

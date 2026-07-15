@@ -24,6 +24,7 @@
     productsListProducts,
   } from "@/client"
   import type { FilterOption, Product } from "@/client"
+  import { insufficientCreditsMessage } from "@/lib/api/credits"
   import { listPendingImagingProducts } from "@/lib/api/imaging"
   import {
     getImportProducts,
@@ -309,7 +310,10 @@
     })
     submitting = false
     if (error || !data) {
-      toast.error("Création de l'enrichissement impossible.")
+      toast.error(
+        insufficientCreditsMessage(error) ??
+          "Création de l'enrichissement impossible.",
+      )
       return
     }
     toast.success(`Enrichissement #${data.id} créé — traitement lancé`)
@@ -474,7 +478,10 @@
       },
     })
     if (error || !data) {
-      toast.error("Création de l'enrichissement impossible.")
+      toast.error(
+        insufficientCreditsMessage(error) ??
+          "Création de l'enrichissement impossible.",
+      )
       return
     }
     toast.success(`Enrichissement #${data.id} créé — traitement lancé`)

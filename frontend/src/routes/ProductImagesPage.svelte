@@ -20,6 +20,7 @@
     waitForAsset,
     type ImageAssetPublic,
   } from "@/lib/api/imaging"
+  import { insufficientCreditsMessage } from "@/lib/api/credits"
   import { getProduct } from "@/lib/api/products"
   import { Button } from "@/lib/components/ui/button"
   import {
@@ -284,7 +285,7 @@
     const { data, error } = await launch()
     if (error || !data) {
       works[key].status = "failed"
-      works[key].error = failMessage
+      works[key].error = insufficientCreditsMessage(error) ?? failMessage
       return
     }
     const final = await waitForAsset(data.id, { intervalMs: 1500 })

@@ -8,6 +8,7 @@
 
   import { onMount } from "svelte"
 
+  import { insufficientCreditsMessage } from "@/lib/api/credits"
   import {
     createImport,
     listImportProfiles,
@@ -146,7 +147,10 @@
     )
     submitting = false
     if (error || !data) {
-      toast.error("Import impossible. Vérifiez les fichiers et réessayez.")
+      toast.error(
+        insufficientCreditsMessage(error) ??
+          "Import impossible. Vérifiez les fichiers et réessayez.",
+      )
       return
     }
     const count = data.file_names?.length ?? 1
