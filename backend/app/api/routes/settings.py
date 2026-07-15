@@ -51,6 +51,13 @@ ADMIN_ONLY_SETTINGS = (
     "billing_coefficient",
     "minutes_saved_per_import_product",
     "minutes_saved_per_enriched_product",
+    "credit_cost_import_product",
+    "credit_cost_enrich_item",
+    "credit_cost_image_process",
+    "credit_cost_image_generate",
+    "monthly_free_credits",
+    "low_credit_threshold",
+    "credit_packs",
 )
 
 

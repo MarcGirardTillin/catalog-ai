@@ -12,6 +12,7 @@ from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.schemas import ImageAssetPublic, StagedFilePublic
 from app.api.schemas import NormalizeOptions as NormalizeOptionsSchema
 from app.api.schemas.settings import AccountSettings
+from app.api.services.credits import consume as consume_credits
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.db import SessionLocal
@@ -329,6 +330,13 @@ def run_normalize(
                 account_id=asset.account_id,
             )
             stage_normalize_outcome(asset, outcome)
+            consume_credits(
+                db,
+                account_id=asset.account_id,
+                action="image_process",
+                quantity=1,
+                asset_id=asset.id,
+            )
             db.commit()
         except Exception as exc:
             db.rollback()
@@ -382,6 +390,13 @@ def run_generate_model(
                     **(asset.params_json or {}),
                     "trace": results[0].trace,
                 }
+                consume_credits(
+                    db,
+                    account_id=asset.account_id,
+                    action="image_generate",
+                    quantity=len(results),
+                    asset_id=asset.id,
+                )
             db.commit()
         except Exception as exc:
             db.rollback()

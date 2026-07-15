@@ -29,6 +29,7 @@ from app.api.schemas import (
     ProductImagesUploadResult,
 )
 from app.api.services.accounts import resolve_account_id
+from app.api.services.credits import credit_grid, require_credits
 from app.api.services.imaging import (
     account_settings,
     merged_normalize_options,
@@ -159,6 +160,7 @@ def normalize_image(
     no zombie asset.
     """
     account_id = resolve_account_id(db, current_user)
+    require_credits(db, account_id, credit_grid(db, account_id)["image_process"])
     # Account imaging defaults, overridden by the explicitly-sent fields only.
     options = merged_normalize_options(db, account_id, body.options)
     asset = ImageAsset(
@@ -200,6 +202,11 @@ def generate_model_image(
     """
     account_id = resolve_account_id(db, current_user)
     options = body.options or GenerateModelOptionsSchema()
+    require_credits(
+        db,
+        account_id,
+        credit_grid(db, account_id)["image_generate"] * options.num_images,
+    )
     if options.prompt is None:
         # Instruction composée : champs explicites de la requête, repli sur
         # les réglages de génération du compte champ par champ.

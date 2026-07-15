@@ -19,6 +19,7 @@ from app.api.schemas.enrichment import (
     ItemResolveRequest,
 )
 from app.api.services.accounts import resolve_account_id
+from app.api.services.credits import credit_grid, require_credits
 from app.api.services.enrichment import (
     apply_item,
     get_item,
@@ -118,6 +119,8 @@ def normalize_item_image_route(
     resolves first: missing key = clean 503, nothing written.
     """
     account_id = resolve_account_id(db, current_user)
+    if not payload.revert:
+        require_credits(db, account_id, credit_grid(db, account_id)["image_process"])
     item = get_item(db, account_id=account_id, item_id=item_id)
     item = normalize_item_image(
         db, item, photoroom, url=payload.url, revert=payload.revert

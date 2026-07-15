@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.services.credits import consume as consume_credits
 from app.models import EnrichmentItem, EnrichmentJob
 from app.models.enrichment import MAX_ATTEMPTS
 
@@ -58,10 +59,22 @@ def claim_next_item(db: Session) -> EnrichmentItem | None:
 
 
 def complete_item(db: Session, item: EnrichmentItem) -> None:
-    """Mark a processed item as staged and ready for human review."""
+    """Mark a processed item as staged and ready for human review.
+
+    The credit debit happens here — at processing time, when the sheet
+    reaches « À vérifier » — never on fail_item.
+    """
     item.status = "ready_for_review"
     item.error = None
     item.finished_at = _utcnow()
+    consume_credits(
+        db,
+        account_id=item.account_id,
+        action="enrich_item",
+        quantity=1,
+        job_id=item.job_id,
+        item_id=item.id,
+    )
     db.commit()
     _rollup_job(db, item.job_id)
 

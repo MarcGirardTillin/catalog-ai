@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
+from app.api.services.credits import consume as consume_credits
 from app.api.services.usage import record_claude_usage
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -151,6 +152,14 @@ def _process(
     for usage in result.usage:
         record_claude_usage(
             db, account_id=job.account_id, usage=usage, source="import", job_id=job.id
+        )
+    if result.products:
+        consume_credits(
+            db,
+            account_id=job.account_id,
+            action="import_product",
+            quantity=len(result.products),
+            job_id=job.id,
         )
     config_updates: dict[str, object] = {}
     if result.warnings:

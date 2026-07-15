@@ -95,6 +95,49 @@ export const AccountSettingsSchema = {
             title: 'Billing Day',
             default: 1
         },
+        credit_cost_import_product: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Import Product',
+            default: 1
+        },
+        credit_cost_enrich_item: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Enrich Item',
+            default: 2
+        },
+        credit_cost_image_process: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Image Process',
+            default: 1
+        },
+        credit_cost_image_generate: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Image Generate',
+            default: 5
+        },
+        monthly_free_credits: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Monthly Free Credits',
+            default: 0
+        },
+        low_credit_threshold: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Low Credit Threshold',
+            default: 50
+        },
+        credit_packs: {
+            items: {
+                $ref: '#/components/schemas/CreditPack'
+            },
+            type: 'array',
+            title: 'Credit Packs'
+        },
         imaging_remove_bg: {
             type: 'boolean',
             title: 'Imaging Remove Bg',
@@ -304,6 +347,29 @@ export const AdminActivityEntrySchema = {
     ],
     title: 'AdminActivityEntry',
     description: 'One recent job/import of an account (monitoring feed).'
+} as const;
+
+export const AdminCreditsSchema = {
+    properties: {
+        balance: {
+            type: 'integer',
+            title: 'Balance'
+        },
+        entries: {
+            items: {
+                $ref: '#/components/schemas/CreditEntryPublic'
+            },
+            type: 'array',
+            title: 'Entries'
+        }
+    },
+    type: 'object',
+    required: [
+        'balance',
+        'entries'
+    ],
+    title: 'AdminCredits',
+    description: 'Admin view of one account\'s credits: balance + recent ledger.'
 } as const;
 
 export const AdminOverviewSchema = {
@@ -733,6 +799,353 @@ export const ConnectionStatusSchema = {
     description: 'Read-only Tillin/Xano connection health (no secrets).'
 } as const;
 
+export const CreditEntryPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        kind: {
+            type: 'string',
+            enum: [
+                'purchase',
+                'grant',
+                'subscription',
+                'consumption',
+                'adjustment'
+            ],
+            title: 'Kind'
+        },
+        credits: {
+            type: 'integer',
+            title: 'Credits'
+        },
+        action: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'import_product',
+                        'enrich_item',
+                        'image_process',
+                        'image_generate'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Action'
+        },
+        quantity: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Quantity'
+        },
+        unit_credits: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Unit Credits'
+        },
+        job_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Job Id'
+        },
+        item_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Item Id'
+        },
+        asset_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Asset Id'
+        },
+        label: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Label'
+        },
+        period: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Period'
+        },
+        price_eur: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Price Eur'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'kind',
+        'credits',
+        'created_at'
+    ],
+    title: 'CreditEntryPublic'
+} as const;
+
+export const CreditGrantRequestSchema = {
+    properties: {
+        credits: {
+            type: 'integer',
+            title: 'Credits',
+            description: 'Signed amount: positive credits, negative debits'
+        },
+        kind: {
+            type: 'string',
+            enum: [
+                'grant',
+                'purchase',
+                'adjustment'
+            ],
+            title: 'Kind',
+            default: 'grant'
+        },
+        label: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Label'
+        },
+        price_eur: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Price Eur'
+        }
+    },
+    type: 'object',
+    required: [
+        'credits'
+    ],
+    title: 'CreditGrantRequest',
+    description: 'Manual ledger entry recorded by the operator (grant/purchase/fix).'
+} as const;
+
+export const CreditMonthSchema = {
+    properties: {
+        month: {
+            type: 'string',
+            title: 'Month'
+        },
+        consumed_total: {
+            type: 'integer',
+            title: 'Consumed Total',
+            default: 0
+        },
+        by_action: {
+            additionalProperties: {
+                type: 'integer'
+            },
+            type: 'object',
+            title: 'By Action'
+        }
+    },
+    type: 'object',
+    required: [
+        'month'
+    ],
+    title: 'CreditMonth',
+    description: 'Consumption aggregates of one month.'
+} as const;
+
+export const CreditOverviewSchema = {
+    properties: {
+        balance: {
+            type: 'integer',
+            title: 'Balance'
+        },
+        low_credit_threshold: {
+            type: 'integer',
+            title: 'Low Credit Threshold'
+        },
+        monthly_free_credits: {
+            type: 'integer',
+            title: 'Monthly Free Credits'
+        },
+        packs: {
+            items: {
+                $ref: '#/components/schemas/CreditPack'
+            },
+            type: 'array',
+            title: 'Packs'
+        },
+        month: {
+            $ref: '#/components/schemas/CreditMonth'
+        },
+        entries: {
+            items: {
+                $ref: '#/components/schemas/CreditEntryPublic'
+            },
+            type: 'array',
+            title: 'Entries'
+        }
+    },
+    type: 'object',
+    required: [
+        'balance',
+        'low_credit_threshold',
+        'monthly_free_credits',
+        'month'
+    ],
+    title: 'CreditOverview',
+    description: 'Client view: balance, thresholds, packs and the month\'s movements.'
+} as const;
+
+export const CreditPackSchema = {
+    properties: {
+        credits: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Credits'
+        },
+        price_eur: {
+            type: 'number',
+            minimum: 0,
+            title: 'Price Eur'
+        }
+    },
+    type: 'object',
+    required: [
+        'credits',
+        'price_eur'
+    ],
+    title: 'CreditPack',
+    description: 'One purchasable credit pack shown on the client usage page.'
+} as const;
+
+export const CreditTimeseriesSchema = {
+    properties: {
+        month: {
+            type: 'string',
+            title: 'Month'
+        },
+        series: {
+            items: {
+                $ref: '#/components/schemas/CreditTimeseriesSeries'
+            },
+            type: 'array',
+            title: 'Series'
+        }
+    },
+    type: 'object',
+    required: [
+        'month',
+        'series'
+    ],
+    title: 'CreditTimeseries'
+} as const;
+
+export const CreditTimeseriesPointSchema = {
+    properties: {
+        date: {
+            type: 'string',
+            title: 'Date'
+        },
+        credits: {
+            type: 'integer',
+            title: 'Credits',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: [
+        'date'
+    ],
+    title: 'CreditTimeseriesPoint'
+} as const;
+
+export const CreditTimeseriesSeriesSchema = {
+    properties: {
+        key: {
+            type: 'string',
+            title: 'Key'
+        },
+        points: {
+            items: {
+                $ref: '#/components/schemas/CreditTimeseriesPoint'
+            },
+            type: 'array',
+            title: 'Points'
+        }
+    },
+    type: 'object',
+    required: [
+        'key',
+        'points'
+    ],
+    title: 'CreditTimeseriesSeries'
+} as const;
+
 export const DashboardStatsSchema = {
     properties: {
         applied_items: {
@@ -820,6 +1233,16 @@ export const DashboardStatsSchema = {
         minutes_saved_this_month: {
             type: 'integer',
             title: 'Minutes Saved This Month',
+            default: 0
+        },
+        credit_balance: {
+            type: 'integer',
+            title: 'Credit Balance',
+            default: 0
+        },
+        low_credit_threshold: {
+            type: 'integer',
+            title: 'Low Credit Threshold',
             default: 0
         }
     },

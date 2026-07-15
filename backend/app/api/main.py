@@ -7,6 +7,7 @@ from app.api.routes import (
     auth,
     brands,
     catalog,
+    credits,
     example,
     imaging,
     import_profiles,
@@ -39,4 +40,5 @@ api_router.include_router(stats.router)
 api_router.include_router(settings.router)
 api_router.include_router(instructions.router)
 api_router.include_router(usage.router)
+api_router.include_router(credits.router)
 api_router.include_router(admin.router)

@@ -55,6 +55,34 @@ export type AccountSettings = {
      */
     billing_day?: number;
     /**
+     * Credit Cost Import Product
+     */
+    credit_cost_import_product?: number;
+    /**
+     * Credit Cost Enrich Item
+     */
+    credit_cost_enrich_item?: number;
+    /**
+     * Credit Cost Image Process
+     */
+    credit_cost_image_process?: number;
+    /**
+     * Credit Cost Image Generate
+     */
+    credit_cost_image_generate?: number;
+    /**
+     * Monthly Free Credits
+     */
+    monthly_free_credits?: number;
+    /**
+     * Low Credit Threshold
+     */
+    low_credit_threshold?: number;
+    /**
+     * Credit Packs
+     */
+    credit_packs?: Array<CreditPack>;
+    /**
      * Imaging Remove Bg
      */
     imaging_remove_bg?: boolean;
@@ -176,6 +204,22 @@ export type AdminActivityEntry = {
      * Created At
      */
     created_at: string;
+};
+
+/**
+ * AdminCredits
+ *
+ * Admin view of one account's credits: balance + recent ledger.
+ */
+export type AdminCredits = {
+    /**
+     * Balance
+     */
+    balance: number;
+    /**
+     * Entries
+     */
+    entries: Array<CreditEntryPublic>;
 };
 
 /**
@@ -442,6 +486,199 @@ export type ConnectionStatus = {
 };
 
 /**
+ * CreditEntryPublic
+ */
+export type CreditEntryPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Kind
+     */
+    kind: 'purchase' | 'grant' | 'subscription' | 'consumption' | 'adjustment';
+    /**
+     * Credits
+     */
+    credits: number;
+    /**
+     * Action
+     */
+    action?: 'import_product' | 'enrich_item' | 'image_process' | 'image_generate' | null;
+    /**
+     * Quantity
+     */
+    quantity?: number | null;
+    /**
+     * Unit Credits
+     */
+    unit_credits?: number | null;
+    /**
+     * Job Id
+     */
+    job_id?: number | null;
+    /**
+     * Item Id
+     */
+    item_id?: number | null;
+    /**
+     * Asset Id
+     */
+    asset_id?: number | null;
+    /**
+     * Label
+     */
+    label?: string | null;
+    /**
+     * Period
+     */
+    period?: string | null;
+    /**
+     * Price Eur
+     */
+    price_eur?: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * CreditGrantRequest
+ *
+ * Manual ledger entry recorded by the operator (grant/purchase/fix).
+ */
+export type CreditGrantRequest = {
+    /**
+     * Credits
+     *
+     * Signed amount: positive credits, negative debits
+     */
+    credits: number;
+    /**
+     * Kind
+     */
+    kind?: 'grant' | 'purchase' | 'adjustment';
+    /**
+     * Label
+     */
+    label?: string | null;
+    /**
+     * Price Eur
+     */
+    price_eur?: number | null;
+};
+
+/**
+ * CreditMonth
+ *
+ * Consumption aggregates of one month.
+ */
+export type CreditMonth = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Consumed Total
+     */
+    consumed_total?: number;
+    /**
+     * By Action
+     */
+    by_action?: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * CreditOverview
+ *
+ * Client view: balance, thresholds, packs and the month's movements.
+ */
+export type CreditOverview = {
+    /**
+     * Balance
+     */
+    balance: number;
+    /**
+     * Low Credit Threshold
+     */
+    low_credit_threshold: number;
+    /**
+     * Monthly Free Credits
+     */
+    monthly_free_credits: number;
+    /**
+     * Packs
+     */
+    packs?: Array<CreditPack>;
+    month: CreditMonth;
+    /**
+     * Entries
+     */
+    entries?: Array<CreditEntryPublic>;
+};
+
+/**
+ * CreditPack
+ *
+ * One purchasable credit pack shown on the client usage page.
+ */
+export type CreditPack = {
+    /**
+     * Credits
+     */
+    credits: number;
+    /**
+     * Price Eur
+     */
+    price_eur: number;
+};
+
+/**
+ * CreditTimeseries
+ */
+export type CreditTimeseries = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Series
+     */
+    series: Array<CreditTimeseriesSeries>;
+};
+
+/**
+ * CreditTimeseriesPoint
+ */
+export type CreditTimeseriesPoint = {
+    /**
+     * Date
+     */
+    date: string;
+    /**
+     * Credits
+     */
+    credits?: number;
+};
+
+/**
+ * CreditTimeseriesSeries
+ */
+export type CreditTimeseriesSeries = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Points
+     */
+    points: Array<CreditTimeseriesPoint>;
+};
+
+/**
  * DashboardStats
  *
  * Account-scoped headline numbers for the dashboard.
@@ -510,6 +747,14 @@ export type DashboardStats = {
      * Minutes Saved This Month
      */
     minutes_saved_this_month?: number;
+    /**
+     * Credit Balance
+     */
+    credit_balance?: number;
+    /**
+     * Low Credit Threshold
+     */
+    low_credit_threshold?: number;
 };
 
 /**
@@ -4931,6 +5176,66 @@ export type UsageReadUsageTimeseriesResponses = {
 
 export type UsageReadUsageTimeseriesResponse = UsageReadUsageTimeseriesResponses[keyof UsageReadUsageTimeseriesResponses];
 
+export type CreditsReadCreditsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/credits';
+};
+
+export type CreditsReadCreditsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreditsReadCreditsError = CreditsReadCreditsErrors[keyof CreditsReadCreditsErrors];
+
+export type CreditsReadCreditsResponses = {
+    /**
+     * Successful Response
+     */
+    200: CreditOverview;
+};
+
+export type CreditsReadCreditsResponse = CreditsReadCreditsResponses[keyof CreditsReadCreditsResponses];
+
+export type CreditsReadCreditTimeseriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/credits/timeseries';
+};
+
+export type CreditsReadCreditTimeseriesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreditsReadCreditTimeseriesError = CreditsReadCreditTimeseriesErrors[keyof CreditsReadCreditTimeseriesErrors];
+
+export type CreditsReadCreditTimeseriesResponses = {
+    /**
+     * Successful Response
+     */
+    200: CreditTimeseries;
+};
+
+export type CreditsReadCreditTimeseriesResponse = CreditsReadCreditTimeseriesResponses[keyof CreditsReadCreditTimeseriesResponses];
+
 export type AdminListAccountsData = {
     body?: never;
     path?: never;
@@ -5187,6 +5492,66 @@ export type AdminReadAccountActivityResponses = {
 };
 
 export type AdminReadAccountActivityResponse = AdminReadAccountActivityResponses[keyof AdminReadAccountActivityResponses];
+
+export type AdminReadAccountCreditsData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/credits';
+};
+
+export type AdminReadAccountCreditsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountCreditsError = AdminReadAccountCreditsErrors[keyof AdminReadAccountCreditsErrors];
+
+export type AdminReadAccountCreditsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminCredits;
+};
+
+export type AdminReadAccountCreditsResponse = AdminReadAccountCreditsResponses[keyof AdminReadAccountCreditsResponses];
+
+export type AdminGrantAccountCreditsData = {
+    body: CreditGrantRequest;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/credits/grant';
+};
+
+export type AdminGrantAccountCreditsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminGrantAccountCreditsError = AdminGrantAccountCreditsErrors[keyof AdminGrantAccountCreditsErrors];
+
+export type AdminGrantAccountCreditsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminCredits;
+};
+
+export type AdminGrantAccountCreditsResponse = AdminGrantAccountCreditsResponses[keyof AdminGrantAccountCreditsResponses];
 
 export type AdminReadAccountSettingsAdminData = {
     body?: never;

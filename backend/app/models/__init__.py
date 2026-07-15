@@ -1,5 +1,6 @@
 from app.models.account import Account
 from app.models.base import Base
+from app.models.credit import CreditEntry
 from app.models.enrichment import EnrichmentItem, EnrichmentJob
 from app.models.image_asset import ImageAsset
 from app.models.import_item import ImportItem
@@ -13,6 +14,7 @@ from app.models.user import User
 __all__ = [
     "Account",
     "Base",
+    "CreditEntry",
     "EnrichmentItem",
     "EnrichmentJob",
     "ImageAsset",

@@ -24,6 +24,13 @@ class UserPreferences(BaseModel):
     products_per_page: int = Field(20, ge=10, le=100)
 
 
+class CreditPack(BaseModel):
+    """One purchasable credit pack shown on the client usage page."""
+
+    credits: int = Field(ge=1)
+    price_eur: float = Field(ge=0)
+
+
 class AccountSettings(BaseModel):
     """Boutique-level enrichment defaults (stored on account.settings_json)."""
 
@@ -52,6 +59,19 @@ class AccountSettings(BaseModel):
     # prices frozen) on this day of the FOLLOWING month. 1 = frozen as soon
     # as the month rolls over.
     billing_day: int = Field(1, ge=1, le=28)
+    # --- Crédits prépayés (grille par action, admin-only) : 1 crédit = la
+    # valeur faciale vendue au client ; le solde décrémente à chaque action
+    # et les lancements sont refusés (402) à solde insuffisant. ---
+    credit_cost_import_product: int = Field(1, ge=0)
+    credit_cost_enrich_item: int = Field(2, ge=0)
+    credit_cost_image_process: int = Field(1, ge=0)
+    credit_cost_image_generate: int = Field(5, ge=0)
+    # Free credits granted once per month (subscription perk); 0 = none.
+    monthly_free_credits: int = Field(0, ge=0)
+    # Below this balance the client UI shows a low-credit warning.
+    low_credit_threshold: int = Field(50, ge=0)
+    # Purchasable packs shown to the client (bookkeeping stays manual).
+    credit_packs: list[CreditPack] = Field(default_factory=list)
     # --- Imaging: the boutique's normalization defaults (à la carte) ---
     imaging_remove_bg: bool = True
     imaging_bg_color: str = Field("FFFFFF", pattern=r"^#?[0-9a-fA-F]{6}$")

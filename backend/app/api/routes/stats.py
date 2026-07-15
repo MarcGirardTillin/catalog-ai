@@ -10,6 +10,7 @@ from app.api.deps import CurrentUserDep, SessionDep
 from app.api.schemas.settings import AccountSettings
 from app.api.schemas.stats import DashboardStats
 from app.api.services.accounts import resolve_account_id
+from app.api.services.credits import balance as credit_balance
 from app.models import Account, EnrichmentItem, EnrichmentJob, ImportItem
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -128,6 +129,8 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
         applied_this_month=applied_this_month,
         imported_this_month=imported_this_month,
         minutes_saved_this_month=minutes_saved,
+        credit_balance=credit_balance(db, account_id),
+        low_credit_threshold=settings.low_credit_threshold,
     )
 
 

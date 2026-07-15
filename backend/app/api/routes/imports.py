@@ -51,6 +51,7 @@ from app.api.schemas.imports import (
 )
 from app.api.schemas.settings import AccountSettings
 from app.api.services.accounts import resolve_account_id
+from app.api.services.credits import require_credits
 from app.core.config import settings
 from app.enrich.pipeline import DEFAULT_TITLE_TEMPLATE
 from app.imports.schema import ImportedProduct
@@ -222,6 +223,9 @@ def create_import(
         prepared.append((original_name, data))
 
     account_id = resolve_account_id(db, current_user)
+    # Product count is unknown before extraction: require a positive balance
+    # (the actual debit happens per extracted product, in the runner).
+    require_credits(db, account_id, 1)
     config: dict[str, object] = {}
     if location_id is not None:
         config["location_id"] = location_id

@@ -10,6 +10,7 @@ from app.api.deps import CurrentUserDep, JobRunnerDep, SessionDep
 from app.api.schemas import PaginatedResponse
 from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobPublic
 from app.api.services.accounts import resolve_account_id
+from app.api.services.credits import credit_grid, require_credits
 from app.api.services.enrichment import (
     create_job,
     get_job,
@@ -70,10 +71,17 @@ def create_enrichment_job(
     """Create a job, enqueue its items, and kick off processing in the
     background (the response returns at once; the worker drains after)."""
     account_id = resolve_account_id(db, current_user)
+    selection = payload.selection.model_dump(exclude_none=True)
+    # Refuse the launch before any write when the balance cannot cover the
+    # sheets (images consumed along the way are not pre-charged).
+    n_items = len(selection.get("ids") or [])
+    require_credits(
+        db, account_id, n_items * credit_grid(db, account_id)["enrich_item"]
+    )
     job = create_job(
         db,
         account_id=account_id,
-        selection=payload.selection.model_dump(exclude_none=True),
+        selection=selection,
         config=payload.config,
     )
     background.add_task(run_job, job.id)

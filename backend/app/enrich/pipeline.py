@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
+from app.api.services.credits import consume as consume_credits
 from app.api.services.imaging import account_normalize_service_defaults
 from app.api.services.usage import record_claude_usage, record_usage
 from app.clients.base import ExternalServiceError
@@ -180,6 +181,15 @@ def normalize_staged_entry(
     asset.status = "completed"
     asset.finished_at = datetime.now(UTC)
     asset.params_json = {**(asset.params_json or {}), "trace": result.trace}
+    consume_credits(
+        db,
+        account_id=item.account_id,
+        action="image_process",
+        quantity=1,
+        job_id=item.job_id,
+        item_id=item.id,
+        asset_id=asset.id,
+    )
     return {
         "url": f"/imaging/assets/{asset.id}/files/0",
         "position": position,

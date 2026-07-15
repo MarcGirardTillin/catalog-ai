@@ -40,3 +40,7 @@ class DashboardStats(BaseModel):
     # imported × minutes_saved_per_import_product +
     # applied × minutes_saved_per_enriched_product (account settings).
     minutes_saved_this_month: int = 0
+
+    # --- Crédits prépayés (pastille solde dans la navigation) ---
+    credit_balance: int = 0
+    low_credit_threshold: int = 0

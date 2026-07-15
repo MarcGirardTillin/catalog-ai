@@ -17,7 +17,7 @@ from app.imports.schema import (
     ImportedVariant,
     RawDocument,
 )
-from app.models import Account, EnrichmentJob, ImportItem, UsageEvent
+from app.models import Account, CreditEntry, EnrichmentJob, ImportItem, UsageEvent
 
 
 @pytest.fixture
@@ -165,6 +165,12 @@ def test_run_import_job_stages_items_usage_and_warnings(
         == ("import", "claude", "claude-test-1", job.id, None)
         for e in events
     )
+
+    # Credit hook: 2 extracted products × 1 credit, debited with the commit.
+    credit_rows = runner_db.query(CreditEntry).all()
+    assert [
+        (c.kind, c.action, c.credits, c.quantity, c.job_id) for c in credit_rows
+    ] == [("consumption", "import_product", -2, 2, job.id)]
 
 
 def test_run_import_job_multi_file_passes_all_documents(

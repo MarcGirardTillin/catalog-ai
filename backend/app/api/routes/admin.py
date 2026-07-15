@@ -30,11 +30,18 @@ from app.api.schemas.admin import (
     AdminOverviewLine,
     AdminUsageMetric,
 )
+from app.api.schemas.credits import (
+    AdminCredits,
+    CreditEntryPublic,
+    CreditGrantRequest,
+)
 from app.api.schemas.settings import AccountSettings
 from app.api.schemas.usage import UsageByJob, UsageSummary, UsageTimeseries
 from app.api.services.accounts import resolve_account_id
+from app.api.services.credits import balance as credit_balance
 from app.models import (
     Account,
+    CreditEntry,
     EnrichmentItem,
     EnrichmentJob,
     ImportItem,
@@ -341,6 +348,58 @@ def read_account_activity(
             )
         )
     return AdminAccountActivity(account_id=account_id, entries=entries)
+
+
+@router.get("/accounts/{account_id}/credits", response_model=AdminCredits)
+def read_account_credits(
+    account_id: int, db: SessionDep, _current_user: CurrentAdminDep
+) -> AdminCredits:
+    """One account's credit balance + last ledger entries (all kinds)."""
+    _get_account(db, account_id)
+    entries = db.scalars(
+        select(CreditEntry)
+        .where(CreditEntry.account_id == account_id)
+        .order_by(CreditEntry.id.desc())
+        .limit(50)
+    ).all()
+    return AdminCredits(
+        balance=credit_balance(db, account_id),
+        entries=[
+            CreditEntryPublic.model_validate(entry, from_attributes=True)
+            for entry in entries
+        ],
+    )
+
+
+@router.post("/accounts/{account_id}/credits/grant", response_model=AdminCredits)
+def grant_account_credits(
+    account_id: int,
+    payload: CreditGrantRequest,
+    db: SessionDep,
+    current_user: CurrentAdminDep,
+) -> AdminCredits:
+    """Record a manual ledger entry (grant / pack purchase / adjustment).
+
+    `credits` is signed: a negative adjustment removes credits. Pack purchases
+    are bookkept here by the operator — no online payment in this scope.
+    """
+    _get_account(db, account_id)
+    if payload.credits == 0:
+        raise AppException(
+            status_code=422, code="empty_grant", message="credits must be non-zero"
+        )
+    db.add(
+        CreditEntry(
+            account_id=account_id,
+            kind=payload.kind,
+            credits=payload.credits,
+            label=payload.label,
+            price_eur=payload.price_eur,
+            created_by=current_user.id,
+        )
+    )
+    db.commit()
+    return read_account_credits(account_id, db, current_user)
 
 
 @router.get("/accounts/{account_id}/settings", response_model=AccountSettings)
