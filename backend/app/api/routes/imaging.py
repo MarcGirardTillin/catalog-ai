@@ -17,6 +17,7 @@ from app.api.schemas import (
     AssetSaveRequest,
     AssetSaveResult,
     ImageAssetPublic,
+    PendingImagingProducts,
     RenderRequest,
 )
 from app.api.services.accounts import resolve_account_id
@@ -25,7 +26,9 @@ from app.api.services.imaging import (
     account_settings,
     file_by_role,
     get_asset,
+    list_assets,
     output_files,
+    pending_product_ids,
     to_public,
 )
 from app.imaging import staging
@@ -38,6 +41,43 @@ router = APIRouter(
     tags=["imaging"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@router.get("/assets", response_model=list[ImageAssetPublic])
+def list_imaging_assets(
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    product_id: int | None = None,
+    verb: str | None = None,
+    pending: bool | None = None,
+    month: str | None = None,
+) -> list[ImageAssetPublic]:
+    """Account-scoped asset listing (studio rehydration + generation history).
+
+    `pending=true` = completed and not yet saved to Tillin nor discarded;
+    `month` = YYYY-MM on created_at.
+    """
+    account_id = resolve_account_id(db, current_user)
+    assets = list_assets(
+        db,
+        account_id=account_id,
+        product_id=product_id,
+        verb=verb,
+        pending=pending,
+        month=month,
+    )
+    return [to_public(asset) for asset in assets]
+
+
+@router.get("/assets/pending-products", response_model=PendingImagingProducts)
+def list_pending_products(
+    db: SessionDep, current_user: CurrentUserDep
+) -> PendingImagingProducts:
+    """Product ids with at least one asset to review (catalog row badge)."""
+    account_id = resolve_account_id(db, current_user)
+    return PendingImagingProducts(
+        product_ids=pending_product_ids(db, account_id=account_id)
+    )
 
 
 @router.get("/assets/{asset_id}", response_model=ImageAssetPublic)
@@ -181,6 +221,36 @@ def render_asset(
     params["render_rev"] = int(params.get("render_rev") or 0) + 1
     asset.params_json = params
     db.commit()
+    db.refresh(asset)
+    return to_public(asset)
+
+
+@router.post("/assets/{asset_id}/discard", response_model=ImageAssetPublic)
+def discard_asset(
+    asset_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> ImageAssetPublic:
+    """Écarte un résultat non enregistré : purge le staging, garde la trace.
+
+    La ligne reste (historique des générations) avec status="discarded" ;
+    seuls les résultats terminés et non enregistrés peuvent être écartés.
+    """
+    account_id = resolve_account_id(db, current_user)
+    asset = get_asset(db, account_id=account_id, asset_id=asset_id)
+    if asset.tillin_image_ids_json is not None:
+        raise AppException(
+            status_code=409,
+            code="asset_already_saved",
+            message="This asset was already saved to Tillin",
+        )
+    if asset.status not in ("completed", "failed"):
+        raise AppException(
+            status_code=409,
+            code="asset_not_completed",
+            message="Only finished assets can be discarded",
+        )
+    asset.status = "discarded"
+    db.commit()
+    staging.purge_asset(asset.id)
     db.refresh(asset)
     return to_public(asset)
 

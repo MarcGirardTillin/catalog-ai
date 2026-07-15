@@ -705,6 +705,22 @@ export type ImageAssetPublic = {
      */
     can_render?: boolean;
     /**
+     * Saved
+     */
+    saved?: boolean;
+    /**
+     * Render Offset X
+     */
+    render_offset_x?: number;
+    /**
+     * Render Offset Y
+     */
+    render_offset_y?: number;
+    /**
+     * Render Scale
+     */
+    render_scale?: number;
+    /**
      * Source Image
      */
     source_image?: string | null;
@@ -2046,6 +2062,18 @@ export type PasswordChangeRequest = {
 };
 
 /**
+ * PendingImagingProducts
+ *
+ * Products with at least one completed, unsaved asset (catalog badge).
+ */
+export type PendingImagingProducts = {
+    /**
+     * Product Ids
+     */
+    product_ids?: Array<number>;
+};
+
+/**
  * Product
  *
  * Canonical product as consumed by the enrichment/intake engine.
@@ -3025,6 +3053,75 @@ export type ProductsGenerateModelImageResponses = {
 
 export type ProductsGenerateModelImageResponse = ProductsGenerateModelImageResponses[keyof ProductsGenerateModelImageResponses];
 
+export type ImagingListImagingAssetsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Product Id
+         */
+        product_id?: number | null;
+        /**
+         * Verb
+         */
+        verb?: string | null;
+        /**
+         * Pending
+         */
+        pending?: boolean | null;
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/imaging/assets';
+};
+
+export type ImagingListImagingAssetsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingListImagingAssetsError = ImagingListImagingAssetsErrors[keyof ImagingListImagingAssetsErrors];
+
+export type ImagingListImagingAssetsResponses = {
+    /**
+     * Response Imaging-List Imaging Assets
+     *
+     * Successful Response
+     */
+    200: Array<ImageAssetPublic>;
+};
+
+export type ImagingListImagingAssetsResponse = ImagingListImagingAssetsResponses[keyof ImagingListImagingAssetsResponses];
+
+export type ImagingListPendingProductsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/imaging/assets/pending-products';
+};
+
+export type ImagingListPendingProductsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingListPendingProductsError = ImagingListPendingProductsErrors[keyof ImagingListPendingProductsErrors];
+
+export type ImagingListPendingProductsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PendingImagingProducts;
+};
+
+export type ImagingListPendingProductsResponse = ImagingListPendingProductsResponses[keyof ImagingListPendingProductsResponses];
+
 export type ImagingReadAssetData = {
     body?: never;
     path: {
@@ -3116,6 +3213,36 @@ export type ImagingRenderAssetResponses = {
 };
 
 export type ImagingRenderAssetResponse = ImagingRenderAssetResponses[keyof ImagingRenderAssetResponses];
+
+export type ImagingDiscardAssetData = {
+    body?: never;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/discard';
+};
+
+export type ImagingDiscardAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingDiscardAssetError = ImagingDiscardAssetErrors[keyof ImagingDiscardAssetErrors];
+
+export type ImagingDiscardAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ImagingDiscardAssetResponse = ImagingDiscardAssetResponses[keyof ImagingDiscardAssetResponses];
 
 export type ImagingSaveAssetData = {
     body: AssetSaveRequest;

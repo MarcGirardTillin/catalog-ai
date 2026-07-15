@@ -8,6 +8,7 @@ from app.api.schemas.imaging import (
     ImageAssetPublic,
     NormalizeOptions,
     NormalizeRequest,
+    PendingImagingProducts,
     RenderRequest,
     StagedFilePublic,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "NormalizeRequest",
     "PaginatedResponse",
     "PaginationParams",
+    "PendingImagingProducts",
     "Product",
     "ProductImage",
     "ProductImagesUploadResult",

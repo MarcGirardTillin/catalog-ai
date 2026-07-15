@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -100,17 +101,21 @@ def _make_asset(
     staged_paths: list[str] | None = None,
     source_product_image_id: int | None = None,
     tillin_image_ids: list[int] | None = None,
+    product_id: int = 101,
+    account_id: int | None = None,
 ) -> int:
     db = _db(factory)
     try:
-        account = db.scalar(select(Account))
-        if account is None:
-            account = Account(name="default")
-            db.add(account)
-            db.commit()
+        if account_id is None:
+            account = db.scalar(select(Account))
+            if account is None:
+                account = Account(name="default")
+                db.add(account)
+                db.commit()
+            account_id = account.id
         asset = ImageAsset(
-            account_id=account.id,
-            product_id=101,
+            account_id=account_id,
+            product_id=product_id,
             verb=verb,
             provider="photoroom",
             status=status,
@@ -744,3 +749,111 @@ def test_save_409_when_not_completed(
 
     assert response.status_code == 409
     assert response.json()["code"] == "asset_not_completed"
+
+
+# ---- GET /imaging/assets (listing) + pending-products + discard ----
+
+
+def test_list_assets_filters_pending_verb_and_product(
+    auth_client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    pending_101 = _make_asset(db_session_factory, product_id=101)
+    _make_asset(db_session_factory, product_id=101, tillin_image_ids=[9])  # saved
+    _make_asset(db_session_factory, product_id=101, status="failed")
+    gen_202 = _make_asset(db_session_factory, product_id=202, verb="generate_model")
+
+    body = auth_client.get("/imaging/assets", params={"pending": True}).json()
+    assert {a["id"] for a in body} == {pending_101, gen_202}
+    assert all(a["saved"] is False for a in body)
+
+    body = auth_client.get(
+        "/imaging/assets", params={"pending": True, "product_id": 101}
+    ).json()
+    assert [a["id"] for a in body] == [pending_101]
+
+    body = auth_client.get("/imaging/assets", params={"verb": "generate_model"}).json()
+    assert [a["id"] for a in body] == [gen_202]
+
+    # Full listing exposes the saved flag for the history view.
+    saved_flags = {
+        a["id"]: a["saved"] for a in auth_client.get("/imaging/assets").json()
+    }
+    assert saved_flags[pending_101] is False
+    assert sum(1 for saved in saved_flags.values() if saved) == 1
+
+
+def test_list_assets_month_filter_and_validation(
+    auth_client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    asset_id = _make_asset(db_session_factory)
+    month = datetime.now(UTC).strftime("%Y-%m")
+
+    body = auth_client.get("/imaging/assets", params={"month": month}).json()
+    assert [a["id"] for a in body] == [asset_id]
+    assert auth_client.get("/imaging/assets", params={"month": "1999-01"}).json() == []
+    response = auth_client.get("/imaging/assets", params={"month": "not-a-month"})
+    assert response.status_code == 422
+
+
+def test_pending_products_lists_distinct_product_ids(
+    auth_client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    _make_asset(db_session_factory, product_id=101)
+    _make_asset(db_session_factory, product_id=101)  # same product, one badge
+    _make_asset(db_session_factory, product_id=202, verb="generate_model")
+    _make_asset(db_session_factory, product_id=303, tillin_image_ids=[1])  # saved
+    _make_asset(db_session_factory, product_id=404, status="failed")
+
+    body = auth_client.get("/imaging/assets/pending-products").json()
+    assert body == {"product_ids": [101, 202]}
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_discard_purges_staging_and_leaves_history(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    override_xano: Callable[[Handler], None],
+    staging_dir: Path,
+) -> None:
+    override_photoroom(lambda r: httpx.Response(200, content=cutout_png()))
+    # Xano ne doit jamais être appelé : la garde 409 arrive avant l'upload.
+    override_xano(lambda r: httpx.Response(500))
+    asset_id = _normalized_asset_id(auth_client)
+    assert (staging_dir / str(asset_id)).exists()
+
+    response = auth_client.post(f"/imaging/assets/{asset_id}/discard")
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "discarded"
+    # Staging purged, row kept, excluded from the pending views.
+    assert not (staging_dir / str(asset_id)).exists()
+    assert auth_client.get("/imaging/assets", params={"pending": True}).json() == []
+    assert auth_client.get("/imaging/assets/pending-products").json() == {
+        "product_ids": []
+    }
+    history = auth_client.get("/imaging/assets").json()
+    assert [a["id"] for a in history] == [asset_id]
+    # A discarded asset can be neither saved nor re-rendered.
+    save = auth_client.post(f"/imaging/assets/{asset_id}/save", json={})
+    assert (save.status_code, save.json()["code"]) == (409, "asset_not_completed")
+    render = auth_client.post(
+        f"/imaging/assets/{asset_id}/render",
+        json={"offset_x": 0, "offset_y": 0, "scale": 1},
+    )
+    assert (render.status_code, render.json()["code"]) == (409, "asset_not_completed")
+
+
+def test_discard_guards(
+    auth_client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    saved = _make_asset(db_session_factory, tillin_image_ids=[7])
+    response = auth_client.post(f"/imaging/assets/{saved}/discard")
+    assert (response.status_code, response.json()["code"]) == (
+        409,
+        "asset_already_saved",
+    )
+    running = _make_asset(db_session_factory, status="processing")
+    response = auth_client.post(f"/imaging/assets/{running}/discard")
+    assert (response.status_code, response.json()["code"]) == (
+        409,
+        "asset_not_completed",
+    )

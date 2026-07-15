@@ -1159,6 +1159,26 @@ export const ImageAssetPublicSchema = {
             title: 'Can Render',
             default: false
         },
+        saved: {
+            type: 'boolean',
+            title: 'Saved',
+            default: false
+        },
+        render_offset_x: {
+            type: 'integer',
+            title: 'Render Offset X',
+            default: 0
+        },
+        render_offset_y: {
+            type: 'integer',
+            title: 'Render Offset Y',
+            default: 0
+        },
+        render_scale: {
+            type: 'number',
+            title: 'Render Scale',
+            default: 1
+        },
         source_image: {
             anyOf: [
                 {
@@ -3551,6 +3571,21 @@ export const PasswordChangeRequestSchema = {
         'new_password'
     ],
     title: 'PasswordChangeRequest'
+} as const;
+
+export const PendingImagingProductsSchema = {
+    properties: {
+        product_ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            title: 'Product Ids'
+        }
+    },
+    type: 'object',
+    title: 'PendingImagingProducts',
+    description: 'Products with at least one completed, unsaved asset (catalog badge).'
 } as const;
 
 export const ProductSchema = {

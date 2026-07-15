@@ -719,6 +719,174 @@
         }
       }
     },
+    "/imaging/assets": {
+      "get": {
+        "tags": [
+          "imaging"
+        ],
+        "summary": "List Imaging Assets",
+        "description": "Account-scoped asset listing (studio rehydration + generation history).\n\n`pending=true` = completed and not yet saved to Tillin nor discarded;\n`month` = YYYY-MM on created_at.",
+        "operationId": "imaging-list_imaging_assets",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "verb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verb"
+            }
+          },
+          {
+            "name": "pending",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImageAssetPublic"
+                  },
+                  "title": "Response Imaging-List Imaging Assets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imaging/assets/pending-products": {
+      "get": {
+        "tags": [
+          "imaging"
+        ],
+        "summary": "List Pending Products",
+        "description": "Product ids with at least one asset to review (catalog row badge).",
+        "operationId": "imaging-list_pending_products",
+        "parameters": [
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingImagingProducts"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/imaging/assets/{asset_id}": {
       "get": {
         "tags": [
@@ -889,6 +1057,65 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAssetPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imaging/assets/{asset_id}/discard": {
+      "post": {
+        "tags": [
+          "imaging"
+        ],
+        "summary": "Discard Asset",
+        "description": "Écarte un résultat non enregistré : purge le staging, garde la trace.\n\nLa ligne reste (historique des générations) avec status=\"discarded\" ;\nseuls les résultats terminés et non enregistrés peuvent être écartés.",
+        "operationId": "imaging-discard_asset",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6275,6 +6502,26 @@
             "title": "Can Render",
             "default": false
           },
+          "saved": {
+            "type": "boolean",
+            "title": "Saved",
+            "default": false
+          },
+          "render_offset_x": {
+            "type": "integer",
+            "title": "Render Offset X",
+            "default": 0
+          },
+          "render_offset_y": {
+            "type": "integer",
+            "title": "Render Offset Y",
+            "default": 0
+          },
+          "render_scale": {
+            "type": "number",
+            "title": "Render Scale",
+            "default": 1.0
+          },
           "source_image": {
             "anyOf": [
               {
@@ -8620,6 +8867,20 @@
           "new_password"
         ],
         "title": "PasswordChangeRequest"
+      },
+      "PendingImagingProducts": {
+        "properties": {
+          "product_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Product Ids"
+          }
+        },
+        "type": "object",
+        "title": "PendingImagingProducts",
+        "description": "Products with at least one completed, unsaved asset (catalog badge)."
       },
       "Product": {
         "properties": {

@@ -8,6 +8,9 @@ import {
   type NormalizeOptions,
   type RenderRequest,
   type StagedFilePublic,
+  imagingDiscardAsset,
+  imagingListImagingAssets,
+  imagingListPendingProducts,
   imagingReadAsset,
   imagingRenderAsset,
   imagingSaveAsset,
@@ -51,6 +54,27 @@ export function generateModelImage(
 
 export function getAsset(assetId: number) {
   return imagingReadAsset({ path: { asset_id: assetId } })
+}
+
+/** Listing des assets du compte (réhydratation studio, historique).
+ *  `pending` = terminés mais ni enregistrés ni écartés. */
+export function listAssets(query: {
+  product_id?: number
+  verb?: "normalize" | "generate_model"
+  pending?: boolean
+  month?: string
+}) {
+  return imagingListImagingAssets({ query })
+}
+
+/** Ids produits ayant au moins un visuel studio à vérifier (pastille). */
+export function listPendingImagingProducts() {
+  return imagingListPendingProducts()
+}
+
+/** Écarte un résultat non enregistré (purge le staging, garde la trace). */
+export function discardAsset(assetId: number) {
+  return imagingDiscardAsset({ path: { asset_id: assetId } })
 }
 
 export function saveAsset(

@@ -4,7 +4,9 @@ One table, three jobs: async task tracking (the generative verb runs in a
 FastAPI BackgroundTask), provenance trace (provider + model + seed + params)
 and audit (which Tillin images were created / replaced).
 
-State machine: pending -> processing -> completed | failed.
+State machine: pending -> processing -> completed | failed, then
+completed/failed -> discarded when the user dismisses an unsaved result
+(the row is kept for the generation history; the staging is purged).
 """
 
 from datetime import datetime
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 
-ASSET_STATUSES = ("pending", "processing", "completed", "failed")
+ASSET_STATUSES = ("pending", "processing", "completed", "failed", "discarded")
 
 
 class ImageAsset(Base):

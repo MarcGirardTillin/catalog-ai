@@ -94,10 +94,23 @@ class ImageAssetPublic(BaseModel):
     # True when a staged cutout/source allows POST /render (reposition, new
     # options) without a new provider call.
     can_render: bool = False
+    # True once the asset was pushed to Tillin (history: « Enregistrée »).
+    saved: bool = False
+    # Last applied reposition (POST /render) — lets the studio rehydrate the
+    # drag state without jumping back to the origin on the next render.
+    render_offset_x: int = 0
+    render_offset_y: int = 0
+    render_scale: float = 1.0
     source_image: str | None = None
     source_product_image_id: int | None = None
     created_at: datetime
     finished_at: datetime | None = None
+
+
+class PendingImagingProducts(BaseModel):
+    """Products with at least one completed, unsaved asset (catalog badge)."""
+
+    product_ids: list[int] = Field(default_factory=list)
 
 
 class RenderRequest(BaseModel):

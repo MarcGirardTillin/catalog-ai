@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
@@ -68,6 +69,7 @@ def to_public(asset: ImageAsset) -> ImageAssetPublic:
     render_rev = int((asset.params_json or {}).get("render_rev") or 0)
     suffix = f"?r={render_rev}" if render_rev else ""
     source_entry = file_by_role(asset, "source")
+    render = (asset.params_json or {}).get("render") or {}
     return ImageAssetPublic(
         id=asset.id,
         product_id=asset.product_id,
@@ -100,6 +102,10 @@ def to_public(asset: ImageAsset) -> ImageAssetPublic:
             and asset.tillin_image_ids_json is None
             and (file_by_role(asset, "cutout") is not None or source_entry is not None)
         ),
+        saved=asset.tillin_image_ids_json is not None,
+        render_offset_x=int(render.get("offset_x") or 0),
+        render_offset_y=int(render.get("offset_y") or 0),
+        render_scale=float(render.get("scale") or 1.0),
         source_image=asset.source_image,
         source_product_image_id=asset.source_product_image_id,
         created_at=asset.created_at,
@@ -115,6 +121,73 @@ def get_asset(db: Session, *, account_id: int, asset_id: int) -> ImageAsset:
             status_code=404, code="not_found", message="Image asset not found"
         )
     return asset
+
+
+def _not_saved() -> Any:
+    """Filtre « jamais poussé vers Tillin » : la colonne JSON stocke le None
+    Python comme JSON null (pas SQL NULL), il faut tester les deux formes.
+    Le cast texte est portable : Postgres n'a pas d'opérateur `json = json`."""
+    return or_(
+        ImageAsset.tillin_image_ids_json.is_(None),
+        cast(ImageAsset.tillin_image_ids_json, String) == "null",
+    )
+
+
+def list_assets(
+    db: Session,
+    *,
+    account_id: int,
+    product_id: int | None = None,
+    verb: str | None = None,
+    pending: bool | None = None,
+    month: str | None = None,
+    limit: int = 100,
+) -> list[ImageAsset]:
+    """Account-scoped asset listing, newest first.
+
+    `pending=True` = terminé mais pas encore enregistré vers Tillin ni écarté
+    (c'est la définition « studio à vérifier »). `month` = "YYYY-MM" sur
+    created_at (UTC).
+    """
+    query = select(ImageAsset).where(ImageAsset.account_id == account_id)
+    if product_id is not None:
+        query = query.where(ImageAsset.product_id == product_id)
+    if verb is not None:
+        query = query.where(ImageAsset.verb == verb)
+    if pending:
+        query = query.where(ImageAsset.status == "completed", _not_saved())
+    if month:
+        try:
+            start = datetime.strptime(month, "%Y-%m").replace(tzinfo=UTC)
+        except ValueError:
+            raise AppException(
+                status_code=422,
+                code="validation_error",
+                message="month must be formatted YYYY-MM",
+            )
+        end = (
+            start.replace(year=start.year + 1, month=1)
+            if start.month == 12
+            else start.replace(month=start.month + 1)
+        )
+        query = query.where(ImageAsset.created_at >= start, ImageAsset.created_at < end)
+    query = query.order_by(ImageAsset.created_at.desc(), ImageAsset.id.desc())
+    return list(db.scalars(query.limit(limit)).all())
+
+
+def pending_product_ids(db: Session, *, account_id: int) -> list[int]:
+    """Product ids having at least one asset « à vérifier » (pastille catalogue)."""
+    rows = db.scalars(
+        select(ImageAsset.product_id)
+        .where(
+            ImageAsset.account_id == account_id,
+            ImageAsset.status == "completed",
+            _not_saved(),
+        )
+        .distinct()
+        .order_by(ImageAsset.product_id)
+    ).all()
+    return list(rows)
 
 
 def to_service_options(options: GenerateModelOptionsSchema) -> GenerateModelOptions:
