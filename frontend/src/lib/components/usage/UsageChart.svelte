@@ -2,8 +2,9 @@
   // Graphique « Évolution quotidienne » de la consommation : barres empilées
   // par jour, une couleur par série (total seul, par service ou par modèle
   // selon le group_by demandé au backend). SVG inline, viewBox fixe rendu
-  // responsive, tooltips natifs <title> par segment, légende sous le
-  // graphique dès qu'il y a plus d'une série.
+  // responsive, infobulle riche au survol (toutes les séries du jour +
+  // total, cible = toute la colonne du jour), légende sous le graphique dès
+  // qu'il y a plus d'une série.
   import type { UsageTimeseries } from "@/lib/api/usage"
   import { Skeleton } from "@/lib/components/ui/skeleton"
 
@@ -139,6 +140,36 @@
     const d = new Date(y, (m ?? 1) - 1, day)
     return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
   }
+
+  // --- Survol : un jour ciblé = toutes ses séries dans l'infobulle ---
+  let hoveredDay = $state<number | null>(null)
+
+  const hoverInfo = $derived.by(() => {
+    const c = chart
+    if (hoveredDay === null || !c) return null
+    const segments = c.stacks.get(hoveredDay)
+    if (!segments || segments.length === 0) return null
+    const total = segments.reduce((acc, s) => acc + s.amount, 0)
+    const x = xForDay(hoveredDay, c.n)
+    const yTop = Math.min(...segments.map((s) => s.y1))
+    return {
+      day: hoveredDay,
+      // Ordre de lecture = ordre visuel : du haut de la pile vers le bas.
+      segments: [...segments].reverse(),
+      total,
+      x,
+      yTop,
+      // Position % dans le conteneur (le SVG occupe 100% de sa largeur) ;
+      // bornée pour que l'infobulle ne sorte ni des côtés ni du haut.
+      leftPct: Math.min(82, Math.max(18, (x / CW) * 100)),
+      topPct: Math.max(35, (yTop / CH) * 100),
+    }
+  })
+
+  /** Largeur de la zone de survol d'un jour (plus large que la barre). */
+  function hitWidth(barWidth: number, n: number): number {
+    return Math.max(barWidth, Math.min(24, PLOT_W / n))
+  }
 </script>
 
 {#if failed}
@@ -153,12 +184,14 @@
   </p>
 {:else}
   {@const c = chart}
+  <div class="relative">
   <svg
     viewBox="0 0 {CW} {CH}"
     class="text-muted-foreground h-auto w-full"
     style="max-width:100%"
     role="img"
     aria-label="Évolution quotidienne du montant en euros pour {month}"
+    onpointerleave={() => (hoveredDay = null)}
   >
     <!-- Graduations et axe Y -->
     {#each c.yTicks as ty (ty)}
@@ -189,7 +222,8 @@
       </text>
     {/each}
 
-    <!-- Barres empilées par jour -->
+    <!-- Barres empilées par jour (la barre survolée reste pleine, les autres
+         s'estompent légèrement pour que le graphique réponde au pointeur) -->
     {#each [...c.stacks.entries()] as [day, segments] (day)}
       {@const x = xForDay(day, c.n)}
       {#each segments as segment, si (si)}
@@ -200,16 +234,86 @@
           height={Math.max(0, segment.y0 - segment.y1)}
           rx="1.5"
           fill={segment.color}
-        >
-          <title>
-            {formatDayLabel(day)}{showLegend ? ` — ${segment.key}` : ""} : {formatAmount(
-              segment.amount,
-            )}
-          </title>
-        </rect>
+          opacity={hoveredDay !== null && hoveredDay !== day ? 0.45 : 1}
+        />
       {/each}
     {/each}
+
+    <!-- Soulignement de la colonne survolée -->
+    {#if hoverInfo}
+      <rect
+        x={hoverInfo.x - c.barWidth / 2 - 1.5}
+        y={hoverInfo.yTop - 1.5}
+        width={c.barWidth + 3}
+        height={PAD.t + PLOT_H - hoverInfo.yTop + 3}
+        fill="none"
+        stroke="currentColor"
+        stroke-opacity="0.45"
+        rx="2.5"
+      />
+    {/if}
+
+    <!-- Cibles de survol : toute la colonne du jour, plus large que la barre -->
+    {#each [...c.stacks.keys()] as day (day)}
+      {@const w = hitWidth(c.barWidth, c.n)}
+      <rect
+        role="img"
+        aria-label={`${formatDayLabel(day)} : ${formatAmount(
+          (c.stacks.get(day) ?? []).reduce((acc, s) => acc + s.amount, 0),
+        )}`}
+        x={xForDay(day, c.n) - w / 2}
+        y={PAD.t}
+        width={w}
+        height={PLOT_H}
+        fill="transparent"
+        onpointerenter={() => (hoveredDay = day)}
+        onpointermove={() => (hoveredDay = day)}
+      />
+    {/each}
   </svg>
+
+  <!-- Infobulle : toutes les séries du jour + total (valeur en premier) -->
+  {#if hoverInfo}
+    <div
+      class="border-border bg-popover text-popover-foreground pointer-events-none absolute z-10 min-w-36 rounded-md border px-2.5 py-2 text-xs shadow-md"
+      style="left:{hoverInfo.leftPct}%; top:{hoverInfo.topPct}%; transform:translate(-50%, calc(-100% - 8px))"
+      role="status"
+    >
+      <p class="text-muted-foreground mb-1 font-medium">
+        {formatDayLabel(hoverInfo.day)}
+      </p>
+      {#if showLegend}
+        <div class="flex flex-col gap-0.5">
+          {#each hoverInfo.segments as segment (segment.key)}
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-muted-foreground flex min-w-0 items-center gap-1.5">
+                <span
+                  class="h-0.5 w-3 shrink-0 rounded-full"
+                  style={`background:${segment.color}`}
+                  aria-hidden="true"
+                ></span>
+                <span class="truncate">{segment.key}</span>
+              </span>
+              <span class="font-medium tabular-nums">
+                {formatAmount(segment.amount)}
+              </span>
+            </div>
+          {/each}
+          <div
+            class="border-border mt-1 flex items-center justify-between gap-3 border-t pt-1"
+          >
+            <span class="text-muted-foreground">Total</span>
+            <span class="font-semibold tabular-nums">
+              {formatAmount(hoverInfo.total)}
+            </span>
+          </div>
+        </div>
+      {:else}
+        <p class="font-semibold tabular-nums">{formatAmount(hoverInfo.total)}</p>
+      {/if}
+    </div>
+  {/if}
+  </div>
 
   {#if showLegend && timeseries}
     <div class="flex flex-wrap gap-x-4 gap-y-1.5">
