@@ -729,9 +729,12 @@ e885704→2e9b07d). Décisions durables :
   (tokens {reference}/{color}/{position}/{brand}/{title}, rendu via le moteur
   de titre produit puis TOUJOURS slugifié — pas de casse pour un fichier) >
   défaut technique ; le rendu de nom ne fait jamais échouer un apply.
-- **Filigrane sandbox Photoroom** : tuilé semi-transparent → pollue la bbox
-  de centrage en dessous du seuil alpha ; les validations visuelles sandbox
-  sont approximatives, la clé prod est requise pour le rendu final.
+- **Filigrane sandbox Photoroom** (RÉSOLU 2026-07-15, clé prod en place) :
+  tuilé semi-transparent, il polluait la bbox de centrage en dessous du seuil
+  alpha — les validations visuelles sandbox étaient donc approximatives, sur
+  le rendu ET sur le cadrage. Vérifié live avec la clé prod : sortie propre,
+  centrage correct. Leçon : sur un provider d'image, une validation visuelle
+  en sandbox ne vaut que pour la plomberie, jamais pour le rendu final.
 
 ## 2026-07-12 — Sprint chantiers app (soir)
 

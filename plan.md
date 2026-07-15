@@ -527,9 +527,10 @@ Livré en 5 commits (66cc71e→…) sur la base des specs ci-dessous :
   save avec remplacement) ; onglet réglages « Imagerie ».
 - Grille tarifaire : ligne `photoroom / photoroom-segment-v1 / images` à
   0,02 € ajoutée (l'ancienne à 0,10 € couvre l'historique photoroom-v2).
-- Restes à suivre : filigrane sandbox jusqu'à la clé prod. (Save studio →
-  Tillin : validé par Marc 2026-07-12. Idée « flat-lay avec ombre » :
-  abandonnée 2026-07-12.)
+- Clé Photoroom PROD en place — **validé live 2026-07-15** : plus de
+  filigrane et centrage correct (le filigrane sandbox faussait la bbox).
+  (Save studio → Tillin : validé par Marc 2026-07-12. Idée « flat-lay avec
+  ombre » : abandonnée 2026-07-12.)
 
 ### Corrections & confort studio — SHIPPED 2026-07-15
 
@@ -566,7 +567,8 @@ Chantiers liés au traitement/génération d'image :
    dans les réglages), et **centrage du produit**. État des lieux : Photoroom
    `/v2/edit` fait déjà détourage + fond + 4:5 + padding 10 %, mais la couleur
    est en dur (`FFFFFF` dans `PhotoroomClient.edit_image`) et l'API d'édition
-   coûte 0,10 $/image en prod (clé actuelle = sandbox avec filigrane).
+   coûte 0,10 $/image en prod (à l'époque la clé était en sandbox, avec
+   filigrane — clé prod en place depuis le 2026-07-15).
    **Process retenu (décision 2026-07-12)** : Photoroom **Remove Background à
    0,02 $/image** (cutout RGBA) + **Pillow maison** pour le reste — canevas
    4:5 (1600×2000) rempli avec le hex du client, centrage du produit via la
