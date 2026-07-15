@@ -10,7 +10,12 @@ from app.core.config import settings
 from app.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", str(settings.SQLALCHEMY_DATABASE_URI))
+# set_main_option feeds configparser, which treats % as interpolation syntax —
+# and the DSN legitimately contains %xx escapes when the password has special
+# characters. Double them so the URL survives the round-trip verbatim.
+config.set_main_option(
+    "sqlalchemy.url", str(settings.SQLALCHEMY_DATABASE_URI).replace("%", "%%")
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
