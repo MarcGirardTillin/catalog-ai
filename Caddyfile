@@ -4,6 +4,13 @@
 
 {
 	email {$ACME_EMAIL}
+	# HTTP/3 désactivé : le pare-feu n'ouvre que TCP 443 (et le compose ne
+	# publie pas l'UDP). Laisser Caddy annoncer h3 via Alt-Svc fait basculer
+	# Chrome sur UDP → requêtes silencieusement perdues, que le navigateur
+	# remonte comme de fausses erreurs CORS (vu en prod le 2026-07-16).
+	servers {
+		protocols h1 h2
+	}
 }
 
 # Frontend SPA — nginx listens on 8080 inside the container (see
