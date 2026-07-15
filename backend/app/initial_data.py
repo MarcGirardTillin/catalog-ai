@@ -26,15 +26,26 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        if get_user_by_email(db, settings.FIRST_SUPERUSER) is not None:
-            logger.info("User %s already exists; skipping.", settings.FIRST_SUPERUSER)
+        existing = get_user_by_email(db, settings.FIRST_SUPERUSER)
+        if existing is not None:
+            # Heal a user seeded before is_admin existed (or created by hand):
+            # the FIRST_SUPERUSER must always end up operator.
+            if not existing.is_admin:
+                existing.is_admin = True
+                db.commit()
+                logger.info("Promoted %s to admin.", settings.FIRST_SUPERUSER)
+            else:
+                logger.info(
+                    "User %s already exists; skipping.", settings.FIRST_SUPERUSER
+                )
             return
         create_user(
             db,
             email=settings.FIRST_SUPERUSER,
             password=settings.FIRST_SUPERUSER_PASSWORD,
+            is_admin=True,
         )
-        logger.info("Created first user %s", settings.FIRST_SUPERUSER)
+        logger.info("Created first user %s (admin)", settings.FIRST_SUPERUSER)
     finally:
         db.close()
 

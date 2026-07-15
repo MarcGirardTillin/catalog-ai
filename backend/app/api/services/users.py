@@ -18,13 +18,19 @@ def get_user_by_email(db: Session, email: str) -> User | None:
 
 
 def create_user(
-    db: Session, *, email: str, password: str, full_name: str | None = None
+    db: Session,
+    *,
+    email: str,
+    password: str,
+    full_name: str | None = None,
+    is_admin: bool = False,
 ) -> User:
     """Create and persist a new user with a hashed password."""
     user = User(
         email=email,
         hashed_password=hash_password(password),
         full_name=full_name,
+        is_admin=is_admin,
     )
     db.add(user)
     db.commit()
