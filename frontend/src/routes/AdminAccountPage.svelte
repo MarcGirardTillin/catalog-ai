@@ -16,8 +16,14 @@
     type AdminAccountSettings,
     type AdminTimeseriesGroupBy,
   } from "@/lib/api/admin"
+  import {
+    getAdminAccountCredits,
+    grantAdminAccountCredits,
+    type CreditEntryPublic,
+  } from "@/lib/api/credits"
   import type { UsageByJob } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
+  import { Select } from "@/lib/components/ui/select"
   import {
     Card,
     CardContent,
@@ -135,6 +141,79 @@
     )
   })
 
+  // --- Crédits prépayés : solde, ledger et octroi manuel ---
+  const creditsQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "credits"],
+    queryFn: async () => {
+      const { data, error } = await getAdminAccountCredits(accountId)
+      if (error || !data) throw new Error("admin_account_credits_load_failed")
+      return data
+    },
+  }))
+  const credits = $derived(creditsQuery.data ?? null)
+
+  let grantCredits = $state("")
+  let grantKind = $state<"grant" | "purchase" | "adjustment">("grant")
+  let grantLabel = $state("")
+  let grantPrice = $state("")
+  let granting = $state(false)
+
+  async function submitGrant() {
+    if (granting) return
+    const amount = Math.trunc(Number(grantCredits))
+    if (!Number.isFinite(amount) || amount === 0) {
+      toast.error("Le montant de crédits doit être un entier non nul (signé).")
+      return
+    }
+    const price = grantPrice.trim() === "" ? null : Number(grantPrice)
+    if (price != null && (!Number.isFinite(price) || price < 0)) {
+      toast.error("Le prix doit être un nombre positif ou nul.")
+      return
+    }
+    granting = true
+    const { data, error } = await grantAdminAccountCredits(accountId, {
+      credits: amount,
+      kind: grantKind,
+      label: grantLabel.trim() || null,
+      price_eur: price,
+    })
+    granting = false
+    if (error || !data) {
+      toast.error("Enregistrement du mouvement impossible.")
+      return
+    }
+    toast.success(`Mouvement enregistré — solde : ${data.balance} crédits`)
+    grantCredits = ""
+    grantLabel = ""
+    grantPrice = ""
+    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "credits"] })
+  }
+
+  const CREDIT_KIND_LABELS: Record<string, string> = {
+    purchase: "Achat de pack",
+    grant: "Offert",
+    subscription: "Abonnement",
+    consumption: "Consommation",
+    adjustment: "Ajustement",
+  }
+  function creditKindLabel(kind: string): string {
+    return CREDIT_KIND_LABELS[kind] ?? kind
+  }
+  function creditEntryLabel(entry: CreditEntryPublic): string {
+    if (entry.label) return entry.label
+    if (entry.kind === "consumption" && entry.action) {
+      const labels: Record<string, string> = {
+        import_product: "Produits importés",
+        enrich_item: "Fiches enrichies",
+        image_process: "Images traitées",
+        image_generate: "Visuels générés",
+      }
+      const base = labels[entry.action] ?? entry.action
+      return entry.quantity != null ? `${base} × ${entry.quantity}` : base
+    }
+    return "—"
+  }
+
   // --- Réglages opérateur du compte (coefficient + temps gagné) ---
   // Le formulaire édite une copie locale (bind:value) hydratée depuis la query.
   let settings = $state<AdminAccountSettings | null>(null)
@@ -177,12 +256,41 @@
       toast.error("Les minutes doivent être comprises entre 0 et 120.")
       return
     }
+    const creditInts = {
+      credit_cost_import_product: settings.credit_cost_import_product,
+      credit_cost_enrich_item: settings.credit_cost_enrich_item,
+      credit_cost_image_process: settings.credit_cost_image_process,
+      credit_cost_image_generate: settings.credit_cost_image_generate,
+      monthly_free_credits: settings.monthly_free_credits,
+      low_credit_threshold: settings.low_credit_threshold,
+    }
+    const normalizedCredits: Record<string, number> = {}
+    for (const [key, raw] of Object.entries(creditInts)) {
+      const value = Math.round(Number(raw))
+      if (!Number.isFinite(value) || value < 0) {
+        toast.error("Les valeurs de crédits doivent être des entiers positifs.")
+        return
+      }
+      normalizedCredits[key] = value
+    }
+    const packs = (settings.credit_packs ?? [])
+      .map((pack) => ({
+        credits: Math.round(Number(pack.credits)),
+        price_eur: Number(pack.price_eur),
+      }))
+      .filter((pack) => Number.isFinite(pack.credits) && pack.credits > 0)
+    if (packs.some((pack) => !Number.isFinite(pack.price_eur) || pack.price_eur < 0)) {
+      toast.error("Chaque pack doit avoir un prix positif ou nul.")
+      return
+    }
     savingSettings = true
     const { data, error } = await putAdminAccountSettings(accountId, {
       ...settings,
       billing_coefficient: coefficient,
       minutes_saved_per_import_product: importMin,
       minutes_saved_per_enriched_product: enrichedMin,
+      ...normalizedCredits,
+      credit_packs: packs,
     })
     savingSettings = false
     if (error || !data) {
@@ -199,6 +307,21 @@
       queryKey: ["admin", "account", id, "timeseries"],
     })
     queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "settings"] })
+    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "credits"] })
+  }
+
+  function addPack() {
+    if (!settings) return
+    settings.credit_packs = [
+      ...(settings.credit_packs ?? []),
+      { credits: 100, price_eur: 10 },
+    ]
+  }
+  function removePack(index: number) {
+    if (!settings) return
+    settings.credit_packs = (settings.credit_packs ?? []).filter(
+      (_, i) => i !== index,
+    )
   }
 
   // --- Formatage ---
@@ -616,13 +739,139 @@
           </Card>
         {/if}
 
+        <!-- Crédits prépayés : solde, octroi manuel, derniers mouvements -->
+        <Card size="sm" class="mt-1">
+          <CardHeader>
+            <CardTitle class="font-title text-sm">Crédits</CardTitle>
+            <CardDescription class="text-muted-foreground text-xs">
+              Solde prépayé du compte. Les achats de packs sont enregistrés
+              ici manuellement (pas de paiement en ligne).
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-4">
+            {#if creditsQuery.isError}
+              <p class="text-destructive text-xs" role="alert">
+                Impossible de charger les crédits du client.
+              </p>
+            {:else if credits === null}
+              <Skeleton class="h-16 w-full" />
+            {:else}
+              <div class="flex items-baseline gap-2">
+                <span
+                  class="text-2xl font-semibold tabular-nums {credits.balance <= 0
+                    ? 'text-destructive'
+                    : 'text-foreground'}"
+                >
+                  {formatInt(credits.balance)}
+                </span>
+                <span class="text-muted-foreground text-xs">crédits restants</span>
+              </div>
+
+              <!-- Octroi / achat / ajustement -->
+              <div class="grid gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-credits">Crédits (signé)</Label>
+                  <Input
+                    id="grant-credits"
+                    type="number"
+                    step="1"
+                    inputmode="numeric"
+                    placeholder="500 ou -50"
+                    bind:value={grantCredits}
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-kind">Type</Label>
+                  <Select id="grant-kind" bind:value={grantKind}>
+                    <option value="grant">Offert</option>
+                    <option value="purchase">Achat de pack</option>
+                    <option value="adjustment">Ajustement</option>
+                  </Select>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-label">Libellé</Label>
+                  <Input
+                    id="grant-label"
+                    placeholder="Pack 500, geste commercial…"
+                    bind:value={grantLabel}
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-price">Prix € (achat)</Label>
+                  <Input
+                    id="grant-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={grantKind !== "purchase"}
+                    bind:value={grantPrice}
+                  />
+                </div>
+                <div class="flex items-end">
+                  <Button size="sm" disabled={granting} onclick={submitGrant}>
+                    {granting ? "Enregistrement…" : "Enregistrer"}
+                  </Button>
+                </div>
+              </div>
+
+              <!-- Derniers mouvements -->
+              {#if credits.entries.length === 0}
+                <p class="text-muted-foreground text-xs">
+                  Aucun mouvement pour l'instant.
+                </p>
+              {:else}
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-xl text-sm">
+                    <thead>
+                      <tr class="border-border border-b">
+                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Date</th>
+                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Type</th>
+                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Libellé</th>
+                        <th class="text-muted-foreground px-2 py-2 text-right text-xs font-medium">Prix €</th>
+                        <th class="text-muted-foreground px-2 py-2 text-right text-xs font-medium">Crédits</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each credits.entries as entry (entry.id)}
+                        <tr class="border-border border-b last:border-b-0">
+                          <td class="text-muted-foreground px-2 {cellPad} text-xs whitespace-nowrap tabular-nums">
+                            {formatRelativeDate(entry.created_at)}
+                          </td>
+                          <td class="px-2 {cellPad} text-xs whitespace-nowrap">
+                            {creditKindLabel(entry.kind)}
+                          </td>
+                          <td class="text-muted-foreground max-w-60 truncate px-2 {cellPad} text-xs">
+                            {creditEntryLabel(entry)}
+                          </td>
+                          <td class="text-muted-foreground px-2 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
+                            {entry.price_eur != null
+                              ? entry.price_eur.toLocaleString("fr-FR", {
+                                  style: "currency",
+                                  currency: "EUR",
+                                })
+                              : "—"}
+                          </td>
+                          <td class="px-2 {cellPad} text-right font-medium whitespace-nowrap tabular-nums {entry.credits < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}">
+                            {entry.credits > 0 ? `+${formatInt(entry.credits)}` : formatInt(entry.credits)}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            {/if}
+          </CardContent>
+        </Card>
+
         <!-- Réglages opérateur du compte -->
         <Card size="sm" class="mt-1">
           <CardHeader>
             <CardTitle class="font-title text-sm">Réglages opérateur</CardTitle>
             <CardDescription class="text-muted-foreground text-xs">
               Invisibles et non modifiables par le client : coefficient de
-              facturation et minutes « temps gagné » du tableau de bord.
+              facturation, minutes « temps gagné », grille de crédits,
+              abonnement et packs.
             </CardDescription>
           </CardHeader>
           <CardContent class="flex flex-col gap-4">
@@ -668,6 +917,138 @@
                   />
                 </div>
               </div>
+              <!-- Grille de crédits par action -->
+              <div class="border-border border-t pt-3">
+                <p class="text-foreground mb-2 text-xs font-medium">
+                  Grille de crédits par action
+                </p>
+                <div class="grid gap-3 sm:grid-cols-4">
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="acc-cr-import">Produit importé</Label>
+                    <Input
+                      id="acc-cr-import"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputmode="numeric"
+                      bind:value={settings.credit_cost_import_product}
+                    />
+                  </div>
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="acc-cr-enrich">Fiche enrichie</Label>
+                    <Input
+                      id="acc-cr-enrich"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputmode="numeric"
+                      bind:value={settings.credit_cost_enrich_item}
+                    />
+                  </div>
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="acc-cr-image">Image traitée</Label>
+                    <Input
+                      id="acc-cr-image"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputmode="numeric"
+                      bind:value={settings.credit_cost_image_process}
+                    />
+                  </div>
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="acc-cr-generate">Visuel généré</Label>
+                    <Input
+                      id="acc-cr-generate"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputmode="numeric"
+                      bind:value={settings.credit_cost_image_generate}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div class="flex flex-col gap-1.5">
+                  <Label for="acc-cr-monthly">Crédits mensuels inclus</Label>
+                  <Input
+                    id="acc-cr-monthly"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                    bind:value={settings.monthly_free_credits}
+                  />
+                  <p class="text-muted-foreground text-xs">
+                    Octroyés automatiquement une fois par mois (0 = aucun).
+                  </p>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="acc-cr-threshold">Seuil d'alerte solde bas</Label>
+                  <Input
+                    id="acc-cr-threshold"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                    bind:value={settings.low_credit_threshold}
+                  />
+                </div>
+              </div>
+
+              <!-- Packs affichés au client sur sa page Consommation -->
+              <div class="border-border border-t pt-3">
+                <div class="mb-2 flex items-center justify-between">
+                  <p class="text-foreground text-xs font-medium">Packs de crédits</p>
+                  <Button size="sm" variant="outline" onclick={addPack}>
+                    Ajouter un pack
+                  </Button>
+                </div>
+                {#if (settings.credit_packs ?? []).length === 0}
+                  <p class="text-muted-foreground text-xs">
+                    Aucun pack affiché au client.
+                  </p>
+                {:else}
+                  <div class="flex flex-col gap-2">
+                    {#each settings.credit_packs ?? [] as pack, index (index)}
+                      <div class="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
+                        <div class="flex flex-col gap-1.5">
+                          <Label for={`pack-credits-${index}`}>Crédits</Label>
+                          <Input
+                            id={`pack-credits-${index}`}
+                            type="number"
+                            min="1"
+                            step="1"
+                            inputmode="numeric"
+                            bind:value={pack.credits}
+                          />
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                          <Label for={`pack-price-${index}`}>Prix €</Label>
+                          <Input
+                            id={`pack-price-${index}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            bind:value={pack.price_eur}
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="text-destructive"
+                          onclick={() => removePack(index)}
+                        >
+                          Retirer
+                        </Button>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+
               <div class="flex justify-end">
                 <Button size="sm" disabled={savingSettings} onclick={saveSettings}>
                   {savingSettings ? "Enregistrement…" : "Enregistrer"}
