@@ -491,6 +491,30 @@ Livré en 5 commits (66cc71e→…) sur la base des specs ci-dessous :
   Tillin : validé par Marc 2026-07-12. Idée « flat-lay avec ombre » :
   abandonnée 2026-07-12.)
 
+### Corrections & confort studio — SHIPPED 2026-07-15
+
+Retours d'usage réel de Marc, livrés le jour même :
+- **Liaison import → Tillin, références à slash** (`10415-104/A`) : la
+  recherche plein-texte Xano ne trouve pas ces références (confirmé live) →
+  repli sur le préfixe avant le slash, match exact conservé sur la référence
+  complète. Validé live sur l'import CUSTOMERS20260312 (2 réfs liées).
+- **Persistance du studio** : les résultats non enregistrés (assets +
+  staging) sont réhydratés au retour dans le studio (GET /imaging/assets
+  ?product_id&pending), offsets de repositionnement compris
+  (`render_offset_*` exposés). Nouveau statut `discarded` + POST
+  /assets/{id}/discard (bouton « Écarter », purge staging, trace conservée).
+  Pastille ambre sur le bouton studio des lignes du catalogue
+  (GET /imaging/assets/pending-products). Piège corrigé : la colonne JSON
+  stocke None en JSON null → filtre par cast texte (Postgres n'a pas
+  d'opérateur json=json ; les tests SQLite ne le voyaient pas).
+- **Studio** : toggle « Traitements / Porté mannequin » (un seul encart à la
+  fois), lightbox zoom (avant, après, visuels générés), guides de placement
+  (tiers + croix + marge 10 %) pendant le drag, déplacement EN DIRECT
+  (translation CSS pendant le drag, recomposition serveur au relâchement).
+- **Consommation** : section « Générations mannequin » (historique du mois,
+  produit associé → lien studio, statut À vérifier/Enregistrée/Écartée,
+  miniature tant que le staging existe).
+
 ### Spécifications d'origine (2026-07-12)
 
 Chantiers liés au traitement/génération d'image :

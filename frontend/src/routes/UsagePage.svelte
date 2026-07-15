@@ -10,6 +10,9 @@
   import Lock from "@lucide/svelte/icons/lock"
   import { toast } from "svelte-sonner"
 
+  import { navigate } from "svelte5-router"
+
+  import { listAssets } from "@/lib/api/imaging"
   import {
     getUsageExport,
     getUsageSummary,
@@ -20,6 +23,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
+  import AssetThumb from "@/lib/components/imaging/AssetThumb.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
   import { IMAGE_SERVICE_LABEL, toServiceLabel } from "@/lib/usageLabels"
 
@@ -56,6 +60,53 @@
   }))
   const timeseries = $derived(timeseriesQuery.data ?? null)
   const tsFailed = $derived(timeseriesQuery.isError)
+
+  // --- Historique des générations mannequin du mois (revenir dessus) ---
+  const generationsQuery = createQuery(() => ({
+    queryKey: ["imaging", "assets", "generations", month],
+    queryFn: async () => {
+      const { data, error } = await listAssets({ verb: "generate_model", month })
+      if (error || !data) throw new Error("generations_load_failed")
+      return data
+    },
+  }))
+  const generations = $derived(generationsQuery.data ?? null)
+
+  const GENERATION_STATUS: Record<string, { label: string; tone: string }> = {
+    completed: {
+      label: "À vérifier",
+      tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+    },
+    saved: {
+      label: "Enregistrée",
+      tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    },
+    discarded: { label: "Écartée", tone: "bg-muted text-muted-foreground" },
+    failed: { label: "Échec", tone: "bg-destructive/15 text-destructive" },
+    pending: { label: "En cours", tone: "bg-muted text-muted-foreground" },
+    processing: { label: "En cours", tone: "bg-muted text-muted-foreground" },
+  }
+
+  function generationStatus(asset: {
+    status: string
+    saved?: boolean
+  }): { label: string; tone: string } {
+    if (asset.saved) return GENERATION_STATUS.saved
+    return GENERATION_STATUS[asset.status] ?? GENERATION_STATUS.pending
+  }
+
+  /** "12 juil. 2026, 14:02" depuis un ISO datetime. */
+  function formatDateTime(iso: string): string {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
 
   /** Étiquette de date longue fr-FR depuis "YYYY-MM-DD". */
   function formatLongDate(iso: string): string {
@@ -225,6 +276,83 @@
             </CardContent>
           </Card>
 
+          <!-- Historique des générations mannequin (revenir sur un visuel) -->
+          <Card size="sm" class="mt-1">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">Générations mannequin</CardTitle>
+            </CardHeader>
+            <CardContent class="px-0">
+              {#if generationsQuery.isError}
+                <p class="text-destructive px-6 text-xs" role="alert">
+                  Impossible de charger l'historique des générations.
+                </p>
+              {:else if generations === null}
+                <div class="flex flex-col gap-2 px-6">
+                  <Skeleton class="h-8 w-full" />
+                  <Skeleton class="h-8 w-full" />
+                </div>
+              {:else if generations.length === 0}
+                <p class="text-muted-foreground px-6 text-sm">
+                  Aucun visuel généré ce mois-ci.
+                </p>
+              {:else}
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-lg text-sm">
+                    <thead>
+                      <tr class="border-border border-b">
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium" colspan="2">Visuel</th>
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Produit</th>
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Statut</th>
+                        <th class="text-muted-foreground px-4 py-2 text-right text-xs font-medium">Visuels</th>
+                        <th class="text-muted-foreground px-4 py-2 text-right text-xs font-medium">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each generations as asset (asset.id)}
+                        {@const status = generationStatus(asset)}
+                        <tr
+                          class="border-border hover:bg-muted/50 cursor-pointer border-b transition-colors last:border-b-0"
+                          role="link"
+                          tabindex="0"
+                          aria-label={`Ouvrir le studio du produit #${asset.product_id}`}
+                          onclick={() => navigate(`/products/${asset.product_id}/images`)}
+                          onkeydown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault()
+                              navigate(`/products/${asset.product_id}/images`)
+                            }
+                          }}
+                        >
+                          <td class="py-1.5 pl-4">
+                            <AssetThumb {asset} />
+                          </td>
+                          <td class="text-muted-foreground px-4 py-1.5 text-xs">
+                            #{asset.id}
+                          </td>
+                          <td class="px-4 py-1.5 whitespace-nowrap">
+                            Produit #{asset.product_id}
+                          </td>
+                          <td class="px-4 py-1.5">
+                            <span
+                              class="rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap {status.tone}"
+                            >
+                              {status.label}
+                            </span>
+                          </td>
+                          <td class="px-4 py-1.5 text-right tabular-nums">
+                            {asset.files?.length || asset.preview_urls?.length || 1}
+                          </td>
+                          <td class="text-muted-foreground px-4 py-1.5 text-right text-xs whitespace-nowrap tabular-nums">
+                            {formatDateTime(asset.created_at)}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            </CardContent>
+          </Card>
         {/if}
       </div>
     </AppShell>

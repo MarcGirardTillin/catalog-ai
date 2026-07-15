@@ -11,11 +11,14 @@
 
   import { settingsReadAccountSettings, type ProductImage } from "@/client"
   import {
+    discardAsset,
     fetchAssetPreviews,
     generateModelImage,
+    listAssets,
     normalizeImage,
     saveAsset,
     waitForAsset,
+    type ImageAssetPublic,
   } from "@/lib/api/imaging"
   import { getProduct } from "@/lib/api/products"
   import { Button } from "@/lib/components/ui/button"
@@ -28,6 +31,7 @@
   } from "@/lib/components/ui/card"
   import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import AssetResult, { type Work } from "@/lib/components/imaging/AssetResult.svelte"
@@ -83,6 +87,14 @@
   })
   let genCount = $state(1)
 
+  // Un seul encart à la fois (traiter OU générer) : afficher les deux prête
+  // à confusion au moment de lancer une tâche.
+  const MODE_TABS = [
+    { key: "process", label: "Traitements" },
+    { key: "generate", label: "Porté mannequin" },
+  ] as const
+  let mode = $state<(typeof MODE_TABS)[number]["key"]>("process")
+
   $effect(() => {
     settingsReadAccountSettings().then(({ data }) => {
       if (!data) return
@@ -112,6 +124,94 @@
   // génération (les deux peuvent coexister sur la même image).
   const GEN_SUFFIX = "::gen"
 
+  // --- Réhydratation : les résultats non enregistrés survivent côté serveur
+  // (asset + staging), on les réinstalle au retour dans le studio. ---
+  const pendingAssetsQuery = createQuery(() => ({
+    queryKey: ["imaging", "assets", productId, "pending"],
+    queryFn: async () => {
+      const { data, error } = await listAssets({
+        product_id: productId,
+        pending: true,
+      })
+      if (error || !data) throw new Error("assets_load_failed")
+      return data
+    },
+  }))
+  // Ids déjà installés (ou écartés localement) : un asset n'est réhydraté
+  // qu'une fois, et jamais par-dessus un travail local en cours.
+  const seenAssetIds = new Set<number>()
+
+  function workKey(asset: ImageAssetPublic): string | null {
+    if (!asset.source_image) return null
+    return asset.verb === "generate_model"
+      ? asset.source_image + GEN_SUFFIX
+      : asset.source_image
+  }
+
+  async function hydrate(asset: ImageAssetPublic) {
+    seenAssetIds.add(asset.id)
+    const key = workKey(asset)
+    if (key === null || works[key]) return
+    const previewUrls = await fetchAssetPreviews(asset)
+    if (works[key]) {
+      // Un travail local a démarré entre-temps : il a priorité.
+      for (const url of previewUrls) URL.revokeObjectURL(url)
+      return
+    }
+    works[key] = {
+      status: "done",
+      asset,
+      previewUrls,
+      error: null,
+      filename: "",
+      replace: false,
+      offsetX: asset.render_offset_x ?? 0,
+      offsetY: asset.render_offset_y ?? 0,
+      scale: asset.render_scale ?? 1,
+      rendering: false,
+      saving: false,
+    }
+  }
+
+  $effect(() => {
+    const assets = pendingAssetsQuery.data
+    if (!assets) return
+    // Tri décroissant côté serveur : le premier asset d'une clé est le plus
+    // récent, les suivants (relances passées) sont seulement marqués vus.
+    const hydratedKeys = new Set<string>()
+    for (const asset of assets) {
+      const key = workKey(asset)
+      if (seenAssetIds.has(asset.id)) continue
+      if (key !== null && hydratedKeys.has(key)) {
+        seenAssetIds.add(asset.id)
+        continue
+      }
+      if (key !== null) hydratedKeys.add(key)
+      void hydrate(asset)
+    }
+  })
+
+  function invalidatePendingAssets() {
+    void queryClient.invalidateQueries({ queryKey: ["imaging", "assets"] })
+    void queryClient.invalidateQueries({ queryKey: ["imaging", "pending-products"] })
+  }
+
+  async function discardOne(key: string) {
+    const work = works[key]
+    const asset = work?.asset
+    if (!work || !asset || work.saving || work.rendering) return
+    const { error } = await discardAsset(asset.id)
+    if (error) {
+      toast.error("Impossible d'écarter ce résultat.")
+      return
+    }
+    for (const url of work.previewUrls) URL.revokeObjectURL(url)
+    seenAssetIds.add(asset.id)
+    delete works[key]
+    toast.success("Résultat écarté")
+    invalidatePendingAssets()
+  }
+
   const statuses = $derived(
     Object.fromEntries(
       images.map((image) => [image.url, works[image.url]?.status ?? "idle"]),
@@ -120,16 +220,31 @@
   const runningCount = $derived(
     Object.values(works).filter((w) => w.status === "running").length,
   )
-  const results = $derived(
-    images.flatMap((image) => {
-      const pairs: { key: string; image: ProductImage; work: Work }[] = []
+  const results = $derived.by(() => {
+    const pairs = images.flatMap((image) => {
+      const found: { key: string; image: ProductImage; work: Work }[] = []
       for (const key of [image.url, image.url + GEN_SUFFIX]) {
         const work = works[key]
-        if (work && work.status !== "idle") pairs.push({ key, image, work })
+        if (work && work.status !== "idle") found.push({ key, image, work })
       }
-      return pairs
-    }),
-  )
+      return found
+    })
+    // Résultats réhydratés dont la source ne fait plus partie des images du
+    // produit : affichés quand même (sinon impossibles à vérifier/écarter).
+    const knownKeys = new Set(pairs.map((pair) => pair.key))
+    for (const [key, work] of Object.entries(works)) {
+      if (knownKeys.has(key) || work.status === "idle") continue
+      pairs.push({
+        key,
+        image: {
+          url: key.endsWith(GEN_SUFFIX) ? key.slice(0, -GEN_SUFFIX.length) : key,
+          id: work.asset?.source_product_image_id ?? null,
+        } as ProductImage,
+        work,
+      })
+    }
+    return pairs
+  })
 
   function toggleSelected(url: string) {
     selected = selected.includes(url)
@@ -238,7 +353,9 @@
     toast.success(
       `${data.created} image${data.created > 1 ? "s" : ""} enregistrée${data.created > 1 ? "s" : ""}${data.deactivated > 0 ? ", originale remplacée" : ""}`,
     )
-    // La galerie Tillin a changé : rafraîchit le cache produit.
+    // La galerie Tillin a changé : rafraîchit le cache produit + les vues
+    // « à vérifier » (pastille catalogue, réhydratation).
+    invalidatePendingAssets()
     await queryClient.invalidateQueries({ queryKey: ["product", productId] })
   }
 
@@ -305,55 +422,58 @@
             </CardContent>
           </Card>
         {:else}
-          <!-- Options de traitement -->
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle class="font-title text-sm">Traitements</CardTitle>
-              <CardDescription class="text-muted-foreground text-xs">
-                Pré-remplis avec vos réglages ; seul le détourage consomme des
-                images du service. Modifiables avant chaque lancement.
-              </CardDescription>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-3">
-              <ProcessingOptions bind:options disabled={runningCount > 0} />
-            </CardContent>
-          </Card>
+          <!-- Un encart à la fois : traitement déterministe OU génération -->
+          <TabBar tabs={MODE_TABS} bind:value={mode} label="Type d'opération" />
 
-          <!-- Génération de visuels (porté mannequin) -->
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle class="font-title text-sm">
-                Porté mannequin (génération)
-              </CardTitle>
-              <CardDescription class="text-muted-foreground text-xs">
-                Génère un visuel porté à partir de l'image produit. Instruction
-                pré-remplie avec vos réglages ; chaque visuel consomme des
-                crédits de génération.
-              </CardDescription>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-3">
-              <GenerationOptions
-                bind:config={genConfig}
-                disabled={runningCount > 0}
-                idPrefix="studio-gen"
-              />
-              <div class="flex items-center gap-2">
-                <label class="text-muted-foreground text-xs" for="gen-count">
-                  Visuels par image
-                </label>
-                <Select
-                  id="gen-count"
-                  class="h-8 w-auto px-2"
+          {#if mode === "process"}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">Traitements</CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  Pré-remplis avec vos réglages ; seul le détourage consomme des
+                  images du service. Modifiables avant chaque lancement.
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-3">
+                <ProcessingOptions bind:options disabled={runningCount > 0} />
+              </CardContent>
+            </Card>
+          {:else}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">
+                  Porté mannequin (génération)
+                </CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  Génère un visuel porté à partir de l'image produit. Instruction
+                  pré-remplie avec vos réglages ; chaque visuel consomme des
+                  crédits de génération.
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-3">
+                <GenerationOptions
+                  bind:config={genConfig}
                   disabled={runningCount > 0}
-                  bind:value={genCount}
-                >
-                  {#each [1, 2, 3, 4] as n (n)}
-                    <option value={n}>{n}</option>
-                  {/each}
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
+                  idPrefix="studio-gen"
+                />
+                <div class="flex items-center gap-2">
+                  <label class="text-muted-foreground text-xs" for="gen-count">
+                    Visuels par image
+                  </label>
+                  <Select
+                    id="gen-count"
+                    class="h-8 w-auto px-2"
+                    disabled={runningCount > 0}
+                    bind:value={genCount}
+                  >
+                    {#each [1, 2, 3, 4] as n (n)}
+                      <option value={n}>{n}</option>
+                    {/each}
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+          {/if}
 
           <!-- Grille de sélection -->
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -366,22 +486,17 @@
                   ? "Tout désélectionner"
                   : "Tout sélectionner"}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={selected.length === 0 || runningCount > 0}
-                onclick={runGenerateSelected}
-              >
-                {`Porté mannequin (${selected.length})`}
-              </Button>
+              <!-- Un seul bouton de lancement, aligné sur l'encart affiché. -->
               <Button
                 size="sm"
                 disabled={selected.length === 0 || runningCount > 0}
-                onclick={runSelected}
+                onclick={mode === "generate" ? runGenerateSelected : runSelected}
               >
                 {runningCount > 0
                   ? `Traitement… (${runningCount})`
-                  : `Normaliser la sélection (${selected.length})`}
+                  : mode === "generate"
+                    ? `Générer porté mannequin (${selected.length})`
+                    : `Normaliser la sélection (${selected.length})`}
               </Button>
             </div>
           </div>
@@ -430,6 +545,7 @@
                     ? "selon le modèle de titre d'image"
                     : ""}
                   onSave={() => saveOne(pair.key)}
+                  onDiscard={() => discardOne(pair.key)}
                 />
               {/if}
             {/each}

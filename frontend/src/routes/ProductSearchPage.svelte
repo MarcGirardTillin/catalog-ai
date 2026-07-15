@@ -24,6 +24,7 @@
     productsListProducts,
   } from "@/client"
   import type { FilterOption, Product } from "@/client"
+  import { listPendingImagingProducts } from "@/lib/api/imaging"
   import {
     getImportProducts,
     linkImportProducts,
@@ -89,6 +90,19 @@
     },
   }))
   const filters = $derived(filtersQuery.data ?? null)
+
+  // Produits avec des visuels studio encore à vérifier (pastille par ligne).
+  const pendingImagingQuery = createQuery(() => ({
+    queryKey: ["imaging", "pending-products"],
+    queryFn: async () => {
+      const { data, error } = await listPendingImagingProducts()
+      if (error || !data) throw new Error("pending_imaging_load_failed")
+      return data
+    },
+  }))
+  const pendingImagingIds = $derived(
+    new Set(pendingImagingQuery.data?.product_ids ?? []),
+  )
 
   // Recherche catalogue (Xano) : tous les critères soumis sont dans la clé ;
   // keepPreviousData conserve la table visible (opacité réduite) pendant le
@@ -689,11 +703,14 @@
                         {product.variants?.length ?? 0}
                       </td>
                       <td class="px-2 {cellPad} text-right whitespace-nowrap">
-                        <!-- Accès direct au studio images, sans ouvrir le panneau. -->
+                        <!-- Accès direct au studio images, sans ouvrir le panneau.
+                             Pastille ambre = visuels studio encore à vérifier. -->
                         <button
                           type="button"
-                          class="text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer rounded-md p-1.5 transition-colors"
-                          title="Studio images"
+                          class="text-muted-foreground hover:text-foreground hover:bg-muted/60 relative cursor-pointer rounded-md p-1.5 transition-colors"
+                          title={pendingImagingIds.has(product.id)
+                            ? "Studio images — visuels à vérifier"
+                            : "Studio images"}
                           aria-label={`Ouvrir le studio images de ${label(product)}`}
                           onclick={(e) => {
                             e.stopPropagation()
@@ -701,6 +718,13 @@
                           }}
                         >
                           <Images size={15} aria-hidden="true" />
+                          {#if pendingImagingIds.has(product.id)}
+                            <span
+                              class="absolute top-0.5 right-0.5 size-2 rounded-full bg-amber-500"
+                              role="status"
+                              aria-label="Visuels studio à vérifier"
+                            ></span>
+                          {/if}
                         </button>
                       </td>
                     </tr>
