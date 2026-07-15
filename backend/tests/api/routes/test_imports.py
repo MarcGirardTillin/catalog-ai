@@ -1205,6 +1205,32 @@ def test_link_products_tolerates_case_and_spaces(
     assert item.tillin_product_id == 101
 
 
+def test_link_products_falls_back_to_the_slash_prefix(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """La recherche Xano ne trouve pas les références à slash (observé live :
+    « 10415-104/A » → 0 hit, « 10415-104 » → le produit) : le lien retombe
+    sur le préfixe avant le slash, avec un match exact sur la réf complète."""
+    job = _transferred_job(import_client, ["10415-104/A"])
+    fake_xano.search_results = {
+        # Rien pour la référence complète, le préfixe remonte le produit
+        # (plus un voisin d'une autre déclinaison, ignoré par le match exact).
+        "10415-104": [
+            _tillin_product(2712, "10415-104/A"),
+            _tillin_product(2713, "10415-104/B"),
+        ],
+    }
+
+    response = import_client.post(f"/imports/{job['id']}/link-products")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"linked": 1, "already_linked": 0, "not_found": []}
+    # La réf complète est essayée d'abord, le préfixe seulement en repli.
+    assert fake_xano.search_calls == ["10415-104/A", "10415-104"]
+    db = _db()
+    item = db.query(ImportItem).filter(ImportItem.job_id == job["id"]).one()
+    assert item.tillin_product_id == 2712
+
+
 def test_link_products_ambiguous_reference_is_not_found(
     import_client: TestClient, fake_xano: _FakeXano
 ) -> None:

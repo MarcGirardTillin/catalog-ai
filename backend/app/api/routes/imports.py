@@ -739,15 +739,29 @@ def link_import_products(
         if not wanted:
             result.not_found.append(supplier_ref)
             continue
-        page = xano.search_products(text=supplier_ref, per_page=5)
-        # Exact reference matches only (the search itself is fuzzy). Several
-        # hits are fine as long as they all point at ONE product; genuinely
-        # ambiguous references (distinct products) stay unresolved.
-        matched_ids = {
-            product.id
-            for product in page.items
-            if (product.reference_code or "").strip().lower() == wanted
-        }
+        # La recherche plein-texte Xano ne trouve pas les références à slash
+        # (« 10415-104/A » → 0 hit, « 10415-104 » → le bon produit) : on
+        # essaie la référence complète puis le préfixe avant le slash. Le
+        # match reste exact sur la référence COMPLÈTE, quel que soit le
+        # candidat qui a fait remonter le produit.
+        queries = [supplier_ref]
+        prefix = supplier_ref.split("/")[0].strip()
+        if prefix and prefix != supplier_ref:
+            queries.append(prefix)
+        matched_ids: set[int] = set()
+        for query in queries:
+            page = xano.search_products(text=query, per_page=5)
+            # Exact reference matches only (the search itself is fuzzy).
+            # Several hits are fine as long as they all point at ONE product;
+            # genuinely ambiguous references (distinct products) stay
+            # unresolved.
+            matched_ids = {
+                product.id
+                for product in page.items
+                if (product.reference_code or "").strip().lower() == wanted
+            }
+            if matched_ids:
+                break
         if len(matched_ids) == 1:
             item.tillin_product_id = matched_ids.pop()
             result.linked += 1
