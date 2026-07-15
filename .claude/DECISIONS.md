@@ -759,3 +759,34 @@ e885704→2e9b07d). Décisions durables :
   keepPreviousData pour les tables paginées/filtrées, formulaires = copie
   locale $state hydratée une fois depuis query.data (jamais de bind sur le
   cache). L'état de travail (studio images, sélections) reste du $state local.
+
+## 2026-07-15 — Modèle crédits prépayés
+
+- **Business model client = crédits prépayés, marge admin inchangée en €** :
+  1 crédit = 0,10 € de valeur faciale ; le client voit un solde et une grille
+  par action, jamais les coûts € (sauf le prix des packs). Toute la mécanique
+  usage_event/grille €/coefficient/figement mensuel reste la vue marge de
+  l'opérateur — les deux systèmes coexistent sans se toucher.
+- **Grille par action (défauts, admin-only dans AccountSettings)** : produit
+  importé 1, fiche enrichie 2, image traitée 1 (re-render gratuit), visuel
+  généré 5 → fiche type 8 crédits = 0,80 € hors génération (cible Marc,
+  marge ≈ ×5 sur les coûts réels mesurés).
+- **Débit de la fiche AU TRAITEMENT** (passage « À vérifier » dans
+  complete_item), jamais sur fail_item — décision Marc : on facture le
+  travail produit, pas le résultat de la review.
+- **Blocage 402 AVANT toute écriture** sur les routes de lancement
+  (insufficient_credits) ; pas de blocage en cours de job — un batch peut
+  finir légèrement négatif (standard prépayé). Côté client : toast explicite,
+  boutons jamais désactivés (le serveur est la source de vérité).
+- **Allocation d'abonnement paresseuse** (monthly_free_credits) : octroyée à
+  la première lecture du solde du mois, idempotente par `period` YYYY-MM —
+  même philosophie que le figement mensuel, pas de scheduler. Elle commit
+  immédiatement (fait d'abonnement, indépendant de la requête déclencheuse).
+- **consume() ne commit pas** (le caller possède la transaction, comme
+  record_usage) ; ledger append-only, les actions gratuites (coût 0) et les
+  re-renders n'écrivent RIEN (le ledger ne porte que des mouvements).
+- **Achats de packs saisis manuellement par l'admin** (POST grant, credits
+  signés + price_eur) — pas de Stripe dans ce périmètre.
+- **Tests de routes : float de crédits par défaut** (conftest
+  tests/api/routes, 1M de crédits sur le compte default, test_credits.py
+  opt-out) — sinon les gardes 402 cassent tous les tests de lancement.

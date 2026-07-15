@@ -249,6 +249,46 @@ CatalogAI will be priced to Tillin's clients on consumption: AI tokens first, pl
 
 Multi-account note: today the app has a single "default" account; per-client billing becomes meaningful when client boutiques get their own accounts — the account_id dimension is in the schema from M1 so no backfill is needed.
 
+### M4 — modèle crédits prépayés (client-facing) — SHIPPED 2026-07-15
+
+The € postpaid view confused clients; the client-facing model is now **prepaid
+credits** (1 credit = 0.10 € face value), while the whole € machinery above
+(usage_event, price grid, coefficient, monthly freeze) stays untouched as the
+**operator margin view** (credits sold vs real € cost).
+
+- **Ledger `credit_entry` (migration 0018)**: append-only, signed `credits`,
+  `kind` purchase|grant|subscription|consumption|adjustment, consumption trace
+  (`action, quantity, unit_credits, job/item/asset_id`), `period` for the
+  monthly allocation idempotence, `price_eur` on purchases. Balance = SUM.
+- **Per-action grid on AccountSettings (admin-only)**: import_product=1,
+  enrich_item=2 (debited AT PROCESSING TIME, when the sheet reaches
+  « À vérifier » — user decision), image_process=1 (re-render free),
+  image_generate=5 (user decision) → typical sheet (import + enrich + 5
+  images) = 8 credits = 0.80 € excl. generation (~×5 margin vs real cost).
+  Plus `monthly_free_credits` (lazy idempotent subscription grant, no
+  scheduler), `low_credit_threshold`, `credit_packs` (client display; pack
+  purchases are bookkept manually by the operator — no Stripe in this scope).
+- **Consumption hooks on success paths only**: import runner (n products),
+  `complete_item` (never `fail_item`), normalize (à la carte + batch + review,
+  3 paths), generate (×len(results)).
+- **402 guards before any write** on POST /jobs (n_items × enrich cost),
+  /imports (balance > 0), normalize, generate-model (× num_images), review
+  normalize (revert exempt). No mid-job blocking: a batch may end slightly
+  negative (standard prepaid).
+- **Endpoints**: client `GET /credits` (+ `/credits/timeseries`, per-action
+  daily series) — white-label, no € except pack prices; admin
+  `GET/POST /admin/accounts/{id}/credits[/grant]`;
+  `DashboardStats.credit_balance/low_credit_threshold`.
+- **UI**: UsagePage is 100 % credits for clients (balance tile with amber/red
+  alerts, per-action tiles, credits chart via `UsageChart unit="credits"`,
+  packs card, month movements; € banner + CSV export removed from the client
+  view); AdminAccountPage gained a Crédits card (balance, signed grant form,
+  ledger) and the operator settings form carries the grid/quota/threshold/
+  packs; AppShell shows a balance dot on « Consommation »; launches show an
+  explicit toast on 402 `insufficient_credits`.
+- Live-validated: 402 at balance 0, grant → normalize debits 1 credit,
+  lazy monthly allocation idempotent, dashboard exposes the balance.
+
 ## Sprint imagerie — Image Processing Service (specced 2026-07-10)
 
 Consolidates every image-processing item scattered above (Locked decisions L15-16,
