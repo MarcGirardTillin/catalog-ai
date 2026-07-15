@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
+    # libpq sslmode, appended to the DSN when set. Empty = libpq's default
+    # ("prefer": TLS when the server offers it, plaintext otherwise) — fine for
+    # the local Docker database. Managed databases reached over the network
+    # (Scaleway) must set "require" so a downgrade to plaintext fails loudly.
+    POSTGRES_SSLMODE: str = ""
 
     # Authentication (app-local users + JWT in an httpOnly cookie)
     APP_SECRET: str = "dev-insecure-secret-change-in-production-please"
@@ -120,6 +125,7 @@ class Settings(BaseSettings):
             host=self.POSTGRES_SERVER,
             port=self.POSTGRES_PORT,
             path=self.POSTGRES_DB,
+            query=f"sslmode={self.POSTGRES_SSLMODE}" if self.POSTGRES_SSLMODE else None,
         )
 
 

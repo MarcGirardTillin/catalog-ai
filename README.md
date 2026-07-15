@@ -75,6 +75,7 @@ shell ready for functional migration.
 - [Frontend guide](./frontend/README.md)
 - [Development guide](./docs/development.md)
 - [Post-clone checklist](./docs/post-clone-checklist.md)
+- [Deployment — Scaleway](./docs/deployment-scaleway.md)
 - [Agent guide](./CLAUDE.md)
 
 ## Clone a New Project

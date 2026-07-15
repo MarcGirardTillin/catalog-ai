@@ -1,0 +1,124 @@
+# Production stack — single Scaleway Instance, images built on the host.
+#
+#   docker compose -f compose.prod.yml up -d --build
+#
+# Differences from the dev compose.yml:
+#   - no `db` service: PostgreSQL is a managed Scaleway database, reached over
+#     TLS via the POSTGRES_* vars in .env (POSTGRES_SSLMODE=require).
+#   - no `adminer`.
+#   - a one-shot `migrate` service runs `alembic upgrade head` before the
+#     backend starts (backend waits on its successful completion).
+#   - a persistent named volume backs backend/var (staged images + uploads),
+#     so a redeploy never loses studio results awaiting review or in-flight
+#     imports.
+#   - Caddy terminates TLS (automatic Let's Encrypt) and reverse-proxies the
+#     two subdomains to the frontend and the backend. Only Caddy is published.
+#
+# See docs/deployment-scaleway.md for the full runbook.
+
+services:
+  migrate:
+    image: "${DOCKER_IMAGE_BACKEND:-catalogai-backend}:${TAG:-latest}"
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_SERVER=${POSTGRES_SERVER:?set the managed database host}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:?}
+      - POSTGRES_USER=${POSTGRES_USER:?}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?}
+      - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-require}
+    # Alembic lives in backend/; the image's WORKDIR is already /app/backend.
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  backend:
+    image: "${DOCKER_IMAGE_BACKEND:-catalogai-backend}:${TAG:-latest}"
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - PROJECT_NAME=${PROJECT_NAME:-CatalogAI}
+      - APP_VERSION=${TAG:-latest}
+      - POSTGRES_SERVER=${POSTGRES_SERVER:?}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:?}
+      - POSTGRES_USER=${POSTGRES_USER:?}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?}
+      - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-require}
+      - APP_SECRET=${APP_SECRET:?generate a strong secret}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES-11520}
+      # HTTPS in prod: the session cookie must be Secure.
+      - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-true}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:?the app origin, e.g. https://catalog.tillin.fr}
+      - FIRST_SUPERUSER=${FIRST_SUPERUSER-}
+      - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD-}
+      - XANO_BASE_URL=${XANO_BASE_URL-}
+      - XANO_LOGIN_EMAIL=${XANO_LOGIN_EMAIL-}
+      - XANO_LOGIN_PASSWORD=${XANO_LOGIN_PASSWORD-}
+      - XANO_DATA_SOURCE=${XANO_DATA_SOURCE-}
+      - XANO_TIMEOUT_SECONDS=${XANO_TIMEOUT_SECONDS-30}
+    volumes:
+      # Persistent staging (processed images + uploaded import files). Paths
+      # match app.core.config: BACKEND_DIR/var/{imaging,uploads}.
+      - app-var-data:/app/backend/var
+    # Fewer workers than the template default: each holds Pillow buffers for
+    # 1600×2000 canvases; 2 keeps memory sane on a small instance. Bump with
+    # more RAM if throughput needs it.
+    command: ["fastapi", "run", "--workers", "2", "app/main.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthcheck').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    image: "${DOCKER_IMAGE_FRONTEND:-catalogai-frontend}:${TAG:-latest}"
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        - NODE_ENV=production
+    restart: always
+    environment:
+      # Runtime config (frontend/run.sh -> config.js): the browser calls the
+      # API subdomain directly, so this must be the public API URL.
+      - FRONTEND_API_URL=${FRONTEND_API_URL:?public API URL, e.g. https://api-catalog.tillin.fr}
+      - FRONTEND_APP_NAME=${FRONTEND_APP_NAME:-CatalogAI}
+      - FRONTEND_ENV=${ENVIRONMENT:-production}
+      - FRONTEND_MAINTENANCE_ENABLED=${FRONTEND_MAINTENANCE_ENABLED:-false}
+      - FRONTEND_VERSION_FULL=${TAG:-latest}
+
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - APP_DOMAIN=${APP_DOMAIN:?frontend domain, e.g. catalog.tillin.fr}
+      - API_DOMAIN=${API_DOMAIN:?API domain, e.g. api-catalog.tillin.fr}
+      - ACME_EMAIL=${ACME_EMAIL:?email for Let's Encrypt}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  app-var-data:
+  caddy-data:
+  caddy-config:

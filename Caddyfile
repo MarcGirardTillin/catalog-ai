@@ -1,0 +1,23 @@
+# Reverse proxy + automatic HTTPS (Let's Encrypt) for the production stack.
+# Two subdomains: the app (nginx-served SPA) and the API (FastAPI).
+# Domains and ACME contact come from the environment (see compose.prod.yml).
+
+{
+	email {$ACME_EMAIL}
+}
+
+# Frontend SPA — nginx listens on 8080 inside the container (see
+# frontend/nginx/default.active.conf.template).
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:8080
+}
+
+# Backend API — FastAPI/uvicorn on 8000. The session cookie is SameSite=Lax
+# and Secure; the browser sends it because both subdomains share the
+# registrable domain (tillin.fr). CORS is enforced by the backend against
+# BACKEND_CORS_ORIGINS.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy backend:8000
+}
