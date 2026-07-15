@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
-from app.api.errors import register_exception_handlers
+from app.api.errors import handle_unexpected_exception, register_exception_handlers
 from app.api.main import api_router
 from app.core.config import LOG_FORMAT, settings
 from app.core.db import ping_database
@@ -55,6 +55,21 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan,
 )
+
+
+# Catch unhandled exceptions INSIDE the CORS middleware. The Exception handler
+# registered below runs in Starlette's outermost ServerErrorMiddleware, whose
+# response bypasses CORSMiddleware — the browser then reports a 500 as a CORS
+# failure ("No 'Access-Control-Allow-Origin' header"), masking the real error
+# (seen in prod on 2026-07-16). Registration order matters: CORSMiddleware is
+# added AFTER this one, so it wraps it and decorates the 500 response.
+@app.middleware("http")
+async def _cors_safe_500(request, call_next):  # type: ignore[no-untyped-def]
+    try:
+        return await call_next(request)
+    except Exception as exc:  # noqa: BLE001 — last-resort JSON 500
+        return await handle_unexpected_exception(request, exc)
+
 
 app.add_middleware(
     CORSMiddleware,

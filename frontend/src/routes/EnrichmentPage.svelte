@@ -62,7 +62,7 @@
   // App default is {title}; the builder starts there.
   let templateTokens = $state<string[]>(["title"])
   let templateSeparator = $state(" ")
-  let titleCase = $state<"none" | "upper" | "capitalize">("none")
+  let titleCase = $state<"none" | "upper" | "capitalize" | "title">("none")
 
   const titleTemplate = $derived(
     templateTokens.map((key) => `{${key}}`).join(templateSeparator),
@@ -117,7 +117,11 @@
       }
     }
     const loadedCase = (data as { title_case?: string }).title_case
-    if (loadedCase === "upper" || loadedCase === "capitalize") {
+    if (
+      loadedCase === "upper" ||
+      loadedCase === "capitalize" ||
+      loadedCase === "title"
+    ) {
       titleCase = loadedCase
     }
     editorialInstructions = data.editorial_instructions ?? ""

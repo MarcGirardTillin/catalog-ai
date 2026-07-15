@@ -136,3 +136,12 @@ def test_case_capitalize_first_letter_of_each_word_preserving_rest() -> None:
         apply_title_template(product, "{title}", "capitalize")
         == "Polo Rayé En COTON Bio"
     )
+
+
+def test_case_title_lowers_the_rest_of_each_word() -> None:
+    product = _product("polo rayé en COTON bio", "ARMEDANGELS")
+    # Strict variant: acronyms/brand styling are flattened too ("Coton").
+    assert (
+        apply_title_template(product, "{brand} {title}", "title")
+        == "Armedangels Polo Rayé En Coton Bio"
+    )

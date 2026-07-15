@@ -18,7 +18,8 @@ export const AccountSettingsSchema = {
             enum: [
                 'none',
                 'upper',
-                'capitalize'
+                'capitalize',
+                'title'
             ],
             title: 'Title Case',
             default: 'none'

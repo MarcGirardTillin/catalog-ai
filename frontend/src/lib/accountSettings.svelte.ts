@@ -4,18 +4,9 @@
 import { settingsReadAccountSettings, settingsUpdateAccountSettings } from "@/client"
 import type { AccountSettings } from "@/client"
 
-// Le backend expose désormais `billing_coefficient` (coefficient de
-// facturation de la consommation) ; le type généré ne le connaît pas encore —
-// extension locale en attendant la régénération du client.
-export type AccountSettingsExtended = AccountSettings & {
-  client_context?: string | null
-  billing_coefficient?: number
-  // Jour de facturation : la conso d'un mois est figée le billing_day du
-  // mois suivant. 1 = figé dès la bascule de mois.
-  billing_day?: number
-  // Casse appliquée au titre rendu.
-  title_case?: "none" | "upper" | "capitalize"
-}
+// Alias historique : le client généré connaît désormais tous les champs
+// (l'extension locale d'attente a été retirée à la régénération).
+export type AccountSettingsExtended = AccountSettings
 
 export const accountSettings = $state({
   meta_max_length: 160,

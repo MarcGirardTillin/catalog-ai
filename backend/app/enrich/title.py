@@ -53,11 +53,15 @@ def _drop_brand_if_already_in_title(values: dict[str, str]) -> None:
 def _apply_case(text: str, case: TitleCase) -> str:
     """Case the rendered title. `capitalize` upper-cases the first letter of
     each word but leaves the rest untouched (preserves acronyms/brands like
-    "ARMEDANGELS"), unlike ``str.capitalize``."""
+    "ARMEDANGELS"), unlike ``str.capitalize``. `title` is the strict variant:
+    it also LOWERS the rest of each word ("ARMEDANGELS" → "Armedangels" — and
+    "XL" → "Xl", the assumed trade-off)."""
     if case == "upper":
         return text.upper()
     if case == "capitalize":
         return re.sub(r"\b\w", lambda m: m.group().upper(), text)
+    if case == "title":
+        return re.sub(r"\b\w", lambda m: m.group().upper(), text.lower())
     return text
 
 

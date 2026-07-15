@@ -6,8 +6,12 @@ from pydantic import BaseModel, Field
 
 from app.api.schemas.imaging import FormatOption, RatioOption
 
-# How the rendered title is cased: left as-is, UPPER CASE, or Capitalized.
-TitleCase = Literal["none", "upper", "capitalize"]
+# How the rendered title is cased: left as-is, UPPER CASE, Capitalized
+# (first letters raised, rest untouched — preserves acronyms/brand styling),
+# or strict Title Case (first letters raised, REST LOWERED — "ARMEDANGELS"
+# becomes "Armedangels", but so does "XL" → "Xl": the trade-off is the
+# user's, per account).
+TitleCase = Literal["none", "upper", "capitalize", "title"]
 
 
 class UserPreferences(BaseModel):

@@ -48,13 +48,14 @@
   }: {
     tokens: string[]
     separator: string
-    titleCase: "none" | "upper" | "capitalize"
+    titleCase: "none" | "upper" | "capitalize" | "title"
   } = $props()
 
   const CASE_OPTIONS = [
     { value: "none", label: "Aucune (tel quel)" },
     { value: "upper", label: "MAJUSCULES" },
-    { value: "capitalize", label: "Initiales En Majuscule" },
+    { value: "capitalize", label: "Initiales En Majuscule (acronymes préservés)" },
+    { value: "title", label: "Initiales Seules (reste en minuscules)" },
   ] as const
 
   /** Applique la casse choisie à l'aperçu (miroir du backend). */
@@ -62,6 +63,8 @@
     if (titleCase === "upper") return text.toUpperCase()
     if (titleCase === "capitalize")
       return text.replace(/\b\w/g, (c) => c.toUpperCase())
+    if (titleCase === "title")
+      return text.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
     return text
   }
 

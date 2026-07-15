@@ -48,6 +48,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 WORKDIR /app/backend/
 
+# Writable runtime dir (uploads + imaging staging). Created here so a named
+# volume mounted at var/ inherits appuser ownership on first use — without
+# this, Docker creates the mountpoint root-owned and every upload 500s.
+RUN mkdir -p /app/backend/var
+
 RUN chown -R appuser:appuser /app
 USER appuser
 

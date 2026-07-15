@@ -17,7 +17,7 @@ export type AccountSettings = {
     /**
      * Title Case
      */
-    title_case?: 'none' | 'upper' | 'capitalize';
+    title_case?: 'none' | 'upper' | 'capitalize' | 'title';
     /**
      * Editorial Instructions
      */
