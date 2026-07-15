@@ -38,6 +38,7 @@
     profileSeason,
     coefficientConfig,
     catalogFilters,
+    renderedByRef = null,
     onChanged,
   }: {
     importId: number
@@ -52,6 +53,9 @@
     coefficientConfig: CoefficientConfig
     /** Référentiel de classification (datalists), null si indisponible. */
     catalogFilters: CatalogFiltersData | null
+    /** Rendu Tillin par référence (titre/saison après profil), null = pas
+     *  de profil sélectionné. Aperçu en lecture seule sous le titre extrait. */
+    renderedByRef?: Record<string, { title: string; season: string }> | null
     /** Items/statuts modifiés : la page rafraîchit le job + l'aperçu CSV. */
     onChanged: () => void
   } = $props()
@@ -429,12 +433,21 @@
               {product.supplier_ref}
             </td>
             <td
-              class="max-w-52 truncate px-3 {cellPad} {lowConfidence(product.confidence, 'title')
+              class="max-w-52 px-3 {cellPad} {lowConfidence(product.confidence, 'title')
                 ? 'text-warning-foreground'
                 : ''}"
-              title={product.title ?? undefined}
             >
-              {product.title ?? "—"}
+              <span class="block truncate" title={product.title ?? undefined}>
+                {product.title ?? "—"}
+              </span>
+              {#if renderedByRef?.[product.supplier_ref]?.title && renderedByRef[product.supplier_ref].title !== (product.title ?? "")}
+                <span
+                  class="text-muted-foreground block truncate text-[11px]"
+                  title={renderedByRef[product.supplier_ref].title}
+                >
+                  → {renderedByRef[product.supplier_ref].title}
+                </span>
+              {/if}
             </td>
             <td
               class="px-3 {cellPad} whitespace-nowrap {lowConfidence(product.confidence, 'brand')

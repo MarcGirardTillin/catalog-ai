@@ -9,6 +9,7 @@
 // Restent en appels bruts (instance axios du client généré) : l'upload
 // multipart (champ répété `files`) et les téléchargements binaires (blob).
 import {
+  importProfilesBulkUpdateImportProfiles,
   importProfilesCreateImportProfile,
   importProfilesDeleteImportProfile,
   importProfilesListImportProfiles,
@@ -204,6 +205,19 @@ export function updateImportProfile(
 
 export function deleteImportProfile(id: number) {
   return importProfilesDeleteImportProfile({ path: { profile_id: id } })
+}
+
+/** Harmonisation groupée : champs à null/undefined = non modifiés. */
+export function bulkUpdateImportProfiles(body: {
+  profile_ids: number[]
+  season_label?: string | null
+  apply_title_template?: boolean | null
+  split_by_color?: boolean | null
+}) {
+  return importProfilesBulkUpdateImportProfiles({ body }) as Promise<{
+    data?: ImportProfilePublic[]
+    error?: unknown
+  }>
 }
 
 // --- Review des items (édition du payload, exclusion/réintégration) ---

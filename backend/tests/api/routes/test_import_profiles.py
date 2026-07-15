@@ -139,3 +139,50 @@ def test_profiles_are_isolated_by_account(auth_client: TestClient) -> None:
     # The foreign profile is untouched.
     db = _db()
     assert db.get(ImportProfile, foreign_id).name == "Foreign"
+
+
+def test_bulk_update_touches_only_the_sent_fields(auth_client: TestClient) -> None:
+    first = _create(
+        auth_client,
+        name="Victoria Beckham",
+        config={
+            "season_label": "AW25",
+            "price_mode": "coefficient",
+            "coefficient": "2.5",
+        },
+    )
+    second = _create(auth_client, name="Garcia")
+
+    response = auth_client.patch(
+        "/import-profiles/bulk",
+        json={
+            "profile_ids": [first["id"], second["id"]],
+            "season_label": " FW26 ",
+            "split_by_color": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    updated = {p["id"]: p for p in response.json()}
+    for profile_id in (first["id"], second["id"]):
+        config = updated[profile_id]["config"]
+        assert config["season_label"] == "FW26"
+        assert config["split_by_color"] is True
+        # apply_title_template was not sent: untouched (default False).
+        assert config["apply_title_template"] is False
+    # Per-profile conventions survive the bulk pass.
+    assert updated[first["id"]]["config"]["price_mode"] == "coefficient"
+    assert updated[first["id"]]["config"]["coefficient"] == "2.5"
+
+
+def test_bulk_update_rejects_foreign_or_unknown_profiles(
+    auth_client: TestClient,
+) -> None:
+    mine = _create(auth_client, name="Mien")
+    response = auth_client.patch(
+        "/import-profiles/bulk",
+        json={"profile_ids": [mine["id"], 99999], "season_label": "FW26"},
+    )
+    assert response.status_code == 404
+    # Nothing was written (all-or-nothing).
+    check = auth_client.get("/import-profiles").json()
+    assert check[0]["config"]["season_label"] == ""

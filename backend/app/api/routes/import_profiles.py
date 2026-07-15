@@ -15,6 +15,7 @@ from app.api.schemas.import_profiles import (
     ImportProfileConfig,
     ImportProfileCreate,
     ImportProfilePublic,
+    ImportProfilesBulkUpdate,
     ImportProfileUpdate,
 )
 from app.api.services.accounts import resolve_account_id
@@ -71,6 +72,42 @@ def create_import_profile(
     db.commit()
     db.refresh(profile)
     return _to_public(profile)
+
+
+# Declared BEFORE /{profile_id}: "bulk" must not parse as a profile id.
+@router.patch("/bulk", response_model=list[ImportProfilePublic])
+def bulk_update_import_profiles(
+    payload: ImportProfilesBulkUpdate,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> list[ImportProfilePublic]:
+    """Harmonize shared conventions (season, title template, color split)
+    across several profiles at once — catalogue-wide settings in practice.
+
+    Every id must belong to the caller's account (404 otherwise, nothing
+    written); fields left to None are untouched on every profile.
+    """
+    account_id = resolve_account_id(db, current_user)
+    profiles = [
+        _get_profile(db, account_id=account_id, profile_id=profile_id)
+        for profile_id in payload.profile_ids
+    ]
+    updates: dict[str, object] = {}
+    if payload.season_label is not None:
+        updates["season_label"] = payload.season_label.strip()
+    if payload.apply_title_template is not None:
+        updates["apply_title_template"] = payload.apply_title_template
+    if payload.split_by_color is not None:
+        updates["split_by_color"] = payload.split_by_color
+    for profile in profiles:
+        config = ImportProfileConfig.model_validate(
+            {**(profile.config_json or {}), **updates}
+        )
+        profile.config_json = config.model_dump(mode="json")
+    db.commit()
+    for profile in profiles:
+        db.refresh(profile)
+    return [_to_public(profile) for profile in profiles]
 
 
 @router.patch("/{profile_id}", response_model=ImportProfilePublic)

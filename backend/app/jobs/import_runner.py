@@ -18,14 +18,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.schemas.import_profiles import ImportProfileConfig
 from app.api.services.credits import consume as consume_credits
 from app.api.services.usage import record_claude_usage
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.imports.selection import stored_import_files
-from app.models import EnrichmentJob, ImportItem
+from app.imports.split import split_products_by_color
+from app.models import EnrichmentJob, ImportItem, ImportProfile
 
 if TYPE_CHECKING:
     from app.imports.schema import ExtractionResult, RawDocument
@@ -116,6 +119,48 @@ def run_import_job(
         db.close()
 
 
+def _resolve_profile(
+    db: Session, job: EnrichmentJob, supplier: str | None
+) -> ImportProfile | None:
+    """The profile driving this import: explicit selection, else supplier match.
+
+    Auto-attach: when no profile was chosen at upload and the extracted
+    document names a supplier matching a profile's `supplier_match`
+    (containment either way, both sides lowercased), that profile is attached
+    to the job — so season/price/split conventions apply without the user
+    re-selecting the same profile on every order. The attachment is persisted
+    with the final commit and stays editable in the UI.
+    """
+    config = job.config_json or {}
+    profile_id = config.get("profile_id")
+    if profile_id:
+        profile = db.get(ImportProfile, int(profile_id))
+        if profile is not None and profile.account_id == job.account_id:
+            return profile
+        return None
+    key = (supplier or "").strip().lower()
+    if not key:
+        return None
+    profiles = db.scalars(
+        select(ImportProfile)
+        .where(ImportProfile.account_id == job.account_id)
+        .order_by(ImportProfile.id)
+    ).all()
+    for profile in profiles:
+        match = profile.supplier_match
+        if match and (match in key or key in match):
+            job.config_json = {**config, "profile_id": profile.id}
+            logger.info(
+                "import job %s: profile %s (%s) auto-attached via supplier %r",
+                job.id,
+                profile.id,
+                profile.name,
+                supplier,
+            )
+            return profile
+    return None
+
+
 def _process(
     db: Session, job: EnrichmentJob, parse: ParseFile, build: BuildExtractor
 ) -> None:
@@ -140,7 +185,16 @@ def _process(
     extractor = build()
     result = extractor(documents)
 
-    for product in result.products:
+    # Profile conventions that shape the STAGED data (not just the render):
+    # explicit selection at upload, else auto-attached by supplier match.
+    profile = _resolve_profile(db, job, result.document.supplier)
+    products = result.products
+    if profile is not None:
+        profile_config = ImportProfileConfig.model_validate(profile.config_json or {})
+        if profile_config.split_by_color:
+            products = split_products_by_color(products)
+
+    for product in products:
         db.add(
             ImportItem(
                 job_id=job.id,
@@ -153,12 +207,12 @@ def _process(
         record_claude_usage(
             db, account_id=job.account_id, usage=usage, source="import", job_id=job.id
         )
-    if result.products:
+    if products:
         consume_credits(
             db,
             account_id=job.account_id,
             action="import_product",
-            quantity=len(result.products),
+            quantity=len(products),
             job_id=job.id,
         )
     config_updates: dict[str, object] = {}
@@ -176,6 +230,4 @@ def _process(
     job.status = "completed"
     job.finished_at = datetime.now(UTC)
     db.commit()
-    logger.info(
-        "import job %s completed: %s product(s) staged", job.id, len(result.products)
-    )
+    logger.info("import job %s completed: %s product(s) staged", job.id, len(products))

@@ -17,7 +17,14 @@ from app.imports.schema import (
     ImportedVariant,
     RawDocument,
 )
-from app.models import Account, CreditEntry, EnrichmentJob, ImportItem, UsageEvent
+from app.models import (
+    Account,
+    CreditEntry,
+    EnrichmentJob,
+    ImportItem,
+    ImportProfile,
+    UsageEvent,
+)
 
 
 @pytest.fixture
@@ -292,6 +299,108 @@ def test_run_import_job_missing_file_fails_job(
     assert fresh is not None
     assert fresh.status == "failed"
     assert "FileNotFoundError" in fresh.config_json["error"]
+
+
+def test_profile_auto_attached_by_supplier_and_split_by_color_applies(
+    runner_db: Session, tmp_path: Path
+) -> None:
+    source = tmp_path / "vb.pdf"
+    source.write_bytes(b"%PDF-1.4 vb")
+    job = _seed_import_job(runner_db, source)
+    profile = ImportProfile(
+        account_id=job.account_id,
+        name="Victoria Beckham",
+        supplier_match="victoria beckham",
+        config_json={"split_by_color": True, "season_label": "FW26"},
+    )
+    runner_db.add(profile)
+    runner_db.commit()
+
+    result = ExtractionResult(
+        products=[
+            ImportedProduct(
+                supplier_ref="B426AAC007810A",
+                variants=[
+                    ImportedVariant(color="BLACK", size="S", quantity=1),
+                    ImportedVariant(color="DARK OLIVE", size="S", quantity=1),
+                ],
+            ),
+            ImportedProduct(
+                supplier_ref="B426AAC007824A",
+                variants=[ImportedVariant(color="COFFEE", size="M", quantity=1)],
+            ),
+        ],
+        document=DocumentInfo(supplier="Victoria Beckham SRL"),
+    )
+    import_runner.run_import_job(
+        job.id,
+        parse_file=_fake_parse,
+        build_extractor=_build_extractor_returning(result),
+    )
+
+    runner_db.expire_all()
+    fresh = runner_db.get(EnrichmentJob, job.id)
+    assert fresh is not None and fresh.status == "completed"
+    # The matching profile was attached to the job (containment match).
+    assert fresh.config_json["profile_id"] == profile.id
+    # 2 extracted products -> 3 staged sheets (one per color) -> 3 credits.
+    items = runner_db.query(ImportItem).order_by(ImportItem.id).all()
+    assert [i.payload_json["supplier_ref"] for i in items] == [
+        "B426AAC007810A-BLACK",
+        "B426AAC007810A-DARK-OLIVE",
+        "B426AAC007824A",
+    ]
+    credit = runner_db.query(CreditEntry).one()
+    assert (credit.action, credit.quantity, credit.credits) == ("import_product", 3, -3)
+
+
+def test_explicit_profile_wins_over_supplier_match(
+    runner_db: Session, tmp_path: Path
+) -> None:
+    source = tmp_path / "vb2.pdf"
+    source.write_bytes(b"%PDF-1.4 vb2")
+    job = _seed_import_job(runner_db, source)
+    matching = ImportProfile(
+        account_id=job.account_id,
+        name="VB split",
+        supplier_match="victoria",
+        config_json={"split_by_color": True},
+    )
+    chosen = ImportProfile(
+        account_id=job.account_id,
+        name="VB no split",
+        supplier_match="",
+        config_json={"split_by_color": False},
+    )
+    runner_db.add_all([matching, chosen])
+    runner_db.flush()
+    job.config_json = {"profile_id": chosen.id}
+    runner_db.commit()
+
+    result = ExtractionResult(
+        products=[
+            ImportedProduct(
+                supplier_ref="R1",
+                variants=[
+                    ImportedVariant(color="A", quantity=1),
+                    ImportedVariant(color="B", quantity=1),
+                ],
+            )
+        ],
+        document=DocumentInfo(supplier="Victoria Beckham"),
+    )
+    import_runner.run_import_job(
+        job.id,
+        parse_file=_fake_parse,
+        build_extractor=_build_extractor_returning(result),
+    )
+
+    runner_db.expire_all()
+    fresh = runner_db.get(EnrichmentJob, job.id)
+    assert fresh is not None
+    # The explicit selection is kept, and its (no-split) config applies.
+    assert fresh.config_json["profile_id"] == chosen.id
+    assert runner_db.query(ImportItem).count() == 1
 
 
 def test_run_import_job_ignores_non_import_jobs(runner_db: Session) -> None:

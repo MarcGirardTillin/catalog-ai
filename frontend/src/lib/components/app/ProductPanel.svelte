@@ -429,8 +429,8 @@
     role="dialog"
     aria-modal="true"
     aria-label="Détail du produit"
-    class="border-border bg-background absolute inset-y-0 right-0 flex h-full w-full flex-col overflow-y-auto border-l sm:w-[36rem]"
-    transition:fly={{ x: 576, duration: 200, opacity: 1 }}
+    class="border-border bg-background absolute inset-y-0 right-0 flex h-full w-full max-w-full flex-col overflow-x-hidden overflow-y-auto border-l sm:w-[36rem]"
+    transition:fly={{ x: "100%", duration: 200, opacity: 1 }}
   >
     <div
       class="border-border bg-background sticky top-0 z-10 flex items-start justify-between gap-2 border-b p-4"

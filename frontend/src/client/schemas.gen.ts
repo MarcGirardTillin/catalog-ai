@@ -2311,6 +2311,11 @@ export const ImportProfileConfig_InputSchema = {
             type: 'boolean',
             title: 'Apply Title Template',
             default: false
+        },
+        split_by_color: {
+            type: 'boolean',
+            title: 'Split By Color',
+            default: false
         }
     },
     type: 'object',
@@ -2398,6 +2403,11 @@ export const ImportProfileConfig_OutputSchema = {
         apply_title_template: {
             type: 'boolean',
             title: 'Apply Title Template',
+            default: false
+        },
+        split_by_color: {
+            type: 'boolean',
+            title: 'Split By Color',
             default: false
         }
     },
@@ -2533,6 +2543,58 @@ export const ImportProfileUpdateSchema = {
     },
     type: 'object',
     title: 'ImportProfileUpdate'
+} as const;
+
+export const ImportProfilesBulkUpdateSchema = {
+    properties: {
+        profile_ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Profile Ids'
+        },
+        season_label: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Season Label'
+        },
+        apply_title_template: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Apply Title Template'
+        },
+        split_by_color: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Split By Color'
+        }
+    },
+    type: 'object',
+    required: [
+        'profile_ids'
+    ],
+    title: 'ImportProfilesBulkUpdate',
+    description: 'Harmonize the catalogue-wide conventions across several profiles.\n\nOnly the fields that behave the same for the whole catalogue are\nbulk-editable; None = leave that field untouched on every profile.'
 } as const;
 
 export const ImportRenderPreviewSchema = {

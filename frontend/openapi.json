@@ -2867,6 +2867,70 @@
         }
       }
     },
+    "/import-profiles/bulk": {
+      "patch": {
+        "tags": [
+          "import-profiles"
+        ],
+        "summary": "Bulk Update Import Profiles",
+        "description": "Harmonize shared conventions (season, title template, color split)\nacross several profiles at once \u2014 catalogue-wide settings in practice.\n\nEvery id must belong to the caller's account (404 otherwise, nothing\nwritten); fields left to None are untouched on every profile.",
+        "operationId": "import-profiles-bulk_update_import_profiles",
+        "parameters": [
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportProfilesBulkUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImportProfilePublic"
+                  },
+                  "title": "Response Import-Profiles-Bulk Update Import Profiles"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/import-profiles/{profile_id}": {
       "patch": {
         "tags": [
@@ -8074,6 +8138,11 @@
             "type": "boolean",
             "title": "Apply Title Template",
             "default": false
+          },
+          "split_by_color": {
+            "type": "boolean",
+            "title": "Split By Color",
+            "default": false
           }
         },
         "type": "object",
@@ -8160,6 +8229,11 @@
           "apply_title_template": {
             "type": "boolean",
             "title": "Apply Title Template",
+            "default": false
+          },
+          "split_by_color": {
+            "type": "boolean",
+            "title": "Split By Color",
             "default": false
           }
         },
@@ -8291,6 +8365,57 @@
         },
         "type": "object",
         "title": "ImportProfileUpdate"
+      },
+      "ImportProfilesBulkUpdate": {
+        "properties": {
+          "profile_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Profile Ids"
+          },
+          "season_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Label"
+          },
+          "apply_title_template": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apply Title Template"
+          },
+          "split_by_color": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split By Color"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_ids"
+        ],
+        "title": "ImportProfilesBulkUpdate",
+        "description": "Harmonize the catalogue-wide conventions across several profiles.\n\nOnly the fields that behave the same for the whole catalogue are\nbulk-editable; None = leave that field untouched on every profile."
       },
       "ImportRenderPreview": {
         "properties": {

@@ -1360,6 +1360,10 @@ export type ImportProfileConfigInput = {
      * Apply Title Template
      */
     apply_title_template?: boolean;
+    /**
+     * Split By Color
+     */
+    split_by_color?: boolean;
 };
 
 /**
@@ -1416,6 +1420,10 @@ export type ImportProfileConfigOutput = {
      * Apply Title Template
      */
     apply_title_template?: boolean;
+    /**
+     * Split By Color
+     */
+    split_by_color?: boolean;
 };
 
 /**
@@ -1485,6 +1493,33 @@ export type ImportProfileUpdate = {
      */
     supplier_match?: string | null;
     config?: ImportProfileConfigInput | null;
+};
+
+/**
+ * ImportProfilesBulkUpdate
+ *
+ * Harmonize the catalogue-wide conventions across several profiles.
+ *
+ * Only the fields that behave the same for the whole catalogue are
+ * bulk-editable; None = leave that field untouched on every profile.
+ */
+export type ImportProfilesBulkUpdate = {
+    /**
+     * Profile Ids
+     */
+    profile_ids: Array<number>;
+    /**
+     * Season Label
+     */
+    season_label?: string | null;
+    /**
+     * Apply Title Template
+     */
+    apply_title_template?: boolean | null;
+    /**
+     * Split By Color
+     */
+    split_by_color?: boolean | null;
 };
 
 /**
@@ -4341,6 +4376,33 @@ export type ImportProfilesCreateImportProfileResponses = {
 };
 
 export type ImportProfilesCreateImportProfileResponse = ImportProfilesCreateImportProfileResponses[keyof ImportProfilesCreateImportProfileResponses];
+
+export type ImportProfilesBulkUpdateImportProfilesData = {
+    body: ImportProfilesBulkUpdate;
+    path?: never;
+    query?: never;
+    url: '/import-profiles/bulk';
+};
+
+export type ImportProfilesBulkUpdateImportProfilesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportProfilesBulkUpdateImportProfilesError = ImportProfilesBulkUpdateImportProfilesErrors[keyof ImportProfilesBulkUpdateImportProfilesErrors];
+
+export type ImportProfilesBulkUpdateImportProfilesResponses = {
+    /**
+     * Response Import-Profiles-Bulk Update Import Profiles
+     *
+     * Successful Response
+     */
+    200: Array<ImportProfilePublic>;
+};
+
+export type ImportProfilesBulkUpdateImportProfilesResponse = ImportProfilesBulkUpdateImportProfilesResponses[keyof ImportProfilesBulkUpdateImportProfilesResponses];
 
 export type ImportProfilesDeleteImportProfileData = {
     body?: never;

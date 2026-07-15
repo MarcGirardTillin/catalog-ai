@@ -11,6 +11,7 @@
     type CatalogFiltersData,
   } from "@/lib/api/catalogFilters"
   import {
+    getImportRows,
     listImportItems,
     listImportProfiles,
     listLocations,
@@ -186,6 +187,49 @@
     queryClient.invalidateQueries({ queryKey: ["imports", importId] })
   }
 
+  // --- Aperçu du rendu Tillin (profil appliqué) pour la grille de review.
+  // La grille édite les données EXTRAITES ; le profil ne s'applique qu'au
+  // rendu (CSV/transfert). Pour lever l'ambiguïté (déjà vécue sur le prix et
+  // la saison), on montre le rendu réel : titres/saisons issus de /rows —
+  // la même fonction qui produit le CSV, donc aucun risque de divergence.
+  const renderPreviewQuery = createQuery(() => ({
+    queryKey: [
+      "imports",
+      importId,
+      "render-preview",
+      selectedProfileId,
+      renderVersion,
+    ],
+    enabled: selectedProfileId !== null && !jobRunning,
+    queryFn: async () => {
+      const { data, error } = await getImportRows(
+        importId,
+        selectedProfileId ?? undefined,
+      )
+      if (error || !data) throw new Error("render_preview_failed")
+      return data
+    },
+  }))
+  /** reference_code extraite -> { title, season } rendus par le profil. */
+  const renderedByRef = $derived.by(() => {
+    const preview = renderPreviewQuery.data
+    if (!preview) return null
+    const refIdx = preview.columns.indexOf("reference_code")
+    const titleIdx = preview.columns.indexOf("title")
+    const seasonIdx = preview.columns.indexOf("season")
+    if (refIdx < 0) return null
+    const map: Record<string, { title: string; season: string }> = {}
+    for (const row of preview.rows) {
+      const ref = row[refIdx]
+      if (!ref || map[ref]) continue
+      map[ref] = {
+        title: titleIdx >= 0 ? row[titleIdx] : "",
+        season: seasonIdx >= 0 ? row[seasonIdx] : "",
+      }
+    }
+    return map
+  })
+
   function onTransferred() {
     queryClient.invalidateQueries({ queryKey: ["imports", importId] })
   }
@@ -228,6 +272,29 @@
           />
 
           <h2 class="font-title mt-1 text-sm font-bold">Produits extraits</h2>
+          {#if selectedProfile && !running}
+            <div
+              class="border-border bg-muted/40 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-xs"
+            >
+              <span class="font-medium">
+                Profil « {selectedProfile.name} » — appliqué au transfert
+              </span>
+              {#if profileSeason}
+                <span class="text-muted-foreground">
+                  Saison transférée :
+                  <span class="text-foreground font-medium">{profileSeason}</span>
+                </span>
+              {/if}
+              {#if selectedProfile.config.apply_title_template}
+                <span class="text-muted-foreground">
+                  Titres : modèle appliqué (aperçu sous chaque titre)
+                </span>
+              {/if}
+              <span class="text-muted-foreground">
+                La grille montre les données extraites, modifiables.
+              </span>
+            </div>
+          {/if}
           {#if items === null}
             <Skeleton class="h-16 w-full" />
           {:else if items.length === 0}
@@ -248,6 +315,7 @@
               {profileSeason}
               {coefficientConfig}
               {catalogFilters}
+              {renderedByRef}
               onChanged={onItemsChanged}
             />
           {/if}

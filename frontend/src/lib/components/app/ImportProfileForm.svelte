@@ -80,6 +80,7 @@
         barcode_mode: c.barcode_mode,
         tax_rate: c.tax_rate,
         apply_title_template: c.apply_title_template ?? false,
+        split_by_color: c.split_by_color ?? false,
       }
     }
     const supplier = prefill?.supplier_label ?? prefill?.supplier_match ?? ""
@@ -96,6 +97,7 @@
       barcode_mode: "ean" as ImportProfileConfig["barcode_mode"],
       tax_rate: "20",
       apply_title_template: false,
+      split_by_color: false,
     }
   }
 
@@ -135,6 +137,7 @@
       // Statut retiré du formulaire : toujours « active » à la création.
       status: "active",
       apply_title_template: form.apply_title_template,
+      split_by_color: form.split_by_color,
     }
     // Le fournisseur sert aussi de clé d'auto-sélection (comparaison minuscule).
     const body = { name, supplier_match: supplier.toLowerCase(), config }
@@ -293,6 +296,24 @@
         <span class="text-muted-foreground block text-xs font-normal">
           Le titre du CSV est reconstruit depuis le modèle de titre du compte
           (Réglages) au lieu du titre brut du fournisseur. Désactivé par défaut.
+        </span>
+      </span>
+    </label>
+  </div>
+
+  <div class="flex flex-col gap-1.5">
+    <label class="flex items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        class="mt-0.5 size-4"
+        bind:checked={form.split_by_color}
+      />
+      <span>
+        Une fiche produit par couleur
+        <span class="text-muted-foreground block text-xs font-normal">
+          À l'analyse du document, un produit décliné en plusieurs couleurs est
+          séparé en une fiche par couleur (référence suffixée par la couleur).
+          Appliqué à l'extraction — sans effet sur les imports déjà analysés.
         </span>
       </span>
     </label>

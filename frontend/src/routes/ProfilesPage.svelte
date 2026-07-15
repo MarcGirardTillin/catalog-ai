@@ -9,6 +9,7 @@
   import { toast } from "svelte-sonner"
 
   import {
+    bulkUpdateImportProfiles,
     deleteImportProfile,
     listImportProfiles,
     type ImportProfileConfig,
@@ -24,6 +25,8 @@
     CardTitle,
   } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
+  import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Separator } from "@/lib/components/ui/separator"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -86,6 +89,65 @@
     if (formTarget === profile.id) formTarget = null
     queryClient.invalidateQueries({ queryKey: ["profiles", "list"] })
     toast.success("Profil supprimé")
+  }
+
+  // --- Édition groupée (harmonisation catalogue) ---
+  // Sélection par cases à cocher ; trois conventions qui, en pratique, sont
+  // les mêmes pour toute la boutique : saison, modèle de titre, séparation
+  // par couleur. « Ne pas modifier » laisse le champ intact profil par profil.
+  let selected = $state<Set<number>>(new Set())
+  let bulkSeason = $state("")
+  let bulkSeasonEnabled = $state(false)
+  let bulkTitleTemplate = $state<"keep" | "on" | "off">("keep")
+  let bulkSplit = $state<"keep" | "on" | "off">("keep")
+  let bulkSaving = $state(false)
+
+  function toggleSelected(id: number) {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    selected = next
+  }
+  const allFilteredSelected = $derived(
+    filtered.length > 0 && filtered.every((p) => selected.has(p.id)),
+  )
+  function toggleAllFiltered() {
+    selected = allFilteredSelected
+      ? new Set()
+      : new Set(filtered.map((p) => p.id))
+  }
+
+  async function applyBulk() {
+    if (bulkSaving || selected.size === 0) return
+    const body: Parameters<typeof bulkUpdateImportProfiles>[0] = {
+      profile_ids: [...selected],
+    }
+    if (bulkSeasonEnabled) body.season_label = bulkSeason.trim()
+    if (bulkTitleTemplate !== "keep")
+      body.apply_title_template = bulkTitleTemplate === "on"
+    if (bulkSplit !== "keep") body.split_by_color = bulkSplit === "on"
+    if (
+      body.season_label === undefined &&
+      body.apply_title_template === undefined &&
+      body.split_by_color === undefined
+    ) {
+      toast.error("Choisissez au moins un réglage à appliquer.")
+      return
+    }
+    bulkSaving = true
+    const { data, error } = await bulkUpdateImportProfiles(body)
+    bulkSaving = false
+    if (error || !data) {
+      toast.error("Modification groupée impossible.")
+      return
+    }
+    toast.success(`${data.length} profil${data.length > 1 ? "s" : ""} mis à jour`)
+    selected = new Set()
+    bulkSeasonEnabled = false
+    bulkSeason = ""
+    bulkTitleTemplate = "keep"
+    bulkSplit = "keep"
+    queryClient.invalidateQueries({ queryKey: ["profiles", "list"] })
   }
 
   /** Résumé lisible de la règle de prix d'un profil. */
@@ -190,13 +252,95 @@
                 Aucun profil ne correspond à « {search.trim()} ».
               </p>
             {:else}
+              <!-- Sélection groupée : harmoniser saison / titre / séparation -->
+              <div class="flex items-center gap-2">
+                <label class="text-muted-foreground flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    class="size-4"
+                    checked={allFilteredSelected}
+                    onchange={toggleAllFiltered}
+                  />
+                  Tout sélectionner ({filtered.length})
+                </label>
+                {#if selected.size > 0}
+                  <span class="text-muted-foreground text-xs">
+                    · {selected.size} sélectionné{selected.size > 1 ? "s" : ""}
+                  </span>
+                {/if}
+              </div>
+
+              {#if selected.size > 0}
+                <div
+                  class="border-border bg-muted/40 flex flex-col gap-3 rounded-md border p-3"
+                >
+                  <span class="text-sm font-medium">
+                    Modifier les {selected.size} profil{selected.size > 1 ? "s" : ""} sélectionné{selected.size > 1 ? "s" : ""}
+                  </span>
+                  <div class="grid gap-3 sm:grid-cols-3">
+                    <div class="flex flex-col gap-1.5">
+                      <Label for="bulk-season">Saison</Label>
+                      <div class="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          class="size-4 shrink-0"
+                          aria-label="Modifier la saison"
+                          bind:checked={bulkSeasonEnabled}
+                        />
+                        <Input
+                          id="bulk-season"
+                          placeholder="Ex. FW26 (vide = saison extraite)"
+                          disabled={!bulkSeasonEnabled}
+                          bind:value={bulkSeason}
+                        />
+                      </div>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <Label for="bulk-title">Modèle de titre à l'import</Label>
+                      <Select id="bulk-title" bind:value={bulkTitleTemplate}>
+                        <option value="keep">Ne pas modifier</option>
+                        <option value="on">Activer</option>
+                        <option value="off">Désactiver</option>
+                      </Select>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <Label for="bulk-split">Une fiche par couleur</Label>
+                      <Select id="bulk-split" bind:value={bulkSplit}>
+                        <option value="keep">Ne pas modifier</option>
+                        <option value="on">Activer</option>
+                        <option value="off">Désactiver</option>
+                      </Select>
+                    </div>
+                  </div>
+                  <div class="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onclick={() => (selected = new Set())}
+                    >
+                      Annuler
+                    </Button>
+                    <Button size="sm" disabled={bulkSaving} onclick={applyBulk}>
+                      {bulkSaving ? "Application…" : "Appliquer à la sélection"}
+                    </Button>
+                  </div>
+                </div>
+              {/if}
+
               <ul class="flex flex-col">
                 {#each filtered as profile, index (profile.id)}
                   {#if index > 0}
                     <Separator />
                   {/if}
                   <li class="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                    <div class="flex min-w-0 flex-col gap-0.5">
+                    <input
+                      type="checkbox"
+                      class="size-4 shrink-0"
+                      aria-label={`Sélectionner ${profile.name}`}
+                      checked={selected.has(profile.id)}
+                      onchange={() => toggleSelected(profile.id)}
+                    />
+                    <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span class="text-sm font-medium">{profile.name}</span>
                       <span class="text-muted-foreground text-xs">
                         {#if profile.config.supplier_label || profile.supplier_match}
@@ -204,6 +348,15 @@
                             profile.supplier_match} » ·
                         {/if}
                         {priceSummary(profile.config)}
+                        {#if profile.config.season_label}
+                          · Saison {profile.config.season_label}
+                        {/if}
+                        {#if profile.config.split_by_color}
+                          · 1 fiche/couleur
+                        {/if}
+                        {#if profile.config.apply_title_template}
+                          · Modèle de titre
+                        {/if}
                       </span>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">

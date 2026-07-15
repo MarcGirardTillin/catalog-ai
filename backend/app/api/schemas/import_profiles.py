@@ -55,6 +55,12 @@ class ImportProfileConfig(BaseModel):
     # template (settings) instead of the raw extracted title. Off by default:
     # most imports keep the supplier's title and only template at enrichment.
     apply_title_template: bool = False
+    # When True, a document product carrying SEVERAL colors is split into one
+    # sheet per color AT EXTRACTION TIME (reference suffixed by the color for
+    # Tillin uniqueness). Off by default: colors stay variants of one product.
+    # Applied when the products are staged — attaching the profile after the
+    # extraction does not re-split already staged items.
+    split_by_color: bool = False
     # NOTE: gender/category defaults were removed on user request (2026-07-09):
     # those are per-product review-grid edits, not supplier conventions.
     # Stored configs may still carry the old keys — pydantic ignores them.
@@ -79,3 +85,16 @@ class ImportProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     supplier_match: str | None = Field(default=None, max_length=120)
     config: ImportProfileConfig | None = None
+
+
+class ImportProfilesBulkUpdate(BaseModel):
+    """Harmonize the catalogue-wide conventions across several profiles.
+
+    Only the fields that behave the same for the whole catalogue are
+    bulk-editable; None = leave that field untouched on every profile.
+    """
+
+    profile_ids: list[int] = Field(min_length=1)
+    season_label: str | None = None
+    apply_title_template: bool | None = None
+    split_by_color: bool | None = None
