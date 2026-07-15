@@ -11,6 +11,7 @@ from datetime import UTC, timedelta
 
 from fastapi import APIRouter
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.api.routes.usage import _parse_month
@@ -83,12 +84,13 @@ def read_credits(
     )
 
 
-@router.get("/timeseries", response_model=CreditTimeseries)
-def read_credit_timeseries(
-    db: SessionDep, current_user: CurrentUserDep, month: str | None = None
+def build_credit_timeseries(
+    db: Session, account_id: int, month: str | None
 ) -> CreditTimeseries:
-    """Daily credits consumed, one series per action (full month, 0-filled)."""
-    account_id = resolve_account_id(db, current_user)
+    """Daily credits consumed, one series per action (full month, 0-filled).
+
+    Shared by the client route below and the admin per-account view.
+    """
     label, start, end = _parse_month(month)
     rows = db.execute(
         select(CreditEntry.created_at, CreditEntry.action, CreditEntry.credits).where(
@@ -130,3 +132,12 @@ def read_credit_timeseries(
         for key in ordered
     ]
     return CreditTimeseries(month=label, series=series)
+
+
+@router.get("/timeseries", response_model=CreditTimeseries)
+def read_credit_timeseries(
+    db: SessionDep, current_user: CurrentUserDep, month: str | None = None
+) -> CreditTimeseries:
+    """Daily credits consumed by the caller's account."""
+    account_id = resolve_account_id(db, current_user)
+    return build_credit_timeseries(db, account_id, month)

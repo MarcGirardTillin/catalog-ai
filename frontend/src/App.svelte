@@ -10,6 +10,7 @@
   import { frontendEnv } from "./lib/env"
   import AppErrorFallback from "@/lib/components/app/AppErrorFallback.svelte"
   import AdminAccountPage from "./routes/AdminAccountPage.svelte"
+  import AdminBillingPage from "./routes/AdminBillingPage.svelte"
   import AdminOverviewPage from "./routes/AdminOverviewPage.svelte"
   import AdminPricingPage from "./routes/AdminPricingPage.svelte"
   import EnrichmentPage from "./routes/EnrichmentPage.svelte"
@@ -74,6 +75,7 @@
         <Route path="/enrichment" component={EnrichmentPage} {appName} />
         <Route path="/usage" component={UsagePage} {appName} />
         <!-- Console admin (opérateur) : routes spécifiques avant /admin. -->
+        <Route path="/admin/billing" component={AdminBillingPage} {appName} />
         <Route path="/admin/pricing" component={AdminPricingPage} {appName} />
         <Route path="/admin/accounts/:id">
           {#snippet children(params)}

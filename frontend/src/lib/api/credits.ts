@@ -3,6 +3,7 @@
 import {
   adminGrantAccountCredits,
   adminReadAccountCredits,
+  adminReadAccountCreditTimeseries,
   creditsReadCredits,
   creditsReadCreditTimeseries,
 } from "@/client"
@@ -51,6 +52,14 @@ export function getCreditTimeseries(month?: string) {
 
 export function getAdminAccountCredits(accountId: number) {
   return adminReadAccountCredits({ path: { account_id: accountId } })
+}
+
+/** Crédits consommés par jour d'UN compte (vue opérateur, série par action). */
+export function getAdminAccountCreditTimeseries(accountId: number, month: string) {
+  return adminReadAccountCreditTimeseries({
+    path: { account_id: accountId },
+    query: { month },
+  })
 }
 
 /** Écriture manuelle au ledger : octroi, achat de pack ou ajustement (signé). */

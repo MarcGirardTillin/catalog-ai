@@ -1,7 +1,8 @@
 <script lang="ts">
-  // Console admin — tarification : grille des prix providers (CRUD) et
-  // re-figement d'un mois facturé. Déplacé de la page Consommation (les
-  // clients ne doivent jamais voir providers, modèles ni prix d'achat).
+  // Console admin — Coûts : grille des prix d'achat providers (CRUD) et
+  // re-figement d'un mois facturé. C'est la vue COÛT RÉEL de l'opérateur —
+  // la tarification vendue aux clients (packs de crédits, grille de
+  // consommation) vit sur la page « Tarification » (/admin/billing).
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import ChartColumn from "@lucide/svelte/icons/chart-column"
   import Plus from "@lucide/svelte/icons/plus"
@@ -65,7 +66,7 @@
     return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed
   }
 
-  // --- Grille tarifaire ---
+  // --- Grille de coûts ---
   const pricesQuery = createQuery(() => ({
     queryKey: ["admin", "prices"],
     queryFn: async () => {
@@ -80,7 +81,7 @@
   )
   $effect(() => {
     if (pricesQuery.isError) {
-      toast.error("Impossible de charger la grille tarifaire.")
+      toast.error("Impossible de charger la grille de coûts.")
     }
   })
 
@@ -220,18 +221,18 @@
       const { data, error } = await createUsagePrice(body)
       savingPrice = false
       if (error || data === undefined) {
-        toast.error("Création du tarif impossible.")
+        toast.error("Création du coût impossible.")
         return
       }
-      toast.success("Tarif créé")
+      toast.success("Coût enregistré")
     } else {
       const { data, error } = await updateUsagePrice(editingId, body)
       savingPrice = false
       if (error || data === undefined) {
-        toast.error("Enregistrement du tarif impossible.")
+        toast.error("Enregistrement du coût impossible.")
         return
       }
-      toast.success("Tarif mis à jour")
+      toast.success("Coût mis à jour")
     }
     closeForm()
     invalidatePricing()
@@ -244,7 +245,7 @@
       return
     }
     if (editingId === id) closeForm()
-    toast.success("Tarif supprimé")
+    toast.success("Coût supprimé")
     invalidatePricing()
   }
 
@@ -282,10 +283,16 @@
     <AppShell
       {appName}
       {user}
-      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Tarification" }]}
+      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Coûts" }]}
     >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
-        <h1 class="font-title text-lg font-bold">Tarification</h1>
+        <div class="flex flex-col gap-1">
+          <h1 class="font-title text-lg font-bold">Coûts</h1>
+          <p class="text-muted-foreground text-xs">
+            Prix d'achat providers utilisés pour calculer les coûts réels —
+            la tarification vendue aux clients vit sur la page « Tarification ».
+          </p>
+        </div>
 
         <!-- Consommations enregistrées qu'aucun tarif ne couvre -->
         {#if unpricedMetrics.length > 0}
@@ -296,7 +303,7 @@
             <span class="flex items-center gap-2 text-sm font-medium">
               <TriangleAlert size={15} class="text-warning-foreground shrink-0" aria-hidden="true" />
               {unpricedMetrics.length} consommation{unpricedMetrics.length > 1 ? "s" : ""}
-              sans tarif — les coûts correspondants sont comptés à zéro.
+              sans coût renseigné — comptées à zéro dans les coûts réels.
             </span>
             <ul class="flex flex-col gap-1.5">
               {#each unpricedMetrics as combo (comboLabel(combo))}
@@ -307,7 +314,7 @@
                       {combo.quantity.toLocaleString("fr-FR")} unités enregistrées
                     </span>
                     <Button size="sm" variant="outline" onclick={() => openCreateFor(combo)}>
-                      Tarifer
+                      Renseigner le coût
                     </Button>
                   </span>
                 </li>
@@ -316,15 +323,15 @@
           </div>
         {/if}
 
-        <!-- Grille tarifaire -->
+        <!-- Grille de coûts -->
         <Card size="sm">
           <CardHeader>
             <CardTitle class="font-title flex items-center gap-2 text-sm">
               <ChartColumn size={14} aria-hidden="true" />
-              Grille tarifaire
+              Grille de coûts
             </CardTitle>
             <CardDescription class="text-muted-foreground text-xs">
-              Prix appliqués pour calculer les coûts. Pour les métriques en
+              Prix d'achat appliqués pour calculer les coûts. Pour les métriques en
               tokens, le prix se saisit et s'affiche en € par million. Les
               modifications n'affectent que les mois non encore facturés.
             </CardDescription>
@@ -336,7 +343,7 @@
             {:else}
               {#if prices.length === 0 && !formOpen}
                 <p class="text-muted-foreground py-2 text-center text-sm">
-                  Aucun tarif pour l'instant — ajoutez par exemple le prix des
+                  Aucun coût pour l'instant — ajoutez par exemple le prix des
                   tokens d'entrée de votre modèle.
                 </p>
               {:else if prices.length > 0}
@@ -394,12 +401,12 @@
                   onsubmit={submitPriceForm}
                 >
                   <span class="text-sm font-medium">
-                    {editingId === null ? "Nouveau tarif" : "Modifier le tarif"}
+                    {editingId === null ? "Nouveau coût" : "Modifier le coût"}
                   </span>
                   <div class="grid gap-3 sm:grid-cols-2">
                     {#if editingId === null}
                       <!-- Le picker propose uniquement les combos réellement
-                           enregistrés : le tarif créé correspond forcément à
+                           enregistrés : le coût créé correspond forcément à
                            une consommation existante. -->
                       <div class="flex flex-col gap-1.5 sm:col-span-2">
                         <Label for="price-combo">Consommation</Label>
@@ -411,7 +418,7 @@
                           <option value="" disabled>Choisir une consommation enregistrée…</option>
                           {#each usageMetrics ?? [] as combo, index (comboLabel(combo))}
                             <option value={String(index)}>
-                              {comboLabel(combo)}{combo.priced ? "" : " — sans tarif"}
+                              {comboLabel(combo)}{combo.priced ? "" : " — sans coût"}
                             </option>
                           {/each}
                           <option value="manual">Autre (saisie manuelle)…</option>
@@ -447,11 +454,11 @@
                         Attention : provider et métrique doivent correspondre
                         exactement aux identifiants techniques enregistrés
                         (ex. <code>photoroom</code> / <code>images</code>),
-                        sinon le tarif ne s'appliquera pas.
+                        sinon le coût ne s'appliquera pas.
                       </p>
                     {:else if formMetric}
                       <p class="text-muted-foreground text-xs sm:col-span-2">
-                        Tarif pour <span class="font-mono">{formProvider}
+                        Coût pour <span class="font-mono">{formProvider}
                           · {formModel || "tous les modèles"} · {formMetric}</span>
                       </p>
                     {/if}
@@ -488,7 +495,7 @@
                 <div>
                   <Button variant="outline" size="sm" onclick={openCreate}>
                     <Plus size={14} aria-hidden="true" data-icon="inline-start" />
-                    Nouveau tarif
+                    Nouveau coût
                   </Button>
                 </div>
               {/if}
@@ -501,7 +508,7 @@
           <CardHeader>
             <CardTitle class="font-title text-sm">Re-figer un mois facturé</CardTitle>
             <CardDescription class="text-muted-foreground text-xs">
-              Filet de sécurité : si un tarif manquait à la clôture, corrigez la
+              Filet de sécurité : si un coût manquait à la clôture, corrigez la
               grille ci-dessus puis re-figez le mois avec les tarifs actuels.
             </CardDescription>
           </CardHeader>
@@ -519,7 +526,7 @@
             <ConfirmButton
               variant="outline"
               disabled={refreezing}
-              label={refreezing ? "Re-figement…" : "Re-figer avec les tarifs actuels"}
+              label={refreezing ? "Re-figement…" : "Re-figer avec les coûts actuels"}
               confirmLabel="Confirmer le re-figement ?"
               onconfirm={refreeze}
             />

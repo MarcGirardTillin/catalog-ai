@@ -82,14 +82,17 @@
               class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
               bind:value={month}
             />
-            <Button variant="outline" size="sm" onclick={() => navigate("/admin/pricing")}>
+            <Button variant="outline" size="sm" onclick={() => navigate("/admin/billing")}>
               Tarification
+            </Button>
+            <Button variant="outline" size="sm" onclick={() => navigate("/admin/pricing")}>
+              Coûts
             </Button>
           </div>
         </div>
         <p class="text-muted-foreground text-sm">
-          Suivi opérateur par client : coût réel des providers, montant facturé
-          (coût × coefficient) et marge. Cliquez un client pour le détail.
+          Suivi opérateur par client : coût réel des providers, montant
+          facturable et marge. Cliquez un client pour le détail.
         </p>
 
         <!-- Consommation quotidienne, tous clients confondus -->

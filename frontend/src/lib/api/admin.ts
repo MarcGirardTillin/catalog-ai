@@ -9,10 +9,12 @@ import {
   adminReadAccountUsage,
   adminReadAccountUsageByJob,
   adminReadAdminTimeseries,
+  adminReadOperatorSettings,
   adminReadOverview,
   adminUpdateAccountSettingsAdmin,
+  adminUpdateOperatorSettings,
 } from "@/client"
-import type { AccountSettings } from "@/client"
+import type { AccountSettings, OperatorSettings } from "@/client"
 
 export type {
   AdminAccountActivity,
@@ -95,4 +97,16 @@ export function putAdminAccountSettings(
     path: { account_id: accountId },
     body,
   })
+}
+
+export type { OperatorSettings } from "@/client"
+
+/** Réglages opérateur GLOBAUX (grille de crédits, packs, quota, minutes). */
+export function getOperatorSettings() {
+  return adminReadOperatorSettings()
+}
+
+/** Écriture globale : la politique est appliquée à TOUS les comptes. */
+export function putOperatorSettings(body: OperatorSettings) {
+  return adminUpdateOperatorSettings({ body })
 }

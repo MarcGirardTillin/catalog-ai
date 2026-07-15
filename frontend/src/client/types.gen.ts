@@ -2163,6 +2163,55 @@ export type NormalizeRequest = {
 };
 
 /**
+ * OperatorSettings
+ *
+ * Operator-owned settings managed GLOBALLY (admin console, one form).
+ *
+ * Written to every account so per-account values never diverge — the app is
+ * single-tenant today, and the pricing/consumption policy is the operator's,
+ * not the client's. The legacy billing_coefficient is deliberately absent
+ * (superseded by the credit model; it stays at its stored value).
+ */
+export type OperatorSettings = {
+    /**
+     * Minutes Saved Per Import Product
+     */
+    minutes_saved_per_import_product?: number;
+    /**
+     * Minutes Saved Per Enriched Product
+     */
+    minutes_saved_per_enriched_product?: number;
+    /**
+     * Credit Cost Import Product
+     */
+    credit_cost_import_product?: number;
+    /**
+     * Credit Cost Enrich Item
+     */
+    credit_cost_enrich_item?: number;
+    /**
+     * Credit Cost Image Process
+     */
+    credit_cost_image_process?: number;
+    /**
+     * Credit Cost Image Generate
+     */
+    credit_cost_image_generate?: number;
+    /**
+     * Monthly Free Credits
+     */
+    monthly_free_credits?: number;
+    /**
+     * Low Credit Threshold
+     */
+    low_credit_threshold?: number;
+    /**
+     * Credit Packs
+     */
+    credit_packs?: Array<CreditPack>;
+};
+
+/**
  * PaginatedResponse[ImportItemPublic]
  */
 export type PaginatedResponseImportItemPublic = {
@@ -5492,6 +5541,91 @@ export type AdminReadAccountActivityResponses = {
 };
 
 export type AdminReadAccountActivityResponse = AdminReadAccountActivityResponses[keyof AdminReadAccountActivityResponses];
+
+export type AdminReadOperatorSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/admin/settings';
+};
+
+export type AdminReadOperatorSettingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadOperatorSettingsError = AdminReadOperatorSettingsErrors[keyof AdminReadOperatorSettingsErrors];
+
+export type AdminReadOperatorSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: OperatorSettings;
+};
+
+export type AdminReadOperatorSettingsResponse = AdminReadOperatorSettingsResponses[keyof AdminReadOperatorSettingsResponses];
+
+export type AdminUpdateOperatorSettingsData = {
+    body: OperatorSettings;
+    path?: never;
+    query?: never;
+    url: '/admin/settings';
+};
+
+export type AdminUpdateOperatorSettingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateOperatorSettingsError = AdminUpdateOperatorSettingsErrors[keyof AdminUpdateOperatorSettingsErrors];
+
+export type AdminUpdateOperatorSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: OperatorSettings;
+};
+
+export type AdminUpdateOperatorSettingsResponse = AdminUpdateOperatorSettingsResponses[keyof AdminUpdateOperatorSettingsResponses];
+
+export type AdminReadAccountCreditTimeseriesData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: {
+        /**
+         * Month
+         */
+        month?: string | null;
+    };
+    url: '/admin/accounts/{account_id}/credits/timeseries';
+};
+
+export type AdminReadAccountCreditTimeseriesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminReadAccountCreditTimeseriesError = AdminReadAccountCreditTimeseriesErrors[keyof AdminReadAccountCreditTimeseriesErrors];
+
+export type AdminReadAccountCreditTimeseriesResponses = {
+    /**
+     * Successful Response
+     */
+    200: CreditTimeseries;
+};
+
+export type AdminReadAccountCreditTimeseriesResponse = AdminReadAccountCreditTimeseriesResponses[keyof AdminReadAccountCreditTimeseriesResponses];
 
 export type AdminReadAccountCreditsData = {
     body?: never;

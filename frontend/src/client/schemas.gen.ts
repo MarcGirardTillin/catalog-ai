@@ -3789,6 +3789,71 @@ export const NormalizeRequestSchema = {
     title: 'NormalizeRequest'
 } as const;
 
+export const OperatorSettingsSchema = {
+    properties: {
+        minutes_saved_per_import_product: {
+            type: 'integer',
+            maximum: 120,
+            minimum: 0,
+            title: 'Minutes Saved Per Import Product',
+            default: 2
+        },
+        minutes_saved_per_enriched_product: {
+            type: 'integer',
+            maximum: 120,
+            minimum: 0,
+            title: 'Minutes Saved Per Enriched Product',
+            default: 10
+        },
+        credit_cost_import_product: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Import Product',
+            default: 1
+        },
+        credit_cost_enrich_item: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Enrich Item',
+            default: 2
+        },
+        credit_cost_image_process: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Image Process',
+            default: 1
+        },
+        credit_cost_image_generate: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Image Generate',
+            default: 5
+        },
+        monthly_free_credits: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Monthly Free Credits',
+            default: 0
+        },
+        low_credit_threshold: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Low Credit Threshold',
+            default: 50
+        },
+        credit_packs: {
+            items: {
+                $ref: '#/components/schemas/CreditPack'
+            },
+            type: 'array',
+            title: 'Credit Packs'
+        }
+    },
+    type: 'object',
+    title: 'OperatorSettings',
+    description: 'Operator-owned settings managed GLOBALLY (admin console, one form).\n\nWritten to every account so per-account values never diverge — the app is\nsingle-tenant today, and the pricing/consumption policy is the operator\'s,\nnot the client\'s. The legacy billing_coefficient is deliberately absent\n(superseded by the credit model; it stays at its stored value).'
+} as const;
+
 export const PaginatedResponse_ImportItemPublic_Schema = {
     properties: {
         items: {

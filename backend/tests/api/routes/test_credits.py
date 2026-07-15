@@ -240,6 +240,54 @@ def test_credit_settings_are_admin_only(auth_client: TestClient) -> None:
     assert body["credit_packs"] == []
 
 
+# --- Global operator settings ---------------------------------------------------
+
+
+def test_operator_settings_roundtrip_applies_to_all_accounts(
+    admin_client: TestClient,
+) -> None:
+    account_id = _account_id(admin_client)
+    db = _db()
+    other = Account(name="boutique-2")
+    db.add(other)
+    db.commit()
+    other_id = other.id
+
+    current = admin_client.get("/admin/settings").json()
+    assert current["credit_cost_enrich_item"] == 2  # defaults filled in
+    current["credit_cost_enrich_item"] = 3
+    current["credit_packs"] = [{"credits": 500, "price_eur": 50.0}]
+    response = admin_client.put("/admin/settings", json=current)
+    assert response.status_code == 200
+    assert response.json()["credit_cost_enrich_item"] == 3
+
+    # Both accounts carry the new policy…
+    db = _db()
+    for acc_id in (account_id, other_id):
+        stored = db.get(Account, acc_id).settings_json or {}
+        assert stored["credit_cost_enrich_item"] == 3
+        assert stored["credit_packs"] == [{"credits": 500, "price_eur": 50.0}]
+    # …and client-facing settings are untouched (defaults still apply).
+    assert admin_client.get("/settings/account").json()["meta_max_length"] == 160
+
+
+def test_operator_settings_admin_only(auth_client: TestClient) -> None:
+    assert auth_client.get("/admin/settings").status_code == 403
+    assert auth_client.put("/admin/settings", json={}).status_code == 403
+
+
+def test_admin_credit_timeseries(admin_client: TestClient) -> None:
+    account_id = _account_id(admin_client)
+    db = _db()
+    credits_service.consume(db, account_id=account_id, action="enrich_item", quantity=2)
+    db.commit()
+    response = admin_client.get(f"/admin/accounts/{account_id}/credits/timeseries")
+    assert response.status_code == 200
+    body = response.json()
+    assert [s["key"] for s in body["series"]] == ["Fiches enrichies"]
+    assert sum(p["credits"] for p in body["series"][0]["points"]) == 4
+
+
 # --- 402 guards on launch routes ----------------------------------------------
 
 

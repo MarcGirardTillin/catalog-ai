@@ -1,27 +1,26 @@
 <script lang="ts">
   // Console admin — détail d'un client : consommation COMPLÈTE (modèles,
-  // coûts, marge), activité récente, et réglages opérateur (coefficient,
-  // minutes « temps gagné »).
+  // coûts, marge), crédits (solde, octroi, ledger) et activité récente.
+  // La politique commerciale (grille de crédits, packs, quota) est GLOBALE
+  // et vit sur la page « Tarification » (/admin/billing).
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
   import {
     getAdminAccountActivity,
-    getAdminAccountSettings,
     getAdminAccountTimeseries,
     getAdminAccountUsage,
     getAdminAccountUsageByJob,
-    putAdminAccountSettings,
-    type AdminAccountSettings,
     type AdminTimeseriesGroupBy,
   } from "@/lib/api/admin"
   import {
     getAdminAccountCredits,
+    getAdminAccountCreditTimeseries,
     grantAdminAccountCredits,
     type CreditEntryPublic,
   } from "@/lib/api/credits"
-  import type { UsageByJob } from "@/lib/api/usage"
+  import type { UsageByJob, UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Select } from "@/lib/components/ui/select"
   import {
@@ -86,16 +85,41 @@
   const activity = $derived(activityQuery.data ?? null)
 
   // --- Graphique de consommation quotidienne du compte ---
-  const CHART_MODES: { value: AdminTimeseriesGroupBy; label: string }[] = [
+  // Trois vues € (total, service, modèle) + une vue CRÉDITS (total consommé
+  // par jour, empilé par action) qui reflète ce que voit le client.
+  type ChartMode = AdminTimeseriesGroupBy | "credits"
+  const CHART_MODES: { value: ChartMode; label: string }[] = [
     { value: "none", label: "Total par jour" },
     { value: "service", label: "Par service" },
     { value: "model", label: "Par modèle" },
+    { value: "credits", label: "Crédits" },
   ]
-  let chartMode = $state<AdminTimeseriesGroupBy>("none")
+  let chartMode = $state<ChartMode>("none")
 
   const timeseriesQuery = createQuery(() => ({
     queryKey: ["admin", "account", id, "timeseries", month, chartMode],
-    queryFn: async () => {
+    queryFn: async (): Promise<UsageTimeseries> => {
+      if (chartMode === "credits") {
+        const { data, error } = await getAdminAccountCreditTimeseries(
+          accountId,
+          month,
+        )
+        if (error || !data) throw new Error("admin_account_timeseries_load_failed")
+        // Adapté à la forme UsageChart (amount = crédits, unit="credits").
+        return {
+          month: data.month,
+          group_by: "credits",
+          currency: "EUR",
+          series: data.series.map((s) => ({
+            key: s.key,
+            points: s.points.map((p) => ({
+              date: p.date,
+              amount: String(p.credits ?? 0),
+              quantity: p.credits ?? 0,
+            })),
+          })),
+        }
+      }
       const { data, error } = await getAdminAccountTimeseries(
         accountId,
         month,
@@ -214,116 +238,6 @@
     return "—"
   }
 
-  // --- Réglages opérateur du compte (coefficient + temps gagné) ---
-  // Le formulaire édite une copie locale (bind:value) hydratée depuis la query.
-  let settings = $state<AdminAccountSettings | null>(null)
-  let savingSettings = $state(false)
-
-  const settingsQuery = createQuery(() => ({
-    queryKey: ["admin", "account", id, "settings"],
-    queryFn: async () => {
-      const { data, error } = await getAdminAccountSettings(accountId)
-      if (error || !data) throw new Error("admin_account_settings_load_failed")
-      return data
-    },
-  }))
-  $effect(() => {
-    const data = settingsQuery.data
-    if (data) settings = { ...data }
-  })
-  $effect(() => {
-    if (settingsQuery.isError) {
-      toast.error("Impossible de charger les réglages du client.")
-    }
-  })
-
-  async function saveSettings() {
-    if (!settings || savingSettings) return
-    const coefficient = Number(settings.billing_coefficient)
-    const importMin = Math.round(Number(settings.minutes_saved_per_import_product))
-    const enrichedMin = Math.round(
-      Number(settings.minutes_saved_per_enriched_product),
-    )
-    if (!Number.isFinite(coefficient) || coefficient < 0) {
-      toast.error("Le coefficient doit être un nombre positif ou nul.")
-      return
-    }
-    if (
-      [importMin, enrichedMin].some(
-        (v) => !Number.isFinite(v) || v < 0 || v > 120,
-      )
-    ) {
-      toast.error("Les minutes doivent être comprises entre 0 et 120.")
-      return
-    }
-    const creditInts = {
-      credit_cost_import_product: settings.credit_cost_import_product,
-      credit_cost_enrich_item: settings.credit_cost_enrich_item,
-      credit_cost_image_process: settings.credit_cost_image_process,
-      credit_cost_image_generate: settings.credit_cost_image_generate,
-      monthly_free_credits: settings.monthly_free_credits,
-      low_credit_threshold: settings.low_credit_threshold,
-    }
-    const normalizedCredits: Record<string, number> = {}
-    for (const [key, raw] of Object.entries(creditInts)) {
-      const value = Math.round(Number(raw))
-      if (!Number.isFinite(value) || value < 0) {
-        toast.error("Les valeurs de crédits doivent être des entiers positifs.")
-        return
-      }
-      normalizedCredits[key] = value
-    }
-    const packs = (settings.credit_packs ?? [])
-      .map((pack) => ({
-        credits: Math.round(Number(pack.credits)),
-        price_eur: Number(pack.price_eur),
-      }))
-      .filter((pack) => Number.isFinite(pack.credits) && pack.credits > 0)
-    if (packs.some((pack) => !Number.isFinite(pack.price_eur) || pack.price_eur < 0)) {
-      toast.error("Chaque pack doit avoir un prix positif ou nul.")
-      return
-    }
-    savingSettings = true
-    const { data, error } = await putAdminAccountSettings(accountId, {
-      ...settings,
-      billing_coefficient: coefficient,
-      minutes_saved_per_import_product: importMin,
-      minutes_saved_per_enriched_product: enrichedMin,
-      ...normalizedCredits,
-      credit_packs: packs,
-    })
-    savingSettings = false
-    if (error || !data) {
-      toast.error("Enregistrement des réglages impossible.")
-      return
-    }
-    settings = { ...data }
-    toast.success("Réglages du client enregistrés")
-    // Le coefficient change le facturable affiché : on invalide les lectures
-    // de consommation du compte (summary, par traitement, série quotidienne).
-    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "usage"] })
-    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "by-job"] })
-    queryClient.invalidateQueries({
-      queryKey: ["admin", "account", id, "timeseries"],
-    })
-    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "settings"] })
-    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "credits"] })
-  }
-
-  function addPack() {
-    if (!settings) return
-    settings.credit_packs = [
-      ...(settings.credit_packs ?? []),
-      { credits: 100, price_eur: 10 },
-    ]
-  }
-  function removePack(index: number) {
-    if (!settings) return
-    settings.credit_packs = (settings.credit_packs ?? []).filter(
-      (_, i) => i !== index,
-    )
-  }
-
   // --- Formatage ---
   function formatAmount(value: string | null): string {
     if (value == null) return "—"
@@ -422,15 +336,29 @@
             Impossible de charger la consommation du client.
           </p>
         {:else if summary === null || byJob === null}
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
             <Skeleton class="h-24 w-full" />
           </div>
           <Skeleton class="h-32 w-full" />
         {:else}
-          <!-- Synthèse coût / facturable / marge -->
-          <div class="grid grid-cols-3 gap-3">
+          <!-- Synthèse : crédits restants + coût / facturable / marge -->
+          <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card size="sm">
+              <CardContent class="flex flex-col gap-1 py-4">
+                <span class="text-muted-foreground text-xs">Crédits restants</span>
+                <span
+                  class="text-2xl font-semibold tabular-nums {credits != null &&
+                  credits.balance <= 0
+                    ? 'text-destructive'
+                    : 'text-foreground'}"
+                >
+                  {credits != null ? formatInt(credits.balance) : "—"}
+                </span>
+              </CardContent>
+            </Card>
             <Card size="sm">
               <CardContent class="flex flex-col gap-1 py-4">
                 <span class="text-muted-foreground text-xs">Coût réel</span>
@@ -444,9 +372,6 @@
                 <span class="text-muted-foreground text-xs">Facturable</span>
                 <span class="text-foreground text-2xl font-semibold tabular-nums">
                   {formatAmount(summary.totals.billable)}
-                </span>
-                <span class="text-muted-foreground text-xs">
-                  coefficient × {summary.coefficient.toLocaleString("fr-FR")}
                 </span>
               </CardContent>
             </Card>
@@ -463,14 +388,14 @@
           {#if summary.unpriced_count > 0}
             <p class="text-warning-foreground text-xs" role="alert">
               {summary.unpriced_count} type{summary.unpriced_count > 1 ? "s" : ""}
-              de consommation sans tarif — complétez la
+              de consommation sans coût renseigné — complétez la
               <a
                 href="/admin/pricing"
                 class="underline underline-offset-2"
                 onclick={(e) => {
                   e.preventDefault()
                   navigate("/admin/pricing")
-                }}>grille tarifaire</a
+                }}>grille de coûts</a
               >.
             </p>
           {/if}
@@ -495,7 +420,12 @@
               </div>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
-              <UsageChart {timeseries} failed={tsFailed} {month} />
+              <UsageChart
+                {timeseries}
+                failed={tsFailed}
+                {month}
+                unit={chartMode === "credits" ? "credits" : "eur"}
+              />
             </CardContent>
           </Card>
 
@@ -864,199 +794,6 @@
           </CardContent>
         </Card>
 
-        <!-- Réglages opérateur du compte -->
-        <Card size="sm" class="mt-1">
-          <CardHeader>
-            <CardTitle class="font-title text-sm">Réglages opérateur</CardTitle>
-            <CardDescription class="text-muted-foreground text-xs">
-              Invisibles et non modifiables par le client : coefficient de
-              facturation, minutes « temps gagné », grille de crédits,
-              abonnement et packs.
-            </CardDescription>
-          </CardHeader>
-          <CardContent class="flex flex-col gap-4">
-            {#if settings === null}
-              <Skeleton class="h-9 w-full" />
-            {:else}
-              <div class="grid gap-3 sm:grid-cols-3">
-                <div class="flex flex-col gap-1.5">
-                  <Label for="acc-coefficient">Coefficient de facturation</Label>
-                  <Input
-                    id="acc-coefficient"
-                    type="number"
-                    min="0"
-                    step="0.05"
-                    bind:value={settings.billing_coefficient}
-                  />
-                  <p class="text-muted-foreground text-xs">
-                    Facturable = coût réel × coefficient.
-                  </p>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="acc-min-import">Min. gagnées / fiche créée</Label>
-                  <Input
-                    id="acc-min-import"
-                    type="number"
-                    min="0"
-                    max="120"
-                    step="1"
-                    inputmode="numeric"
-                    bind:value={settings.minutes_saved_per_import_product}
-                  />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="acc-min-enrich">Min. gagnées / fiche enrichie</Label>
-                  <Input
-                    id="acc-min-enrich"
-                    type="number"
-                    min="0"
-                    max="120"
-                    step="1"
-                    inputmode="numeric"
-                    bind:value={settings.minutes_saved_per_enriched_product}
-                  />
-                </div>
-              </div>
-              <!-- Grille de crédits par action -->
-              <div class="border-border border-t pt-3">
-                <p class="text-foreground mb-2 text-xs font-medium">
-                  Grille de crédits par action
-                </p>
-                <div class="grid gap-3 sm:grid-cols-4">
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="acc-cr-import">Produit importé</Label>
-                    <Input
-                      id="acc-cr-import"
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputmode="numeric"
-                      bind:value={settings.credit_cost_import_product}
-                    />
-                  </div>
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="acc-cr-enrich">Fiche enrichie</Label>
-                    <Input
-                      id="acc-cr-enrich"
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputmode="numeric"
-                      bind:value={settings.credit_cost_enrich_item}
-                    />
-                  </div>
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="acc-cr-image">Image traitée</Label>
-                    <Input
-                      id="acc-cr-image"
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputmode="numeric"
-                      bind:value={settings.credit_cost_image_process}
-                    />
-                  </div>
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="acc-cr-generate">Visuel généré</Label>
-                    <Input
-                      id="acc-cr-generate"
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputmode="numeric"
-                      bind:value={settings.credit_cost_image_generate}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid gap-3 sm:grid-cols-2">
-                <div class="flex flex-col gap-1.5">
-                  <Label for="acc-cr-monthly">Crédits mensuels inclus</Label>
-                  <Input
-                    id="acc-cr-monthly"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputmode="numeric"
-                    bind:value={settings.monthly_free_credits}
-                  />
-                  <p class="text-muted-foreground text-xs">
-                    Octroyés automatiquement une fois par mois (0 = aucun).
-                  </p>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="acc-cr-threshold">Seuil d'alerte solde bas</Label>
-                  <Input
-                    id="acc-cr-threshold"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputmode="numeric"
-                    bind:value={settings.low_credit_threshold}
-                  />
-                </div>
-              </div>
-
-              <!-- Packs affichés au client sur sa page Consommation -->
-              <div class="border-border border-t pt-3">
-                <div class="mb-2 flex items-center justify-between">
-                  <p class="text-foreground text-xs font-medium">Packs de crédits</p>
-                  <Button size="sm" variant="outline" onclick={addPack}>
-                    Ajouter un pack
-                  </Button>
-                </div>
-                {#if (settings.credit_packs ?? []).length === 0}
-                  <p class="text-muted-foreground text-xs">
-                    Aucun pack affiché au client.
-                  </p>
-                {:else}
-                  <div class="flex flex-col gap-2">
-                    {#each settings.credit_packs ?? [] as pack, index (index)}
-                      <div class="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
-                        <div class="flex flex-col gap-1.5">
-                          <Label for={`pack-credits-${index}`}>Crédits</Label>
-                          <Input
-                            id={`pack-credits-${index}`}
-                            type="number"
-                            min="1"
-                            step="1"
-                            inputmode="numeric"
-                            bind:value={pack.credits}
-                          />
-                        </div>
-                        <div class="flex flex-col gap-1.5">
-                          <Label for={`pack-price-${index}`}>Prix €</Label>
-                          <Input
-                            id={`pack-price-${index}`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            bind:value={pack.price_eur}
-                          />
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          class="text-destructive"
-                          onclick={() => removePack(index)}
-                        >
-                          Retirer
-                        </Button>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-
-              <div class="flex justify-end">
-                <Button size="sm" disabled={savingSettings} onclick={saveSettings}>
-                  {savingSettings ? "Enregistrement…" : "Enregistrer"}
-                </Button>
-              </div>
-            {/if}
-          </CardContent>
-        </Card>
       </div>
     </AppShell>
   {/snippet}

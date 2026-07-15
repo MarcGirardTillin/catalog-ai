@@ -90,6 +90,26 @@ class AccountSettings(BaseModel):
     imaging_generation_instructions: str | None = None
 
 
+class OperatorSettings(BaseModel):
+    """Operator-owned settings managed GLOBALLY (admin console, one form).
+
+    Written to every account so per-account values never diverge — the app is
+    single-tenant today, and the pricing/consumption policy is the operator's,
+    not the client's. The legacy billing_coefficient is deliberately absent
+    (superseded by the credit model; it stays at its stored value).
+    """
+
+    minutes_saved_per_import_product: int = Field(2, ge=0, le=120)
+    minutes_saved_per_enriched_product: int = Field(10, ge=0, le=120)
+    credit_cost_import_product: int = Field(1, ge=0)
+    credit_cost_enrich_item: int = Field(2, ge=0)
+    credit_cost_image_process: int = Field(1, ge=0)
+    credit_cost_image_generate: int = Field(5, ge=0)
+    monthly_free_credits: int = Field(0, ge=0)
+    low_credit_threshold: int = Field(50, ge=0)
+    credit_packs: list[CreditPack] = Field(default_factory=list)
+
+
 class ConnectionStatus(BaseModel):
     """Read-only Tillin/Xano connection health (no secrets)."""
 

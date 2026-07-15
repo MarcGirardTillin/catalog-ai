@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentAdminDep, SessionDep
 from app.api.exceptions import AppException
+from app.api.routes.credits import build_credit_timeseries
 from app.api.routes.usage import (
     _build_by_job,
     _build_summary,
@@ -34,10 +35,14 @@ from app.api.schemas.credits import (
     AdminCredits,
     CreditEntryPublic,
     CreditGrantRequest,
+    CreditTimeseries,
 )
-from app.api.schemas.settings import AccountSettings
+from app.api.schemas.settings import AccountSettings, OperatorSettings
 from app.api.schemas.usage import UsageByJob, UsageSummary, UsageTimeseries
-from app.api.services.accounts import resolve_account_id
+from app.api.services.accounts import (
+    get_or_create_default_account,
+    resolve_account_id,
+)
 from app.api.services.credits import balance as credit_balance
 from app.models import (
     Account,
@@ -348,6 +353,52 @@ def read_account_activity(
             )
         )
     return AdminAccountActivity(account_id=account_id, entries=entries)
+
+
+@router.get("/settings", response_model=OperatorSettings)
+def read_operator_settings(
+    db: SessionDep, _current_user: CurrentAdminDep
+) -> OperatorSettings:
+    """The GLOBAL operator settings (credit grid, packs, quota, minutes).
+
+    Read from the default account — PUT keeps every account in sync, so any
+    account is representative.
+    """
+    account = get_or_create_default_account(db)
+    return OperatorSettings.model_validate(account.settings_json or {})
+
+
+@router.put("/settings", response_model=OperatorSettings)
+def update_operator_settings(
+    payload: OperatorSettings,
+    db: SessionDep,
+    _current_user: CurrentAdminDep,
+) -> OperatorSettings:
+    """Write the operator settings to EVERY account (global policy).
+
+    Only the operator-owned keys are touched — each account keeps its own
+    client-facing settings (templates, imaging defaults…).
+    """
+    get_or_create_default_account(db)  # ensure at least one account exists
+    updates = payload.model_dump()
+    for account in db.scalars(select(Account)).all():
+        account.settings_json = {**(account.settings_json or {}), **updates}
+    db.commit()
+    return payload
+
+
+@router.get(
+    "/accounts/{account_id}/credits/timeseries", response_model=CreditTimeseries
+)
+def read_account_credit_timeseries(
+    account_id: int,
+    db: SessionDep,
+    _current_user: CurrentAdminDep,
+    month: str | None = None,
+) -> CreditTimeseries:
+    """Daily credits consumed by ONE account (operator chart view)."""
+    _get_account(db, account_id)
+    return build_credit_timeseries(db, account_id, month)
 
 
 @router.get("/accounts/{account_id}/credits", response_model=AdminCredits)

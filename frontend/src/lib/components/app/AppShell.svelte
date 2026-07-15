@@ -2,6 +2,7 @@
   import type { Component, Snippet } from "svelte"
   import ChartColumn from "@lucide/svelte/icons/chart-column"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
+  import Coins from "@lucide/svelte/icons/coins"
   import FileUp from "@lucide/svelte/icons/file-up"
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard"
   import ListChecks from "@lucide/svelte/icons/list-checks"
@@ -132,10 +133,18 @@
                 href: "/admin",
                 icon: ShieldCheck,
                 isActive: (path: string) =>
-                  path.startsWith("/admin") && !path.startsWith("/admin/pricing"),
+                  path.startsWith("/admin") &&
+                  !path.startsWith("/admin/pricing") &&
+                  !path.startsWith("/admin/billing"),
               },
               {
                 label: "Tarification",
+                href: "/admin/billing",
+                icon: Coins,
+                isActive: (path: string) => path.startsWith("/admin/billing"),
+              },
+              {
+                label: "Coûts",
                 href: "/admin/pricing",
                 icon: ChartColumn,
                 isActive: (path: string) => path.startsWith("/admin/pricing"),
