@@ -117,6 +117,41 @@ hors UE : Xano/Tillin, Anthropic, FASHN et Firecrawl sont hors UE ; seul
 Photoroom est français. L'argument à porter est « données applicatives
 hébergées en France », pas « chaîne entièrement européenne ».
 
+## Premier déploiement — fait le 2026-07-16
+
+Infrastructure créée (via Claude Cowork, console Scaleway) puis déployée
+depuis Claude Code. État vérifié en live :
+
+- Instance `scw-agitated-knuth` (DEV1-M, fr-par-1), IP fixe `163.172.148.191`,
+  pare-feu 22/80/443, Docker 29 + Compose v5.
+- PostgreSQL managé DB-DEV-S standalone (PG 17), host `51.159.206.21:26334`,
+  base `catalogai`, user `catalogai_app`, ACL restreinte à l'instance,
+  `sslmode=require`.
+- DNS OVH : `catalog.tillin.fr` et `api-catalog.tillin.fr` → IP (TTL 300).
+- Vérifié : healthcheck HTTPS (`database: up`), frontend 200 + config.js
+  runtime correct, redirection 308 HTTP→HTTPS, login 401 propre (chaîne
+  backend↔DB), `initial_data` a créé/promu l'admin.
+- `XANO_DATA_SOURCE=test` au départ (bascule vers le live après validation
+  du parcours complet par l'opérateur).
+- Coût : ~35 €/mois HT (instance ~22 € + base ~12 €).
+
+Pièges rencontrés au premier passage (corrigés dans le repo) :
+
+- **Bit exécutable de `scripts/deploy.sh`** absent du commit (repo édité sous
+  Windows) → `Permission denied`, et le `git reset --hard` du script
+  ré-écrasait un chmod manuel. Corrigé via `git update-index --chmod=+x` ;
+  amorcer avec `bash scripts/deploy.sh` si ça se reproduit.
+- **Alembic + mot de passe à caractères spéciaux** : `set_main_option` passe
+  par configparser qui interprète les `%` du DSN url-encodé → doubler les
+  `%` (fait dans `alembic/env.py`). Attention : la trace d'erreur écrit le
+  DSN complet (mot de passe encodé) dans les logs du conteneur — faire
+  tourner le mot de passe si ça arrive.
+- **`initial_data` créait un utilisateur non-admin** malgré le nom
+  `FIRST_SUPERUSER` → crée (ou promeut) désormais en admin, ré-exécution sûre.
+- **`exec` ne suffit pas après un fix de code** : le conteneur exécute
+  l'image buildée, pas le worktree — un fix backend passe par
+  `./scripts/deploy.sh` (rebuild), jamais par `git pull` seul.
+
 ## Dépannage
 
 - **Certificat TLS non émis** : vérifier que les A records résolvent bien vers

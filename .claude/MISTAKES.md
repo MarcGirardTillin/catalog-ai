@@ -114,3 +114,17 @@ budget a few cents for it. Same live run also surfaced max_tokens truncation
 (186 variants > 16K output tokens; thinking enabled by default on Sonnet 5
 eating the budget) and a thousands-separator price bug ('1,143.00') that no
 synthetic fixture contained.
+
+## 2026-07-16 — Premier déploiement prod (Scaleway)
+
+Trois écueils au premier passage, tous du même genre : « ça marchait en dev ».
+(1) Bit exécutable de deploy.sh absent de Git (repo édité sous Windows) —
+et le `git reset --hard` du script écrase tout chmod manuel : le mode doit
+être DANS le commit (`git update-index --chmod=+x`). (2) Alembic
+`set_main_option` passe par configparser : un mot de passe Postgres avec
+caractères spéciaux (url-encodé en %xx) casse en « invalid interpolation
+syntax » — doubler les % ; en prime la traceback logge le DSN complet, mot de
+passe inclus → rotation. (3) `initial_data` créait un utilisateur non-admin
+malgré le nom FIRST_SUPERUSER — le dev masquait le bug parce qu'on avait
+promu à la main. Leçon transverse : un correctif backend ne se teste jamais
+via `exec` après `git pull` — le conteneur exécute l'IMAGE, il faut rebuilder.
