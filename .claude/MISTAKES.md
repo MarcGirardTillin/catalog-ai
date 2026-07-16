@@ -165,3 +165,29 @@ points de fuite corrigés (2 resolver, 2 pipeline dont un sans try du tout).
 Leçon : autour d'un `.json()` sur une réponse de site TIERS, le contrat
 n'est jamais « JSON ou erreur HTTP » — un 200 HTML (anti-bot, site non
 conforme) est un cas nominal ; attraper `(httpx.HTTPError, ValueError)`.
+
+## 2026-07-16 — « Xano ne filtre pas origin[] » : faux, le paramètre avait un autre nom
+
+Pour le filtre e-commerce des produits, j'avais sondé des noms devinés
+(`search_query_third_party`, `search_query_origin`, `search_query_connected`…),
+constaté qu'ils étaient ignorés, et conclu « pas de filtre côté Xano » →
+implémentation d'un scan de pages plafonné (per_page=100, 10 pages max),
+coûteux et tronquant au-delà de 1000 produits. Le filtre existait :
+`search_query_ecommerce` (enum 1 tous / 2 connectés / 3 partiels / 4 non),
+fourni ensuite par Marc. Leçon : un paramètre ignoré prouve que CE nom
+n'existe pas, pas que la capacité n'existe pas — avant de conclure à une
+absence et de construire un contournement coûteux, demander à Marc la liste
+des inputs déclarés de l'endpoint Xano (il voit la définition dans Xano).
+
+## 2026-07-16 — Transfert Tillin : timeout 30 s sur un traitement synchrone long
+
+`/product_import` traite tout le CSV en synchrone côté Xano : un import
+Lemaire a dépassé les 30 s du timeout httpx par défaut → notre backend a
+levé 504 AVANT de marquer les items `applied`, alors que Tillin a fini
+l'import — état incohérent (produits créés dans Tillin, items encore « à
+vérifier » ici, liaison bloquée). Fix : timeout dédié 300 s sur cet appel,
+504 → code `transfer_pending` explicite, et endpoint `/reconcile` qui
+resynchronise par recherche de référence. Leçon : pour tout appel upstream
+dont la durée croît avec la taille des données, prévoir dès le départ (1) un
+timeout dimensionné et (2) un chemin de réconciliation — un timeout n'est
+pas un échec, c'est une issue INCONNUE.
