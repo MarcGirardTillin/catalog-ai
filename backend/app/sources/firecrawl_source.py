@@ -22,11 +22,27 @@ _TEXT_FIELD_KEYS = {
     "care": "_care",
 }
 
+# Malgré la consigne « omit », le LLM d'extraction remplit parfois un champ
+# absent avec un littéral de remplissage (vu live sur on.com : composition =
+# « Non spécifié ») — filtré pour ne pas polluer le contexte du copywriter.
+_PLACEHOLDER_VALUES = {
+    "non spécifié",
+    "non spécifiée",
+    "non disponible",
+    "non renseigné",
+    "not specified",
+    "unknown",
+    "n/a",
+    "-",
+}
+
 
 def _apply_text_fields(target: dict[str, Any], extracted: dict[str, Any]) -> None:
     """Copy the extracted technical text fields onto `target` (in place)."""
     for src_key, dst_key in _TEXT_FIELD_KEYS.items():
         value = extracted.get(src_key)
+        if isinstance(value, str) and value.strip().lower() in _PLACEHOLDER_VALUES:
+            continue
         if value:
             target[dst_key] = value
 

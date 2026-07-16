@@ -110,6 +110,17 @@ def test_merge_extracted_text_grafts_without_touching_shopify_fields() -> None:
     assert "_features" not in shopify
 
 
+def test_placeholder_values_are_filtered_out() -> None:
+    """Le LLM d'extraction remplit parfois un champ absent avec « Non
+    spécifié » (vu live sur on.com) — jamais transmis au copywriter."""
+    merged = merge_extracted_text(
+        {"title": "T"},
+        {"composition": "Non spécifié", "manufacturing_country": "  N/A "},
+    )
+    assert "_composition" not in merged
+    assert "_manufacturing_country" not in merged
+
+
 def test_reference_matches_on_reference_code_case_and_spaces() -> None:
     extracted = {"_reference_codes": ["ref. l41 737 900"], "title": "Autre"}
     assert reference_matches(PRODUCT, extracted) is True
