@@ -99,3 +99,35 @@ def test_admin_bypasses_module_guards(
 
     # L'admin plateforme passe (support/debug indépendant de l'offre).
     assert admin_client.get("/imports").status_code == 200
+
+
+def test_dashboard_features_reflect_the_client_offer(
+    auth_client: TestClient, test_user: dict[str, Any], db: Session
+) -> None:
+    assert auth_client.get("/stats/dashboard").status_code == 200
+    _disable_features(
+        db, test_user["email"], feature_import=False, feature_studio=False
+    )
+
+    stats = auth_client.get("/stats/dashboard").json()
+    assert stats["feature_import"] is False
+    assert stats["feature_studio"] is False
+    assert stats["feature_enrich"] is True
+
+
+def test_dashboard_features_all_true_for_admin(
+    admin_client: TestClient, test_user: dict[str, Any], db: Session
+) -> None:
+    """Miroir UI du bypass serveur : les flags de /stats/dashboard sont TOUS
+    vrais pour l'admin, quel que soit le compte auquel il est rattaché —
+    sinon l'interface masquerait des gestes que l'API autorise (support/
+    prestation sur les comptes clients, demande Marc 2026-07-17)."""
+    assert admin_client.get("/stats/dashboard").status_code == 200
+    _disable_features(
+        db, test_user["email"], feature_import=False, feature_studio=False
+    )
+
+    stats = admin_client.get("/stats/dashboard").json()
+    assert stats["feature_import"] is True
+    assert stats["feature_studio"] is True
+    assert stats["feature_enrich"] is True

@@ -49,6 +49,30 @@ everything an agent needs to work safely in this repo should live here.
 - Keep explanations concise and implementation-oriented.
 - Keep changes focused and template-oriented. Do not turn the template into a one-off project.
 
+## Access Control (check on EVERY code change)
+
+CatalogAI est multi-entreprises avec des droits par compte. À chaque
+modification de code (nouvelle route, nouveau bouton, nouveau chemin
+d'exécution), vérifier qu'elle ne permet PAS de contourner les droits :
+
+- **Modules par compte** (`feature_import` / `feature_enrich` /
+  `feature_studio`) : toute nouvelle route d'un module porte
+  `require_feature(...)` (garde serveur — l'UI seule ne suffit jamais) ;
+  tout nouveau geste UI d'un module est conditionné par les flags de
+  `/stats/dashboard`.
+- **Bypass admin assumé** : l'admin plateforme (`user.is_admin`) passe
+  toutes les gardes de modules (support/prestation sur les comptes
+  clients) et reçoit tous les flags à vrai dans `/stats/dashboard`.
+  Ne PAS étendre ce bypass aux crédits ni au scoping des données.
+- **Scoping multi-entreprises** : toute lecture/écriture locale est filtrée
+  par `account_id` ; tout appel Xano catalogue passe par
+  `xano_client_for_account` (token du compte — jamais l'identité de service
+  pour un compte d'entreprise).
+- **Admin-only** : grille tarifaire, coefficient, réglages
+  `ADMIN_ONLY_SETTINGS`, routes `/admin/*` restent derrière
+  `get_current_admin`.
+- En cas de doute sur un nouveau chemin, écrire le test 403 d'abord.
+
 ## Sensitive Areas
 
 - Never read or print secrets from `.env`, `*.crt`, vault exports, or untracked secret files.

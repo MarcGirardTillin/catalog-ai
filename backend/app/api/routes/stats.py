@@ -21,7 +21,9 @@ _SETTLED = ("ready_for_review", "approved", "applied", "rejected", "failed")
 _AUTO_METHODS = ("shopify_json",)
 
 
-def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
+def _dashboard_stats(
+    db: Session, account_id: int, *, is_admin: bool = False
+) -> DashboardStats:
     item_counts = dict(
         db.execute(
             select(EnrichmentItem.status, func.count())
@@ -107,6 +109,12 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
     ]
     resolved_methods = [method for _, _, method in settled if method]
 
+    # L'admin plateforme (support/prestation sur les comptes clients) voit et
+    # utilise TOUS les modules quel que soit le compte auquel il est rattaché
+    # — miroir du bypass serveur de `require_feature` (demande Marc
+    # 2026-07-17) : sans ça l'UI masquerait les gestes que l'API autorise.
+    all_features = is_admin
+
     return DashboardStats(
         applied_items=item_counts.get("applied", 0),
         ready_items=item_counts.get("ready_for_review", 0),
@@ -131,9 +139,9 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
         minutes_saved_this_month=minutes_saved,
         credit_balance=credit_balance(db, account_id),
         low_credit_threshold=settings.low_credit_threshold,
-        feature_import=settings.feature_import,
-        feature_enrich=settings.feature_enrich,
-        feature_studio=settings.feature_studio,
+        feature_import=all_features or settings.feature_import,
+        feature_enrich=all_features or settings.feature_enrich,
+        feature_studio=all_features or settings.feature_studio,
     )
 
 
@@ -141,4 +149,4 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
 def dashboard_stats(db: SessionDep, current_user: CurrentUserDep) -> DashboardStats:
     """Headline numbers for the dashboard KPI row."""
     account_id = resolve_account_id(db, current_user)
-    return _dashboard_stats(db, account_id)
+    return _dashboard_stats(db, account_id, is_admin=current_user.is_admin)
