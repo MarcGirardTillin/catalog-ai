@@ -460,6 +460,15 @@
     panelOpen = false
   }
 
+  /** Le panneau a modifié la fiche dans Tillin (images ajoutées ou traitées) :
+   * les deux listes portent la vignette du produit, et le studio la pastille
+   * « à vérifier » — on les resynchronise depuis le serveur. */
+  function onPanelProductChanged() {
+    queryClient.invalidateQueries({ queryKey: ["catalog", "search"] })
+    queryClient.invalidateQueries({ queryKey: ["import"] })
+    queryClient.invalidateQueries({ queryKey: ["imaging", "pending-products"] })
+  }
+
   // Enrichissement direct depuis le panneau : job à un seul produit.
   async function enrichSingle(
     productId: number,
@@ -1027,6 +1036,7 @@
           fallback={panelFallback}
           onClose={closePanel}
           onEnrich={enrichSingle}
+          onProductChanged={onPanelProductChanged}
         />
       {/if}
     </AppShell>

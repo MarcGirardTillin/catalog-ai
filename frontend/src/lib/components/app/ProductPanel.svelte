@@ -55,6 +55,7 @@
     fallback = null,
     onClose,
     onEnrich,
+    onProductChanged,
   }: {
     productId: number | null
     importLabel?: string | null
@@ -65,6 +66,10 @@
       transforms: EnrichTransforms,
       instructionId: number | null,
     ) => void
+    /** Fiche modifiée dans Tillin (images ajoutées/traitées) : la liste qui a
+     *  ouvert le panneau tient sa propre copie du produit et doit se
+     *  resynchroniser — sans ça la vignette ne change qu'au rechargement. */
+    onProductChanged?: () => void
   } = $props()
 
   let product = $state<ProductDetail | null>(null)
@@ -216,6 +221,7 @@
       const reload = await getProduct(id)
       if (reload.data) product = reload.data
     }
+    onProductChanged?.()
   }
 
   // Réagit au changement de produit uniquement (productId). Le reste écrit —
@@ -301,6 +307,7 @@
     clearStaged()
     const reload = await getProduct(id)
     if (reload.data) product = reload.data
+    onProductChanged?.()
   }
 
   function onKeydown(event: KeyboardEvent) {
