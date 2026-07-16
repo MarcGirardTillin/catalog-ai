@@ -51,7 +51,7 @@
     {:else}
       <Router>
         <Route path="/" component={HomePage} {appName} />
-        <Route path="/login" component={LoginPage} {appName} />
+        <Route path="/login" component={LoginPage} />
         <Route path="/products/:id/images">
           {#snippet children(params)}
             <ProductImagesPage {appName} id={params.id} />

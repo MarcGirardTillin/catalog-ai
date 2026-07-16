@@ -1,20 +1,25 @@
 <script lang="ts">
-  // Signature de marque : le nom du produit, et « by » + le mot-logo Tillin
-  // en dessous. Le nom vient de la config (FRONTEND_APP_NAME) ; l'attribution
-  // à Tillin, elle, est constante — c'est l'éditeur, pas un réglage.
+  // Signature de marque : le wordmark « Catalog » (nom seul, figé — décision
+  // Marc 2026-07-17, sans le monogramme ; il remplace l'ancien nom
+  // configurable FRONTEND_APP_NAME ici), et « by » + le mot-logo Tillin en
+  // dessous. L'attribution à Tillin est constante — c'est l'éditeur, pas un
+  // réglage.
   //
   // Deux tailles : `sm` pour la barre latérale (contrainte à 56 px de haut),
   // `lg` pour l'écran de connexion.
   import TillinLogo from "./TillinLogo.svelte"
 
-  let { appName, size = "sm" }: { appName: string; size?: "sm" | "lg" } = $props()
+  let { size = "sm" }: { size?: "sm" | "lg" } = $props()
+
+  // Style repris du lockup source (catalog-lockup-navy.svg) : Nunito 800,
+  // tracking -2/62 ≈ -0,03 em → font-extrabold + tracking-tight.
+  const nameClass = $derived(size === "lg" ? "text-4xl" : "text-lg")
 
   // Le lettrage « tillin » ne remplit que ~50 % de la hauteur du SVG (le
   // sourire occupe le bas) : le logo doit donc être posé à ~2× la taille du
   // texte « by » pour que les deux paraissent de même corps.
-  const nameClass = $derived(size === "lg" ? "text-2xl" : "text-base")
-  const byClass = $derived(size === "lg" ? "text-[11px]" : "text-[10px]")
-  const logoClass = $derived(size === "lg" ? "h-6 w-auto" : "h-5 w-auto")
+  const byClass = $derived(size === "lg" ? "text-[13px]" : "text-[10px]")
+  const logoClass = $derived(size === "lg" ? "h-7 w-auto" : "h-5 w-auto")
 </script>
 
 <!-- Le nom, seul en flux, fixe la largeur du bloc (il est toujours le plus
@@ -23,8 +28,10 @@
      au milieu du nom et le logo déborde librement à droite — sans élargir le
      bloc, ce qui garde le nom centré sur l'écran de connexion. -->
 <span class="flex flex-col items-start gap-0.5">
-  <span class="font-title text-foreground leading-none font-bold {nameClass}">
-    {appName}
+  <span
+    class="font-title text-foreground leading-none font-extrabold tracking-tight {nameClass}"
+  >
+    Catalog
   </span>
   <span
     class="text-muted-foreground relative left-1/2 flex items-center gap-1 leading-none {byClass}"

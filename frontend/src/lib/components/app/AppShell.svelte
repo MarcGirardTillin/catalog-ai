@@ -257,7 +257,7 @@
     aria-label="Aller au tableau de bord"
     onclick={() => go("/")}
   >
-    <Wordmark {appName} />
+    <Wordmark />
   </button>
 
   <nav class="flex flex-1 flex-col gap-3 overflow-y-auto p-2" aria-label="Navigation principale">

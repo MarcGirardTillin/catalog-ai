@@ -460,6 +460,12 @@ scraping robustness stays in the infra sprint (Firecrawl fallback).
     avant tout changement de provider. Alternative généraliste si le
     multi-images devient central : Google Nano Banana Pro (jusqu'à 14 images
     de référence fusionnées).
+- ~~Logo CatalogAI~~ — **DONE 2026-07-17** : monogramme « C » + point violet
+  fourni par Marc (Claude Design). Favicon = monogramme violet sans fond ;
+  wordmark « Catalog » figé (Nunito 800, sans monogramme) à la place du nom
+  configurable dans Wordmark (sidebar + login), « by tillin » conservé —
+  décisions Marc. `FRONTEND_APP_NAME` reste utilisé ailleurs (titres de
+  pages, SystemShell).
 - `generate_flat_photo` (worn → flat) — wait for a suitable FASHN endpoint.
 - Per-category fill ratio (already noted in the historical `images.py` spec).
 - Multi-provider routing — when a second provider exists for a verb.

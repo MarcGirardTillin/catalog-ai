@@ -16,8 +16,6 @@
   import { Label } from "@/lib/components/ui/label"
   import Wordmark from "@/lib/components/app/Wordmark.svelte"
 
-  export let appName: string
-
   let email = ""
   let password = ""
   let showPassword = false
@@ -55,7 +53,7 @@
 
   <div class="relative flex w-full max-w-sm flex-col items-center gap-6">
     <div class="flex flex-col items-center gap-2">
-      <Wordmark {appName} size="lg" />
+      <Wordmark size="lg" />
       <span class="text-primary text-xs font-semibold tracking-[0.24em] uppercase">
         Enrichissement de catalogue
       </span>

@@ -1,8 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080">
-  <!-- Tillin minimalist mark: the signature "smile" in white on a violet tile.
-       Smile path lifted from the design system's tillin-logo-navy.svg, recentered.
-       Brand violet #716df6. -->
-  <rect x="0" y="0" width="1080" height="1080" rx="240" fill="#716df6"/>
-  <path fill="#ffffff" transform="translate(-673.2,-1125.8) scale(2.6)"
-    d="M495.94,690.97c-55.25,0-108.67-30.01-135.87-82.33l33.15-17.24c14.23,27.37,38.26,47.56,67.67,56.85c29.41,9.29,60.69,6.58,88.05-7.65l17.24,33.15C543.73,685.43,519.66,690.97,495.94,690.97z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Monogramme Catalog sans fond (catalog-icon-navy.svg fourni par Marc,
+       2026-07-17) : « C » navy #150245 + point violet de marque #716df6. -->
+  <path d="M69.2 30.8 A33 33 0 1 0 69.2 69.2" fill="none" stroke="#150245" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="83" cy="50" r="7.5" fill="#716df6"/>
 </svg>
