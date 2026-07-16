@@ -29,6 +29,7 @@
   } from "@/lib/components/ui/dropdown-menu"
 
   import ThemePicker from "./ThemePicker.svelte"
+  import Wordmark from "./Wordmark.svelte"
 
   type Breadcrumb = { label: string; href?: string }
 
@@ -235,10 +236,11 @@
 {#snippet sidebarContent()}
   <button
     type="button"
-    class="font-title text-foreground border-border flex h-14 shrink-0 cursor-pointer items-center border-b px-4 text-base font-bold"
+    class="border-border flex h-14 shrink-0 cursor-pointer items-center border-b px-4"
+    aria-label="Aller au tableau de bord"
     onclick={() => go("/")}
   >
-    {appName}
+    <Wordmark {appName} />
   </button>
 
   <nav class="flex flex-1 flex-col gap-3 overflow-y-auto p-2" aria-label="Navigation principale">

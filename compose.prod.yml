@@ -95,7 +95,7 @@ services:
       # Runtime config (frontend/run.sh -> config.js): the browser calls the
       # API subdomain directly, so this must be the public API URL.
       - FRONTEND_API_URL=${FRONTEND_API_URL:?public API URL, e.g. https://api-catalog.tillin.fr}
-      - FRONTEND_APP_NAME=${FRONTEND_APP_NAME:-CatalogAI}
+      - FRONTEND_APP_NAME=${FRONTEND_APP_NAME:-Catalog}
       - FRONTEND_ENV=${ENVIRONMENT:-production}
       - FRONTEND_MAINTENANCE_ENABLED=${FRONTEND_MAINTENANCE_ENABLED:-false}
       - FRONTEND_VERSION_FULL=${TAG:-latest}

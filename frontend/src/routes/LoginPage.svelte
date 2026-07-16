@@ -14,6 +14,7 @@
   } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
+  import Wordmark from "@/lib/components/app/Wordmark.svelte"
 
   export let appName: string
 
@@ -53,8 +54,8 @@
   ></div>
 
   <div class="relative flex w-full max-w-sm flex-col items-center gap-6">
-    <div class="flex flex-col items-center gap-1">
-      <span class="font-title text-foreground text-2xl font-bold">{appName}</span>
+    <div class="flex flex-col items-center gap-2">
+      <Wordmark {appName} size="lg" />
       <span class="text-primary text-xs font-semibold tracking-[0.24em] uppercase">
         Enrichissement de catalogue
       </span>
