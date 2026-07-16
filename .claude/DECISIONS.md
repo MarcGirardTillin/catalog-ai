@@ -793,3 +793,31 @@ e885704→2e9b07d). Décisions durables :
 - **Tests de routes : float de crédits par défaut** (conftest
   tests/api/routes, 1M de crédits sur le compte default, test_credits.py
   opt-out) — sinon les gardes 402 cassent tous les tests de lancement.
+
+## 2026-07-16 — Multi-entreprises (SaaS) : tenancy par token utilisateur
+
+Catalog est un SaaS multi-entreprises sur UNE instance. Décisions :
+
+1. **Le scoping des données catalogue est délégué à Xano.** Chaque appel
+   catalogue porte le token du user connecté (capturé au login, TTL 72 h,
+   stocké sur `user.xano_token`) : Xano restreint à SA company. Nos filtres
+   `account_id` scopent les données CatalogAI (jobs, crédits, réglages) ;
+   Xano scope le catalogue. Un compte CatalogAI = une company Xano
+   (`account.xano_company_id`, résolu via /auth/me au login).
+2. **Jamais de repli service pour un compte d'entreprise.** Token absent ou
+   expiré → 401 `xano_token_expired` (l'UI renvoie au login). Le repli sur
+   l'identité de service n'existe QUE pour le compte default (opérateur/dev,
+   sans company) — sinon on servirait le catalogue d'une autre entreprise.
+3. **Jobs de fond au token le plus frais du compte** (n'importe quel user de
+   la company convient, Xano scope par le token) : résolu à chaque lecture,
+   la file étant partagée entre tenants.
+4. **L'offre (modules) vit dans CatalogAI, pas dans la table company de
+   Xano** : c'est la même décision commerciale que les crédits/packs — une
+   seule source de vérité, éditable depuis la console admin sans migration
+   Xano. `feature_import/enrich/studio` dans AccountSettings (admin-only),
+   gardes 403 `feature_disabled` par router ; `role`/`permissions` Xano
+   restent réservés aux droits PAR UTILISATEUR (plus tard).
+5. **Frontières des modules** : l'upload d'images produit et la recherche
+   catalogue sont du socle (pas de crédit, pas de provider) ; la
+   normalisation d'images du review appartient à l'enrichissement, pas au
+   studio.
