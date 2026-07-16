@@ -322,6 +322,29 @@ def test_get_product_maps_season_department_composition_tags_and_variant_axes() 
     assert variant.wholesale_price == Decimal("87.7")
 
 
+def test_variant_axes_recognize_english_and_coloris_synonyms() -> None:
+    """Some companies name their axes « Coloris » or in English (« Size »/
+    « Color ») rather than « Taille »/« Couleur » — the axis match must not be
+    French-only, or the panel's Taille/Couleur columns stay empty."""
+    detail = {
+        "id": 42,
+        "title": "Tee",
+        "product_options": [
+            {"name": "Size", "position": 1, "values": ["M"]},
+            {"name": "Coloris", "position": 2, "values": ["Noir"]},
+        ],
+        "product_variants": [
+            {"id": 1, "sku": "T-M", "options": ["M", "Noir"]},
+        ],
+    }
+    with _client(_store(detail=detail)) as client:
+        product = client.get_product(42)
+    assert product is not None
+    variant = product.variants[0]
+    assert variant.size == "M"
+    assert variant.color == "Noir"
+
+
 def test_upload_product_images_sends_repeated_files_and_maps_response() -> None:
     captured: dict[str, httpx.Request] = {}
 

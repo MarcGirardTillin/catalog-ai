@@ -265,6 +265,56 @@ def test_company_account_is_named_after_the_company(
         db.close()
 
 
+def test_company_account_seeds_usage_price_grid_from_oldest_account(
+    client: TestClient,
+    db_session_factory: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`usage_price` is a separate table from `settings_json` — it must be
+    copied too, or a fresh company account has NO € cost grid at all (seen
+    live: the admin usage screen reported it missing for JoggingJogging)."""
+    from app.api.services.accounts import get_or_create_default_account
+    from app.models import Account, UsagePrice, User
+
+    db = db_session_factory()
+    try:
+        default_account = get_or_create_default_account(db)
+        db.add(
+            UsagePrice(
+                account_id=default_account.id,
+                provider="claude",
+                model=None,
+                metric="input_tokens",
+                unit_price=3,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    _enable_xano(monkeypatch)
+    profile = _xano_profile("buyer@jbs.fr", 51, "tok-jbs")
+    monkeypatch.setattr("app.api.routes.auth.verify_login", lambda *a, **k: profile)
+    assert (
+        client.post(
+            "/auth/login", json={"email": "buyer@jbs.fr", "password": "pw"}
+        ).status_code
+        == 200
+    )
+
+    db = db_session_factory()
+    try:
+        user = db.query(User).filter(User.email == "buyer@jbs.fr").one()
+        account = db.get(Account, user.account_id)
+        assert account is not None
+        prices = db.query(UsagePrice).filter(UsagePrice.account_id == account.id).all()
+        assert len(prices) == 1
+        assert prices[0].provider == "claude"
+        assert prices[0].metric == "input_tokens"
+    finally:
+        db.close()
+
+
 def test_placeholder_account_upgraded_to_company_name_on_next_login(
     client: TestClient,
     db_session_factory: Any,

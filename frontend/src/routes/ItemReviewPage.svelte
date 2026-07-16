@@ -54,6 +54,23 @@
   let resolving = $state(false)
   let manualUrl = $state("")
 
+  // Timer live pendant la résolution manuelle par URL (scrape + extraction —
+  // peut prendre plusieurs secondes ; sans repère, ça ressemble à un blocage).
+  let resolveStartedAt = $state<number | null>(null)
+  let resolveNow = $state(0)
+  $effect(() => {
+    if (!resolving) return
+    resolveStartedAt = Date.now()
+    resolveNow = resolveStartedAt
+    const t = setInterval(() => (resolveNow = Date.now()), 200)
+    return () => clearInterval(t)
+  })
+  const resolveElapsed = $derived(
+    resolving && resolveStartedAt != null
+      ? (resolveNow - resolveStartedAt) / 1000
+      : null,
+  )
+
   // Sibling items of the same job (serial review navigation).
   let siblings = $state<{ id: number; status: string }[]>([])
   // Two-step reject: first activation arms the button, second confirms.
@@ -788,7 +805,12 @@
                       disabled={resolving || !manualUrl.trim()}
                       onclick={() => resolveFrom(manualUrl)}
                     >
-                      {resolving ? "…" : "Résoudre"}
+                      {#if resolving}
+                        <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                        {formatDuration(resolveElapsed ?? 0)}
+                      {:else}
+                        Résoudre
+                      {/if}
                     </Button>
                   </div>
                 </div>

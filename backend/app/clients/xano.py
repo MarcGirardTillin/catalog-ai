@@ -223,13 +223,20 @@ def _amount(raw: Mapping[str, Any], key: str) -> Decimal | None:
         return None
 
 
+# Libellés d'axe observés chez différentes companies Tillin (FR/EN) — la
+# boutique choisit librement le nom de son option, « Couleur » n'est pas
+# universel (vu aussi : Coloris, Color/Colour, Size, Pointure).
+_COLOR_LABELS = ("couleur", "coloris", "colour", "color")
+_SIZE_LABELS = ("taille", "pointure", "size")
+
+
 def _variant_axes(raw: Mapping[str, Any]) -> dict[str, int]:
     """Map « couleur »/« taille » to their index in each variant's `options`.
 
     Tillin declares the variant axes in `product_options` (`{name, position}`);
     every variant's positional `options` array aligns with those axes sorted by
-    position. The axis *name* varies in case (« Taille »/« taille »), so match
-    on a normalized substring. Returns e.g. `{"size": 0, "color": 1}`.
+    position. The axis *name* varies by company (case, langue, synonyme), so
+    match on a set of known substrings. Returns e.g. `{"size": 0, "color": 1}`.
     """
     options = [
         o for o in _as_list(raw.get("product_options")) if isinstance(o, Mapping)
@@ -238,9 +245,9 @@ def _variant_axes(raw: Mapping[str, Any]) -> dict[str, int]:
     axes: dict[str, int] = {}
     for index, option in enumerate(options):
         name = str(_first(option, "name", "title") or "").strip().lower()
-        if "couleur" in name and "color" not in axes:
+        if "color" not in axes and any(label in name for label in _COLOR_LABELS):
             axes["color"] = index
-        elif "taille" in name and "size" not in axes:
+        elif "size" not in axes and any(label in name for label in _SIZE_LABELS):
             axes["size"] = index
     return axes
 
