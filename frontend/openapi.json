@@ -100,7 +100,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "Verify credentials and set the session cookie.\n\nTries app-local users first, then falls back to Xano credentials so Tillin\nusers can sign in with their Xano identifiers.",
+        "description": "Verify credentials and set the session cookie.\n\nTries app-local users first, then falls back to Xano credentials so Tillin\nusers can sign in with their Xano identifiers.\n\nA LOCAL success still tries the same credentials against Xano (best\neffort): when they match — the normal case for a Tillin user who also has\na local password — we capture a fresh user token and company binding, so\ntheir catalog calls are company-scoped instead of falling back to the\nservice identity. A mismatch changes nothing.",
         "operationId": "auth-login",
         "requestBody": {
           "content": {
@@ -5969,6 +5969,21 @@
             "title": "Billing Day",
             "default": 1
           },
+          "feature_import": {
+            "type": "boolean",
+            "title": "Feature Import",
+            "default": true
+          },
+          "feature_enrich": {
+            "type": "boolean",
+            "title": "Feature Enrich",
+            "default": true
+          },
+          "feature_studio": {
+            "type": "boolean",
+            "title": "Feature Studio",
+            "default": true
+          },
           "credit_cost_import_product": {
             "type": "integer",
             "minimum": 0.0,
@@ -7093,6 +7108,21 @@
             "type": "integer",
             "title": "Low Credit Threshold",
             "default": 0
+          },
+          "feature_import": {
+            "type": "boolean",
+            "title": "Feature Import",
+            "default": true
+          },
+          "feature_enrich": {
+            "type": "boolean",
+            "title": "Feature Enrich",
+            "default": true
+          },
+          "feature_studio": {
+            "type": "boolean",
+            "title": "Feature Studio",
+            "default": true
           }
         },
         "type": "object",

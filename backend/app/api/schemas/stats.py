@@ -44,3 +44,9 @@ class DashboardStats(BaseModel):
     # --- Crédits prépayés (pastille solde dans la navigation) ---
     credit_balance: int = 0
     low_credit_threshold: int = 0
+
+    # Modules souscrits par le compte : l'AppShell masque la navigation des
+    # modules désactivés (le backend refuse de toute façon en 403).
+    feature_import: bool = True
+    feature_enrich: bool = True
+    feature_studio: bool = True

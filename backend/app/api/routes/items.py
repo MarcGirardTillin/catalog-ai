@@ -1,6 +1,6 @@
 """Enrichment item routes: detail, staged edits, review decisions, apply."""
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.api.deps import (
     CurrentUserDep,
@@ -9,6 +9,7 @@ from app.api.deps import (
     PipelineDep,
     SessionDep,
     XanoDep,
+    require_feature,
 )
 from app.api.exceptions import AppException
 from app.api.schemas import Product
@@ -31,7 +32,13 @@ from app.api.services.enrichment import (
 )
 from app.destinations.xano_tillin import XanoTillinDestination
 
-router = APIRouter(prefix="/items", tags=["items"])
+# Review = module « Enrichissement » (la normalisation d'images du review
+# en fait partie : c'est le flux d'enrichissement, pas le studio).
+router = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_feature("feature_enrich"))],
+)
 
 
 @router.get("/{item_id}", response_model=ItemPublic)

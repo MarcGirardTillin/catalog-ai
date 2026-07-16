@@ -96,6 +96,21 @@ export const AccountSettingsSchema = {
             title: 'Billing Day',
             default: 1
         },
+        feature_import: {
+            type: 'boolean',
+            title: 'Feature Import',
+            default: true
+        },
+        feature_enrich: {
+            type: 'boolean',
+            title: 'Feature Enrich',
+            default: true
+        },
+        feature_studio: {
+            type: 'boolean',
+            title: 'Feature Studio',
+            default: true
+        },
         credit_cost_import_product: {
             type: 'integer',
             minimum: 0,
@@ -1245,6 +1260,21 @@ export const DashboardStatsSchema = {
             type: 'integer',
             title: 'Low Credit Threshold',
             default: 0
+        },
+        feature_import: {
+            type: 'boolean',
+            title: 'Feature Import',
+            default: true
+        },
+        feature_enrich: {
+            type: 'boolean',
+            title: 'Feature Enrich',
+            default: true
+        },
+        feature_studio: {
+            type: 'boolean',
+            title: 'Feature Studio',
+            default: true
         }
     },
     type: 'object',

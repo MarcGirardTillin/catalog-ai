@@ -16,6 +16,7 @@ from uuid import uuid4
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
     Form,
     Query,
@@ -26,7 +27,13 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUserDep, ImportRunnerDep, SessionDep, XanoDep
+from app.api.deps import (
+    CurrentUserDep,
+    ImportRunnerDep,
+    SessionDep,
+    XanoDep,
+    require_feature,
+)
 from app.api.exceptions import AppException
 from app.api.schemas import PaginatedResponse
 from app.api.schemas.import_profiles import ImportProfileConfig
@@ -64,7 +71,12 @@ from app.imports.tillin_csv import (
 )
 from app.models import Account, EnrichmentJob, ImportItem, ImportProfile
 
-router = APIRouter(prefix="/imports", tags=["imports"])
+# Module « Import » : offre par compte — 403 feature_disabled si non souscrit.
+router = APIRouter(
+    prefix="/imports",
+    tags=["imports"],
+    dependencies=[Depends(require_feature("feature_import"))],
+)
 
 ALLOWED_EXTENSIONS = (".pdf", ".xlsx", ".csv")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB

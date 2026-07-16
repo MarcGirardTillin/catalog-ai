@@ -18,6 +18,7 @@ from app.api.deps import (
     SessionDep,
     XanoDep,
     get_current_user,
+    require_feature,
 )
 from app.api.exceptions import AppException
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
@@ -163,6 +164,8 @@ def upload_product_images(
     "/{product_id}/images/normalize",
     response_model=ImageAssetPublic,
     status_code=202,
+    # Traitement d'image = module Studio (l'upload, lui, reste du socle).
+    dependencies=[Depends(require_feature("feature_studio"))],
 )
 def normalize_image(
     product_id: int,
@@ -205,6 +208,7 @@ def normalize_image(
     "/{product_id}/images/generate-model",
     response_model=ImageAssetPublic,
     status_code=202,
+    dependencies=[Depends(require_feature("feature_studio"))],
 )
 def generate_model_image(
     product_id: int,

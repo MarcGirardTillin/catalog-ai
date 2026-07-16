@@ -63,6 +63,12 @@ class AccountSettings(BaseModel):
     # prices frozen) on this day of the FOLLOWING month. 1 = frozen as soon
     # as the month rolls over.
     billing_day: int = Field(1, ge=1, le=28)
+    # --- Modules souscrits (admin-only, PAR COMPTE — c'est l'offre vendue à
+    # ce client, pas une politique globale) : un module désactivé masque ses
+    # entrées dans l'UI et ses routes répondent 403 feature_disabled. ---
+    feature_import: bool = True
+    feature_enrich: bool = True
+    feature_studio: bool = True
     # --- Crédits prépayés (grille par action, admin-only) : 1 crédit = la
     # valeur faciale vendue au client ; le solde décrémente à chaque action
     # et les lancements sont refusés (402) à solde insuffisant. ---

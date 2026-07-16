@@ -11,7 +11,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
-from app.api.deps import CurrentUserDep, SessionDep, XanoDep, get_current_user
+from app.api.deps import (
+    CurrentUserDep,
+    SessionDep,
+    XanoDep,
+    get_current_user,
+    require_feature,
+)
 from app.api.exceptions import AppException
 from app.api.schemas import (
     AssetSaveRequest,
@@ -36,10 +42,14 @@ from app.imaging.compose import compose
 from app.imaging.naming import build_filename, render_image_filename
 from app.models import ImageAsset
 
+# Module « Studio » : offre par compte.
 router = APIRouter(
     prefix="/imaging",
     tags=["imaging"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[
+        Depends(get_current_user),
+        Depends(require_feature("feature_studio")),
+    ],
 )
 
 

@@ -54,6 +54,10 @@ ADMIN_ONLY_SETTINGS = (
     # Jour de facturation : politique opérateur globale (Admin > Tarification),
     # plus éditable depuis les paramètres du client (2026-07-16).
     "billing_day",
+    # Modules souscrits : un client ne s'auto-attribue pas un module.
+    "feature_import",
+    "feature_enrich",
+    "feature_studio",
     "credit_cost_import_product",
     "credit_cost_enrich_item",
     "credit_cost_image_process",

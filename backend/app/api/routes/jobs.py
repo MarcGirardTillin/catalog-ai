@@ -2,11 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUserDep, JobRunnerDep, SessionDep
+from app.api.deps import CurrentUserDep, JobRunnerDep, SessionDep, require_feature
 from app.api.schemas import PaginatedResponse
 from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobPublic
 from app.api.services.accounts import resolve_account_id
@@ -20,7 +20,12 @@ from app.api.services.enrichment import (
 from app.models import EnrichmentItem, EnrichmentJob
 from app.models.enrichment import ITEM_STATUSES
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+# Module « Enrichissement » : offre par compte.
+router = APIRouter(
+    prefix="/jobs",
+    tags=["jobs"],
+    dependencies=[Depends(require_feature("feature_enrich"))],
+)
 
 
 def _effective_duration(db: Session, job: EnrichmentJob) -> float | None:

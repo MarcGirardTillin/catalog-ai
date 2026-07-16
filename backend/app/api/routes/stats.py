@@ -131,6 +131,9 @@ def _dashboard_stats(db: Session, account_id: int) -> DashboardStats:
         minutes_saved_this_month=minutes_saved,
         credit_balance=credit_balance(db, account_id),
         low_credit_threshold=settings.low_credit_threshold,
+        feature_import=settings.feature_import,
+        feature_enrich=settings.feature_enrich,
+        feature_studio=settings.feature_studio,
     )
 
 

@@ -214,6 +214,31 @@ def get_xano_client(db: SessionDep, current_user: CurrentUserDep) -> XanoClient:
 XanoDep = Annotated[XanoClient, Depends(get_xano_client)]
 
 
+def require_feature(feature: str) -> Callable[[Session, User], None]:
+    """Router/route guard: 403 when the account's module is switched off.
+
+    `feature` is the AccountSettings field name (feature_import /
+    feature_enrich / feature_studio) — the operator's per-account offer,
+    toggled from the admin console. The platform admin bypasses the guard
+    (support/debug never depends on what a client bought).
+    """
+
+    def dependency(db: SessionDep, current_user: CurrentUserDep) -> None:
+        if current_user.is_admin:
+            return
+        from app.api.services.imaging import account_settings
+
+        account_id = resolve_account_id(db, current_user)
+        if not getattr(account_settings(db, account_id), feature):
+            raise AppException(
+                status_code=403,
+                code="feature_disabled",
+                message="Ce module n'est pas activé pour votre compte.",
+            )
+
+    return dependency
+
+
 def get_current_admin(current_user: CurrentUserDep) -> User:
     """The signed-in user, required to be a platform admin (else 403).
 

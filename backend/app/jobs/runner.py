@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 _USER_AGENT = "CatalogAI enrichment worker"
 
 
-def _placeholder_reader(product_id: int, account_id: int) -> Product:
+def _placeholder_reader(product_id: int, _account_id: int) -> Product:
     """LOCAL DEV ONLY — stands in for the Xano read path."""
     return Product(id=product_id, title=f"Produit {product_id}")
 

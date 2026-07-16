@@ -58,6 +58,12 @@ export const exampleReadExample = <ThrowOnError extends boolean = false>(options
  *
  * Tries app-local users first, then falls back to Xano credentials so Tillin
  * users can sign in with their Xano identifiers.
+ *
+ * A LOCAL success still tries the same credentials against Xano (best
+ * effort): when they match — the normal case for a Tillin user who also has
+ * a local password — we capture a fresh user token and company binding, so
+ * their catalog calls are company-scoped instead of falling back to the
+ * service identity. A mismatch changes nothing.
  */
 export const authLogin = <ThrowOnError extends boolean = false>(options: Options<AuthLoginData, ThrowOnError>): RequestResult<AuthLoginResponses, AuthLoginErrors, ThrowOnError> => (options.client ?? client).post<AuthLoginResponses, AuthLoginErrors, ThrowOnError>({
     responseType: 'json',

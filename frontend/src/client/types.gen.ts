@@ -55,6 +55,18 @@ export type AccountSettings = {
      */
     billing_day?: number;
     /**
+     * Feature Import
+     */
+    feature_import?: boolean;
+    /**
+     * Feature Enrich
+     */
+    feature_enrich?: boolean;
+    /**
+     * Feature Studio
+     */
+    feature_studio?: boolean;
+    /**
      * Credit Cost Import Product
      */
     credit_cost_import_product?: number;
@@ -755,6 +767,18 @@ export type DashboardStats = {
      * Low Credit Threshold
      */
     low_credit_threshold?: number;
+    /**
+     * Feature Import
+     */
+    feature_import?: boolean;
+    /**
+     * Feature Enrich
+     */
+    feature_enrich?: boolean;
+    /**
+     * Feature Studio
+     */
+    feature_studio?: boolean;
 };
 
 /**

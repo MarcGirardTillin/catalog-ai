@@ -5,11 +5,11 @@ frozen in `app.api.schemas.import_profiles.ImportProfileConfig`).
 the extracted document supplier for auto-suggestion.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentUserDep, SessionDep, require_feature
 from app.api.exceptions import AppException
 from app.api.schemas.import_profiles import (
     ImportProfileConfig,
@@ -21,7 +21,11 @@ from app.api.schemas.import_profiles import (
 from app.api.services.accounts import resolve_account_id
 from app.models import ImportProfile
 
-router = APIRouter(prefix="/import-profiles", tags=["import-profiles"])
+router = APIRouter(
+    prefix="/import-profiles",
+    tags=["import-profiles"],
+    dependencies=[Depends(require_feature("feature_import"))],
+)
 
 
 def _to_public(profile: ImportProfile) -> ImportProfilePublic:
