@@ -45,7 +45,9 @@ def _attach_xano_identity(db: SessionDep, user: User, profile: dict[str, Any]) -
     """
     company_id = profile.get("company_id")
     if company_id is not None:
-        account = get_or_create_company_account(db, int(company_id))
+        account = get_or_create_company_account(
+            db, int(company_id), company_name=profile.get("company_name")
+        )
         user.account_id = account.id
     user.xano_token = profile.get("token")
     user.xano_token_at = datetime.now(UTC)

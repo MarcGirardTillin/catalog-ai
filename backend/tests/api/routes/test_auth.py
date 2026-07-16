@@ -232,3 +232,72 @@ def test_local_login_still_works_when_xano_rejects(
         json={"email": test_user["email"], "password": test_user["password"]},
     )
     assert response.status_code == 200
+
+
+def test_company_account_is_named_after_the_company(
+    client: TestClient,
+    db_session_factory: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_xano(monkeypatch)
+    profile = _xano_profile("buyer@jbs.fr", 51, "tok-jbs")
+    profile["company_name"] = "JBS ACCESSOIRES"
+    monkeypatch.setattr("app.api.routes.auth.verify_login", lambda *a, **k: profile)
+
+    assert (
+        client.post(
+            "/auth/login", json={"email": "buyer@jbs.fr", "password": "pw"}
+        ).status_code
+        == 200
+    )
+
+    from app.models import Account, User
+
+    db = db_session_factory()
+    try:
+        user = db.query(User).filter(User.email == "buyer@jbs.fr").one()
+        account = db.get(Account, user.account_id)
+        assert account.name == "JBS ACCESSOIRES"
+        # Le seeding tarifaire lit le PLUS ANCIEN compte (ici celui du
+        # conftest crédits) sans en créer d'autre : exactement 2 comptes.
+        assert db.query(Account).count() == 2
+    finally:
+        db.close()
+
+
+def test_placeholder_account_upgraded_to_company_name_on_next_login(
+    client: TestClient,
+    db_session_factory: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_xano(monkeypatch)
+    # Premier login : nom de company indisponible -> placeholder.
+    first = _xano_profile("buyer@jbs.fr", 51, "tok-1")
+    monkeypatch.setattr("app.api.routes.auth.verify_login", lambda *a, **k: first)
+    client.post("/auth/login", json={"email": "buyer@jbs.fr", "password": "pw"})
+
+    from app.models import Account
+
+    db = db_session_factory()
+    try:
+        assert (
+            db.query(Account).filter(Account.xano_company_id == 51).one().name
+            == "Entreprise 51"
+        )
+    finally:
+        db.close()
+
+    # Second login : le nom arrive -> le placeholder est promu.
+    second = _xano_profile("buyer@jbs.fr", 51, "tok-2")
+    second["company_name"] = "JBS ACCESSOIRES"
+    monkeypatch.setattr("app.api.routes.auth.verify_login", lambda *a, **k: second)
+    client.post("/auth/login", json={"email": "buyer@jbs.fr", "password": "pw"})
+
+    db = db_session_factory()
+    try:
+        assert (
+            db.query(Account).filter(Account.xano_company_id == 51).one().name
+            == "JBS ACCESSOIRES"
+        )
+    finally:
+        db.close()

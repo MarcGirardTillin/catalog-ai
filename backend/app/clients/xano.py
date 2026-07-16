@@ -112,8 +112,10 @@ def verify_login(
                 "full_name": None,
                 "token": str(token),
                 "company_id": None,
+                "company_name": None,
             }
-            me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+            headers_auth = {"Authorization": f"Bearer {token}"}
+            me = client.get("/auth/me", headers=headers_auth)
             if me.status_code == 200 and isinstance(me.json(), Mapping):
                 data = me.json()
                 # Xano's user names are split (name_first/name_last).
@@ -130,6 +132,17 @@ def verify_login(
                         profile["company_id"] = int(company)
                     except (TypeError, ValueError):
                         logger.warning("Xano /auth/me returned a non-int company id")
+            if profile["company_id"] is not None:
+                # Best-effort : /auth/me n'expose que l'id numérique de la
+                # company ; son NOM (ex. « NEIWA SARL ») vient de
+                # /get_all_informations — c'est lui qui nomme le compte
+                # CatalogAI dans la console admin.
+                infos = client.get(CLASSIFICATION_PATH, headers=headers_auth)
+                if infos.status_code == 200 and isinstance(infos.json(), Mapping):
+                    company_info = infos.json().get("company_all_informations")
+                    if isinstance(company_info, Mapping):
+                        name = str(company_info.get("name") or "").strip()
+                        profile["company_name"] = name or None
             return profile
     except httpx.HTTPError:
         logger.warning("Xano credential check failed to reach the API")

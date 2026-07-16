@@ -40,24 +40,54 @@ def get_or_create_default_account(db: Session) -> Account:
     return account
 
 
-def get_or_create_company_account(db: Session, company_id: int) -> Account:
+def _placeholder_name(company_id: int) -> str:
+    return f"Entreprise {company_id}"
+
+
+def _name_is_free(db: Session, name: str, *, except_id: int | None = None) -> bool:
+    other = db.scalar(select(Account).where(Account.name == name))
+    return other is None or other.id == except_id
+
+
+def get_or_create_company_account(
+    db: Session, company_id: int, *, company_name: str | None = None
+) -> Account:
     """The account bound to a Tillin company, created on first login.
 
-    The name is a placeholder (`Entreprise {id}`) — Xano's `/auth/me` exposes
-    only the numeric company id; the operator can recognize accounts by their
-    users in the admin console.
+    Named after the company (`company_all_informations.name`, fetched with the
+    user's fresh token) ; placeholder `Entreprise {id}` when unavailable —
+    upgraded to the real name at the next login that carries it. The operator
+    pricing policy is seeded from the oldest account: the global
+    PUT /admin/settings keeps every account in sync, so any of them reflects
+    the current policy (looking one up BY NAME would recreate ghost accounts).
     """
+    wanted = (company_name or "").strip() or None
     account = db.scalar(select(Account).where(Account.xano_company_id == company_id))
     if account is not None:
+        if (
+            wanted
+            and account.name != wanted
+            and account.name == _placeholder_name(company_id)
+            and _name_is_free(db, wanted, except_id=account.id)
+        ):
+            account.name = wanted
+            db.commit()
         return account
-    default = get_or_create_default_account(db)
+    seed_source = db.scalar(select(Account).order_by(Account.id).limit(1))
     seeded = {
         key: value
-        for key, value in (default.settings_json or {}).items()
+        for key, value in (
+            (seed_source.settings_json if seed_source else None) or {}
+        ).items()
         if key in OPERATOR_SEEDED_KEYS
     }
+    name = (
+        wanted
+        if wanted and _name_is_free(db, wanted)
+        else _placeholder_name(company_id)
+    )
     account = Account(
-        name=f"Entreprise {company_id}",
+        name=name,
         xano_company_id=company_id,
         settings_json=seeded or None,
     )

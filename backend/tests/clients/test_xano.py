@@ -765,6 +765,13 @@ def test_verify_login_returns_token_and_company() -> None:
                     "company": 51,
                 },
             )
+        if request.url.path.endswith("/get_all_informations"):
+            return httpx.Response(
+                200,
+                json={
+                    "company_all_informations": {"id": 51, "name": "JBS ACCESSOIRES"}
+                },
+            )
         return httpx.Response(404)
 
     profile = verify_login(
@@ -779,4 +786,5 @@ def test_verify_login_returns_token_and_company() -> None:
         "full_name": "Aze Erty",
         "token": "tok-72h",
         "company_id": 51,
+        "company_name": "JBS ACCESSOIRES",
     }

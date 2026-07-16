@@ -228,9 +228,6 @@
     }
   })
 
-  // Paramètres : section séparée en bas de la sidebar, au-dessus du bloc user.
-  const settingsActive = $derived(pathname.startsWith("/settings"))
-
   let drawerOpen = $state(false)
 
   // Initiales : deux premières lettres de la partie locale de l'email.
@@ -296,30 +293,38 @@
     {/each}
   </nav>
 
-  <div class="border-border border-t p-2">
-    <button
-      type="button"
-      class="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors {settingsActive
-        ? 'bg-accent text-accent-foreground font-medium'
-        : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-      aria-current={settingsActive ? "page" : undefined}
-      onclick={() => go("/settings")}
-    >
-      <Settings size={16} class="shrink-0" />
-      Paramètres
-    </button>
-  </div>
-
+  <!-- Bloc compte : avatar + email = menu (Paramètres, Déconnexion). Un seul
+       point d'entrée profil, en bas de la sidebar — l'avatar en topbar était
+       un doublon. -->
   <div class="border-border flex items-center justify-between gap-2 border-t p-3">
-    <div class="flex min-w-0 items-center gap-2">
-      <span
-        class="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-        aria-hidden="true"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        class="hover:bg-muted focus-visible:ring-ring/50 -m-1.5 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md p-1.5 outline-none focus-visible:ring-2"
+        aria-label="Menu du compte"
       >
-        {initials}
-      </span>
-      <span class="text-muted-foreground truncate text-xs">{user.email}</span>
-    </div>
+        <span
+          class="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+          aria-hidden="true"
+        >
+          {initials}
+        </span>
+        <span class="text-muted-foreground truncate text-xs">{user.email}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuLabel class="text-muted-foreground max-w-60 truncate text-xs font-normal">
+          {user.email}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onclick={() => go("/settings")}>
+          <Settings size={16} />
+          Paramètres
+        </DropdownMenuItem>
+        <DropdownMenuItem onclick={onLogout}>
+          <LogOut size={16} />
+          Déconnexion
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
     <ThemePicker />
   </div>
 {/snippet}
@@ -401,25 +406,6 @@
         {/if}
       </div>
 
-      <!-- Menu utilisateur -->
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          class="bg-primary text-primary-foreground focus-visible:ring-ring/50 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold outline-none focus-visible:ring-2"
-          aria-label="Menu utilisateur"
-        >
-          {initials}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel class="text-muted-foreground max-w-60 truncate text-xs font-normal">
-            {user.email}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onclick={onLogout}>
-            <LogOut size={16} />
-            Déconnexion
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </header>
 
     <main class="flex-1">
