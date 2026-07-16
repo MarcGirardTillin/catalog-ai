@@ -95,10 +95,15 @@
     max_kb: 300,
   })
   let hasImageTemplate = $state(false)
+  // Modèle de titre d'image du compte, rendu côté client pour PRÉ-REMPLIR le
+  // champ « Nom du fichier » avec le vrai nom (le serveur re-slugifie de
+  // toute façon : ce que voit l'utilisateur = ce qui sera enregistré).
+  let imageTemplate = $state("")
   // Config de génération (porté mannequin), pré-remplie des réglages.
   let genConfig = $state<GenerationConfig>({
     framing: "full_body",
     scene: "studio",
+    pose: "",
     instructions: "",
   })
   let genCount = $state(1)
@@ -125,9 +130,11 @@
         max_kb: data.imaging_max_kb ?? 300,
       }
       hasImageTemplate = Boolean(data.image_title_template)
+      imageTemplate = data.image_title_template ?? ""
       genConfig = {
         framing: data.imaging_generation_framing ?? "full_body",
         scene: data.imaging_generation_scene ?? "studio",
+        pose: data.imaging_generation_pose ?? "",
         instructions: data.imaging_generation_instructions ?? "",
       }
     })
@@ -136,6 +143,52 @@
   // --- Travaux par image source (clé = URL) ---
   let works = $state<Record<string, Work>>({})
   let selected = $state<string[]>([])
+
+  // --- Nom de fichier par défaut : rendu client du modèle de titre d'image
+  // (mêmes tokens que le serveur : reference/color/position/brand/title).
+  // Approximation assumée : le champ pré-rempli devient le nom ENVOYÉ, donc
+  // ce qui est affiché est exactement ce qui sera enregistré. ---
+  function slugifyFilename(name: string): string {
+    return name
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^[-._]+|[-._]+$/g, "")
+      .toLowerCase()
+  }
+
+  function renderImageFilename(imageUrl: string): string {
+    if (!imageTemplate || !product) return ""
+    const index = images.findIndex((i) => i.url === imageUrl)
+    const values: Record<string, string> = {
+      reference: product.reference_code ?? "",
+      color:
+        product.variants?.map((v) => v.color).find((c): c is string => !!c) ?? "",
+      position: String(index >= 0 ? index + 1 : 1),
+      brand: product.brand?.name ?? "",
+      title: product.title ?? "",
+    }
+    const rendered = imageTemplate
+      .replace(/\{(\w+)\}/g, (_m, token: string) => values[token] ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+    return slugifyFilename(rendered)
+  }
+
+  // Pré-remplissage des noms (une seule fois par travail : si l'utilisateur
+  // vide le champ ensuite, on ne le re-remplit pas).
+  $effect(() => {
+    if (!product || !imageTemplate) return
+    for (const [key, work] of Object.entries(works)) {
+      if (work.status === "idle" || work.filenamePrefilled) continue
+      if (work.previewUrls.length > 1) continue
+      const baseUrl = key.endsWith(GEN_SUFFIX)
+        ? key.slice(0, -GEN_SUFFIX.length)
+        : key
+      if (!work.filename) work.filename = renderImageFilename(baseUrl)
+      work.filenamePrefilled = true
+    }
+  })
 
   // Clé de travail : URL source pour la normalisation, suffixe ::gen pour la
   // génération (les deux peuvent coexister sur la même image).
@@ -332,6 +385,7 @@
         generateModelImage(productId, image.url, image.id ?? null, {
           framing: genConfig.framing,
           scene: genConfig.scene,
+          pose: genConfig.pose || null,
           instructions: genConfig.instructions,
           num_images: genCount,
         }),

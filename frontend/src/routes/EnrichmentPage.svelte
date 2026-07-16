@@ -83,6 +83,7 @@
   let generationConfig = $state<GenerationConfig>({
     framing: "full_body",
     scene: "studio",
+    pose: "",
     instructions: "",
   })
 
@@ -144,6 +145,7 @@
     generationConfig = {
       framing: data.imaging_generation_framing ?? "full_body",
       scene: data.imaging_generation_scene ?? "studio",
+      pose: data.imaging_generation_pose ?? "",
       instructions: data.imaging_generation_instructions ?? "",
     }
     accountLoaded = true
@@ -193,6 +195,7 @@
         imageTemplateParts.length > 0 ? imageTitleTemplate : null,
       imaging_generation_framing: generationConfig.framing,
       imaging_generation_scene: generationConfig.scene,
+      imaging_generation_pose: generationConfig.pose || null,
       imaging_generation_instructions:
         generationConfig.instructions.trim() || null,
     })

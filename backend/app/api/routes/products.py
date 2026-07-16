@@ -255,6 +255,7 @@ def generate_model_image(
                     options.instructions
                     if options.instructions is not None
                     else stored.imaging_generation_instructions,
+                    pose=options.pose or stored.imaging_generation_pose,
                 )
             }
         )

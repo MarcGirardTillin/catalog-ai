@@ -9,6 +9,15 @@ from app.api.schemas.product import ProductImage
 
 RatioOption = Literal["4:5", "1:1", "3:4", "16:9", "original"]
 FormatOption = Literal["webp", "jpeg", "jpg", "png"]
+# Orientation du mannequin généré ; None = laissée libre (défaut).
+PoseOption = Literal[
+    "face",
+    "back",
+    "profile_left",
+    "profile_right",
+    "three_quarter_left",
+    "three_quarter_right",
+]
 
 
 class NormalizeOptions(BaseModel):
@@ -48,6 +57,8 @@ class GenerateModelOptions(BaseModel):
     prompt: str | None = None
     framing: Literal["full_body", "cropped_head"] | None = None
     scene: Literal["studio", "lifestyle"] | None = None
+    # Orientation du mannequin (face/dos/profil/trois-quarts) ; None = libre.
+    pose: PoseOption | None = None
     instructions: str | None = None
     aspect_ratio: str = "4:5"
     resolution: Literal["1k", "2k", "4k"] = "1k"

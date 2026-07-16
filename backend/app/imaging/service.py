@@ -76,19 +76,35 @@ SCENE_PROMPTS = {
     "studio": "studio photo, plain light neutral background",
     "lifestyle": "lifestyle photo, natural in-context setting",
 }
+# Orientation du mannequin (optionnelle) : vide = FASHN choisit librement.
+POSE_PROMPTS = {
+    "face": "the model facing the camera straight on",
+    "back": "the model seen from behind",
+    "profile_left": "left side profile view of the model",
+    "profile_right": "right side profile view of the model",
+    "three_quarter_left": "three-quarter view, the model turned slightly to their left",
+    "three_quarter_right": (
+        "three-quarter view, the model turned slightly to their right"
+    ),
+}
 
 
-def build_generation_prompt(framing: str, scene: str, instructions: str | None) -> str:
+def build_generation_prompt(
+    framing: str, scene: str, instructions: str | None, pose: str | None = None
+) -> str:
     """Compose the FASHN instruction from the structured config + free text.
 
     Unknown values fall back to the historical default (studio, full body) —
     without a prompt FASHN picks a free environment (confirmed live: outdoor
-    scene), which is never what a boutique wants by default.
+    scene), which is never what a boutique wants by default. `pose` is the
+    only OPTIONAL block: absent or unknown → nothing added (free orientation).
     """
     parts = [
         SCENE_PROMPTS.get(scene, SCENE_PROMPTS["studio"]),
         FRAMING_PROMPTS.get(framing, FRAMING_PROMPTS["full_body"]),
     ]
+    if pose and pose in POSE_PROMPTS:
+        parts.append(POSE_PROMPTS[pose])
     if instructions and instructions.strip():
         parts.append(instructions.strip())
     return ", ".join(parts)

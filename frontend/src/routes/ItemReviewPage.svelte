@@ -137,8 +137,30 @@
       : [...allIds]
   }
 
+  // Défaut par champ : coché seulement si un contenu a été PROPOSÉ — un
+  // transform décoché au lancement ne stage rien, sa case démarre donc
+  // décochée (demande Marc : refléter les choix du lancement). Un choix
+  // explicite stocké (apply_fields_json) garde la priorité.
+  function hasStaged(key: string): boolean {
+    if (!item) return false
+    switch (key) {
+      case "title":
+        return item.staged_title != null
+      case "description":
+        return item.staged_description != null
+      case "meta":
+        return item.staged_meta != null
+      case "images":
+        return ((item.staged_images_json ?? []) as unknown[]).length > 0
+      case "weights":
+        return ((item.staged_weights_json ?? []) as unknown[]).length > 0
+      default:
+        return true
+    }
+  }
+
   function isApplied(key: string): boolean {
-    return applyFields[key] ?? true
+    return applyFields[key] ?? hasStaged(key)
   }
 
   function toggleApply(key: string) {
@@ -775,17 +797,32 @@
                   <div class="flex flex-col gap-1">
                     <span class="text-muted-foreground">Candidats trouvés :</span>
                     {#each candidates as candidate (candidate.url)}
-                      <button
-                        type="button"
-                        disabled={resolving}
-                        onclick={() => resolveFrom(candidate.url)}
-                        class="hover:bg-muted flex items-center justify-between gap-2 rounded border px-2 py-1 text-left disabled:opacity-50"
+                      <div
+                        class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border px-2 py-1.5"
                       >
-                        <span class="truncate">{candidate.title ?? candidate.url}</span>
+                        <span class="min-w-0 flex-1 truncate" title={candidate.url}>
+                          {candidate.title ?? candidate.url}
+                        </span>
                         <span class="shrink-0 font-mono"
                           >{candidate.score.toFixed(2)}</span
                         >
-                      </button>
+                        <a
+                          href={candidate.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          class="text-primary shrink-0 underline underline-offset-2"
+                        >
+                          voir la page
+                        </a>
+                        <button
+                          type="button"
+                          disabled={resolving}
+                          onclick={() => resolveFrom(candidate.url)}
+                          class="text-primary shrink-0 cursor-pointer underline underline-offset-2 disabled:opacity-50"
+                        >
+                          Choisir ce candidat
+                        </button>
+                      </div>
                     {/each}
                   </div>
                 {/if}

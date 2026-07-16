@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.api.schemas.imaging import FormatOption, RatioOption
+from app.api.schemas.imaging import FormatOption, PoseOption, RatioOption
 
 # How the rendered title is cased: left as-is, UPPER CASE, Capitalized
 # (first letters raised, rest untouched — preserves acronyms/brand styling),
@@ -99,6 +99,8 @@ class AccountSettings(BaseModel):
     # (prompt) à chaque génération ; surchargables au lancement (studio). ---
     imaging_generation_framing: Literal["full_body", "cropped_head"] = "full_body"
     imaging_generation_scene: Literal["studio", "lifestyle"] = "studio"
+    # Orientation du mannequin par défaut ; None = laissée libre.
+    imaging_generation_pose: PoseOption | None = None
     imaging_generation_instructions: str | None = None
 
 

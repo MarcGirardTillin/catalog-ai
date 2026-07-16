@@ -139,6 +139,10 @@ export type AccountSettings = {
      */
     imaging_generation_scene?: 'studio' | 'lifestyle';
     /**
+     * Imaging Generation Pose
+     */
+    imaging_generation_pose?: 'face' | 'back' | 'profile_left' | 'profile_right' | 'three_quarter_left' | 'three_quarter_right' | null;
+    /**
      * Imaging Generation Instructions
      */
     imaging_generation_instructions?: string | null;
@@ -873,6 +877,10 @@ export type GenerateModelOptions = {
      * Scene
      */
     scene?: 'studio' | 'lifestyle' | null;
+    /**
+     * Pose
+     */
+    pose?: 'face' | 'back' | 'profile_left' | 'profile_right' | 'three_quarter_left' | 'three_quarter_right' | null;
     /**
      * Instructions
      */

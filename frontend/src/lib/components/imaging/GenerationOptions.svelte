@@ -1,10 +1,22 @@
 <script lang="ts" module>
   // Config de génération de visuels (porté mannequin) : cadrage + ambiance +
-  // directives libres — traduits en instruction FASHN côté serveur. Partagé
-  // entre les réglages (défauts du compte) et le studio (override ponctuel).
+  // orientation + directives libres — traduits en instruction FASHN côté
+  // serveur. Partagé entre les réglages (défauts du compte) et le studio
+  // (override ponctuel).
+  export type GenerationPose =
+    | ""
+    | "face"
+    | "back"
+    | "profile_left"
+    | "profile_right"
+    | "three_quarter_left"
+    | "three_quarter_right"
+
   export type GenerationConfig = {
     framing: "full_body" | "cropped_head"
     scene: "studio" | "lifestyle"
+    /** Orientation du mannequin ; "" = laissée libre (défaut). */
+    pose: GenerationPose
     instructions: string
   }
 </script>
@@ -35,6 +47,18 @@
       <Select id="{idPrefix}-scene" {disabled} bind:value={config.scene}>
         <option value="studio">Photo studio (fond neutre)</option>
         <option value="lifestyle">Mise en scène (lifestyle)</option>
+      </Select>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{idPrefix}-pose">Orientation du mannequin (optionnel)</Label>
+      <Select id="{idPrefix}-pose" {disabled} bind:value={config.pose}>
+        <option value="">Laissée libre</option>
+        <option value="face">De face</option>
+        <option value="back">De dos</option>
+        <option value="profile_left">Profil gauche</option>
+        <option value="profile_right">Profil droit</option>
+        <option value="three_quarter_left">3/4 face gauche</option>
+        <option value="three_quarter_right">3/4 face droite</option>
       </Select>
     </div>
   </div>

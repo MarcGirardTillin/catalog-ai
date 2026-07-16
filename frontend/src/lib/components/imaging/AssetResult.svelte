@@ -17,6 +17,9 @@
     crop: CropBox | null
     rendering: boolean
     saving: boolean
+    /** Nom déjà pré-rempli depuis le modèle de titre (ne pas re-remplir si
+     *  l'utilisateur vide le champ ensuite). */
+    filenamePrefilled?: boolean
   }
 </script>
 
@@ -157,7 +160,8 @@
   })
 
   // --- Guides de placement (patrons) : tiers, croix centrale ---
-  let showGuides = $state(false)
+  // Actifs par défaut (demande Marc) ; le bouton grille les masque.
+  let showGuides = $state(true)
   const guidesVisible = $derived(canRender && (dragging || showGuides))
 
   // --- Zoom plein écran ---
@@ -447,6 +451,87 @@
             </div>
           </div>
         {/if}
+        {#if canRender}
+          <!-- Contrôles sous l'image MODIFIÉE, centrés (demande Marc). -->
+          {#if cropMode}
+            <!-- Mode recadrage : tracer, puis appliquer ou abandonner. -->
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <span class="text-muted-foreground w-full text-center text-xs">
+                Tracez la zone à conserver — proportions verrouillées au format.
+              </span>
+              <Button
+                size="sm"
+                disabled={!cropSel || cropSel.w < 12}
+                onclick={applyCrop}
+              >
+                <CropIcon size={13} aria-hidden="true" data-icon="inline-start" />
+                Recadrer
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => {
+                  cropMode = false
+                  cropSel = null
+                }}
+              >
+                Annuler
+              </Button>
+            </div>
+          {:else}
+            <!-- Échelle (barre courte + crans de 5 + saisie directe) + reset -->
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 px-2 font-mono"
+                aria-label="Réduire de 5 %"
+                onclick={() => setScalePercent(Math.round(work.scale * 100) - 5)}
+              >
+                −5
+              </Button>
+              <input
+                type="range"
+                min="0.3"
+                max="2"
+                step="0.05"
+                class="accent-primary h-2 w-28 sm:w-36"
+                aria-label="Taille du produit (%)"
+                bind:value={work.scale}
+                oninput={() => scheduleRender()}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 px-2 font-mono"
+                aria-label="Agrandir de 5 %"
+                onclick={() => setScalePercent(Math.round(work.scale * 100) + 5)}
+              >
+                +5
+              </Button>
+              <span class="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="30"
+                  max="200"
+                  step="5"
+                  inputmode="numeric"
+                  class="border-input h-7 w-16 rounded-md border bg-transparent px-2 text-right font-mono text-xs tabular-nums"
+                  aria-label="Taille du produit en pourcentage"
+                  value={Math.round(work.scale * 100)}
+                  onchange={onScaleTyped}
+                />
+                <span class="text-muted-foreground text-xs">%</span>
+              </span>
+              {#if repositioned}
+                <Button variant="ghost" size="sm" onclick={resetPosition}>
+                  <RotateCcw size={13} aria-hidden="true" data-icon="inline-start" />
+                  Réinitialiser
+                </Button>
+              {/if}
+            </div>
+          {/if}
+        {/if}
         <figcaption class="text-muted-foreground flex justify-between text-xs">
           <span>
             {multiOutput
@@ -463,84 +548,6 @@
       </figure>
     </div>
 
-    {#if canRender}
-      {#if cropMode}
-        <!-- Mode recadrage : tracer, puis appliquer ou abandonner. -->
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-muted-foreground grow text-xs">
-            Tracez la zone à conserver — proportions verrouillées au format.
-          </span>
-          <Button size="sm" disabled={!cropSel || cropSel.w < 12} onclick={applyCrop}>
-            <CropIcon size={13} aria-hidden="true" data-icon="inline-start" />
-            Recadrer
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => {
-              cropMode = false
-              cropSel = null
-            }}
-          >
-            Annuler
-          </Button>
-        </div>
-      {:else}
-        <!-- Échelle (barre courte + crans de 5 + saisie directe) + reset -->
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-muted-foreground text-xs">Taille</span>
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-7 px-2 font-mono"
-            aria-label="Réduire de 5 %"
-            onclick={() => setScalePercent(Math.round(work.scale * 100) - 5)}
-          >
-            −5
-          </Button>
-          <input
-            type="range"
-            min="0.3"
-            max="2"
-            step="0.05"
-            class="accent-primary h-2 w-32 sm:w-40"
-            aria-label="Taille du produit (%)"
-            bind:value={work.scale}
-            oninput={() => scheduleRender()}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-7 px-2 font-mono"
-            aria-label="Agrandir de 5 %"
-            onclick={() => setScalePercent(Math.round(work.scale * 100) + 5)}
-          >
-            +5
-          </Button>
-          <span class="flex items-center gap-1">
-            <input
-              type="number"
-              min="30"
-              max="200"
-              step="5"
-              inputmode="numeric"
-              class="border-input h-7 w-16 rounded-md border bg-transparent px-2 text-right font-mono text-xs tabular-nums"
-              aria-label="Taille du produit en pourcentage"
-              value={Math.round(work.scale * 100)}
-              onchange={onScaleTyped}
-            />
-            <span class="text-muted-foreground text-xs">%</span>
-          </span>
-          {#if repositioned}
-            <Button variant="ghost" size="sm" class="ml-auto" onclick={resetPosition}>
-              <RotateCcw size={13} aria-hidden="true" data-icon="inline-start" />
-              Réinitialiser
-            </Button>
-          {/if}
-        </div>
-      {/if}
-    {/if}
-
     <!-- Nom de fichier + enregistrement -->
     <div class="flex flex-wrap items-end gap-2">
       {#if !multiOutput}
@@ -549,11 +556,16 @@
             class="text-muted-foreground text-xs"
             for={`rename-${work.asset?.id ?? image.url}`}
           >
-            Nom du fichier (optionnel)
+            Nom du fichier
+            {#if filenamePlaceholder}
+              <span class="opacity-70">— pré-rempli selon le modèle de titre d'image</span>
+            {:else}
+              (optionnel)
+            {/if}
           </label>
           <Input
             id={`rename-${work.asset?.id ?? image.url}`}
-            placeholder={filenamePlaceholder || "nom-automatique"}
+            placeholder="nom-automatique"
             disabled={saved || work.saving}
             bind:value={work.filename}
           />

@@ -238,6 +238,23 @@ def test_build_generation_prompt_composes_scene_framing_and_directives() -> None
     )
 
 
+def test_build_generation_prompt_optional_pose() -> None:
+    from app.imaging.service import build_generation_prompt
+
+    # Pose fournie : insérée entre le cadrage et les directives libres.
+    assert build_generation_prompt(
+        "full_body", "studio", "hands in pockets", "back"
+    ) == (
+        "studio photo, plain light neutral background, "
+        "full body shot, the model fully visible, "
+        "the model seen from behind, hands in pockets"
+    )
+    # Pose absente ou inconnue : rien d'ajouté (orientation libre, défaut).
+    baseline = build_generation_prompt("full_body", "studio", None)
+    assert build_generation_prompt("full_body", "studio", None, None) == baseline
+    assert build_generation_prompt("full_body", "studio", None, "??") == baseline
+
+
 def test_generate_flat_photo_is_reserved() -> None:
     with pytest.raises(NotImplementedError):
         generate_flat_photo()

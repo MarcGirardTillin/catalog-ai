@@ -243,6 +243,25 @@ export const AccountSettingsSchema = {
             title: 'Imaging Generation Scene',
             default: 'studio'
         },
+        imaging_generation_pose: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'face',
+                        'back',
+                        'profile_left',
+                        'profile_right',
+                        'three_quarter_left',
+                        'three_quarter_right'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Imaging Generation Pose'
+        },
         imaging_generation_instructions: {
             anyOf: [
                 {
@@ -1421,6 +1440,25 @@ export const GenerateModelOptionsSchema = {
                 }
             ],
             title: 'Scene'
+        },
+        pose: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'face',
+                        'back',
+                        'profile_left',
+                        'profile_right',
+                        'three_quarter_left',
+                        'three_quarter_right'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pose'
         },
         instructions: {
             anyOf: [
