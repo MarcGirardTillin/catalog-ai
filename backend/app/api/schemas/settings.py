@@ -105,6 +105,7 @@ class OperatorSettings(BaseModel):
 
     minutes_saved_per_import_product: int = Field(2, ge=0, le=120)
     minutes_saved_per_enriched_product: int = Field(10, ge=0, le=120)
+    billing_day: int = Field(1, ge=1, le=28)
     credit_cost_import_product: int = Field(1, ge=0)
     credit_cost_enrich_item: int = Field(2, ge=0)
     credit_cost_image_process: int = Field(1, ge=0)

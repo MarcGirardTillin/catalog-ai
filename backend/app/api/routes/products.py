@@ -6,6 +6,7 @@ from that selection. The Xano bearer token never reaches the browser — the
 backend proxies the call behind the session cookie.
 """
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
@@ -38,7 +39,10 @@ from app.api.services.imaging import (
     to_public,
 )
 from app.imaging import service as imaging_service
+from app.imaging.uploads import prepare_upload
 from app.models import ImageAsset
+
+logger = logging.getLogger(__name__)
 
 # Guardrails for the upload route (a boutique adds a handful of shots at a time).
 MAX_UPLOAD_FILES = 20
@@ -108,6 +112,10 @@ def upload_product_images(
     The browser posts the raw image bytes here; the backend forwards them to
     Tillin's bulk endpoint (multipart), which imports each into Xano storage and
     appends a `product_image` row. The Xano token never reaches the browser.
+
+    Every file goes through `prepare_upload` first: Tillin silently drops what
+    it cannot decode (200 with `images: []`), so the real format is detected
+    here, HEIC is converted, and the name always carries the right extension.
     """
     if not files:
         raise AppException(
@@ -120,7 +128,7 @@ def upload_product_images(
             message=f"Too many files (max {MAX_UPLOAD_FILES})",
         )
     parts: list[tuple[str, bytes, str]] = []
-    for upload in files:
+    for index, upload in enumerate(files):
         data = upload.file.read()  # sync route -> threadpool; use the sync handle
         if len(data) > MAX_UPLOAD_BYTES:
             raise AppException(
@@ -128,14 +136,26 @@ def upload_product_images(
                 code="file_too_large",
                 message=f"{upload.filename or 'file'} exceeds the size limit",
             )
-        parts.append(
-            (
-                upload.filename or "image.jpg",
-                data,
-                upload.content_type or "application/octet-stream",
-            )
-        )
+        parts.append(prepare_upload(upload.filename, data, index=index))
     created = xano.upload_product_images(product_id, parts)
+    if len(created) < len(parts):
+        # Tillin a accepté la requête mais n'a pas créé toutes les images :
+        # sans ça l'appelant recevait un 200 « 0 image créée » inexploitable.
+        logger.error(
+            "Tillin created %d/%d images for product %s (names: %s)",
+            len(created),
+            len(parts),
+            product_id,
+            [name for name, _, _ in parts],
+        )
+        raise AppException(
+            status_code=502,
+            code="images_rejected",
+            message=(
+                "Tillin n'a pas enregistré les images envoyées. "
+                "Réessayez ; si le problème persiste, contactez le support."
+            ),
+        )
     return ProductImagesUploadResult(created=len(created), images=created)
 
 

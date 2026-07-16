@@ -16,6 +16,8 @@ dependencies = [
     "anthropic>=0.92,<1.0",
     "openpyxl>=3.1,<4.0",
     "pillow>=12.0,<13.0",
+    # Photos iPhone : HEIC/HEIF, que Pillow seul ne sait pas ouvrir.
+    "pillow-heif>=1.1,<2.0",
 ]
 
 [dependency-groups]
@@ -34,6 +36,12 @@ build-backend = "hatchling.build"
 [tool.mypy]
 strict = true
 exclude = ["venv", ".venv", "alembic"]
+
+# pillow-heif n'expose pas de stubs (pas de py.typed) : seul l'enregistrement
+# du décodeur HEIC nous intéresse, l'appel est trivial et couvert par un test.
+[[tool.mypy.overrides]]
+module = ["pillow_heif.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py313"

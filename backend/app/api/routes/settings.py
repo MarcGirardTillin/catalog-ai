@@ -51,6 +51,9 @@ ADMIN_ONLY_SETTINGS = (
     "billing_coefficient",
     "minutes_saved_per_import_product",
     "minutes_saved_per_enriched_product",
+    # Jour de facturation : politique opérateur globale (Admin > Tarification),
+    # plus éditable depuis les paramètres du client (2026-07-16).
+    "billing_day",
     "credit_cost_import_product",
     "credit_cost_enrich_item",
     "credit_cost_image_process",

@@ -131,6 +131,10 @@ export const productsReadProduct = <ThrowOnError extends boolean = false>(option
  * The browser posts the raw image bytes here; the backend forwards them to
  * Tillin's bulk endpoint (multipart), which imports each into Xano storage and
  * appends a `product_image` row. The Xano token never reaches the browser.
+ *
+ * Every file goes through `prepare_upload` first: Tillin silently drops what
+ * it cannot decode (200 with `images: []`), so the real format is detected
+ * here, HEIC is converted, and the name always carries the right extension.
  */
 export const productsUploadProductImages = <ThrowOnError extends boolean = false>(options: Options<ProductsUploadProductImagesData, ThrowOnError>): RequestResult<ProductsUploadProductImagesResponses, ProductsUploadProductImagesErrors, ThrowOnError> => (options.client ?? client).post<ProductsUploadProductImagesResponses, ProductsUploadProductImagesErrors, ThrowOnError>({
     ...formDataBodySerializer,

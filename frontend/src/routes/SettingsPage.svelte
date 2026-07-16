@@ -50,14 +50,6 @@
     if (tab === "brands") brandsOpened = true
   })
 
-  // --- Réglages de compte (la sauvegarde partielle préserve les champs
-  // gérés par les pages Enrichissement et Consommation). ---
-  let accountLoaded = $state(false)
-  let savingAccount = $state(false)
-  // Jour de facturation (1..28) : la conso d'un mois est figée ce jour du
-  // mois suivant. Stocké dans AccountSettings (extension locale du type).
-  let billingDay = $state(1)
-
   // --- Connexion Tillin (lecture seule) ---
   let connection = $state<ConnectionStatus | null>(null)
 
@@ -69,35 +61,10 @@
   let changingPassword = $state(false)
 
   $effect(() => {
-    settingsReadAccountSettings().then(({ data, error }) => {
-      if (error || !data) {
-        toast.error("Impossible de charger les réglages du compte.")
-        return
-      }
-      billingDay = (data as AccountSettingsExtended).billing_day ?? 1
-      accountLoaded = true
-    })
     settingsReadConnectionStatus().then(({ data }) => {
       connection = data ?? null
     })
   })
-
-  async function saveAccount() {
-    const day = Math.round(Number(billingDay))
-    if (!Number.isFinite(day) || day < 1 || day > 28) {
-      toast.error("Le jour de facturation doit être compris entre 1 et 28.")
-      return
-    }
-    savingAccount = true
-    const ok = await saveAccountSettingsPartial({ billing_day: day })
-    savingAccount = false
-    if (!ok) {
-      toast.error("Enregistrement impossible.")
-      return
-    }
-    billingDay = day
-    toast.success("Réglages enregistrés")
-  }
 
   async function updatePassword(event: SubmitEvent) {
     event.preventDefault()
@@ -149,17 +116,6 @@
       aria-label={options.label}
       onchange={options.onToggle}
     />
-  </div>
-{/snippet}
-
-<!-- Bouton Enregistrer des réglages de compte (sauvegarde partielle :
-     les défauts d'enrichissement et le coefficient de facturation sont
-     préservés). -->
-{#snippet saveAccountRow()}
-  <div class="flex justify-end">
-    <Button disabled={!accountLoaded || savingAccount} onclick={saveAccount}>
-      {savingAccount ? "Enregistrement…" : "Enregistrer"}
-    </Button>
   </div>
 {/snippet}
 
@@ -254,12 +210,9 @@
                     class="size-2 shrink-0 rounded-full bg-emerald-500"
                     aria-hidden="true"
                   ></span>
-                  <span class="text-muted-foreground">
-                    Connecté à {connection.host ?? "Tillin"}
-                    {#if connection.data_source}
-                      · source de données : {connection.data_source}
-                    {/if}
-                  </span>
+                  <!-- Hôte et source de données : détail d'infrastructure,
+                       sans valeur pour le client (marque blanche). -->
+                  <span class="text-muted-foreground">Connecté avec Tillin</span>
                 {:else}
                   <span
                     class="bg-muted-foreground/40 size-2 shrink-0 rounded-full"
@@ -271,42 +224,12 @@
             </CardContent>
           </Card>
 
-          <!-- Facturation (jour de figement ; même bouton Enregistrer) -->
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle class="font-title text-sm">Facturation</CardTitle>
-              <CardDescription class="text-muted-foreground text-xs">
-                La consommation d'un mois est facturée (et ses tarifs figés) ce
-                jour du mois suivant.
-              </CardDescription>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-4">
-              {#if !accountLoaded}
-                <Skeleton class="h-9 w-40" />
-              {:else}
-                <div class="flex flex-col gap-1.5 sm:max-w-40">
-                  <Label for="billing-day">Jour de facturation</Label>
-                  <Input
-                    id="billing-day"
-                    type="number"
-                    min="1"
-                    max="28"
-                    step="1"
-                    inputmode="numeric"
-                    bind:value={billingDay}
-                  />
-                  <p class="text-muted-foreground text-xs">
-                    Entre 1 et 28 (jour du mois suivant).
-                  </p>
-                </div>
-              {/if}
-            </CardContent>
-          </Card>
+          <!-- Le jour de facturation est un réglage opérateur GLOBAL : il vit
+               dans Admin > Tarification, pas dans les paramètres du client. -->
 
           <!-- Notifications e-mail : abandonnées (2026-07-12) au profit des
                pastilles d'état de la sidebar (menus Imports / Enrichissements). -->
 
-          {@render saveAccountRow()}
 
           <Card size="sm">
             <CardHeader>

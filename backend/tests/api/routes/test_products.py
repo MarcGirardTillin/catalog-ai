@@ -1,5 +1,6 @@
 """Tests for the /products routes (auth + Xano dependency mocked)."""
 
+import io
 from collections.abc import Callable, Iterator
 from decimal import Decimal
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.api.deps import get_xano_client
 from app.clients.xano import XanoClient
@@ -14,6 +16,13 @@ from app.main import app
 
 Handler = Callable[[httpx.Request], httpx.Response]
 InstallXano = Callable[[Handler], None]
+
+
+def _image_bytes(image_format: str) -> bytes:
+    """Vraie image encodée : la route décode les octets déposés."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (10, 8), (10, 120, 200)).save(buffer, format=image_format)
+    return buffer.getvalue()
 
 
 @pytest.fixture
@@ -205,8 +214,8 @@ def test_upload_product_images_forwards_multipart_and_maps_result(
     response = auth_client.post(
         "/products/101/images",
         files=[
-            ("files", ("a.jpg", b"\xff\xd8fakejpeg", "image/jpeg")),
-            ("files", ("b.png", b"\x89PNGfake", "image/png")),
+            ("files", ("a.jpg", _image_bytes("JPEG"), "image/jpeg")),
+            ("files", ("b.png", _image_bytes("PNG"), "image/png")),
         ],
     )
 
@@ -221,6 +230,42 @@ def test_upload_product_images_forwards_multipart_and_maps_result(
     request = captured["request"]
     assert request.url.path.endswith("/product_image/101/bulk")
     assert request.headers["content-type"].startswith("multipart/form-data")
+
+
+def test_upload_product_images_surfaces_silent_tillin_rejection(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    # Tillin répond 200 avec images: [] quand il n'a rien créé : sans garde,
+    # l'utilisateur recevait un « succès » à 0 image (vu en prod 2026-07-16).
+    override_xano(
+        lambda request: (
+            httpx.Response(200, json={"images": []})
+            if request.url.path.endswith("/bulk")
+            else httpx.Response(404)
+        )
+    )
+
+    response = auth_client.post(
+        "/products/101/images",
+        files=[("files", ("a.jpg", _image_bytes("JPEG"), "image/jpeg"))],
+    )
+
+    assert response.status_code == 502
+    assert response.json()["code"] == "images_rejected"
+
+
+def test_upload_product_images_rejects_a_non_image(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    override_xano(lambda request: httpx.Response(404))
+
+    response = auth_client.post(
+        "/products/101/images",
+        files=[("files", ("notes.pdf", b"%PDF-1.4 nope", "application/pdf"))],
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "not_an_image"
 
 
 def test_upload_product_images_rejects_empty(

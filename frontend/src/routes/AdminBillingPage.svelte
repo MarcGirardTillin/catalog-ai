@@ -87,6 +87,12 @@
       }
       normalized[key] = value
     }
+    const billingDay = Math.round(Number(settings.billing_day))
+    if (!Number.isFinite(billingDay) || billingDay < 1 || billingDay > 28) {
+      toast.error("Le jour de facturation doit être compris entre 1 et 28.")
+      return
+    }
+    normalized.billing_day = billingDay
     const packs = (settings.credit_packs ?? [])
       .map((pack) => ({
         credits: Math.round(Number(pack.credits)),
@@ -275,12 +281,13 @@
             </CardContent>
           </Card>
 
-          <!-- Abonnement + alerte -->
+          <!-- Abonnement + alerte + facturation (déplacé des paramètres
+               client 2026-07-16 : politique opérateur, pas réglage boutique) -->
           <Card size="sm">
             <CardHeader>
-              <CardTitle class="font-title text-sm">Abonnement & alerte</CardTitle>
+              <CardTitle class="font-title text-sm">Abonnement & facturation</CardTitle>
             </CardHeader>
-            <CardContent class="grid gap-3 sm:grid-cols-2">
+            <CardContent class="grid gap-3 sm:grid-cols-3">
               <div class="flex flex-col gap-1.5">
                 <Label for="op-monthly">Crédits mensuels inclus</Label>
                 <Input
@@ -307,6 +314,22 @@
                 />
                 <p class="text-muted-foreground text-xs">
                   Sous ce solde, pastille ambre et bandeau d'alerte côté client.
+                </p>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label for="op-billing-day">Jour de facturation</Label>
+                <Input
+                  id="op-billing-day"
+                  type="number"
+                  min="1"
+                  max="28"
+                  step="1"
+                  inputmode="numeric"
+                  bind:value={settings.billing_day}
+                />
+                <p class="text-muted-foreground text-xs">
+                  Entre 1 et 28 : la consommation d'un mois est facturée (et ses
+                  coûts figés) ce jour du mois suivant.
                 </p>
               </div>
             </CardContent>

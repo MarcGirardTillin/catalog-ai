@@ -286,13 +286,15 @@
     )
     savingImages = false
     if (error || !data) {
-      toast.error("Échec de l'enregistrement des images.")
-      return
-    }
-    if (data.created === 0) {
-      // Le backend a répondu mais Tillin n'a créé aucune image : on garde les
-      // images en attente pour ne pas perdre la sélection de l'utilisateur.
-      toast.error("Aucune image enregistrée par Tillin — réessayez.")
+      // Le backend qualifie l'échec (fichier illisible, refus de Tillin) ; on
+      // garde les images en attente pour ne pas perdre la sélection.
+      const code = (error as { code?: string; message?: string } | null)?.code
+      toast.error(
+        code === "not_an_image" || code === "file_too_large"
+          ? ((error as { message?: string }).message ??
+            "Fichier image invalide.")
+          : "Échec de l'enregistrement des images.",
+      )
       return
     }
     toast.success(`${data.created} image(s) enregistrée(s)`)
@@ -618,7 +620,7 @@
           {#if stagedImages.length > 0}
             <p class="text-muted-foreground text-xs">
               Ces images sont en attente ; « Enregistrer » les importe dans Tillin
-              (stockage Xano) et les attache au produit.
+              et les attache au produit.
             </p>
           {/if}
 

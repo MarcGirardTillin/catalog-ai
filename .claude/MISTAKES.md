@@ -128,3 +128,27 @@ passe inclus → rotation. (3) `initial_data` créait un utilisateur non-admin
 malgré le nom FIRST_SUPERUSER — le dev masquait le bug parce qu'on avait
 promu à la main. Leçon transverse : un correctif backend ne se teste jamais
 via `exec` après `git pull` — le conteneur exécute l'IMAGE, il faut rebuilder.
+
+## 2026-07-16 — Xano jette les images sans le dire (upload panneau)
+
+« Aucune image enregistrée par Tillin » en prod, alors que le studio
+enregistrait très bien : même méthode `upload_product_images`, donc ni le
+réseau ni les droits. Cause réelle : `POST /product_image/{id}/bulk` répond
+**200 avec `images: []`** — pas une erreur — pour tout fichier qu'il ne sait
+pas décoder. Deux déclencheurs confirmés par une matrice d'appels live : un
+nom de fichier **sans extension**, et le **HEIC** (format par défaut des
+photos iPhone, alors que « Prendre une photo » est un geste central du
+produit). Le studio n'était pas touché parce qu'il fabrique lui-même des noms
+`.webp/.jpg` — le navigateur, lui, envoie ce qu'il veut.
+
+Deux leçons. (1) Une sonde doit être VALIDE : mon premier probe était un PNG
+de 87 octets bricolé — Xano le rejetait aussi, ce qui m'a fait croire un
+instant que la prod était cassée alors qu'elle ne l'était pas. Tester un
+chemin d'échec avec un fixture douteux, c'est mesurer son propre bruit.
+(2) Un mock qui renvoie la réponse qu'on espère (`{"images": [...]}`)
+n'atteste rien du contrat réel : le test existant passait au vert depuis le
+début sur des octets `b"\xff\xd8fakejpeg"` que Xano n'aurait jamais acceptés.
+Fix : `app/imaging/uploads.py` décode chaque dépôt (Pillow + pillow-heif),
+convertit en JPEG ce qui n'est pas transférable, renomme avec l'extension du
+format RÉEL, et la route lève un 502 `images_rejected` si Tillin crée moins
+d'images que demandé — plus jamais de « succès » à zéro image.

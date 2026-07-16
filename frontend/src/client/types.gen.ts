@@ -2217,6 +2217,10 @@ export type OperatorSettings = {
      */
     minutes_saved_per_enriched_product?: number;
     /**
+     * Billing Day
+     */
+    billing_day?: number;
+    /**
      * Credit Cost Import Product
      */
     credit_cost_import_product?: number;

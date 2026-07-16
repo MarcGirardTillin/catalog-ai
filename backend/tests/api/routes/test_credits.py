@@ -257,15 +257,20 @@ def test_operator_settings_roundtrip_applies_to_all_accounts(
     assert current["credit_cost_enrich_item"] == 2  # defaults filled in
     current["credit_cost_enrich_item"] = 3
     current["credit_packs"] = [{"credits": 500, "price_eur": 50.0}]
+    # Le jour de facturation est une politique opérateur globale, plus un
+    # réglage client (déplacé des Paramètres vers Tarification, 2026-07-16).
+    current["billing_day"] = 5
     response = admin_client.put("/admin/settings", json=current)
     assert response.status_code == 200
     assert response.json()["credit_cost_enrich_item"] == 3
+    assert response.json()["billing_day"] == 5
 
     # Both accounts carry the new policy…
     db = _db()
     for acc_id in (account_id, other_id):
         stored = db.get(Account, acc_id).settings_json or {}
         assert stored["credit_cost_enrich_item"] == 3
+        assert stored["billing_day"] == 5
         assert stored["credit_packs"] == [{"credits": 500, "price_eur": 50.0}]
     # …and client-facing settings are untouched (defaults still apply).
     assert admin_client.get("/settings/account").json()["meta_max_length"] == 160

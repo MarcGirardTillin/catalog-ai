@@ -518,7 +518,7 @@
           "products"
         ],
         "summary": "Upload Product Images",
-        "description": "Upload local/captured images to a product (proxied to Tillin storage).\n\nThe browser posts the raw image bytes here; the backend forwards them to\nTillin's bulk endpoint (multipart), which imports each into Xano storage and\nappends a `product_image` row. The Xano token never reaches the browser.",
+        "description": "Upload local/captured images to a product (proxied to Tillin storage).\n\nThe browser posts the raw image bytes here; the backend forwards them to\nTillin's bulk endpoint (multipart), which imports each into Xano storage and\nappends a `product_image` row. The Xano token never reaches the browser.\n\nEvery file goes through `prepare_upload` first: Tillin silently drops what\nit cannot decode (200 with `images: []`), so the real format is detected\nhere, HEIC is converted, and the name always carries the right extension.",
         "operationId": "products-upload_product_images",
         "parameters": [
           {
@@ -587,7 +587,7 @@
           "products"
         ],
         "summary": "Normalize Image",
-        "description": "Deterministic pipeline, async (download + segment + Pillow \u2248 seconds).\n\nSame 202 + BackgroundTask + polling contract as generate-model \u2014 the\nstudio launches several normalizations in parallel. The Photoroom\ndependency resolves BEFORE any write: a missing key is a clean 503 with\nno zombie asset.",
+        "description": "Deterministic pipeline, async (download + segment + Pillow ≈ seconds).\n\nSame 202 + BackgroundTask + polling contract as generate-model — the\nstudio launches several normalizations in parallel. The Photoroom\ndependency resolves BEFORE any write: a missing key is a clean 503 with\nno zombie asset.",
         "operationId": "products-normalize_image",
         "parameters": [
           {
@@ -1018,7 +1018,7 @@
           "imaging"
         ],
         "summary": "Render Asset",
-        "description": "Recompose the output locally (reposition / new options) \u2014 no provider.\n\nRebuilds from the staged cutout (or the source when the cutout was\nskipped), overwrites the output file and bumps `render_rev` so preview\nURLs bust their caches. Synchronous: pure Pillow, sub-second.",
+        "description": "Recompose the output locally (reposition / new options) — no provider.\n\nRebuilds from the staged cutout (or the source when the cutout was\nskipped), overwrites the output file and bumps `render_rev` so preview\nURLs bust their caches. Synchronous: pure Pillow, sub-second.",
         "operationId": "imaging-render_asset",
         "parameters": [
           {
@@ -1087,7 +1087,7 @@
           "imaging"
         ],
         "summary": "Discard Asset",
-        "description": "\u00c9carte un r\u00e9sultat non enregistr\u00e9 : purge le staging, garde la trace.\n\nLa ligne reste (historique des g\u00e9n\u00e9rations) avec status=\"discarded\" ;\nseuls les r\u00e9sultats termin\u00e9s et non enregistr\u00e9s peuvent \u00eatre \u00e9cart\u00e9s.",
+        "description": "Écarte un résultat non enregistré : purge le staging, garde la trace.\n\nLa ligne reste (historique des générations) avec status=\"discarded\" ;\nseuls les résultats terminés et non enregistrés peuvent être écartés.",
         "operationId": "imaging-discard_asset",
         "parameters": [
           {
@@ -2143,7 +2143,7 @@
           "imports"
         ],
         "summary": "Bulk Update Import Items",
-        "description": "One-shot include/exclude of many items (\u00ab tout transf\u00e9rer/\u00e9carter \u00bb).\n\nAtomic single UPDATE: only the job's items whose current status is\neditable (ready_for_review/rejected) are touched \u2014 applied/failed items\nare silently skipped, exactly like the per-item PATCH would refuse them.",
+        "description": "One-shot include/exclude of many items (« tout transférer/écarter »).\n\nAtomic single UPDATE: only the job's items whose current status is\neditable (ready_for_review/rejected) are touched — applied/failed items\nare silently skipped, exactly like the per-item PATCH would refuse them.",
         "operationId": "imports-bulk_update_import_items",
         "parameters": [
           {
@@ -2704,7 +2704,7 @@
           "imports"
         ],
         "summary": "List Import Products",
-        "description": "Per-import products view, built from the staged payloads (local only).\n\nRejected/failed items are excluded. The linked/unlinked counters cover the\n`applied` items only \u2014 they are the ones expected to exist in Tillin.",
+        "description": "Per-import products view, built from the staged payloads (local only).\n\nRejected/failed items are excluded. The linked/unlinked counters cover the\n`applied` items only — they are the ones expected to exist in Tillin.",
         "operationId": "imports-list_import_products",
         "parameters": [
           {
@@ -2873,7 +2873,7 @@
           "import-profiles"
         ],
         "summary": "Bulk Update Import Profiles",
-        "description": "Harmonize shared conventions (season, title template, color split)\nacross several profiles at once \u2014 catalogue-wide settings in practice.\n\nEvery id must belong to the caller's account (404 otherwise, nothing\nwritten); fields left to None are untouched on every profile.",
+        "description": "Harmonize shared conventions (season, title template, color split)\nacross several profiles at once — catalogue-wide settings in practice.\n\nEvery id must belong to the caller's account (404 otherwise, nothing\nwritten); fields left to None are untouched on every profile.",
         "operationId": "import-profiles-bulk_update_import_profiles",
         "parameters": [
           {
@@ -4628,7 +4628,7 @@
           "usage"
         ],
         "summary": "Refreeze Snapshot",
-        "description": "Re-freeze a billed month with the CURRENT price grid + coefficient.\n\nSafety net for the case where a price was missing at closing time: once\ncorrected, POST here to (re)generate the snapshot. Refuses months that are\nnot yet billed (400 not_frozen) \u2014 a current/future month must stay live.",
+        "description": "Re-freeze a billed month with the CURRENT price grid + coefficient.\n\nSafety net for the case where a price was missing at closing time: once\ncorrected, POST here to (re)generate the snapshot. Refuses months that are\nnot yet billed (400 not_frozen) — a current/future month must stay live.",
         "operationId": "usage-refreeze_snapshot",
         "parameters": [
           {
@@ -5069,7 +5069,7 @@
           "admin"
         ],
         "summary": "Read Admin Timeseries",
-        "description": "Daily billable series summed over ALL accounts (operator monitoring).\n\nAmounts are billable (cost \u00d7 each account's own coefficient), so the\ntotal curve matches what the overview bills across the customer base.",
+        "description": "Daily billable series summed over ALL accounts (operator monitoring).\n\nAmounts are billable (cost × each account's own coefficient), so the\ntotal curve matches what the overview bills across the customer base.",
         "operationId": "admin-read_admin_timeseries",
         "parameters": [
           {
@@ -5439,7 +5439,7 @@
           "admin"
         ],
         "summary": "Read Operator Settings",
-        "description": "The GLOBAL operator settings (credit grid, packs, quota, minutes).\n\nRead from the default account \u2014 PUT keeps every account in sync, so any\naccount is representative.",
+        "description": "The GLOBAL operator settings (credit grid, packs, quota, minutes).\n\nRead from the default account — PUT keeps every account in sync, so any\naccount is representative.",
         "operationId": "admin-read_operator_settings",
         "parameters": [
           {
@@ -5487,7 +5487,7 @@
           "admin"
         ],
         "summary": "Update Operator Settings",
-        "description": "Write the operator settings to EVERY account (global policy).\n\nOnly the operator-owned keys are touched \u2014 each account keeps its own\nclient-facing settings (templates, imaging defaults\u2026).",
+        "description": "Write the operator settings to EVERY account (global policy).\n\nOnly the operator-owned keys are touched — each account keeps its own\nclient-facing settings (templates, imaging defaults…).",
         "operationId": "admin-update_operator_settings",
         "parameters": [
           {
@@ -5681,7 +5681,7 @@
           "admin"
         ],
         "summary": "Grant Account Credits",
-        "description": "Record a manual ledger entry (grant / pack purchase / adjustment).\n\n`credits` is signed: a negative adjustment removes credits. Pack purchases\nare bookkept here by the operator \u2014 no online payment in this scope.",
+        "description": "Record a manual ledger entry (grant / pack purchase / adjustment).\n\n`credits` is signed: a negative adjustment removes credits. Pack purchases\nare bookkept here by the operator — no online payment in this scope.",
         "operationId": "admin-grant_account_credits",
         "parameters": [
           {
@@ -7151,7 +7151,7 @@
           "title"
         ],
         "title": "FilterOption",
-        "description": "One selectable value in a search filter (brand, category, \u2026)."
+        "description": "One selectable value in a search filter (brand, category, …)."
       },
       "GenerateModelOptions": {
         "properties": {
@@ -7247,7 +7247,7 @@
         },
         "type": "object",
         "title": "GenerateModelOptions",
-        "description": "Options of POST /products/{id}/images/generate-model (FASHN).\n\nThe instruction is resolved server-side: explicit `prompt` wins, else it\nis composed from framing/scene/instructions \u2014 each falling back to the\naccount's generation settings. (Without a prompt FASHN picks a free\nenvironment \u2014 confirmed live: outdoor scene.)"
+        "description": "Options of POST /products/{id}/images/generate-model (FASHN).\n\nThe instruction is resolved server-side: explicit `prompt` wins, else it\nis composed from framing/scene/instructions — each falling back to the\naccount's generation settings. (Without a prompt FASHN picks a free\nenvironment — confirmed live: outdoor scene.)"
       },
       "GenerateModelRequest": {
         "properties": {
@@ -7685,7 +7685,7 @@
           "status"
         ],
         "title": "ImportItemsBulkUpdate",
-        "description": "PATCH /imports/{id}/items body \u2014 one-shot include/exclude of many items.\n\nPowers \u00ab tout transf\u00e9rer / tout \u00e9carter \u00bb in one request instead of one\nPATCH per item (atomic, and fast on 100+ product imports)."
+        "description": "PATCH /imports/{id}/items body — one-shot include/exclude of many items.\n\nPowers « tout transférer / tout écarter » in one request instead of one\nPATCH per item (atomic, and fast on 100+ product imports)."
       },
       "ImportJobCounts": {
         "properties": {
@@ -7937,7 +7937,7 @@
           "location_id"
         ],
         "title": "ImportLocationSelection",
-        "description": "PUT /imports/{id}/location body \u2014 null clears the selection."
+        "description": "PUT /imports/{id}/location body — null clears the selection."
       },
       "ImportProductLine": {
         "properties": {
@@ -8010,7 +8010,7 @@
           "supplier_ref"
         ],
         "title": "ImportProductLine",
-        "description": "One row of the \u00ab Par import \u00bb products view (local data only)."
+        "description": "One row of the « Par import » products view (local data only)."
       },
       "ImportProducts": {
         "properties": {
@@ -8323,7 +8323,7 @@
           "profile_id"
         ],
         "title": "ImportProfileSelection",
-        "description": "PUT /imports/{id}/profile body \u2014 null clears the selection."
+        "description": "PUT /imports/{id}/profile body — null clears the selection."
       },
       "ImportProfileUpdate": {
         "properties": {
@@ -9614,7 +9614,7 @@
         },
         "type": "object",
         "title": "NormalizeOptions",
-        "description": "Options of POST /products/{id}/images/normalize (segment + Pillow).\n\nEvery treatment is \u00e0 la carte: cutout (the only billed step), solid\nbackground, canvas ratio, centering, export format and compression."
+        "description": "Options of POST /products/{id}/images/normalize (segment + Pillow).\n\nEvery treatment is à la carte: cutout (the only billed step), solid\nbackground, canvas ratio, centering, export format and compression."
       },
       "NormalizeRequest": {
         "properties": {
@@ -9666,6 +9666,13 @@
             "title": "Minutes Saved Per Enriched Product",
             "default": 10
           },
+          "billing_day": {
+            "type": "integer",
+            "maximum": 28.0,
+            "minimum": 1.0,
+            "title": "Billing Day",
+            "default": 1
+          },
           "credit_cost_import_product": {
             "type": "integer",
             "minimum": 0.0,
@@ -9712,7 +9719,7 @@
         },
         "type": "object",
         "title": "OperatorSettings",
-        "description": "Operator-owned settings managed GLOBALLY (admin console, one form).\n\nWritten to every account so per-account values never diverge \u2014 the app is\nsingle-tenant today, and the pricing/consumption policy is the operator's,\nnot the client's. The legacy billing_coefficient is deliberately absent\n(superseded by the credit model; it stays at its stored value)."
+        "description": "Operator-owned settings managed GLOBALLY (admin console, one form).\n\nWritten to every account so per-account values never diverge — the app is\nsingle-tenant today, and the pricing/consumption policy is the operator's,\nnot the client's. The legacy billing_coefficient is deliberately absent\n(superseded by the credit model; it stays at its stored value)."
       },
       "PaginatedResponse_ImportItemPublic_": {
         "properties": {
@@ -10359,7 +10366,7 @@
         },
         "type": "object",
         "title": "RenderRequest",
-        "description": "POST /imaging/assets/{id}/render body \u2014 local Pillow recompose.\n\nOffsets are canvas pixels, scale multiplies the fitted size. Any other\nfield left to None keeps the option the asset was produced with."
+        "description": "POST /imaging/assets/{id}/render body — local Pillow recompose.\n\nOffsets are canvas pixels, scale multiplies the fitted size. Any other\nfield left to None keeps the option the asset was produced with."
       },
       "StagedFilePublic": {
         "properties": {

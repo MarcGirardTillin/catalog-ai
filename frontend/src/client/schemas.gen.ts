@@ -3868,6 +3868,13 @@ export const OperatorSettingsSchema = {
             title: 'Minutes Saved Per Enriched Product',
             default: 10
         },
+        billing_day: {
+            type: 'integer',
+            maximum: 28,
+            minimum: 1,
+            title: 'Billing Day',
+            default: 1
+        },
         credit_cost_import_product: {
             type: 'integer',
             minimum: 0,
