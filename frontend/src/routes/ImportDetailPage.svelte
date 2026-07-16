@@ -274,25 +274,19 @@
           <h2 class="font-title mt-1 text-sm font-bold">Produits extraits</h2>
           {#if selectedProfile && !running}
             <div
-              class="border-border bg-muted/40 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-xs"
+              class="border-border bg-muted/40 flex flex-col gap-0.5 rounded-md border px-3 py-2 text-xs"
             >
-              <span class="font-medium">
-                Profil « {selectedProfile.name} » — appliqué au transfert
-              </span>
-              {#if profileSeason}
-                <span class="text-muted-foreground">
-                  Saison transférée :
-                  <span class="text-foreground font-medium">{profileSeason}</span>
-                </span>
-              {/if}
-              {#if selectedProfile.config.apply_title_template}
-                <span class="text-muted-foreground">
-                  Titres : modèle appliqué (aperçu sous chaque titre)
-                </span>
-              {/if}
-              <span class="text-muted-foreground">
-                La grille montre les données extraites, modifiables.
-              </span>
+              <p>
+                <span class="font-medium">Profil « {selectedProfile.name} »</span
+                >{#if profileSeason}
+                  · saison <span class="font-medium">{profileSeason}</span
+                  >{/if}{#if selectedProfile.config.apply_title_template}
+                  · modèle de titre (aperçu « → » sous chaque titre){/if}
+              </p>
+              <p class="text-muted-foreground">
+                Appliqué au transfert — la liste montre les données extraites,
+                modifiables.
+              </p>
             </div>
           {/if}
           {#if items === null}

@@ -2,6 +2,11 @@
   // Grille de review des produits extraits : sélection positive (à transférer
   // / écarté, unitaire et en masse), lignes dépliables avec édition du payload
   // et aperçu du prix profil. Extrait d'ImportDetailPage (scission P5.2).
+  //
+  // Layout en lignes grid (pas de <table> englobant) : le détail déplié —
+  // formulaire + tableaux de variantes — vit dans un bloc pleine largeur avec
+  // son propre défilement horizontal, sans élargir la liste ni couper les
+  // colonnes de droite.
   import ChevronDown from "@lucide/svelte/icons/chevron-down"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
@@ -251,6 +256,13 @@
     expanded = next
   }
 
+  function onRowKeydown(event: KeyboardEvent, item: ImportItemPublic) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      toggleExpanded(item)
+    }
+  }
+
   // Champs produit éditables dans la ligne dépliée (mode review).
   // `referential` : select harmonisé sur le référentiel Tillin — la valeur
   // extraite est injectée en option si elle n'y figure pas (jamais perdue).
@@ -338,144 +350,143 @@
     { key: "hs_code", label: "Code SH" },
     { key: "manufacturing_country", label: "Pays de fabrication" },
   ]
+
+  // Colonnes de la ligne de synthèse : case, chevron, produit (réf + titre +
+  // méta), puis marque et prix de gros sur écran large uniquement.
+  const ROW_GRID =
+    "grid grid-cols-[2.25rem_2rem_minmax(0,1fr)] sm:grid-cols-[2.25rem_2rem_minmax(0,1fr)_8rem_7.5rem]"
 </script>
 
 <Card class="py-0">
-  <CardContent class="overflow-x-auto px-0">
-    <table class="w-full min-w-2xl text-sm">
-      <thead>
-        <tr class="border-border border-b">
-          <th class="w-9 px-2 py-2.5">
-            <!-- Portée = page affichée uniquement (le job peut
-                 avoir plusieurs pages) ; le compteur du transfert,
-                 lui, couvre tout le job via job.counts. -->
+  <CardContent class="px-0">
+    <!-- En-tête (sm+) : mêmes colonnes que les lignes. -->
+    <div
+      class="border-border hidden items-center border-b sm:grid sm:grid-cols-[2.25rem_2rem_minmax(0,1fr)_8rem_7.5rem]"
+    >
+      <div class="flex justify-center px-2 py-2.5">
+        <input
+          type="checkbox"
+          class="cursor-pointer"
+          checked={allSelected}
+          disabled={selectableItems.length === 0 || bulkUpdating}
+          aria-label={totalPages > 1
+            ? "Tout transférer / tout écarter (page affichée)"
+            : "Tout transférer / tout écarter"}
+          title={totalPages > 1
+            ? "Tout transférer / tout écarter (page affichée)"
+            : "Tout transférer / tout écarter"}
+          onchange={(e) => setAllIncluded(e.currentTarget.checked)}
+        />
+      </div>
+      <div></div>
+      <div class="text-muted-foreground px-3 py-2.5 text-xs font-medium">Produit</div>
+      <div class="text-muted-foreground px-3 py-2.5 text-xs font-medium">Marque</div>
+      <div class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">
+        Prix de gros
+      </div>
+    </div>
+    <!-- Sélection globale (mobile) -->
+    <div class="border-border flex items-center gap-2 border-b px-3 py-2 sm:hidden">
+      <input
+        type="checkbox"
+        class="cursor-pointer"
+        id="review-select-all-mobile"
+        checked={allSelected}
+        disabled={selectableItems.length === 0 || bulkUpdating}
+        onchange={(e) => setAllIncluded(e.currentTarget.checked)}
+      />
+      <label for="review-select-all-mobile" class="text-muted-foreground text-xs">
+        Tout transférer / tout écarter{totalPages > 1 ? " (page affichée)" : ""}
+      </label>
+    </div>
+
+    {#each items as item (item.id)}
+      {@const product = item.payload}
+      {@const isOpen = expanded.has(item.id)}
+      {@const noEan = missingEanCount(product.variants)}
+      {@const isRejected = item.status === "rejected"}
+      {@const isApplied = item.status === "applied"}
+      {@const rendered = renderedByRef?.[product.supplier_ref] ?? null}
+      <div class="border-border border-b last:border-b-0">
+        <div
+          role="button"
+          tabindex="0"
+          aria-expanded={isOpen}
+          aria-label="Détail de {product.supplier_ref}"
+          class="{ROW_GRID} hover:bg-muted/50 cursor-pointer items-start outline-none transition-colors focus-visible:bg-muted/50 {isRejected
+            ? 'opacity-50'
+            : ''}"
+          onclick={() => toggleExpanded(item)}
+          onkeydown={(e) => onRowKeydown(e, item)}
+        >
+          <div class="flex justify-center px-2 pt-1 {cellPad}">
+            <!-- Sélection positive : coché = à transférer. Les
+                 produits transférés/échoués ne sont plus modifiables. -->
             <input
               type="checkbox"
-              class="cursor-pointer"
-              checked={allSelected}
-              disabled={selectableItems.length === 0 || bulkUpdating}
-              aria-label={totalPages > 1
-                ? "Tout transférer / tout écarter (page affichée)"
-                : "Tout transférer / tout écarter"}
-              title={totalPages > 1
-                ? "Tout transférer / tout écarter (page affichée)"
-                : "Tout transférer / tout écarter"}
-              onchange={(e) => setAllIncluded(e.currentTarget.checked)}
+              class="cursor-pointer disabled:cursor-default"
+              checked={item.status === "ready_for_review" || isApplied}
+              disabled={isApplied ||
+                item.status === "failed" ||
+                statusItemId === item.id ||
+                bulkUpdating}
+              aria-label={isApplied
+                ? `${product.supplier_ref} déjà transféré`
+                : `Transférer ${product.supplier_ref}`}
+              title={isApplied ? "Déjà transféré" : "À transférer"}
+              onclick={(e) => e.stopPropagation()}
+              onkeydown={(e) => e.stopPropagation()}
+              onchange={(e) => setItemIncluded(item, e.currentTarget.checked)}
             />
-          </th>
-          <th class="w-8 px-2 py-2.5"><span class="sr-only">Détail</span></th>
-          <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Référence</th>
-          <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Titre</th>
-          <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Marque</th>
-          <th class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">Variantes</th>
-          <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Tailles</th>
-          <th class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">Prix de gros</th>
-          <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium"><span class="sr-only">Alertes</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each items as item (item.id)}
-          {@const product = item.payload}
-          {@const isOpen = expanded.has(item.id)}
-          {@const noEan = missingEanCount(product.variants)}
-          {@const isRejected = item.status === "rejected"}
-          {@const isApplied = item.status === "applied"}
-          <tr
-            class="border-border hover:bg-muted/50 cursor-pointer border-b transition-colors {isRejected
-              ? 'opacity-50'
-              : ''}"
-            onclick={() => toggleExpanded(item)}
-          >
-            <td class="px-2 {cellPad}">
-              <!-- Sélection positive : coché = à transférer. Les
-                   produits transférés/échoués ne sont plus modifiables. -->
-              <input
-                type="checkbox"
-                class="cursor-pointer disabled:cursor-default"
-                checked={item.status === "ready_for_review" || isApplied}
-                disabled={isApplied ||
-                  item.status === "failed" ||
-                  statusItemId === item.id ||
-                  bulkUpdating}
-                aria-label={isApplied
-                  ? `${product.supplier_ref} déjà transféré`
-                  : `Transférer ${product.supplier_ref}`}
-                title={isApplied ? "Déjà transféré" : "À transférer"}
-                onclick={(e) => e.stopPropagation()}
-                onchange={(e) => setItemIncluded(item, e.currentTarget.checked)}
-              />
-            </td>
-            <td class="px-2 {cellPad}">
-              <button
-                type="button"
-                class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center p-0.5 transition-colors"
-                aria-expanded={isOpen}
-                aria-label={isOpen
-                  ? `Replier ${product.supplier_ref}`
-                  : `Déplier ${product.supplier_ref}`}
-                onclick={(e) => {
-                  e.stopPropagation()
-                  toggleExpanded(item)
-                }}
-              >
-                {#if isOpen}
-                  <ChevronDown size={14} aria-hidden="true" />
-                {:else}
-                  <ChevronRight size={14} aria-hidden="true" />
-                {/if}
-              </button>
-            </td>
-            <td
-              class="px-3 {cellPad} font-mono text-xs whitespace-nowrap {lowConfidence(product.confidence, 'supplier_ref')
+          </div>
+          <div class="pt-0.5 {cellPad}">
+            <span
+              class="text-muted-foreground flex items-center p-0.5"
+              aria-hidden="true"
+            >
+              {#if isOpen}
+                <ChevronDown size={14} />
+              {:else}
+                <ChevronRight size={14} />
+              {/if}
+            </span>
+          </div>
+          <div class="min-w-0 px-3 {cellPad}">
+            <p
+              class="font-mono text-xs {lowConfidence(product.confidence, 'supplier_ref')
                 ? 'text-warning-foreground'
-                : ''}"
+                : 'text-muted-foreground'}"
             >
               {product.supplier_ref}
-            </td>
-            <td
-              class="max-w-52 px-3 {cellPad} {lowConfidence(product.confidence, 'title')
+            </p>
+            <p
+              class="truncate text-sm font-medium {lowConfidence(product.confidence, 'title')
                 ? 'text-warning-foreground'
                 : ''}"
+              title={product.title ?? undefined}
             >
-              <span class="block truncate" title={product.title ?? undefined}>
-                {product.title ?? "—"}
-              </span>
-              {#if renderedByRef?.[product.supplier_ref]?.title && renderedByRef[product.supplier_ref].title !== (product.title ?? "")}
-                <span
-                  class="text-muted-foreground block truncate text-[11px]"
-                  title={renderedByRef[product.supplier_ref].title}
-                >
-                  → {renderedByRef[product.supplier_ref].title}
-                </span>
-              {/if}
-            </td>
-            <td
-              class="px-3 {cellPad} whitespace-nowrap {lowConfidence(product.confidence, 'brand')
-                ? 'text-warning-foreground'
-                : ''}"
-            >
-              {product.brand ?? "—"}
-            </td>
-            <td class="px-3 {cellPad} text-right whitespace-nowrap tabular-nums">
-              {product.variants.length}
-            </td>
-            <td class="px-3 {cellPad} whitespace-nowrap">
-              {sizeSummary(product.variants)}
-            </td>
-            <td class="px-3 {cellPad} text-right whitespace-nowrap tabular-nums">
-              {wholesaleRange(product.variants)}
-            </td>
-            <td class="px-3 {cellPad}">
-              <div class="flex items-center gap-1.5 whitespace-nowrap">
+              {product.title ?? "—"}
+            </p>
+            {#if rendered?.title && rendered.title !== (product.title ?? "")}
+              <p class="text-muted-foreground truncate text-[11px]" title={rendered.title}>
+                → {rendered.title}
+              </p>
+            {/if}
+            <p class="text-muted-foreground text-xs">
+              {product.variants.length} variante{product.variants.length > 1 ? "s" : ""}
+              · {sizeSummary(product.variants)}<span class="sm:hidden">
+                · {wholesaleRange(product.variants)}</span
+              >{#if product.brand}<span class="sm:hidden"> · {product.brand}</span>{/if}
+            </p>
+            {#if isRejected || isApplied || noEan > 0 || item.warnings.length > 0}
+              <div class="mt-1 flex flex-wrap items-center gap-1.5">
                 {#if isRejected || isApplied}
                   <!-- Même rendu de statut que partout ailleurs
                        (« Transféré » côté imports via context). -->
                   <StatusBadge status={item.status} context="import" />
                 {/if}
                 {#if noEan > 0}
-                  <span
-                    class="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[11px]"
-                  >
+                  <span class="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[11px]">
                     {noEan} sans EAN
                   </span>
                 {/if}
@@ -485,318 +496,331 @@
                     title={item.warnings.join(" · ")}
                   >
                     <TriangleAlert size={12} aria-hidden="true" />
-                    {item.warnings.length}
+                    {item.warnings.length} avertissement{item.warnings.length > 1 ? "s" : ""}
                   </span>
                 {/if}
               </div>
-            </td>
-          </tr>
-          {#if isOpen}
-            <tr class="border-border bg-muted/30 border-b">
-              <td colspan="9" class="px-4 py-3">
-                <div class="flex flex-col gap-3">
-                  {#if item.warnings.length > 0}
-                    <ul class="flex flex-col gap-0.5">
-                      {#each item.warnings as warning, i (i)}
-                        <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
-                          <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
-                          {warning}
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                  {#if item.error}
-                    <p class="text-destructive text-xs">{item.error}</p>
-                  {/if}
+            {/if}
+          </div>
+          <div
+            class="hidden min-w-0 px-3 text-sm sm:block {cellPad} {lowConfidence(product.confidence, 'brand')
+              ? 'text-warning-foreground'
+              : ''}"
+          >
+            <span class="block truncate" title={product.brand ?? undefined}>
+              {product.brand ?? "—"}
+            </span>
+          </div>
+          <div class="hidden px-3 text-right text-sm whitespace-nowrap tabular-nums sm:block {cellPad}">
+            {wholesaleRange(product.variants)}
+          </div>
+        </div>
 
-                  {#if isEditable(item) && drafts[item.id]}
-                    <!-- Mode review : édition locale (buffer), Enregistrer envoie le payload complet. -->
-                    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {#each EDIT_FIELDS as field (field.key)}
-                        <div class="flex flex-col gap-1">
-                          <Label for="item-{item.id}-{field.key}" class="text-xs">
-                            {field.label}
-                          </Label>
-                          {#if field.kind === "gender"}
-                            <Select
-                              id="item-{item.id}-{field.key}"
-                              class="h-8 text-xs"
-                              bind:value={drafts[item.id][field.key]}
-                            >
-                              <option value="">—</option>
-                              {#if drafts[item.id][field.key] !== "" && !GENDER_OPTIONS.includes(drafts[item.id][field.key])}
-                                <option value={drafts[item.id][field.key]}>
-                                  {drafts[item.id][field.key]} (extrait)
-                                </option>
-                              {/if}
-                              {#each GENDER_OPTIONS as gender (gender)}
-                                <option value={gender}>{gender}</option>
-                              {/each}
-                            </Select>
-                          {:else if field.referential}
-                            <ReferenceSelect
-                              id="item-{item.id}-{field.key}"
-                              compact
-                              options={referentialTitles(field.referential)}
-                              bind:value={drafts[item.id][field.key]}
-                            />
-                          {:else}
-                            <Input
-                              id="item-{item.id}-{field.key}"
-                              class="h-8 text-xs"
-                              bind:value={drafts[item.id][field.key]}
-                            />
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
+        {#if isOpen}
+          <!-- Détail pleine largeur : les tableaux de variantes défilent dans
+               leur propre cadre (overflow-x-auto), la liste reste à l'écran. -->
+          <div class="border-border bg-muted/30 border-t px-3 py-3 sm:px-4">
+            <div class="flex flex-col gap-3">
+              {#if item.warnings.length > 0}
+                <ul class="flex flex-col gap-0.5">
+                  {#each item.warnings as warning, i (i)}
+                    <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
+                      <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
+                      {warning}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if item.error}
+                <p class="text-destructive text-xs">{item.error}</p>
+              {/if}
 
-                    <div class="overflow-x-auto">
-                      <table class="w-full min-w-2xl text-xs">
-                        <thead>
-                          <tr class="border-border border-b">
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix conseillé</th>
-                            {#if coefficientConfig}
-                              <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
-                                Prix vente (profil)
-                              </th>
-                            {/if}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {#each drafts[item.id].variants as _draftVariant, vIndex (vIndex)}
-                            <tr class="border-border/50 border-b last:border-b-0">
-                              <td class="px-1 py-1">
-                                <Input
-                                  class="h-8 min-w-24 text-xs"
-                                  aria-label="Couleur de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].color}
-                                />
-                              </td>
-                              <td class="px-1 py-1">
-                                <Input
-                                  class="h-8 min-w-16 text-xs"
-                                  aria-label="Taille de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].size}
-                                />
-                              </td>
-                              <td class="px-1 py-1">
-                                <Input
-                                  class="h-8 min-w-36 font-mono text-xs"
-                                  aria-label="EAN de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].ean}
-                                />
-                              </td>
-                              <td class="px-1 py-1">
-                                <Input
-                                  class="h-8 min-w-14 text-xs"
-                                  inputmode="numeric"
-                                  aria-label="Quantité de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].quantity}
-                                />
-                              </td>
-                              <td class="px-1 py-1">
-                                <Input
-                                  class="h-8 min-w-20 text-xs"
-                                  inputmode="decimal"
-                                  aria-label="Prix de gros de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].wholesale_price}
-                                />
-                              </td>
-                              <td class="px-1 py-1">
-                                <Input
-                                  class="h-8 min-w-20 text-xs"
-                                  inputmode="decimal"
-                                  aria-label="Prix conseillé de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].retail_price}
-                                />
-                              </td>
-                              {#if coefficientConfig}
-                                <td class="text-muted-foreground px-2 py-1 text-right whitespace-nowrap italic tabular-nums">
-                                  {profilePrice(drafts[item.id].variants[vIndex].wholesale_price)}
-                                </td>
-                              {/if}
-                            </tr>
-                          {/each}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {#if coefficientConfig}
-                      <p class="text-muted-foreground text-xs">
-                        Prix vente (profil) : calculé par le profil —
-                        appliqué dans le CSV / transfert, les données
-                        extraites ne sont pas modifiées.
-                      </p>
-                    {/if}
-
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      {#if isRejected}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={statusItemId === item.id}
-                          onclick={() => setItemStatus(item, "ready_for_review")}
+              {#if isEditable(item) && drafts[item.id]}
+                <!-- Mode review : édition locale (buffer), Enregistrer envoie le payload complet. -->
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {#each EDIT_FIELDS as field (field.key)}
+                    <div class="flex min-w-0 flex-col gap-1">
+                      <Label for="item-{item.id}-{field.key}" class="text-xs">
+                        {field.label}
+                      </Label>
+                      {#if field.kind === "gender"}
+                        <Select
+                          id="item-{item.id}-{field.key}"
+                          class="h-8 text-xs"
+                          bind:value={drafts[item.id][field.key]}
                         >
-                          {statusItemId === item.id ? "…" : "Réintégrer"}
-                        </Button>
+                          <option value="">—</option>
+                          {#if drafts[item.id][field.key] !== "" && !GENDER_OPTIONS.includes(drafts[item.id][field.key])}
+                            <option value={drafts[item.id][field.key]}>
+                              {drafts[item.id][field.key]} (extrait)
+                            </option>
+                          {/if}
+                          {#each GENDER_OPTIONS as gender (gender)}
+                            <option value={gender}>{gender}</option>
+                          {/each}
+                        </Select>
+                      {:else if field.referential}
+                        <ReferenceSelect
+                          id="item-{item.id}-{field.key}"
+                          compact
+                          options={referentialTitles(field.referential)}
+                          bind:value={drafts[item.id][field.key]}
+                        />
                       {:else}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={statusItemId === item.id}
-                          onclick={() => setItemStatus(item, "rejected")}
-                        >
-                          {statusItemId === item.id ? "…" : "Écarter"}
-                        </Button>
+                        <Input
+                          id="item-{item.id}-{field.key}"
+                          class="h-8 text-xs"
+                          bind:value={drafts[item.id][field.key]}
+                        />
                       {/if}
-                      <div class="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onclick={() => cancelItem(item)}>
-                          Annuler
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={savingItemId === item.id}
-                          onclick={() => saveItem(item)}
-                        >
-                          {savingItemId === item.id ? "Enregistrement…" : "Enregistrer"}
-                        </Button>
-                      </div>
                     </div>
-                  {:else}
-                    {#if PRODUCT_FIELDS.some(({ key }) => product[key]) || profileSeason}
-                      <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs sm:grid-cols-3">
-                        {#each PRODUCT_FIELDS as { key, label } (key)}
-                          {#if key === "season" && profileSeason}
-                            <!-- Le profil impose la saison : on montre
-                                 la valeur effective (celle du CSV). -->
-                            <div>
-                              <dt class="text-muted-foreground">{label}</dt>
-                              <dd>
-                                {profileSeason}
-                                <span class="text-muted-foreground">(profil)</span>
-                              </dd>
-                            </div>
-                          {:else if product[key]}
-                            <div>
-                              <dt class="text-muted-foreground">{label}</dt>
-                              <dd
-                                class={lowConfidence(product.confidence, key)
-                                  ? "text-warning-foreground"
-                                  : ""}
-                              >
-                                {product[key]}
-                              </dd>
-                            </div>
-                          {/if}
-                        {/each}
-                      </dl>
-                    {/if}
-
-                    <div class="overflow-x-auto">
-                      <table class="w-full min-w-lg text-xs">
-                        <thead>
-                          <tr class="border-border border-b">
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
-                            <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
-                            {#if coefficientConfig}
-                              <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
-                                Prix vente (profil)
-                              </th>
-                            {/if}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {#each product.variants as variant, index (index)}
-                            <tr class="border-border/50 border-b last:border-b-0">
-                              <td
-                                class="px-2 py-1.5 {lowConfidence(variant.confidence, 'color')
-                                  ? 'text-warning-foreground'
-                                  : ''}"
-                              >
-                                {variant.color ?? "—"}
-                              </td>
-                              <td
-                                class="px-2 py-1.5 {lowConfidence(variant.confidence, 'size')
-                                  ? 'text-warning-foreground'
-                                  : ''}"
-                              >
-                                {variant.size ?? "—"}
-                              </td>
-                              <td
-                                class="px-2 py-1.5 font-mono {lowConfidence(variant.confidence, 'ean')
-                                  ? 'text-warning-foreground'
-                                  : ''}"
-                              >
-                                {variant.ean ?? "—"}
-                              </td>
-                              <td class="px-2 py-1.5 text-right tabular-nums">
-                                {variant.quantity ?? "—"}
-                              </td>
-                              <td
-                                class="px-2 py-1.5 text-right tabular-nums {lowConfidence(variant.confidence, 'wholesale_price')
-                                  ? 'text-warning-foreground'
-                                  : ''}"
-                              >
-                                {formatPrice(variant.wholesale_price)}
-                              </td>
-                              <td
-                                class="px-2 py-1.5 text-right tabular-nums {lowConfidence(variant.confidence, 'retail_price')
-                                  ? 'text-warning-foreground'
-                                  : ''}"
-                              >
-                                {formatPrice(variant.retail_price)}
-                              </td>
-                              {#if coefficientConfig}
-                                <td class="text-muted-foreground px-2 py-1.5 text-right italic tabular-nums">
-                                  {profilePrice(variant.wholesale_price)}
-                                </td>
-                              {/if}
-                            </tr>
-                          {/each}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {#if coefficientConfig}
-                      <p class="text-muted-foreground text-xs">
-                        Prix vente (profil) : calculé par le profil —
-                        appliqué dans le CSV / transfert, les données
-                        extraites ne sont pas modifiées.
-                      </p>
-                    {/if}
-
-                    {#if isApplied}
-                      <p class="text-muted-foreground text-xs">
-                        Produit transféré vers Tillin — lecture seule.
-                      </p>
-                    {:else if !completed}
-                      <p class="text-muted-foreground text-xs">
-                        Lecture seule — l'édition sera disponible une fois
-                        l'analyse terminée.
-                      </p>
-                    {/if}
-                  {/if}
+                  {/each}
                 </div>
-              </td>
-            </tr>
-          {/if}
-        {/each}
-      </tbody>
-    </table>
+
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-2xl text-xs">
+                    <thead>
+                      <tr class="border-border border-b">
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix conseillé</th>
+                        {#if coefficientConfig}
+                          <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
+                            Prix vente (profil)
+                          </th>
+                        {/if}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each drafts[item.id].variants as _draftVariant, vIndex (vIndex)}
+                        <tr class="border-border/50 border-b last:border-b-0">
+                          <td class="px-1 py-1">
+                            <Input
+                              class="h-8 min-w-24 text-xs"
+                              aria-label="Couleur de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].color}
+                            />
+                          </td>
+                          <td class="px-1 py-1">
+                            <Input
+                              class="h-8 min-w-16 text-xs"
+                              aria-label="Taille de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].size}
+                            />
+                          </td>
+                          <td class="px-1 py-1">
+                            <Input
+                              class="h-8 min-w-36 font-mono text-xs"
+                              aria-label="EAN de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].ean}
+                            />
+                          </td>
+                          <td class="px-1 py-1">
+                            <Input
+                              class="h-8 min-w-14 text-xs"
+                              inputmode="numeric"
+                              aria-label="Quantité de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].quantity}
+                            />
+                          </td>
+                          <td class="px-1 py-1">
+                            <Input
+                              class="h-8 min-w-20 text-xs"
+                              inputmode="decimal"
+                              aria-label="Prix de gros de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].wholesale_price}
+                            />
+                          </td>
+                          <td class="px-1 py-1">
+                            <Input
+                              class="h-8 min-w-20 text-xs"
+                              inputmode="decimal"
+                              aria-label="Prix conseillé de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].retail_price}
+                            />
+                          </td>
+                          {#if coefficientConfig}
+                            <td class="text-muted-foreground px-2 py-1 text-right whitespace-nowrap italic tabular-nums">
+                              {profilePrice(drafts[item.id].variants[vIndex].wholesale_price)}
+                            </td>
+                          {/if}
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+
+                {#if coefficientConfig}
+                  <p class="text-muted-foreground text-xs">
+                    Prix vente (profil) : calculé par le profil —
+                    appliqué dans le CSV / transfert, les données
+                    extraites ne sont pas modifiées.
+                  </p>
+                {/if}
+
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  {#if isRejected}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={statusItemId === item.id}
+                      onclick={() => setItemStatus(item, "ready_for_review")}
+                    >
+                      {statusItemId === item.id ? "…" : "Réintégrer"}
+                    </Button>
+                  {:else}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={statusItemId === item.id}
+                      onclick={() => setItemStatus(item, "rejected")}
+                    >
+                      {statusItemId === item.id ? "…" : "Écarter"}
+                    </Button>
+                  {/if}
+                  <div class="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onclick={() => cancelItem(item)}>
+                      Annuler
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={savingItemId === item.id}
+                      onclick={() => saveItem(item)}
+                    >
+                      {savingItemId === item.id ? "Enregistrement…" : "Enregistrer"}
+                    </Button>
+                  </div>
+                </div>
+              {:else}
+                {#if PRODUCT_FIELDS.some(({ key }) => product[key]) || profileSeason}
+                  <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs sm:grid-cols-3">
+                    {#each PRODUCT_FIELDS as { key, label } (key)}
+                      {#if key === "season" && profileSeason}
+                        <!-- Le profil impose la saison : on montre
+                             la valeur effective (celle du CSV). -->
+                        <div>
+                          <dt class="text-muted-foreground">{label}</dt>
+                          <dd>
+                            {profileSeason}
+                            <span class="text-muted-foreground">(profil)</span>
+                          </dd>
+                        </div>
+                      {:else if product[key]}
+                        <div>
+                          <dt class="text-muted-foreground">{label}</dt>
+                          <dd
+                            class="wrap-break-word {lowConfidence(product.confidence, key)
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {product[key]}
+                          </dd>
+                        </div>
+                      {/if}
+                    {/each}
+                  </dl>
+                {/if}
+
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-lg text-xs">
+                    <thead>
+                      <tr class="border-border border-b">
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
+                        {#if coefficientConfig}
+                          <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
+                            Prix vente (profil)
+                          </th>
+                        {/if}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each product.variants as variant, index (index)}
+                        <tr class="border-border/50 border-b last:border-b-0">
+                          <td
+                            class="px-2 py-1.5 {lowConfidence(variant.confidence, 'color')
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {variant.color ?? "—"}
+                          </td>
+                          <td
+                            class="px-2 py-1.5 {lowConfidence(variant.confidence, 'size')
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {variant.size ?? "—"}
+                          </td>
+                          <td
+                            class="px-2 py-1.5 font-mono whitespace-nowrap {lowConfidence(variant.confidence, 'ean')
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {variant.ean ?? "—"}
+                          </td>
+                          <td class="px-2 py-1.5 text-right tabular-nums">
+                            {variant.quantity ?? "—"}
+                          </td>
+                          <td
+                            class="px-2 py-1.5 text-right whitespace-nowrap tabular-nums {lowConfidence(variant.confidence, 'wholesale_price')
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {formatPrice(variant.wholesale_price)}
+                          </td>
+                          <td
+                            class="px-2 py-1.5 text-right whitespace-nowrap tabular-nums {lowConfidence(variant.confidence, 'retail_price')
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {formatPrice(variant.retail_price)}
+                          </td>
+                          {#if coefficientConfig}
+                            <td class="text-muted-foreground px-2 py-1.5 text-right whitespace-nowrap italic tabular-nums">
+                              {profilePrice(variant.wholesale_price)}
+                            </td>
+                          {/if}
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+
+                {#if coefficientConfig}
+                  <p class="text-muted-foreground text-xs">
+                    Prix vente (profil) : calculé par le profil —
+                    appliqué dans le CSV / transfert, les données
+                    extraites ne sont pas modifiées.
+                  </p>
+                {/if}
+
+                {#if isApplied}
+                  <p class="text-muted-foreground text-xs">
+                    Produit transféré vers Tillin — lecture seule.
+                  </p>
+                {:else if !completed}
+                  <p class="text-muted-foreground text-xs">
+                    Lecture seule — l'édition sera disponible une fois
+                    l'analyse terminée.
+                  </p>
+                {/if}
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/each}
   </CardContent>
 </Card>
 
-<div class="flex items-center justify-between gap-2">
+<div class="flex flex-wrap items-center justify-between gap-2">
   <p class="text-muted-foreground text-xs">
     <span class="text-warning-foreground">Texte ambre</span> : champ extrait avec une
     confiance faible — à vérifier.

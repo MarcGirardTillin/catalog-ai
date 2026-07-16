@@ -606,7 +606,7 @@
         {:else}
           <Card class="py-0">
             <CardContent class="overflow-x-auto px-0">
-              <table class="w-full min-w-xl text-sm" class:opacity-60={loading}>
+              <table class="w-full text-sm" class:opacity-60={loading}>
                 <thead>
                   <tr class="border-border border-b">
                     <th class="w-10 px-4 py-2.5">
@@ -625,13 +625,13 @@
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
                       Produit
                     </th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
+                    <th class="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium sm:table-cell">
                       Marque
                     </th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
+                    <th class="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium md:table-cell">
                       Catégorie
                     </th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">
+                    <th class="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell">
                       Variantes
                     </th>
                     <th class="px-2 py-2.5">
@@ -690,12 +690,17 @@
                               {product.reference_code}
                             </span>
                           {/if}
+                          {#if product.brand?.name}
+                            <span class="text-muted-foreground text-xs sm:hidden">
+                              {product.brand.name}
+                            </span>
+                          {/if}
                         </div>
                       </td>
-                      <td class="px-4 {cellPad} whitespace-nowrap">
+                      <td class="hidden px-4 {cellPad} whitespace-nowrap sm:table-cell">
                         {product.brand?.name ?? "—"}
                       </td>
-                      <td class="px-4 {cellPad}">
+                      <td class="hidden px-4 {cellPad} md:table-cell">
                         {#if product.category}
                           <span
                             class="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-xs whitespace-nowrap"
@@ -706,7 +711,7 @@
                           <span class="text-muted-foreground">—</span>
                         {/if}
                       </td>
-                      <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                      <td class="hidden px-4 {cellPad} text-right whitespace-nowrap tabular-nums sm:table-cell">
                         {product.variants?.length ?? 0}
                       </td>
                       <td class="px-2 {cellPad} text-right whitespace-nowrap">
@@ -848,7 +853,7 @@
             {:else}
               <Card class="py-0">
                 <CardContent class="overflow-x-auto px-0">
-                  <table class="w-full min-w-xl text-sm">
+                  <table class="w-full text-sm">
                     <thead>
                       <tr class="border-border border-b">
                         <th class="w-10 px-4 py-2.5">
@@ -868,10 +873,10 @@
                         <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
                           Titre
                         </th>
-                        <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
+                        <th class="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium sm:table-cell">
                           Référence
                         </th>
-                        <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">
+                        <th class="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell">
                           Variantes
                         </th>
                         <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
@@ -933,15 +938,18 @@
                           <td class="px-4 {cellPad}">
                             <div class="flex min-w-0 flex-col gap-0.5">
                               <span class="line-clamp-2 font-medium">{importItemLabel(item)}</span>
+                              <span class="text-muted-foreground font-mono text-xs sm:hidden">
+                                {item.supplier_ref}
+                              </span>
                               {#if item.brand}
                                 <span class="text-muted-foreground text-xs">{item.brand}</span>
                               {/if}
                             </div>
                           </td>
-                          <td class="px-4 {cellPad} font-mono text-xs whitespace-nowrap">
+                          <td class="hidden px-4 {cellPad} font-mono text-xs whitespace-nowrap sm:table-cell">
                             {item.supplier_ref}
                           </td>
-                          <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                          <td class="hidden px-4 {cellPad} text-right whitespace-nowrap tabular-nums sm:table-cell">
                             {item.variant_count}
                           </td>
                           <td class="px-4 {cellPad} whitespace-nowrap">

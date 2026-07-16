@@ -520,7 +520,7 @@
               Cliquez une image pour la sélectionner et lui appliquer un
               traitement.
             </p>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {#each product.images ?? [] as image (image.url)}
                 <button
                   type="button"
@@ -724,7 +724,7 @@
         <div class="flex flex-col gap-1.5">
           <h3 class="text-sm font-medium">Description</h3>
           {#if hasText(product.description)}
-            <p class="text-muted-foreground text-xs whitespace-pre-line">
+            <p class="text-muted-foreground text-xs wrap-break-word whitespace-pre-line">
               {product.description}
             </p>
           {:else}
@@ -736,7 +736,7 @@
         <div class="flex flex-col gap-1.5">
           <h3 class="text-sm font-medium">Meta description</h3>
           {#if hasText(product.meta_description)}
-            <p class="text-muted-foreground text-xs whitespace-pre-line">
+            <p class="text-muted-foreground text-xs wrap-break-word whitespace-pre-line">
               {product.meta_description}
             </p>
           {:else}
@@ -751,7 +751,7 @@
           {#each infos as info (info.label)}
             <div>
               <dt class="text-muted-foreground">{info.label}</dt>
-              <dd class="font-medium">{info.value}</dd>
+              <dd class="font-medium wrap-break-word">{info.value}</dd>
             </div>
           {/each}
         </dl>
@@ -795,8 +795,8 @@
                     <tr class="border-border/60 border-b last:border-0">
                       <td class="py-1.5 pr-2">{variant.size ?? "—"}</td>
                       <td class="py-1.5 pr-2">{variant.color ?? "—"}</td>
-                      <td class="py-1.5 pr-2 font-mono">{variant.barcode ?? "—"}</td>
-                      <td class="py-1.5 pr-2 font-mono">{variant.sku ?? "—"}</td>
+                      <td class="py-1.5 pr-2 font-mono whitespace-nowrap">{variant.barcode ?? "—"}</td>
+                      <td class="py-1.5 pr-2 font-mono whitespace-nowrap">{variant.sku ?? "—"}</td>
                       <td class="py-1.5 pr-2 text-right whitespace-nowrap">
                         {formatPrice(variant.wholesale_price)}
                       </td>
