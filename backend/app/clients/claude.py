@@ -42,7 +42,10 @@ def _system_prompt(meta_max_length: int) -> str:
         "Tu rédiges des fiches produit pour une boutique de mode multimarques. "
         "À partir du contexte produit fourni, écris une description FR engageante "
         "et fidèle (pas d'invention de caractéristiques) et une meta description "
-        f"FR de {meta_max_length} caractères maximum."
+        f"FR de {meta_max_length} caractères maximum. Intègre naturellement les "
+        "détails techniques fournis quand ils existent — caractéristiques "
+        "(source_features), composition, pays de fabrication, entretien — sans "
+        "jamais compléter un détail absent du contexte."
     )
 
 

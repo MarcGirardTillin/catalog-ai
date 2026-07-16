@@ -22,6 +22,8 @@ class NormalizeOptions(BaseModel):
     bg_color: str = Field(default="FFFFFF", pattern=r"^#?[0-9a-fA-F]{6}$")
     ratio: RatioOption = "4:5"
     center: bool = True
+    # Marge autour du produit, en POURCENTAGE du canevas (0 = bord à bord).
+    margin_percent: float = Field(default=0.0, ge=0, le=45)
     format: FormatOption = "webp"
     quality: int = Field(default=80, ge=1, le=100)
     max_kb: int = Field(default=300, ge=1)
@@ -70,6 +72,16 @@ class StagedFilePublic(BaseModel):
     format: str | None = None
 
 
+class CropBox(BaseModel):
+    """Recadrage du canevas composé, en pixels canevas (verrouillé au ratio
+    côté UI pour que la sortie garde les proportions du format)."""
+
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+
+
 class ImageAssetPublic(BaseModel):
     """One imaging operation: status + provenance + staged previews."""
 
@@ -101,6 +113,8 @@ class ImageAssetPublic(BaseModel):
     render_offset_x: int = 0
     render_offset_y: int = 0
     render_scale: float = 1.0
+    # Dernier recadrage appliqué (POST /render), pour réhydrater l'UI.
+    render_crop: CropBox | None = None
     source_image: str | None = None
     source_product_image_id: int | None = None
     created_at: datetime
@@ -123,6 +137,8 @@ class RenderRequest(BaseModel):
     offset_x: int = Field(default=0, ge=-4000, le=4000)
     offset_y: int = Field(default=0, ge=-4000, le=4000)
     scale: float = Field(default=1.0, gt=0, le=4)
+    # Recadrage final du canevas (px canevas) ; None = pas de recadrage.
+    crop: CropBox | None = None
     bg_color: str | None = Field(default=None, pattern=r"^#?[0-9a-fA-F]{6}$")
     ratio: RatioOption | None = None
     center: bool | None = None

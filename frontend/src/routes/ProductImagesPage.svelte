@@ -89,6 +89,7 @@
     bg_color: "FFFFFF",
     ratio: "4:5",
     center: true,
+    margin_percent: 0,
     format: "webp",
     quality: 80,
     max_kb: 300,
@@ -118,6 +119,7 @@
         bg_color: data.imaging_bg_color ?? "FFFFFF",
         ratio: data.imaging_ratio ?? "4:5",
         center: data.imaging_center ?? true,
+        margin_percent: data.imaging_margin_percent ?? 0,
         format: data.imaging_format ?? "webp",
         quality: data.imaging_quality ?? 80,
         max_kb: data.imaging_max_kb ?? 300,
@@ -183,6 +185,7 @@
       offsetX: asset.render_offset_x ?? 0,
       offsetY: asset.render_offset_y ?? 0,
       scale: asset.render_scale ?? 1,
+      crop: asset.render_crop ?? null,
       rendering: false,
       saving: false,
     }
@@ -283,6 +286,7 @@
       offsetX: 0,
       offsetY: 0,
       scale: 1,
+      crop: null,
       rendering: false,
       saving: false,
     }

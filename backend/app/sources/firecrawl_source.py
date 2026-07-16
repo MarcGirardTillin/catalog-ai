@@ -12,6 +12,24 @@ from typing import Any
 from app.api.schemas import Product
 from app.clients.firecrawl import FirecrawlClient
 
+# Extracted technical text fields carried on the Shopify-shaped dict under
+# underscore keys (they have no Shopify equivalent). The copywriter context
+# picks them up; anything absent from the page simply stays out.
+_TEXT_FIELD_KEYS = {
+    "features": "_features",
+    "composition": "_composition",
+    "manufacturing_country": "_manufacturing_country",
+    "care": "_care",
+}
+
+
+def _apply_text_fields(target: dict[str, Any], extracted: dict[str, Any]) -> None:
+    """Copy the extracted technical text fields onto `target` (in place)."""
+    for src_key, dst_key in _TEXT_FIELD_KEYS.items():
+        value = extracted.get(src_key)
+        if value:
+            target[dst_key] = value
+
 
 def extract_source_product(
     firecrawl: FirecrawlClient, url: str
@@ -26,7 +44,7 @@ def extract_source_product(
         return None
     images = [str(u) for u in extracted.get("images") or [] if u]
     references = [str(code) for code in extracted.get("reference_codes") or [] if code]
-    return {
+    result: dict[str, Any] = {
         "title": extracted.get("title"),
         "body_html": extracted.get("description"),
         "images": [{"src": u} for u in images],
@@ -35,6 +53,28 @@ def extract_source_product(
         "_firecrawl": True,
         "_reference_codes": references,
     }
+    _apply_text_fields(result, extracted)
+    return result
+
+
+def merge_extracted_text(
+    source_product: dict[str, Any], extracted: dict[str, Any]
+) -> dict[str, Any]:
+    """Hybrid mode: graft the page's rich text onto a Shopify JSON product.
+
+    The Shopify storefront JSON often carries a one-sentence `body_html`
+    (vérifié live : Moschino → 100 caractères) while the rendered page holds
+    the real details behind accordions. The Shopify product stays the
+    authority for matching/variants/images; only the TEXT is enriched here:
+    the page description lands under `_page_description` (never overwrites
+    `body_html`) and the technical fields under their underscore keys.
+    """
+    merged = dict(source_product)
+    description = extracted.get("description")
+    if description:
+        merged["_page_description"] = description
+    _apply_text_fields(merged, extracted)
+    return merged
 
 
 def _normalize(value: Any) -> str:

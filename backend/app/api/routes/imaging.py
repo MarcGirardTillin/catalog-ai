@@ -188,6 +188,9 @@ def render_asset(
         "center": body.center
         if body.center is not None
         else bool(stored.get("center", True)),
+        # La marge suit l'option de création (les vieux assets sans la clé
+        # recomposent bord à bord — la politique par défaut actuelle).
+        "margin_percent": float(stored.get("margin_percent", 0.0)),
         "format": body.format or stored.get("format", "webp"),
         "quality": body.quality or int(stored.get("quality", 80)),
         "max_kb": body.max_kb or int(stored.get("max_kb", 300)),
@@ -198,12 +201,18 @@ def render_asset(
         bg_color=str(options["bg_color"]),
         ratio=str(options["ratio"]),
         center=bool(options["center"]),
+        margin_pct=float(options["margin_percent"]) / 100,
         offset_x=body.offset_x,
         offset_y=body.offset_y,
         scale=body.scale,
         fmt=str(options["format"]),
         quality=int(options["quality"]),
         max_kb=int(options["max_kb"]),
+        crop_box=(
+            (body.crop.x, body.crop.y, body.crop.width, body.crop.height)
+            if body.crop is not None
+            else None
+        ),
     )
 
     output_path = staging.store(asset.id, 0, composed.data, composed.format)
@@ -227,6 +236,7 @@ def render_asset(
         "offset_x": body.offset_x,
         "offset_y": body.offset_y,
         "scale": body.scale,
+        "crop": body.crop.model_dump() if body.crop is not None else None,
     }
     params["render_rev"] = int(params.get("render_rev") or 0) + 1
     asset.params_json = params

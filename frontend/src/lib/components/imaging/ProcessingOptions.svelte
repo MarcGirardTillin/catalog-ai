@@ -6,6 +6,8 @@
     bg_color: string
     ratio: "4:5" | "1:1" | "3:4" | "16:9" | "original"
     center: boolean
+    /** Marge autour du produit, en % du canevas (0 = bord à bord). */
+    margin_percent: number
     format: "webp" | "jpeg" | "jpg" | "png"
     quality: number
     max_kb: number
@@ -75,6 +77,19 @@
         <option {value}>{label}</option>
       {/each}
     </Select>
+  </div>
+  <div class="flex items-center gap-2">
+    <Label for="opt-margin" class="shrink-0">Marge (%)</Label>
+    <Input
+      id="opt-margin"
+      type="number"
+      min="0"
+      max="45"
+      step="1"
+      inputmode="numeric"
+      {disabled}
+      bind:value={options.margin_percent}
+    />
   </div>
   <div class="flex items-center gap-2">
     <Label for="opt-format" class="shrink-0">Fichier</Label>

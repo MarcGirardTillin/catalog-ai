@@ -45,7 +45,11 @@ from app.imaging.service import (
     normalize_product_image,
 )
 from app.models import EnrichmentItem, ImageAsset
-from app.sources.firecrawl_source import extract_source_product, reference_matches
+from app.sources.firecrawl_source import (
+    extract_source_product,
+    merge_extracted_text,
+    reference_matches,
+)
 from app.sources.resolver import Method, resolve_source_url
 from app.sources.shopify_json import fetch_product, score_product_match
 
@@ -109,6 +113,8 @@ def _normalize_options(
         options.remove_bg = bool(raw["remove_bg"])
     if raw.get("center") is not None:
         options.center = bool(raw["center"])
+    if raw.get("margin_percent") is not None:
+        options.margin_pct = float(raw["margin_percent"]) / 100
     return options
 
 
@@ -251,11 +257,12 @@ class EnrichmentPipeline:
 
         # 2. Resolve the product's page on the brand site(s) + job extras.
         websites = _candidate_websites(product, config)
+        method = _scrape_method(config)
         resolved = resolve_source_url(
             self._http,
             product,
             websites,
-            method=_scrape_method(config),
+            method=method,
             firecrawl=self._firecrawl,
             usage_recorder=self._firecrawl_recorder(db, item),
         )
@@ -289,6 +296,21 @@ class EnrichmentPipeline:
                         item.id,
                         resolved.url,
                         exc,
+                    )
+                # Hybride : le JSON Shopify ne porte souvent qu'une phrase de
+                # description (vérifié live : Moschino → 100 caractères) alors
+                # que la page rend les caractéristiques dans des accordéons.
+                # Quand la copie est demandée, une extraction Firecrawl vient
+                # compléter le TEXTE (le JSON Shopify reste l'autorité pour le
+                # matching, les variantes et les images). Le mode épinglé
+                # `shopify_json` garde sa promesse « jamais de Firecrawl ».
+                if (
+                    source_product is not None
+                    and transforms["copy"]
+                    and method == "auto"
+                ):
+                    source_product = self._enrich_source_text(
+                        db, item, resolved.url, source_product
                     )
         self._stage_source(db, item, product, source_product, config)
 
@@ -325,6 +347,10 @@ class EnrichmentPipeline:
                 )
         if source_product is not None:
             item.match_score = score_product_match(product, source_product)
+            # Même greffe hybride que le chemin automatique : la page rendue
+            # complète le texte du JSON Shopify (accordéons, composition…).
+            if _transforms(config)["copy"]:
+                source_product = self._enrich_source_text(db, item, url, source_product)
         elif self._firecrawl is not None:
             try:
                 source_product = extract_source_product(self._firecrawl, url)
@@ -348,6 +374,38 @@ class EnrichmentPipeline:
         item.source_method = "manual"
         self._stage_source(db, item, product, source_product, config)
         self._stage_copy(db, item, product, source_product, config)
+
+    def _enrich_source_text(
+        self,
+        db: Session | None,
+        item: EnrichmentItem,
+        url: str,
+        source_product: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Hybrid text enrich: Firecrawl-extract the page, graft the text.
+
+        Best-effort by design: without a Firecrawl client, or when the extract
+        fails/returns nothing, the Shopify JSON product is returned untouched
+        (the copy simply falls back to `body_html`). Successful extracts are
+        metered (EXTRACT_CREDITS) like every other Firecrawl call.
+        """
+        if self._firecrawl is None:
+            return source_product
+        try:
+            extracted = self._firecrawl.extract_product(url)
+        except ExternalServiceError as exc:
+            logger.warning(
+                "item %s: firecrawl text enrich failed for %s (%s) — "
+                "keeping the Shopify text",
+                item.id,
+                url,
+                exc,
+            )
+            return source_product
+        self._firecrawl_recorder(db, item)(EXTRACT_CREDITS)
+        if not extracted:
+            return source_product
+        return merge_extracted_text(source_product, extracted)
 
     def _firecrawl_recorder(
         self, db: Session | None, item: EnrichmentItem
@@ -507,7 +565,12 @@ def _copy_context(
     *,
     seo_keywords: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Product facts handed to the copywriter (canonical + source page)."""
+    """Product facts handed to the copywriter (canonical + source page).
+
+    Empty values are filtered out at the end: a detail absent from both the
+    catalog and the brand page simply never reaches the copywriter (no
+    invention risk — the prompt also forbids making up characteristics).
+    """
     ctx: dict[str, Any] = {
         "title": product.title,
         "brand": product.brand.name if product.brand else None,
@@ -515,10 +578,23 @@ def _copy_context(
         "season": product.season,
         "category": product.category,
         "department": product.department,
+        # Facts already carried by the Tillin catalog, when filled in.
+        "composition": product.composition,
+        "manufacturing_country": product.manufacturing_country,
         "seo_keywords": list(seo_keywords or []) or None,
     }
     if source_product:
         ctx["source_title"] = source_product.get("title")
         ctx["source_description_html"] = source_product.get("body_html")
         ctx["source_tags"] = source_product.get("tags")
+        # Texte riche extrait de la page rendue (hybride ou repli Firecrawl) :
+        # description visible, caractéristiques d'accordéon, composition,
+        # pays de fabrication, entretien.
+        ctx["source_page_description"] = source_product.get("_page_description")
+        ctx["source_features"] = source_product.get("_features")
+        ctx["source_composition"] = source_product.get("_composition")
+        ctx["source_manufacturing_country"] = source_product.get(
+            "_manufacturing_country"
+        )
+        ctx["source_care"] = source_product.get("_care")
     return {key: value for key, value in ctx.items() if value}

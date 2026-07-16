@@ -3,6 +3,7 @@
 // preview binaire est récupérée en blob (l'auth est un cookie httpOnly, un
 // <img src> cross-origin ne le porterait pas de façon fiable).
 import {
+  type CropBox,
   type GenerateModelOptions,
   type ImageAssetPublic,
   type NormalizeOptions,
@@ -21,6 +22,7 @@ import {
 import { client } from "@/client/client.gen"
 
 export type {
+  CropBox,
   GenerateModelOptions,
   ImageAssetPublic,
   NormalizeOptions,

@@ -186,6 +186,100 @@ def test_pipeline_stages_title_weights_images_and_copy(
     db.close()
 
 
+def test_pipeline_hybrid_enriches_shopify_text_with_firecrawl(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Résolution Shopify + Firecrawl configuré : la page rendue complète le
+    TEXTE (accordéons, composition…) sans toucher au matching/variantes, et
+    l'extraction est facturée (5 crédits, pas de recherche)."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    claude = _FakeClaude()
+    resolved_url = f"{SITE}/products/g-short-double-navy"
+
+    with (
+        httpx.Client(
+            transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+        ) as http_client,
+        _firecrawl_store(
+            {
+                resolved_url: {
+                    "title": "G-Short Double Navy",
+                    "description": "Le short vu de la page rendue.",
+                    "features": ["Toile double épaisseur", "Ceinture élastiquée"],
+                    "composition": "100% coton organique",
+                    "manufacturing_country": "Japon",
+                    "care": "Lavage à 30°",
+                }
+            }
+        ) as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+            firecrawl=fc,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    # Le matching et les poids restent portés par le JSON Shopify.
+    assert item.source_method == "shopify_json"
+    assert item.match_score == 1.0
+    assert item.staged_weights_json is not None
+    # Le copywriter voit le texte Shopify ET le texte riche de la page.
+    ctx = claude.calls[0]["ctx"]
+    assert ctx["source_description_html"] == "<p>Le short d'origine.</p>"
+    assert ctx["source_page_description"] == "Le short vu de la page rendue."
+    assert ctx["source_features"] == [
+        "Toile double épaisseur",
+        "Ceinture élastiquée",
+    ]
+    assert ctx["source_composition"] == "100% coton organique"
+    assert ctx["source_manufacturing_country"] == "Japon"
+    assert ctx["source_care"] == "Lavage à 30°"
+    # Facturation : une extraction (5 crédits), aucune recherche.
+    fc_events = [e for e in db.query(UsageEvent).all() if e.provider == "firecrawl"]
+    assert [(e.metric, e.quantity) for e in fc_events] == [("credits", 5)]
+    db.close()
+
+
+def test_pipeline_hybrid_survives_firecrawl_failure(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """L'enrichissement de texte est best-effort : Firecrawl en erreur →
+    l'item aboutit quand même, copie sur le seul texte Shopify."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    claude = _FakeClaude()
+
+    def broken(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    with (
+        httpx.Client(
+            transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+        ) as http_client,
+        FirecrawlClient("fc-key", transport=httpx.MockTransport(broken)) as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+            firecrawl=fc,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    ctx = claude.calls[0]["ctx"]
+    assert ctx["source_description_html"] == "<p>Le short d'origine.</p>"
+    assert "source_features" not in ctx
+    # Rien facturé : l'extraction a échoué.
+    assert not [e for e in db.query(UsageEvent).all() if e.provider == "firecrawl"]
+    db.close()
+
+
 def test_pipeline_without_claude_and_without_brand_site(
     db_session_factory: sessionmaker[Session],
 ) -> None:

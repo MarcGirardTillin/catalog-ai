@@ -54,7 +54,10 @@ class NormalizeOptions:
     bg_color: str = "FFFFFF"
     ratio: str = "4:5"
     center: bool = True
-    margin_pct: float = 0.10
+    # Marge autour du produit, fraction du canevas (0.10 = 10 %). Décision
+    # Marc 2026-07-16 : AUCUNE marge par défaut ; configurable par compte
+    # (imaging_margin_percent, saisi en %) et par appel.
+    margin_pct: float = 0.0
     fmt: str = "webp"
     quality: int = 80
     max_kb: int = 300

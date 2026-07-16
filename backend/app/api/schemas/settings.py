@@ -87,6 +87,8 @@ class AccountSettings(BaseModel):
     imaging_bg_color: str = Field("FFFFFF", pattern=r"^#?[0-9a-fA-F]{6}$")
     imaging_ratio: RatioOption = "4:5"
     imaging_center: bool = True
+    # Marge autour du produit normalisé, en % du canevas (0 = bord à bord).
+    imaging_margin_percent: float = Field(0.0, ge=0, le=45)
     imaging_format: FormatOption = "webp"
     imaging_quality: int = Field(80, ge=1, le=100)
     imaging_max_kb: int = Field(300, ge=1, le=5000)

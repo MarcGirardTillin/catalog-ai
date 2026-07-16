@@ -182,6 +182,13 @@ export const AccountSettingsSchema = {
             title: 'Imaging Center',
             default: true
         },
+        imaging_margin_percent: {
+            type: 'number',
+            maximum: 45,
+            minimum: 0,
+            title: 'Imaging Margin Percent',
+            default: 0
+        },
         imaging_format: {
             type: 'string',
             enum: [
@@ -1162,6 +1169,40 @@ export const CreditTimeseriesSeriesSchema = {
     title: 'CreditTimeseriesSeries'
 } as const;
 
+export const CropBoxSchema = {
+    properties: {
+        x: {
+            type: 'integer',
+            minimum: 0,
+            title: 'X'
+        },
+        y: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Y'
+        },
+        width: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Height'
+        }
+    },
+    type: 'object',
+    required: [
+        'x',
+        'y',
+        'width',
+        'height'
+    ],
+    title: 'CropBox',
+    description: 'Recadrage du canevas composé, en pixels canevas (verrouillé au ratio\ncôté UI pour que la sortie garde les proportions du format).'
+} as const;
+
 export const DashboardStatsSchema = {
     properties: {
         applied_items: {
@@ -1632,6 +1673,16 @@ export const ImageAssetPublicSchema = {
             type: 'number',
             title: 'Render Scale',
             default: 1
+        },
+        render_crop: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/CropBox'
+                },
+                {
+                    type: 'null'
+                }
+            ]
         },
         source_image: {
             anyOf: [
@@ -3842,6 +3893,13 @@ export const NormalizeOptionsSchema = {
             title: 'Center',
             default: true
         },
+        margin_percent: {
+            type: 'number',
+            maximum: 45,
+            minimum: 0,
+            title: 'Margin Percent',
+            default: 0
+        },
         format: {
             type: 'string',
             enum: [
@@ -4555,6 +4613,16 @@ export const RenderRequestSchema = {
             exclusiveMinimum: 0,
             title: 'Scale',
             default: 1
+        },
+        crop: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/CropBox'
+                },
+                {
+                    type: 'null'
+                }
+            ]
         },
         bg_color: {
             anyOf: [

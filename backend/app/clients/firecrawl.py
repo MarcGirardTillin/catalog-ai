@@ -25,6 +25,9 @@ EXTRACT_CREDITS = 5  # /v2/scrape in JSON (LLM-structured) mode
 SCRAPE_CREDITS = 1  # /v2/scrape in markdown mode
 
 # JSON Schema handed to Firecrawl's structured extraction for product pages.
+# The technical fields (features/composition/…) usually hide in accordions or
+# click-to-open "Details" panels — Firecrawl's headless render captures them,
+# the prompt below points the extractor at those sections explicitly.
 PRODUCT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -43,6 +46,26 @@ PRODUCT_SCHEMA: dict[str, Any] = {
         "color": {"type": "string"},
         "material": {"type": "string"},
         "price": {"type": "string"},
+        "features": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Technical characteristics/specification bullet points, often "
+                "in an accordion or a « Détails »/« Caractéristiques » section"
+            ),
+        },
+        "composition": {
+            "type": "string",
+            "description": "Fabric/material composition, e.g. « 100% coton »",
+        },
+        "manufacturing_country": {
+            "type": "string",
+            "description": "Country of manufacture, e.g. « Italie »",
+        },
+        "care": {
+            "type": "string",
+            "description": "Care/washing instructions",
+        },
     },
     "required": ["title"],
 }
@@ -50,7 +73,12 @@ PRODUCT_SCHEMA: dict[str, Any] = {
 _EXTRACT_PROMPT = (
     "This is an e-commerce product page. Extract the product's title, its "
     "marketing description, the URLs of the high-resolution product images, "
-    "and every reference code, SKU or EAN/barcode visible on the page."
+    "and every reference code, SKU or EAN/barcode visible on the page. "
+    "Also extract the technical details when the page carries them — "
+    "characteristics/specifications, fabric composition, country of "
+    "manufacture, care instructions — including those inside accordion or "
+    "click-to-open sections such as « Détails » or « Caractéristiques ». "
+    "Omit any field that is not present on the page; never invent values."
 )
 
 

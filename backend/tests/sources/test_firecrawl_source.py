@@ -6,7 +6,11 @@ import httpx
 
 from app.api.schemas import Product, ProductVariant
 from app.clients.firecrawl import FirecrawlClient
-from app.sources.firecrawl_source import extract_source_product, reference_matches
+from app.sources.firecrawl_source import (
+    extract_source_product,
+    merge_extracted_text,
+    reference_matches,
+)
 
 PRODUCT = Product(
     id=1,
@@ -54,6 +58,56 @@ def test_extract_source_product_adapts_to_shopify_shape() -> None:
 def test_extract_source_product_none_when_no_json() -> None:
     with _client(None) as firecrawl:
         assert extract_source_product(firecrawl, "https://brand.example/p/1") is None
+
+
+def test_extract_source_product_carries_technical_text_fields() -> None:
+    """Les champs techniques (accordéons : caractéristiques, composition,
+    pays, entretien) voyagent sous des clés underscore vers le copywriter."""
+    with _client(
+        {
+            "title": "Zero Singlet",
+            "description": "Débardeur ultra-léger.",
+            "features": ["Matière perforée", "Coutures collées"],
+            "composition": "100% polyester recyclé",
+            "manufacturing_country": "Vietnam",
+            "care": "Lavage à 30°",
+        }
+    ) as firecrawl:
+        adapted = extract_source_product(firecrawl, "https://brand.example/p/2")
+
+    assert adapted is not None
+    assert adapted["_features"] == ["Matière perforée", "Coutures collées"]
+    assert adapted["_composition"] == "100% polyester recyclé"
+    assert adapted["_manufacturing_country"] == "Vietnam"
+    assert adapted["_care"] == "Lavage à 30°"
+
+
+def test_merge_extracted_text_grafts_without_touching_shopify_fields() -> None:
+    """Hybride : le texte de la page complète le JSON Shopify — body_html,
+    images et variantes (autorité matching/poids) restent intacts."""
+    shopify = {
+        "title": "Jupe crayon",
+        "body_html": "Une phrase.",
+        "images": [{"src": "https://cdn/1.jpg"}],
+        "variants": [{"sku": "S-1", "barcode": "123"}],
+    }
+    merged = merge_extracted_text(
+        shopify,
+        {
+            "description": "Description riche de la page.",
+            "features": ["Coton stretch", "Imprimé floral"],
+            "composition": "97% coton, 3% élasthanne",
+            "manufacturing_country": None,  # absent de la page → ignoré
+        },
+    )
+    assert merged["body_html"] == "Une phrase."
+    assert merged["variants"] == [{"sku": "S-1", "barcode": "123"}]
+    assert merged["_page_description"] == "Description riche de la page."
+    assert merged["_features"] == ["Coton stretch", "Imprimé floral"]
+    assert merged["_composition"] == "97% coton, 3% élasthanne"
+    assert "_manufacturing_country" not in merged
+    # L'original n'est pas muté (le pipeline peut le réutiliser).
+    assert "_features" not in shopify
 
 
 def test_reference_matches_on_reference_code_case_and_spaces() -> None:

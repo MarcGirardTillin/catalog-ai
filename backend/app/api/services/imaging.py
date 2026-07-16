@@ -8,8 +8,8 @@ from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
+from app.api.schemas import CropBox, ImageAssetPublic, StagedFilePublic
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
-from app.api.schemas import ImageAssetPublic, StagedFilePublic
 from app.api.schemas import NormalizeOptions as NormalizeOptionsSchema
 from app.api.schemas.settings import AccountSettings
 from app.api.services.credits import consume as consume_credits
@@ -71,6 +71,7 @@ def to_public(asset: ImageAsset) -> ImageAssetPublic:
     suffix = f"?r={render_rev}" if render_rev else ""
     source_entry = file_by_role(asset, "source")
     render = (asset.params_json or {}).get("render") or {}
+    crop = render.get("crop")
     return ImageAssetPublic(
         id=asset.id,
         product_id=asset.product_id,
@@ -107,6 +108,7 @@ def to_public(asset: ImageAsset) -> ImageAssetPublic:
         render_offset_x=int(render.get("offset_x") or 0),
         render_offset_y=int(render.get("offset_y") or 0),
         render_scale=float(render.get("scale") or 1.0),
+        render_crop=CropBox.model_validate(crop) if isinstance(crop, dict) else None,
         source_image=asset.source_image,
         source_product_image_id=asset.source_product_image_id,
         created_at=asset.created_at,
@@ -210,6 +212,8 @@ def to_normalize_service_options(options: NormalizeOptionsSchema) -> NormalizeOp
         bg_color=options.bg_color,
         ratio=options.ratio,
         center=options.center,
+        # API en % (saisie utilisateur), service en fraction du canevas.
+        margin_pct=options.margin_percent / 100,
         fmt=options.format,
         quality=options.quality,
         max_kb=options.max_kb,
@@ -232,6 +236,7 @@ def account_normalize_defaults(db: Session, account_id: int) -> NormalizeOptions
         bg_color=stored.imaging_bg_color,
         ratio=stored.imaging_ratio,
         center=stored.imaging_center,
+        margin_percent=stored.imaging_margin_percent,
         format=stored.imaging_format,
         quality=stored.imaging_quality,
         max_kb=stored.imaging_max_kb,

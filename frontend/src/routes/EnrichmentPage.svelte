@@ -74,6 +74,7 @@
     bg_color: "FFFFFF",
     ratio: "4:5",
     center: true,
+    margin_percent: 0,
     format: "webp",
     quality: 80,
     max_kb: 300,
@@ -132,6 +133,7 @@
       bg_color: data.imaging_bg_color ?? "FFFFFF",
       ratio: data.imaging_ratio ?? "4:5",
       center: data.imaging_center ?? true,
+      margin_percent: data.imaging_margin_percent ?? 0,
       format: data.imaging_format ?? "webp",
       quality: data.imaging_quality ?? 80,
       max_kb: data.imaging_max_kb ?? 300,
@@ -163,6 +165,11 @@
       toast.error("Le poids max doit être entre 1 et 5000 Ko.")
       return
     }
+    const marginPercent = Number(imagingOptions.margin_percent)
+    if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 45) {
+      toast.error("La marge doit être entre 0 et 45 %.")
+      return
+    }
     if (!/^#?[0-9a-fA-F]{6}$/.test(imagingOptions.bg_color)) {
       toast.error("La couleur de fond doit être un code hex (ex. FFFFFF).")
       return
@@ -178,6 +185,7 @@
       imaging_bg_color: imagingOptions.bg_color.replace(/^#/, "").toUpperCase(),
       imaging_ratio: imagingOptions.ratio,
       imaging_center: imagingOptions.center,
+      imaging_margin_percent: marginPercent,
       imaging_format: imagingOptions.format,
       imaging_quality: quality,
       imaging_max_kb: maxKb,

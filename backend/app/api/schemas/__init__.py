@@ -3,6 +3,7 @@ from app.api.schemas.error import ApiError
 from app.api.schemas.imaging import (
     AssetSaveRequest,
     AssetSaveResult,
+    CropBox,
     GenerateModelOptions,
     GenerateModelRequest,
     ImageAssetPublic,
@@ -28,6 +29,7 @@ from app.api.schemas.product import (
 __all__ = [
     "ApiError",
     "AssetSaveRequest",
+    "CropBox",
     "AssetSaveResult",
     "Brand",
     "GenerateModelOptions",

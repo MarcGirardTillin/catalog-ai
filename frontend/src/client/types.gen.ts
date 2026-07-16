@@ -111,6 +111,10 @@ export type AccountSettings = {
      */
     imaging_center?: boolean;
     /**
+     * Imaging Margin Percent
+     */
+    imaging_margin_percent?: number;
+    /**
      * Imaging Format
      */
     imaging_format?: 'webp' | 'jpeg' | 'jpg' | 'png';
@@ -691,6 +695,31 @@ export type CreditTimeseriesSeries = {
 };
 
 /**
+ * CropBox
+ *
+ * Recadrage du canevas composé, en pixels canevas (verrouillé au ratio
+ * côté UI pour que la sortie garde les proportions du format).
+ */
+export type CropBox = {
+    /**
+     * X
+     */
+    x: number;
+    /**
+     * Y
+     */
+    y: number;
+    /**
+     * Width
+     */
+    width: number;
+    /**
+     * Height
+     */
+    height: number;
+};
+
+/**
  * DashboardStats
  *
  * Account-scoped headline numbers for the dashboard.
@@ -989,6 +1018,7 @@ export type ImageAssetPublic = {
      * Render Scale
      */
     render_scale?: number;
+    render_crop?: CropBox | null;
     /**
      * Source Image
      */
@@ -2216,6 +2246,10 @@ export type NormalizeOptions = {
      */
     center?: boolean;
     /**
+     * Margin Percent
+     */
+    margin_percent?: number;
+    /**
      * Format
      */
     format?: 'webp' | 'jpeg' | 'jpg' | 'png';
@@ -2623,6 +2657,7 @@ export type RenderRequest = {
      * Scale
      */
     scale?: number;
+    crop?: CropBox | null;
     /**
      * Bg Color
      */

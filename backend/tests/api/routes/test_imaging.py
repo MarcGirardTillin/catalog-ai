@@ -558,6 +558,44 @@ def test_render_recomposes_locally_without_provider(
 
 
 @pytest.mark.usefixtures("patch_source_download")
+def test_render_crop_cuts_the_output_and_is_echoed(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    staging_dir: Path,
+) -> None:
+    """POST /render avec `crop` : la sortie prend les dimensions du cadre et
+    le recadrage est réhydratable (render_crop) ; un render SANS crop repart
+    de l'image entière."""
+    override_photoroom(lambda r: httpx.Response(200, content=cutout_png()))
+    asset_id = _normalized_asset_id(auth_client)
+
+    response = auth_client.post(
+        f"/imaging/assets/{asset_id}/render",
+        json={
+            "format": "png",
+            "crop": {"x": 200, "y": 250, "width": 800, "height": 1000},
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["files"][0]["width"] == 800
+    assert body["files"][0]["height"] == 1000
+    assert body["render_crop"] == {"x": 200, "y": 250, "width": 800, "height": 1000}
+    assert probe((staging_dir / str(asset_id) / "0.png").read_bytes())[:2] == (
+        800,
+        1000,
+    )
+
+    # Recomposition sans crop : retour à l'image entière.
+    full = auth_client.post(
+        f"/imaging/assets/{asset_id}/render", json={"format": "png"}
+    )
+    assert full.status_code == 200
+    assert full.json()["render_crop"] is None
+    assert full.json()["files"][0]["width"] == 1600
+
+
+@pytest.mark.usefixtures("patch_source_download")
 def test_render_guards_409(
     auth_client: TestClient,
     override_photoroom: Callable[[Handler], None],

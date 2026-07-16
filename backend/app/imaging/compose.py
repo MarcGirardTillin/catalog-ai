@@ -101,13 +101,14 @@ def compose(
     bg_color: str = "FFFFFF",
     ratio: str = "4:5",
     center: bool = True,
-    margin_pct: float = 0.10,
+    margin_pct: float = 0.0,
     offset_x: int = 0,
     offset_y: int = 0,
     scale: float = 1.0,
     fmt: str = "webp",
     quality: int = 80,
     max_kb: int | None = None,
+    crop_box: tuple[int, int, int, int] | None = None,
 ) -> ComposedImage:
     """Compose the product onto a solid-color canvas and encode it.
 
@@ -116,6 +117,10 @@ def compose(
     and centered. Otherwise the WHOLE frame is fitted (original placement
     preserved). `offset_x/offset_y` (canvas px) and `scale` (multiplier on the
     fitted size) are the manual-repositioning knobs applied on top.
+
+    `crop_box` (x, y, w, h in canvas px) recadre le canevas composé en toute
+    fin — la sélection est verrouillée au ratio côté UI, donc la sortie garde
+    les proportions du format choisi. Les bornes sont resserrées au canevas.
     """
     if ratio not in RATIOS:
         raise ValueError(f"unknown ratio {ratio!r}")
@@ -156,9 +161,17 @@ def compose(
     y = (canvas_h - product.height) // 2 + offset_y
     canvas.paste(product, (x, y), product)
 
+    if crop_box is not None:
+        cx, cy, cw, ch = crop_box
+        cx = max(0, min(int(cx), canvas_w - 1))
+        cy = max(0, min(int(cy), canvas_h - 1))
+        cw = max(1, min(int(cw), canvas_w - cx))
+        ch = max(1, min(int(ch), canvas_h - cy))
+        canvas = canvas.crop((cx, cy, cx + cw, cy + ch))
+
     return ComposedImage(
         data=_encode(canvas, fmt, quality, max_kb),
-        width=canvas_w,
-        height=canvas_h,
+        width=canvas.width,
+        height=canvas.height,
         format=normalized_fmt,
     )

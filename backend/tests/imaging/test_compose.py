@@ -70,13 +70,55 @@ def test_product_is_cropped_to_its_alpha_bbox_and_centered() -> None:
     cx, cy = img.width // 2, img.height // 2
     assert img.getpixel((cx, cy)) == PRODUCT
     assert img.getpixel((5, 5)) == BACKGROUND
-    # The margin box is honoured: 10% borders stay background.
-    assert img.getpixel((int(img.width * 0.05), cy)) == BACKGROUND
+
+
+def test_margin_zero_by_default_and_configurable() -> None:
+    """Décision Marc 2026-07-16 : aucune marge par défaut (le produit touche
+    le bord de l'axe ajusté) ; margin_pct la rétablit à la demande."""
+    edge_to_edge = _compose_png()
+    cy = edge_to_edge.height // 2
+    # Sans marge, le produit (plus haut que large ici) touche haut et bas —
+    # l'axe ajusté dépend du bbox : vérifie qu'AU MOINS un bord est produit.
+    touches = (
+        edge_to_edge.getpixel((edge_to_edge.width // 2, 0)) == PRODUCT
+        or edge_to_edge.getpixel((0, cy)) == PRODUCT
+    )
+    assert touches
+
+    margined = _compose_png(margin_pct=0.10)
+    # Avec 10 % de marge, les bords restent fond sur les deux axes.
+    assert margined.getpixel((margined.width // 2, 5)) == BACKGROUND
+    assert margined.getpixel((5, margined.height // 2)) == BACKGROUND
+
+
+def test_crop_box_cuts_the_composed_canvas() -> None:
+    """Le recadrage final coupe le canevas composé (pas de resize) et les
+    bornes hors canevas sont resserrées."""
+    result = compose(
+        cutout_png(),
+        has_alpha=True,
+        bg_color="F5F5F5",
+        fmt="png",
+        crop_box=(100, 200, 800, 1000),
+    )
+    assert (result.width, result.height) == (800, 1000)
+
+    clamped = compose(
+        cutout_png(),
+        has_alpha=True,
+        bg_color="F5F5F5",
+        fmt="png",
+        # x+w déborde du canevas 1600x2000 → largeur resserrée à 1600-1200.
+        crop_box=(1200, 0, 800, 2500),
+    )
+    assert (clamped.width, clamped.height) == (400, 2000)
 
 
 def test_offsets_shift_the_product_on_the_canvas() -> None:
-    base = _compose_png()
-    shifted = _compose_png(offset_x=300, offset_y=0)
+    # Marge explicite : le sujet est le décalage, pas la politique de marge —
+    # sans elle le produit couvre trop de canevas pour voir le shift.
+    base = _compose_png(margin_pct=0.10)
+    shifted = _compose_png(margin_pct=0.10, offset_x=300, offset_y=0)
     cx, cy = base.width // 2, base.height // 2
     # Product region moved right: far-left of the old spot is now background.
     assert base.getpixel((cx - 400, cy)) == PRODUCT
@@ -101,9 +143,19 @@ def test_without_alpha_the_whole_frame_is_fitted() -> None:
         source_jpeg(800, 1000), has_alpha=False, bg_color="F5F5F5", fmt="png"
     )
     img = _open(result.data)
-    # The frame (solid red-ish) is letterboxed inside the margin box.
+    # The frame (solid red-ish) fills the same-ratio canvas edge to edge
+    # (no default margin anymore).
     assert img.getpixel((img.width // 2, img.height // 2)) == (120, 30, 30)
-    assert img.getpixel((5, 5)) == BACKGROUND
+    assert img.getpixel((5, 5)) == (120, 30, 30)
+    # With an explicit margin the frame is letterboxed inside the margin box.
+    margined = compose(
+        source_jpeg(800, 1000),
+        has_alpha=False,
+        bg_color="F5F5F5",
+        fmt="png",
+        margin_pct=0.10,
+    )
+    assert _open(margined.data).getpixel((5, 5)) == BACKGROUND
 
 
 def test_max_kb_loops_the_quality_down() -> None:

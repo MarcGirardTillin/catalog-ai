@@ -821,3 +821,29 @@ Catalog est un SaaS multi-entreprises sur UNE instance. Décisions :
    catalogue sont du socle (pas de crédit, pas de provider) ; la
    normalisation d'images du review appartient à l'enrichissement, pas au
    studio.
+
+## 2026-07-16 — Enrichissement hybride Shopify + Firecrawl ; marge d'image à 0
+
+1. **Texte de fiche : hybride systématique (option 1, décision Marc)**. Le
+   JSON Shopify reste l'autorité pour le matching (code-barres), les
+   variantes/poids et les images — mais il ne porte souvent qu'une phrase de
+   description (vérifié live : Moschino → body_html de 100 caractères). Quand
+   la copie est demandée et que le mode de résolution est `auto`, une
+   extraction Firecrawl de la page rendue complète le TEXTE : description
+   visible, caractéristiques d'accordéon, composition, pays de fabrication,
+   entretien (`PRODUCT_SCHEMA` enrichi). Best-effort : Firecrawl en échec →
+   copie sur le seul texte Shopify. Le mode épinglé `shopify_json` garde sa
+   promesse « jamais de Firecrawl ». Coût : +5 crédits Firecrawl par fiche
+   enrichie (≈ 0,4 c€ au plan Standard) — le prix du crédit CatalogAI
+   « enrichissement » est à recaler par Marc.
+2. **Firecrawl passe Farfetch et Asics** (vérifié live 2026-07-16 : 200 +
+   contenu complet, composition et entretien inclus). Pas de plan B
+   (Bright Data unlocker) nécessaire à ce stade.
+3. **Marge de normalisation : 0 par défaut** (décision Marc — le produit va
+   bord à bord), configurable en % du canevas par compte
+   (`imaging_margin_percent`) et par appel (`margin_percent`). Le service
+   travaille en fraction (`margin_pct`), l'API et l'UI en pourcentage.
+4. **Recadrage post-normalisation** : sélection au ratio verrouillé sur
+   l'aperçu, coupée en PIXELS CANEVAS en fin de composition (pas de resize) —
+   la sortie garde les proportions du format. Composable avec le
+   repositionnement (offsets/échelle) et annulable (Réinitialiser).
