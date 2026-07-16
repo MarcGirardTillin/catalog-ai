@@ -28,23 +28,32 @@ logger = logging.getLogger(__name__)
 _USER_AGENT = "CatalogAI enrichment worker"
 
 
-def _placeholder_reader(product_id: int) -> Product:
+def _placeholder_reader(product_id: int, account_id: int) -> Product:
     """LOCAL DEV ONLY — stands in for the Xano read path."""
     return Product(id=product_id, title=f"Produit {product_id}")
 
 
+def _account_reader(product_id: int, account_id: int) -> Product | None:
+    """Read a product AS the item's account (company-scoped Xano token).
+
+    Resolved on every call — not baked at pipeline build time — because the
+    queue is shared across tenants: consecutive items can belong to different
+    companies, and each read must carry the right company's token. The client
+    itself is cached per account in `deps`, so this stays cheap.
+    """
+    from app.api.deps import xano_client_for_account
+
+    db = SessionLocal()
+    try:
+        client = xano_client_for_account(db, account_id)
+    finally:
+        db.close()
+    return client.get_product(product_id)
+
+
 def _build_reader() -> ProductReader:
     if settings.xano_configured:
-        from app.clients.xano import XanoClient
-
-        client = XanoClient(
-            settings.XANO_BASE_URL,
-            email=settings.XANO_LOGIN_EMAIL,
-            password=settings.XANO_LOGIN_PASSWORD,
-            data_source=settings.XANO_DATA_SOURCE,
-            timeout=settings.XANO_TIMEOUT_SECONDS,
-        )
-        return client.get_product
+        return _account_reader
 
     logger.warning(
         "XANO not configured — using the placeholder product reader "

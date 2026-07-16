@@ -85,8 +85,11 @@ def verify_login(
     """Validate a user's Xano credentials; return their profile or None.
 
     Used to let Tillin/Xano users sign in to CatalogAI with their Xano
-    identifiers. Returns `{email, full_name}` on success (best-effort name from
-    `/auth/me`), or None when the credentials are rejected/unreachable.
+    identifiers. Returns `{email, full_name, token, company_id}` on success —
+    the token and company drive the multi-tenant scoping: catalog calls are
+    made with the USER'S token (Xano restricts data to their company), and the
+    company id maps the user onto a CatalogAI account. Returns None when the
+    credentials are rejected/unreachable.
     """
     headers = {"Accept": "application/json"}
     if data_source:
@@ -104,12 +107,29 @@ def verify_login(
             token = _first(login.json(), "authToken", "token")
             if not token:
                 return None
-            profile: dict[str, Any] = {"email": email, "full_name": None}
+            profile: dict[str, Any] = {
+                "email": email,
+                "full_name": None,
+                "token": str(token),
+                "company_id": None,
+            }
             me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
             if me.status_code == 200 and isinstance(me.json(), Mapping):
                 data = me.json()
-                profile["full_name"] = _first(data, "name", "full_name")
+                # Xano's user names are split (name_first/name_last).
+                first = str(_first(data, "name_first", "first_name") or "").strip()
+                last = str(_first(data, "name_last", "last_name") or "").strip()
+                composed = f"{first} {last}".strip()
+                profile["full_name"] = (
+                    _first(data, "name", "full_name") or composed or None
+                )
                 profile["email"] = _first(data, "email") or email
+                company = _first(data, "company", "company_id")
+                if company is not None:
+                    try:
+                        profile["company_id"] = int(company)
+                    except (TypeError, ValueError):
+                        logger.warning("Xano /auth/me returned a non-int company id")
             return profile
     except httpx.HTTPError:
         logger.warning("Xano credential check failed to reach the API")
@@ -416,20 +436,33 @@ def _map_product(
 
 
 class XanoClient:
-    """Thin REST wrapper around the Tillin Xano workspace (login-authed)."""
+    """Thin REST wrapper around the Tillin Xano workspace.
+
+    Two auth modes:
+    - credentials (`email`/`password`): logs in lazily, re-logs once on 401 —
+      the historical service-identity mode (operator/default account only);
+    - static `token`: the USER'S Xano token (Xano scopes every call to their
+      company). No credentials to re-log with: a 401 means the 72h token
+      expired and surfaces as `xano_token_expired` so the UI can ask the user
+      to sign in again.
+    """
 
     def __init__(
         self,
         base_url: str,
         *,
-        email: str,
-        password: str,
+        email: str = "",
+        password: str = "",
+        token: str | None = None,
         data_source: str = "",
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
+        if token is None and not (email and password):
+            raise ValueError("XanoClient needs either a token or email+password")
         self._email = email
         self._password = password
+        self._static_token = token
         headers = {"Accept": "application/json"}
         if data_source:
             headers["X-Data-Source"] = data_source
@@ -439,9 +472,19 @@ class XanoClient:
             timeout=timeout,
             transport=transport,
         )
-        self._token: str | None = None
+        self._token: str | None = token
         self._brands: dict[int, Mapping[str, Any]] | None = None
         self._class_maps: dict[str, dict[int, str]] | None = None
+
+    def _reauthenticate(self) -> None:
+        """Refresh auth after a 401: re-login, or fail hard in token mode."""
+        if self._static_token is not None:
+            raise XanoError(
+                "Tillin session expired — sign in again",
+                code="xano_token_expired",
+                status_code=401,
+            )
+        self._login()
 
     def __enter__(self) -> "XanoClient":
         return self
@@ -483,7 +526,7 @@ class XanoClient:
             self._login()
         response = self._do_get(path, params)
         if response.status_code == 401:
-            self._login()
+            self._reauthenticate()
             response = self._do_get(path, params)
         if response.status_code == 404:
             return None
@@ -524,7 +567,7 @@ class XanoClient:
             self._login()
         response = self._do_send_json(method, path, body)
         if response.status_code == 401:
-            self._login()
+            self._reauthenticate()
             response = self._do_send_json(method, path, body)
         if response.status_code >= 400:
             raise XanoError(
@@ -571,7 +614,7 @@ class XanoClient:
             self._login()
         response = self._do_post_multipart(path, files=files, data=data)
         if response.status_code == 401:
-            self._login()
+            self._reauthenticate()
             response = self._do_post_multipart(path, files=files, data=data)
         if response.status_code >= 400:
             raise XanoError(

@@ -107,3 +107,128 @@ def test_invalid_cookie_is_rejected(client: TestClient) -> None:
     response = client.get("/auth/me")
 
     assert response.status_code == 401
+
+
+# --- Multi-entreprises : rattachement compte + capture du token au login ----
+
+
+def _xano_profile(email: str, company_id: int, token: str) -> dict[str, Any]:
+    return {
+        "email": email,
+        "full_name": "Xano User",
+        "token": token,
+        "company_id": company_id,
+    }
+
+
+def test_xano_login_attaches_company_account_and_token(
+    client: TestClient,
+    db_session_factory: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_xano(monkeypatch)
+    monkeypatch.setattr(
+        "app.api.routes.auth.verify_login",
+        lambda *a, **k: _xano_profile("buyer@jbs.fr", 51, "tok-jbs-1"),
+    )
+
+    response = client.post(
+        "/auth/login", json={"email": "buyer@jbs.fr", "password": "xano-pw"}
+    )
+    assert response.status_code == 200
+
+    from app.models import Account, User
+
+    db = db_session_factory()
+    try:
+        user = db.query(User).filter(User.email == "buyer@jbs.fr").one()
+        account = db.get(Account, user.account_id)
+        assert account is not None
+        assert account.xano_company_id == 51
+        assert user.xano_token == "tok-jbs-1"
+        assert user.xano_token_at is not None
+    finally:
+        db.close()
+
+
+def test_two_companies_get_two_accounts(
+    client: TestClient,
+    db_session_factory: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_xano(monkeypatch)
+    profiles = {
+        "a@neiwa.fr": _xano_profile("a@neiwa.fr", 40, "tok-neiwa"),
+        "b@jbs.fr": _xano_profile("b@jbs.fr", 51, "tok-jbs"),
+    }
+    monkeypatch.setattr(
+        "app.api.routes.auth.verify_login",
+        lambda _url, email, _pw, **k: profiles[email],
+    )
+
+    for email in profiles:
+        assert (
+            client.post(
+                "/auth/login", json={"email": email, "password": "pw"}
+            ).status_code
+            == 200
+        )
+
+    from app.models import User
+
+    db = db_session_factory()
+    try:
+        a = db.query(User).filter(User.email == "a@neiwa.fr").one()
+        b = db.query(User).filter(User.email == "b@jbs.fr").one()
+        assert a.account_id != b.account_id
+    finally:
+        db.close()
+
+
+def test_local_login_captures_xano_identity_when_credentials_match(
+    client: TestClient,
+    test_user: dict[str, Any],
+    db_session_factory: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Un utilisateur LOCAL dont les identifiants passent aussi côté Xano
+    # récupère un token et bascule sur le compte de son entreprise.
+    _enable_xano(monkeypatch)
+    monkeypatch.setattr(
+        "app.api.routes.auth.verify_login",
+        lambda *a, **k: _xano_profile(test_user["email"], 40, "tok-fresh"),
+    )
+
+    response = client.post(
+        "/auth/login",
+        json={"email": test_user["email"], "password": test_user["password"]},
+    )
+    assert response.status_code == 200
+
+    from app.models import Account, User
+
+    db = db_session_factory()
+    try:
+        user = db.get(User, test_user["id"])
+        assert user.xano_token == "tok-fresh"
+        account = db.get(Account, user.account_id)
+        assert account.xano_company_id == 40
+    finally:
+        db.close()
+
+
+def test_local_login_still_works_when_xano_rejects(
+    client: TestClient,
+    test_user: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Mot de passe local valide mais inconnu de Xano (opérateur/dev) : le
+    # login passe, sans token — l'utilisateur reste sur son compte actuel.
+    _enable_xano(monkeypatch)
+    monkeypatch.setattr("app.api.routes.auth.verify_login", lambda *a, **k: None)
+
+    response = client.post(
+        "/auth/login",
+        json={"email": test_user["email"], "password": test_user["password"]},
+    )
+    assert response.status_code == 200

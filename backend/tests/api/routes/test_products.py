@@ -285,7 +285,7 @@ def test_returns_503_when_xano_not_configured(
     from app.api import deps
     from app.core.config import settings
 
-    monkeypatch.setattr(deps, "_xano_client", None)
+    monkeypatch.setattr(deps, "_service_xano_client", None)
     monkeypatch.setattr(settings, "XANO_BASE_URL", "")
 
     response = auth_client.get("/products", params={"search": "x"})

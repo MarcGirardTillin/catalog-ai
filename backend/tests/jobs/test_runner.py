@@ -17,7 +17,7 @@ def test_get_pipeline_http_client_follows_redirects(
     def fake_build(http_client: httpx.Client) -> EnrichmentPipeline:
         captured["client"] = http_client
         return EnrichmentPipeline(
-            read_product=lambda _pid: None, http_client=http_client
+            read_product=lambda _pid, _account: None, http_client=http_client
         )
 
     monkeypatch.setattr(runner, "build_pipeline", fake_build)

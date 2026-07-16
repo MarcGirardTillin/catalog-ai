@@ -88,7 +88,7 @@ def _build_extractor_returning(
     result: ExtractionResult,
     seen_calls: list[list[RawDocument]] | None = None,
 ) -> import_runner.BuildExtractor:
-    def build() -> import_runner.Extractor:
+    def build(_account_id: int) -> import_runner.Extractor:
         def extract(
             document: RawDocument | list[RawDocument],
         ) -> ExtractionResult:
@@ -265,7 +265,7 @@ def test_run_import_job_parse_failure_fails_job(
     def broken_parse(_data: bytes, _filename: str) -> RawDocument:
         raise ValueError("unreadable PDF")
 
-    def never_build() -> import_runner.Extractor:
+    def never_build(_account_id: int) -> import_runner.Extractor:
         raise AssertionError("extractor must not be built when parsing fails")
 
     import_runner.run_import_job(

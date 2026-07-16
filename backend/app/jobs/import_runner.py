@@ -36,9 +36,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Injection points (tests pass fakes; production uses the lazy defaults).
+# BuildExtractor takes the job's ACCOUNT id: the category tree fed to the
+# extractor is read from Xano with that company's token (multi-tenant).
 ParseFile = Callable[[bytes, str], "RawDocument"]
 Extractor = Callable[["RawDocument | list[RawDocument]"], "ExtractionResult"]
-BuildExtractor = Callable[[], Extractor]
+BuildExtractor = Callable[[int], Extractor]
 
 
 def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
@@ -47,17 +49,24 @@ def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
     return parse_file(data, filename)
 
 
-def _known_category_paths() -> list[str] | None:
+def _known_category_paths(account_id: int) -> list[str] | None:
     """Best-effort « parent > enfant » category paths from the boutique tree.
 
     Fed to the extractor so it maps supplier category labels onto the user's
-    own arborescence. Any failure (Xano unconfigured/unreachable) yields None —
-    extraction then keeps the raw supplier labels, as before.
+    own arborescence — read with the ACCOUNT's company token, so each tenant
+    matches against its own tree. Any failure (Xano unconfigured/unreachable,
+    expired token) yields None — extraction then keeps the raw supplier
+    labels, as before.
     """
     try:
-        from app.api.deps import get_xano_client
+        from app.api.deps import xano_client_for_account
 
-        options = get_xano_client().get_classification().get("categories", [])
+        db = SessionLocal()
+        try:
+            client = xano_client_for_account(db, account_id)
+        finally:
+            db.close()
+        options = client.get_classification().get("categories", [])
     except Exception:  # noqa: BLE001 — category matching is a best-effort bonus
         logger.warning("could not load categories for extraction matching")
         return None
@@ -77,11 +86,12 @@ def _known_category_paths() -> list[str] | None:
     return paths or None
 
 
-def _default_build_extractor() -> Extractor:
+def _default_build_extractor(account_id: int) -> Extractor:
     from app.imports.extract import build_extractor
 
     return build_extractor(
-        settings.ANTHROPIC_API_KEY, known_categories=_known_category_paths()
+        settings.ANTHROPIC_API_KEY,
+        known_categories=_known_category_paths(account_id),
     )
 
 
@@ -182,7 +192,7 @@ def _process(
         data = Path(file_path).read_bytes()
         documents.append(parse(data, file_name))
 
-    extractor = build()
+    extractor = build(job.account_id)
     result = extractor(documents)
 
     # Profile conventions that shape the STAGED data (not just the render):

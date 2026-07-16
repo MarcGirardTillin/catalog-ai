@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.clients.xano import PRODUCTS_PATH, XanoClient, XanoError
+from app.clients.xano import PRODUCTS_PATH, XanoClient, XanoError, verify_login
 
 # One realistic product in the Tillin `products_with_pagination` shape.
 TILLIN_PRODUCT = {
@@ -698,3 +698,85 @@ def test_upstream_500_and_timeout_raise() -> None:
         with pytest.raises(XanoError) as exc_info:
             client.search_products()
     assert exc_info.value.status_code == 504
+
+
+# --- Mode token (multi-entreprises) ------------------------------------------
+
+
+def test_token_client_sends_the_user_token() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("Authorization", "")
+        if "/product/" in request.url.path:
+            return httpx.Response(200, json={"id": 7, "title": "Robe"})
+        return httpx.Response(404)
+
+    client = XanoClient(
+        "https://tillin.test",
+        token="user-token-abc",
+        transport=httpx.MockTransport(handler),
+    )
+    product = client.get_product(7)
+
+    assert product is not None
+    assert seen["auth"] == "Bearer user-token-abc"
+
+
+def test_token_client_expired_token_raises_401_not_relogin() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path.endswith("/auth/login"):
+            raise AssertionError("token mode must NEVER re-login")
+        # Xano répond « the token is expired » en 401.
+        return httpx.Response(401, json={"message": "the token is expired"})
+
+    client = XanoClient(
+        "https://tillin.test",
+        token="expired-token",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(XanoError) as excinfo:
+        client.get_product(7)
+
+    assert excinfo.value.status_code == 401
+    assert excinfo.value.code == "xano_token_expired"
+
+
+def test_client_requires_token_or_credentials() -> None:
+    with pytest.raises(ValueError):
+        XanoClient("https://tillin.test")
+
+
+def test_verify_login_returns_token_and_company() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "tok-72h"})
+        if request.url.path.endswith("/auth/me"):
+            return httpx.Response(
+                200,
+                json={
+                    "email": "buyer@jbs.fr",
+                    "name_first": "Aze",
+                    "name_last": "Erty",
+                    "company": 51,
+                },
+            )
+        return httpx.Response(404)
+
+    profile = verify_login(
+        "https://tillin.test",
+        "buyer@jbs.fr",
+        "pw",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert profile == {
+        "email": "buyer@jbs.fr",
+        "full_name": "Aze Erty",
+        "token": "tok-72h",
+        "company_id": 51,
+    }

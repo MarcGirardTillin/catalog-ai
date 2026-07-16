@@ -55,7 +55,10 @@ logger = logging.getLogger(__name__)
 # overridable per job via config_json["title_template"] or account settings.
 DEFAULT_TITLE_TEMPLATE = "{title}"
 
-ProductReader = Callable[[int], Product | None]
+# (product_id, account_id) -> product. The account matters: the Xano read is
+# made with a token of THAT account's company, so each tenant only ever reads
+# its own catalog (multi-tenant scoping happens upstream, in Xano).
+ProductReader = Callable[[int, int], Product | None]
 
 _TRANSFORM_KEYS = ("copy", "title", "weights", "images")
 
@@ -217,7 +220,7 @@ class EnrichmentPipeline:
         self._firecrawl = firecrawl
 
     def __call__(self, db: Session, item: EnrichmentItem) -> None:
-        product = self._read_product(item.tillin_product_id)
+        product = self._read_product(item.tillin_product_id, item.account_id)
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"
@@ -287,7 +290,7 @@ class EnrichmentPipeline:
         Non-Shopify URLs fall back to Firecrawl extraction when configured.
         Raises LookupError when the URL yields no product page.
         """
-        product = self._read_product(item.tillin_product_id)
+        product = self._read_product(item.tillin_product_id, item.account_id)
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"

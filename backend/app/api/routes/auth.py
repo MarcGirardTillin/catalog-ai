@@ -1,11 +1,15 @@
 """Authentication routes: login, logout, and current-user."""
 
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.api.exceptions import AppException
 from app.api.schemas import LoginRequest, UserPublic
+from app.api.services.accounts import get_or_create_company_account
 from app.api.services.users import (
     authenticate_user,
     change_password,
@@ -31,6 +35,23 @@ def _set_session_cookie(response: Response, token: str) -> None:
     )
 
 
+def _attach_xano_identity(db: SessionDep, user: User, profile: dict[str, Any]) -> None:
+    """Bind a Xano-verified login to its company account and capture the token.
+
+    The company from `/auth/me` is authoritative: the user is (re)attached to
+    that company's account — catalog calls then carry THEIR token, and every
+    business row they create lands under their company. Committed with the
+    token in one go.
+    """
+    company_id = profile.get("company_id")
+    if company_id is not None:
+        account = get_or_create_company_account(db, int(company_id))
+        user.account_id = account.id
+    user.xano_token = profile.get("token")
+    user.xano_token_at = datetime.now(UTC)
+    db.commit()
+
+
 def _login_via_xano(db: SessionDep, email: str, password: str) -> User | None:
     """Fallback auth: accept valid Xano credentials, upserting a local user."""
     if not settings.xano_configured:
@@ -43,9 +64,11 @@ def _login_via_xano(db: SessionDep, email: str, password: str) -> User | None:
     )
     if profile is None:
         return None
-    return get_or_create_federated_user(
+    user = get_or_create_federated_user(
         db, email=profile["email"], full_name=profile.get("full_name")
     )
+    _attach_xano_identity(db, user, profile)
+    return user
 
 
 @router.post("/login", response_model=UserPublic)
@@ -54,8 +77,23 @@ def login(credentials: LoginRequest, response: Response, db: SessionDep) -> User
 
     Tries app-local users first, then falls back to Xano credentials so Tillin
     users can sign in with their Xano identifiers.
+
+    A LOCAL success still tries the same credentials against Xano (best
+    effort): when they match — the normal case for a Tillin user who also has
+    a local password — we capture a fresh user token and company binding, so
+    their catalog calls are company-scoped instead of falling back to the
+    service identity. A mismatch changes nothing.
     """
     user = authenticate_user(db, email=credentials.email, password=credentials.password)
+    if user is not None and settings.xano_configured:
+        profile = verify_login(
+            settings.XANO_BASE_URL,
+            credentials.email,
+            credentials.password,
+            data_source=settings.XANO_DATA_SOURCE,
+        )
+        if profile is not None:
+            _attach_xano_identity(db, user, profile)
     if user is None:
         user = _login_via_xano(db, credentials.email, credentials.password)
     if user is None:
