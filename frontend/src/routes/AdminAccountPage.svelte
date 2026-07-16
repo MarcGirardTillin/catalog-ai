@@ -20,6 +20,11 @@
     grantAdminAccountCredits,
     type CreditEntryPublic,
   } from "@/lib/api/credits"
+  import {
+    adminReadAccountSettingsAdmin,
+    adminUpdateAccountSettingsAdmin,
+  } from "@/client"
+  import { Switch } from "@/lib/components/ui/switch"
   import type { UsageByJob, UsageTimeseries } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Select } from "@/lib/components/ui/select"
@@ -164,6 +169,57 @@
       (a, b) => a.service.localeCompare(b.service) || a.metric.localeCompare(b.metric),
     )
   })
+
+  // --- Modules souscrits (offre par compte, admin-only) ---
+  const accountSettingsQuery = createQuery(() => ({
+    queryKey: ["admin", "account", id, "settings"],
+    queryFn: async () => {
+      const { data, error } = await adminReadAccountSettingsAdmin({
+        path: { account_id: accountId },
+      })
+      if (error || !data) throw new Error("admin_account_settings_load_failed")
+      return data
+    },
+  }))
+  type FeatureKey = "feature_import" | "feature_enrich" | "feature_studio"
+  const FEATURES: { key: FeatureKey; label: string; description: string }[] = [
+    {
+      key: "feature_import",
+      label: "Import fournisseurs",
+      description: "Analyse de bons de commande et transfert vers Tillin.",
+    },
+    {
+      key: "feature_enrich",
+      label: "Enrichissement",
+      description: "Fiches produit générées (textes, titres, poids, images).",
+    },
+    {
+      key: "feature_studio",
+      label: "Studio images",
+      description: "Normalisation et visuels porté mannequin.",
+    },
+  ]
+  let togglingFeature = $state<FeatureKey | null>(null)
+
+  async function toggleFeature(key: FeatureKey) {
+    const current = accountSettingsQuery.data
+    if (!current || togglingFeature) return
+    togglingFeature = key
+    // PUT complet (la route remplace) : on ne touche que le flag visé.
+    const { data, error } = await adminUpdateAccountSettingsAdmin({
+      path: { account_id: accountId },
+      body: { ...current, [key]: !(current[key] ?? true) },
+    })
+    togglingFeature = null
+    if (error || !data) {
+      toast.error("Mise à jour du module impossible.")
+      return
+    }
+    toast.success("Modules du compte mis à jour")
+    queryClient.invalidateQueries({ queryKey: ["admin", "account", id, "settings"] })
+    // Le client verra sa nav changer au prochain poll des stats.
+    queryClient.invalidateQueries({ queryKey: ["stats", "dashboard"] })
+  }
 
   // --- Crédits prépayés : solde, ledger et octroi manuel ---
   const creditsQuery = createQuery(() => ({
@@ -790,6 +846,44 @@
                   </table>
                 </div>
               {/if}
+            {/if}
+          </CardContent>
+        </Card>
+
+        <!-- Modules souscrits : l'offre vendue à CE client. Un module coupé
+             disparaît de sa navigation et ses routes répondent 403. -->
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle class="font-title text-sm">Modules</CardTitle>
+            <CardDescription class="text-muted-foreground text-xs">
+              Ce que ce client a souscrit. Un module désactivé disparaît de son
+              interface et ses actions sont refusées côté serveur.
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-3">
+            {#if accountSettingsQuery.isError}
+              <p class="text-destructive text-xs" role="alert">
+                Impossible de charger les réglages du compte.
+              </p>
+            {:else if !accountSettingsQuery.data}
+              <Skeleton class="h-16 w-full" />
+            {:else}
+              {#each FEATURES as feature (feature.key)}
+                <div class="flex items-start justify-between gap-4">
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <span class="text-sm font-medium">{feature.label}</span>
+                    <span class="text-muted-foreground text-xs">
+                      {feature.description}
+                    </span>
+                  </div>
+                  <Switch
+                    checked={accountSettingsQuery.data[feature.key] ?? true}
+                    disabled={togglingFeature !== null}
+                    aria-label={feature.label}
+                    onchange={() => toggleFeature(feature.key)}
+                  />
+                </div>
+              {/each}
             {/if}
           </CardContent>
         </Card>

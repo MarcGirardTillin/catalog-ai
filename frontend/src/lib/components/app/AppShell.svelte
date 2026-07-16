@@ -60,6 +60,8 @@
     href: string
     icon: Component
     isActive: (path: string) => boolean
+    /** Module requis (clé DashboardStats) : entrée masquée s'il est coupé. */
+    feature?: "feature_import" | "feature_enrich" | "feature_studio"
   }
 
   // Navigation en deux sections : le flux quotidien (Pipeline) et les
@@ -80,6 +82,7 @@
           href: "/imports",
           icon: FileUp,
           isActive: (path) => path.startsWith("/imports"),
+          feature: "feature_import",
         },
         {
           label: "Produits",
@@ -93,6 +96,7 @@
           icon: ListChecks,
           // /jobs, /jobs/:id et /items/:id relèvent tous des enrichissements.
           isActive: (path) => path.startsWith("/jobs") || path.startsWith("/items"),
+          feature: "feature_enrich",
         },
       ],
     },
@@ -104,12 +108,14 @@
           href: "/profiles",
           icon: SlidersHorizontal,
           isActive: (path) => path.startsWith("/profiles"),
+          feature: "feature_import",
         },
         {
           label: "Réglages d'enrichissement",
           href: "/enrichment",
           icon: WandSparkles,
           isActive: (path) => path.startsWith("/enrichment"),
+          feature: "feature_enrich",
         },
         {
           label: "Consommation",
@@ -121,11 +127,38 @@
     },
   ]
 
+  // --- Pastilles d'état + modules : polling léger des compteurs du
+  // dashboard ; le cache est partagé avec la page d'accueil (même queryKey).
+  const statsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+    refetchInterval: 30_000,
+  }))
+
+  // Modules souscrits par le compte (DashboardStats) : les entrées d'un
+  // module coupé disparaissent de la nav. Tant que les stats ne sont pas
+  // chargées on affiche tout (mieux qu'un flash de menu amputé) — le backend
+  // refuse de toute façon en 403. L'admin voit toujours tout.
+  const visibleBaseGroups = $derived.by(() => {
+    const stats = statsQuery.data
+    if (user.is_admin || !stats) return BASE_NAV_GROUPS
+    return BASE_NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => item.feature === undefined || stats[item.feature] !== false,
+      ),
+    })).filter((group) => group.items.length > 0)
+  })
+
   // Groupe Admin (console opérateur), visible seulement pour l'admin.
   const NAV_GROUPS = $derived(
     user.is_admin
       ? [
-          ...BASE_NAV_GROUPS,
+          ...visibleBaseGroups,
           {
             title: "Admin",
             items: [
@@ -153,21 +186,8 @@
             ],
           },
         ]
-      : BASE_NAV_GROUPS,
+      : visibleBaseGroups,
   )
-
-  // --- Pastilles d'état des traitements (menus Imports / Enrichissements) ---
-  // Polling léger des compteurs du dashboard ; le cache est partagé avec la
-  // page d'accueil (même queryKey). Remplace l'idée de notifications e-mail.
-  const statsQuery = createQuery(() => ({
-    queryKey: ["stats", "dashboard"],
-    queryFn: async () => {
-      const { data, error } = await statsDashboardStats()
-      if (error || !data) throw new Error("stats_load_failed")
-      return data
-    },
-    refetchInterval: 30_000,
-  }))
 
   type NavDot = { tone: string; title: string }
 

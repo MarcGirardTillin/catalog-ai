@@ -58,6 +58,7 @@
     onClose,
     onEnrich,
     onProductChanged,
+    studioEnabled = true,
   }: {
     productId: number | null
     importLabel?: string | null
@@ -68,6 +69,8 @@
       transforms: EnrichTransforms,
       instructionId: number | null,
     ) => void
+    /** Module Studio du compte : masque les verbes de traitement d'images. */
+    studioEnabled?: boolean
     /** Fiche modifiée dans Tillin (images ajoutées/traitées) : la liste qui a
      *  ouvert le panneau tient sa propre copie du produit et doit se
      *  resynchroniser — sans ça la vignette ne change qu'au rechargement. */
@@ -665,8 +668,9 @@
           {/if}
 
           <!-- Traitements sur l'image sélectionnée (défauts du compte) ;
-               le réglage fin (options, position, noms) vit au studio. -->
-          {#if (product.images ?? []).length > 0}
+               le réglage fin (options, position, noms) vit au studio.
+               Module Studio coupé : aucun verbe de traitement (403 sinon). -->
+          {#if studioEnabled && (product.images ?? []).length > 0}
             <div class="flex flex-wrap gap-2">
               <Button
                 variant="outline"

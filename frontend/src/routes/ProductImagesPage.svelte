@@ -9,7 +9,11 @@
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
-  import { settingsReadAccountSettings, type ProductImage } from "@/client"
+  import {
+    settingsReadAccountSettings,
+    statsDashboardStats,
+    type ProductImage,
+  } from "@/client"
   import {
     discardAsset,
     fetchAssetPreviews,
@@ -47,6 +51,16 @@
   let { appName, id }: { appName: string; id: string } = $props()
 
   const productId = $derived(Number(id))
+
+  // Module Studio du compte (cache partagé avec l'AppShell, même queryKey).
+  const featureStatsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
 
   // --- Produit + images sources (cache TanStack ; l'id est dans la clé) ---
   const queryClient = useQueryClient()
@@ -381,6 +395,21 @@
       ]}
     >
       <div class="mx-auto flex max-w-5xl flex-col gap-3 p-4">
+        {#if featureStatsQuery.data?.feature_studio === false}
+          <!-- Module Studio non souscrit : page accessible par URL directe
+               uniquement (la nav ne la propose plus) — message plutôt que
+               des boutons qui finiraient tous en 403. -->
+          <Card>
+            <CardContent class="flex flex-col items-start gap-3 py-6">
+              <p class="text-sm">
+                Le studio d'images n'est pas activé pour votre compte.
+              </p>
+              <Button variant="secondary" onclick={() => navigate("/products")}>
+                Retour aux produits
+              </Button>
+            </CardContent>
+          </Card>
+        {:else}
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="flex min-w-0 items-center gap-2">
             <Button
@@ -551,6 +580,7 @@
               {/if}
             {/each}
           {/if}
+        {/if}
         {/if}
       </div>
     </AppShell>

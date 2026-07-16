@@ -22,6 +22,7 @@
     catalogGetFilters,
     jobsCreateEnrichmentJob,
     productsListProducts,
+    statsDashboardStats,
   } from "@/client"
   import type { FilterOption, Product } from "@/client"
   import { insufficientCreditsMessage } from "@/lib/api/credits"
@@ -91,6 +92,20 @@
     },
   }))
   const filters = $derived(filtersQuery.data ?? null)
+
+  // Modules souscrits (cache partagé avec l'AppShell, même queryKey) :
+  // la sélection n'existe que pour l'enrichissement, l'icône studio que
+  // pour le studio — inutile de montrer des gestes qui finiraient en 403.
+  const featureStatsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
+  const canEnrich = $derived(featureStatsQuery.data?.feature_enrich !== false)
+  const canStudio = $derived(featureStatsQuery.data?.feature_studio !== false)
 
   // Produits avec des visuels studio encore à vérifier (pastille par ligne).
   const pendingImagingQuery = createQuery(() => ({
@@ -579,7 +594,7 @@
 
         <div class="text-muted-foreground flex items-center justify-between text-xs">
           <span>{total} produit{total > 1 ? "s" : ""}</span>
-          {#if selected.size > 0}
+          {#if selected.size > 0 && canEnrich}
             <button
               type="button"
               class="text-primary cursor-pointer underline underline-offset-2"
@@ -619,14 +634,18 @@
                 <thead>
                   <tr class="border-border border-b">
                     <th class="w-10 px-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        class="accent-primary block size-4"
-                        aria-label="Sélectionner tous les produits de la page"
-                        checked={allPageSelected}
-                        indeterminate={somePageSelected}
-                        onchange={togglePage}
-                      />
+                      <!-- La sélection ne sert qu'à lancer un enrichissement :
+                           sans le module, pas de cases (le geste serait un 403). -->
+                      {#if canEnrich}
+                        <input
+                          type="checkbox"
+                          class="accent-primary block size-4"
+                          aria-label="Sélectionner tous les produits de la page"
+                          checked={allPageSelected}
+                          indeterminate={somePageSelected}
+                          onchange={togglePage}
+                        />
+                      {/if}
                     </th>
                     <th class="w-14 px-2 py-2.5">
                       <span class="sr-only">Image</span>
@@ -662,14 +681,16 @@
                       onkeydown={(e) => onRowKeydown(e, product)}
                     >
                       <td class="px-4 {cellPad}">
-                        <input
-                          type="checkbox"
-                          class="accent-primary block size-4"
-                          aria-label={`Sélectionner ${label(product)}`}
-                          {checked}
-                          onclick={(e) => e.stopPropagation()}
-                          onchange={() => toggle(product.id)}
-                        />
+                        {#if canEnrich}
+                          <input
+                            type="checkbox"
+                            class="accent-primary block size-4"
+                            aria-label={`Sélectionner ${label(product)}`}
+                            {checked}
+                            onclick={(e) => e.stopPropagation()}
+                            onchange={() => toggle(product.id)}
+                          />
+                        {/if}
                       </td>
                       <td class="px-2 {cellPad}">
                         {#if product.images?.[0]?.url}
@@ -726,6 +747,7 @@
                       <td class="px-2 {cellPad} text-right whitespace-nowrap">
                         <!-- Accès direct au studio images, sans ouvrir le panneau.
                              Pastille ambre = visuels studio encore à vérifier. -->
+                        {#if canStudio}
                         <button
                           type="button"
                           class="text-muted-foreground hover:text-foreground hover:bg-muted/60 relative cursor-pointer rounded-md p-1.5 transition-colors"
@@ -747,6 +769,7 @@
                             ></span>
                           {/if}
                         </button>
+                        {/if}
                       </td>
                     </tr>
                   {/each}
@@ -846,7 +869,7 @@
                 produit{importProducts.items.length > 1 ? "s" : ""} —
                 {importProducts.linked_count} relié{importProducts.linked_count > 1 ? "s" : ""}
               </span>
-              {#if selected.size > 0}
+              {#if selected.size > 0 && canEnrich}
                 <button
                   type="button"
                   class="text-primary cursor-pointer underline underline-offset-2"
@@ -866,15 +889,17 @@
                     <thead>
                       <tr class="border-border border-b">
                         <th class="w-10 px-4 py-2.5">
-                          <input
-                            type="checkbox"
-                            class="accent-primary block size-4"
-                            aria-label="Sélectionner tous les produits reliés"
-                            disabled={importLinkedIds.length === 0}
-                            checked={allImportSelected}
-                            indeterminate={importSelectedCount > 0 && !allImportSelected}
-                            onchange={toggleImportPage}
-                          />
+                          {#if canEnrich}
+                            <input
+                              type="checkbox"
+                              class="accent-primary block size-4"
+                              aria-label="Sélectionner tous les produits reliés"
+                              disabled={importLinkedIds.length === 0}
+                              checked={allImportSelected}
+                              indeterminate={importSelectedCount > 0 && !allImportSelected}
+                              onchange={toggleImportPage}
+                            />
+                          {/if}
                         </th>
                         <th class="w-14 px-2 py-2.5">
                           <span class="sr-only">Image</span>
@@ -914,14 +939,16 @@
                         >
                           <td class="px-4 {cellPad}">
                             {#if linked && item.tillin_product_id != null}
-                              <input
-                                type="checkbox"
-                                class="accent-primary block size-4"
-                                aria-label={`Sélectionner ${importItemLabel(item)}`}
-                                {checked}
-                                onclick={(e) => e.stopPropagation()}
-                                onchange={() => toggle(item.tillin_product_id ?? -1)}
-                              />
+                              {#if canEnrich}
+                                <input
+                                  type="checkbox"
+                                  class="accent-primary block size-4"
+                                  aria-label={`Sélectionner ${importItemLabel(item)}`}
+                                  {checked}
+                                  onclick={(e) => e.stopPropagation()}
+                                  onchange={() => toggle(item.tillin_product_id ?? -1)}
+                                />
+                              {/if}
                             {/if}
                           </td>
                           <td class="px-2 {cellPad}">
@@ -990,7 +1017,7 @@
       </div>
 
       <!-- Sticky selection/action bar (offset by the sidebar width on desktop) -->
-      {#if selected.size > 0}
+      {#if selected.size > 0 && canEnrich}
         <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t sm:left-60">
           <!-- Panneau d'options replié/déplié (monté en permanence : les
                saisies survivent au repli, jusqu'à vider la sélection). -->
@@ -1035,8 +1062,9 @@
           importLabel={panelImportLabel}
           fallback={panelFallback}
           onClose={closePanel}
-          onEnrich={enrichSingle}
+          onEnrich={canEnrich ? enrichSingle : undefined}
           onProductChanged={onPanelProductChanged}
+          studioEnabled={canStudio}
         />
       {/if}
     </AppShell>
