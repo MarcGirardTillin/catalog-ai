@@ -7,6 +7,7 @@
   import ImageIcon from "@lucide/svelte/icons/image"
   import Images from "@lucide/svelte/icons/images"
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+  import Maximize2 from "@lucide/svelte/icons/maximize-2"
   import PersonStanding from "@lucide/svelte/icons/person-standing"
   import Scissors from "@lucide/svelte/icons/scissors"
   import Upload from "@lucide/svelte/icons/upload"
@@ -31,6 +32,7 @@
     type ProductDetail,
   } from "@/lib/api/products"
   import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
+  import Lightbox from "@/lib/components/imaging/Lightbox.svelte"
   import { Button } from "@/lib/components/ui/button"
   import { Skeleton } from "@/lib/components/ui/skeleton"
 
@@ -98,6 +100,9 @@
   // Traitement d'images à la carte (sprint imagerie, Phase A) : une opération
   // à la fois — image source choisie, verbe lancé, preview avant/après, puis
   // enregistrement vers Tillin (avec remplacement optionnel de l'originale).
+  // Zoom plein écran d'une image (null = fermé), comme au studio.
+  let lightboxSrc = $state<string | null>(null)
+
   let imgSel = $state<{ url: string; id: number | null } | null>(null)
   let imagingAsset = $state<ImageAssetPublic | null>(null)
   let imagingPreviews = $state<string[]>([])
@@ -311,6 +316,10 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    // Zoom ouvert : c'est LUI que Échap doit fermer. Les deux écoutent la
+    // fenêtre, donc sans cette garde une seule frappe fermerait aussi le
+    // panneau (stopPropagation ne départage pas deux écouteurs sur window).
+    if (lightboxSrc !== null) return
     if (event.key === "Escape") {
       event.stopPropagation()
       onClose()
@@ -531,24 +540,38 @@
             </p>
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {#each product.images ?? [] as image (image.url)}
-                <button
-                  type="button"
-                  class={`overflow-hidden rounded-md transition-shadow ${
-                    imgSel?.url === image.url
-                      ? "ring-primary ring-2"
-                      : "hover:ring-border hover:ring-1"
-                  }`}
-                  aria-label="Sélectionner cette image pour traitement"
-                  aria-pressed={imgSel?.url === image.url}
-                  onclick={() => selectImagingSource(image)}
-                >
-                  <img
-                    src={image.url}
-                    alt=""
-                    loading="lazy"
-                    class="bg-muted aspect-4/5 w-full object-cover"
-                  />
-                </button>
+                <!-- Le zoom est un bouton FRÈRE de la vignette : celle-ci est
+                     déjà un <button> (sélection pour traitement), et un bouton
+                     imbriqué serait du HTML invalide. -->
+                <div class="relative">
+                  <button
+                    type="button"
+                    class={`block w-full overflow-hidden rounded-md transition-shadow ${
+                      imgSel?.url === image.url
+                        ? "ring-primary ring-2"
+                        : "hover:ring-border hover:ring-1"
+                    }`}
+                    aria-label="Sélectionner cette image pour traitement"
+                    aria-pressed={imgSel?.url === image.url}
+                    onclick={() => selectImagingSource(image)}
+                  >
+                    <img
+                      src={image.url}
+                      alt=""
+                      loading="lazy"
+                      class="bg-muted aspect-4/5 w-full object-cover"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    class="bg-card/80 hover:bg-card text-foreground absolute top-1 right-1 rounded-full p-1.5 shadow-sm transition-colors"
+                    aria-label="Agrandir l'image"
+                    title="Agrandir"
+                    onclick={() => (lightboxSrc = image.url)}
+                  >
+                    <Maximize2 size={13} aria-hidden="true" />
+                  </button>
+                </div>
               {/each}
               {#each stagedImages as image (image.id)}
                 <div class="relative">
@@ -562,6 +585,16 @@
                   >
                     à enregistrer
                   </span>
+                  <!-- Zoom à GAUCHE : le coin droit porte déjà la croix. -->
+                  <button
+                    type="button"
+                    class="bg-card/80 hover:bg-card text-foreground absolute top-1 left-1 rounded-full p-1.5 shadow-sm transition-colors"
+                    aria-label="Agrandir {image.name}"
+                    title="Agrandir"
+                    onclick={() => (lightboxSrc = image.url)}
+                  >
+                    <Maximize2 size={13} aria-hidden="true" />
+                  </button>
                   <button
                     type="button"
                     class="bg-background/90 text-foreground hover:bg-background absolute top-1 right-1 rounded-full p-0.5 shadow-sm"
@@ -678,28 +711,47 @@
               </p>
             {/if}
             {#if imagingAsset && imagingPreviews.length > 0}
+              <!-- Avant/après : l'image entière est cliquable pour zoomer
+                   (aucune autre action ne lui est attachée), comme au studio. -->
               <div class="grid grid-cols-2 gap-2">
-                <div class="flex flex-col gap-1">
-                  <img
-                    src={imagingAsset.source_image ?? imgSel?.url}
-                    alt="Avant traitement"
-                    class="bg-muted aspect-4/5 w-full rounded-md object-cover"
-                  />
-                  <span class="text-muted-foreground text-center text-[11px]">
-                    Avant
-                  </span>
-                </div>
+                {#if imagingAsset.source_image ?? imgSel?.url}
+                  {@const before = imagingAsset.source_image ?? imgSel?.url ?? ""}
+                  <figure class="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      class="cursor-zoom-in"
+                      aria-label="Agrandir l'image d'origine"
+                      onclick={() => (lightboxSrc = before)}
+                    >
+                      <img
+                        src={before}
+                        alt="Avant traitement"
+                        class="bg-muted aspect-4/5 w-full rounded-md object-cover"
+                      />
+                    </button>
+                    <figcaption class="text-muted-foreground text-center text-[11px]">
+                      Avant
+                    </figcaption>
+                  </figure>
+                {/if}
                 {#each imagingPreviews as preview (preview)}
-                  <div class="flex flex-col gap-1">
-                    <img
-                      src={preview}
-                      alt="Résultat du traitement"
-                      class="bg-muted ring-primary/40 aspect-4/5 w-full rounded-md object-cover ring-2"
-                    />
-                    <span class="text-muted-foreground text-center text-[11px]">
+                  <figure class="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      class="cursor-zoom-in"
+                      aria-label="Agrandir le résultat"
+                      onclick={() => (lightboxSrc = preview)}
+                    >
+                      <img
+                        src={preview}
+                        alt="Résultat du traitement"
+                        class="bg-muted ring-primary/40 aspect-4/5 w-full rounded-md object-cover ring-2"
+                      />
+                    </button>
+                    <figcaption class="text-muted-foreground text-center text-[11px]">
                       Après
-                    </span>
-                  </div>
+                    </figcaption>
+                  </figure>
                 {/each}
               </div>
               {#if imagingAsset.source_product_image_id != null}
@@ -844,3 +896,11 @@
     </div>
   </div>
 </div>
+
+<!-- Hors du panneau, à dessein : `transition:fly` pose un transform sur celui-ci
+     pendant l'animation, ce qui ferait du panneau le référentiel de tout enfant
+     `fixed` — le zoom ne couvrirait alors plus l'écran. Déclaré après le
+     panneau, il passe aussi au-dessus à z-index égal. -->
+{#if lightboxSrc}
+  <Lightbox src={lightboxSrc} onClose={() => (lightboxSrc = null)} />
+{/if}
