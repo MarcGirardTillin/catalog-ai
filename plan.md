@@ -434,6 +434,32 @@ scraping robustness stays in the infra sprint (Firecrawl fallback).
 
 ### Deferred / open items
 
+- **Extensions Photoroom `/v2/edit` (étudiées 2026-07-17, non planifiées) —
+  Marc a demandé de les garder au plan :**
+  - **Flat lay (3e verbe d'imagerie)** : FASHN n'a PAS de génération flat lay
+    en sortie (il l'accepte seulement en entrée de `product-to-model`) ; c'est
+    Photoroom qui l'a (`flatLay.mode=ai.auto` sur `/v2/edit`, 1K/2K/4K).
+    Cas d'usage : hero/vignette « posé à plat » stylisé, cohérent au catalogue.
+  - **Ombre IA (AI Shadows)** : option de `/v2/edit`. Piège d'architecture :
+    l'ombre est « cuite » dans l'image composée par Photoroom → le
+    repositionnement local gratuit (drag/zoom/crop sur le cutout) ne peut pas
+    la régénérer — soit positionner d'abord et appliquer l'ombre en dernier,
+    soit re-payer un appel par re-render. À trancher côté UX avant de coder.
+  - **Facturation combinée confirmée (doc pricing)** : un appel `/v2/edit`
+    accepte autant d'options que voulu SANS surcoût — $0,10/image plan Plus,
+    AI Shadows/Backgrounds/Relighting inclus. Nuance : la normalisation
+    actuelle (segment ~$0,02 + Pillow local gratuit) est ~5× moins chère —
+    garder le pipeline actuel par défaut, `/v2/edit` seulement quand une
+    feature IA (ombre, flat lay) est demandée.
+  - **Test comparatif génération mannequin** : Photoroom **Virtual Model**
+    (`virtualModel.*` sur `/v2/edit`, plan Plus) accepte PLUSIEURS vues du
+    produit (`additionalProductImages[]`), pose native (~12 presets),
+    mannequin custom par image (cohérence catalogue) — vs FASHN (1 seule
+    `product_image`, fidélité textile réputée meilleure, pose via prompt
+    depuis 2026-07-16). À départager par un test live sur 2-3 produits réels
+    avant tout changement de provider. Alternative généraliste si le
+    multi-images devient central : Google Nano Banana Pro (jusqu'à 14 images
+    de référence fusionnées).
 - `generate_flat_photo` (worn → flat) — wait for a suitable FASHN endpoint.
 - Per-category fill ratio (already noted in the historical `images.py` spec).
 - Multi-provider routing — when a second provider exists for a verb.
