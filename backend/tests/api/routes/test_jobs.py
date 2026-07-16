@@ -499,3 +499,29 @@ def test_normalize_item_image_per_entry_and_revert(
         assert locked.status_code == 409
     finally:
         app.dependency_overrides.pop(get_photoroom_client, None)
+
+
+def test_failed_item_can_be_dismissed_as_rejected(auth_client: TestClient) -> None:
+    # « Écarter » un échec nettoie la liste sans rien supprimer.
+    job = _create_job(auth_client, [43])
+    item_id = _first_item_id(auth_client, job)
+
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    override = app.dependency_overrides[get_db]
+    db = next(override())
+    db_item = db.get(EnrichmentItem, item_id)
+    assert db_item is not None
+    db_item.status = "failed"
+    db.commit()
+
+    rejected = auth_client.post(f"/items/{item_id}/reject")
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    # Mais un échec ne se « valide » toujours pas.
+    db_item = db.get(EnrichmentItem, item_id)
+    db_item.status = "failed"
+    db.commit()
+    assert auth_client.post(f"/items/{item_id}/approve").status_code == 409

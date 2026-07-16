@@ -165,6 +165,28 @@ def test_resolver_aggregates_across_sites() -> None:
     assert result.url == f"{SITE}/products/g-short-double-navy"
 
 
+def test_non_shopify_site_returning_html_degrades_instead_of_crashing() -> None:
+    """Vu en prod (marque On) : un site NON-Shopify répond 200 avec du HTML
+    sur /search/suggest.json — le JSONDecodeError tuait l'item entier."""
+    html_site = "https://www.on-running.example"
+    real_store = _store({"g-short-double-navy": GOOD_CANDIDATE})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "www.on-running.example":
+            return httpx.Response(200, text="<!doctype html><html>challenge</html>")
+        return real_store.handle_request(request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        # Seul le site HTML : dégradation propre, pas d'exception.
+        alone = resolve_source_url(client, PRODUCT, [html_site])
+        # HTML + vrai store : le vrai store gagne quand même.
+        both = resolve_source_url(client, PRODUCT, [html_site, SITE])
+
+    assert alone.status == "needs_manual"
+    assert both.status == "resolved"
+    assert both.url == f"{SITE}/products/g-short-double-navy"
+
+
 # ---------------------------------------------------------------------------
 # Firecrawl fallback (plan Phase 3) — search + structured extraction, capped.
 # ---------------------------------------------------------------------------

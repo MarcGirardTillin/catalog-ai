@@ -2493,6 +2493,10 @@ export type Product = {
      * Images
      */
     images?: Array<ProductImage>;
+    /**
+     * Origins
+     */
+    origins?: Array<string>;
 };
 
 /**
@@ -2999,6 +3003,10 @@ export type UserPublic = {
      * Is Admin
      */
     is_admin?: boolean;
+    /**
+     * Account Name
+     */
+    account_name?: string | null;
 };
 
 /**
@@ -3260,6 +3268,12 @@ export type ProductsListProductsData = {
          * Filter by status
          */
         status?: string | null;
+        /**
+         * Connected
+         *
+         * true = connecté à un site e-commerce, false = non
+         */
+        connected?: boolean | null;
         /**
          * Page
          */

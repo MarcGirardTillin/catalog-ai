@@ -152,3 +152,16 @@ Fix : `app/imaging/uploads.py` décode chaque dépôt (Pillow + pillow-heif),
 convertit en JPEG ce qui n'est pas transférable, renomme avec l'extension du
 format RÉEL, et la route lève un 502 `images_rejected` si Tillin crée moins
 d'images que demandé — plus jamais de « succès » à zéro image.
+
+## 2026-07-16 — JSONDecodeError : un except trop étroit autour de .json()
+
+L'enrichissement d'un produit « On » échouait en 0 s (« JSONDecodeError:
+Expecting value ») quand Salomon passait. Cause : `search_suggest`/
+`fetch_product` parsent `response.json()`, mais le resolver n'attrapait que
+`httpx.HTTPError` — or un site NON-Shopify (on-running) répond 200 avec du
+HTML sur `/search/suggest.json`, et le JSONDecodeError (sous-classe de
+ValueError, PAS de HTTPError) traversait tout jusqu'à tuer l'item. Quatre
+points de fuite corrigés (2 resolver, 2 pipeline dont un sans try du tout).
+Leçon : autour d'un `.json()` sur une réponse de site TIERS, le contrat
+n'est jamais « JSON ou erreur HTTP » — un 200 HTML (anti-bot, site non
+conforme) est un cas nominal ; attraper `(httpx.HTTPError, ValueError)`.

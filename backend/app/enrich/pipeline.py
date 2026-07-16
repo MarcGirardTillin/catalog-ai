@@ -276,7 +276,20 @@ class EnrichmentPipeline:
                 source_product = resolved.source_product
             else:
                 site, handle = _split_product_url(resolved.url)
-                source_product = fetch_product(self._http, site, handle)
+                try:
+                    source_product = fetch_product(self._http, site, handle)
+                except (httpx.HTTPError, ValueError) as exc:
+                    # La page a répondu au resolver il y a quelques secondes
+                    # mais plus maintenant (rate-limit, HTML anti-bot…) : on
+                    # dégrade — copie sur données catalogue, sans la source —
+                    # plutôt que de faire échouer l'item entier.
+                    logger.warning(
+                        "item %s: source re-fetch failed for %s (%s) — "
+                        "staging without source data",
+                        item.id,
+                        resolved.url,
+                        exc,
+                    )
         self._stage_source(db, item, product, source_product, config)
 
         # 4. Copy generation — optional (needs an API key + its toggle).
@@ -303,7 +316,7 @@ class EnrichmentPipeline:
         if site:
             try:
                 source_product = fetch_product(self._http, site, handle)
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ValueError) as exc:
                 logger.warning(
                     "item %s: shopify fetch failed for %s (%s) — trying firecrawl",
                     item.id,

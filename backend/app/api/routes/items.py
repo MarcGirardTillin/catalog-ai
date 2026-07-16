@@ -111,7 +111,15 @@ def patch_item(
     return ItemPublic.model_validate(item, from_attributes=True)
 
 
-@router.post("/{item_id}/images/normalize", response_model=ItemPublic)
+@router.post(
+    "/{item_id}/images/normalize",
+    response_model=ItemPublic,
+    # Normaliser une image (détourage Photoroom) = module Studio, même
+    # depuis le review d'enrichissement : c'est le traitement payant qui est
+    # vendu à part, pas le flux dans lequel il est déclenché (décision Marc
+    # 2026-07-16 — le review restait un contournement du blocage studio).
+    dependencies=[Depends(require_feature("feature_studio"))],
+)
 def normalize_item_image_route(
     item_id: int,
     payload: ItemImageNormalizeRequest,

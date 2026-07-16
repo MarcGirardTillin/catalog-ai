@@ -202,6 +202,12 @@
                   <span class="font-medium">{user.full_name}</span>
                 {/if}
                 <span class="text-muted-foreground">{user.email}</span>
+                {#if user.account_name}
+                  <span class="text-muted-foreground">
+                    Entreprise :
+                    <span class="text-foreground font-medium">{user.account_name}</span>
+                  </span>
+                {/if}
               </div>
 
               <div class="flex items-center gap-2 text-xs">

@@ -390,6 +390,24 @@
             "description": "Filter by status"
           },
           {
+            "name": "connected",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true = connecté à un site e-commerce, false = non",
+              "title": "Connected"
+            },
+            "description": "true = connecté à un site e-commerce, false = non"
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -10113,6 +10131,13 @@
             },
             "type": "array",
             "title": "Images"
+          },
+          "origins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Origins"
           }
         },
         "type": "object",
@@ -11054,6 +11079,17 @@
             "type": "boolean",
             "title": "Is Admin",
             "default": false
+          },
+          "account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Name"
           }
         },
         "type": "object",

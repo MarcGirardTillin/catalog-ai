@@ -144,7 +144,10 @@ def _resolve_shopify(
         for query in _queries(product):
             try:
                 stubs = search_suggest(client, site, query)
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ValueError) as exc:
+                # ValueError = JSONDecodeError : un site NON-Shopify répond
+                # 200 avec du HTML sur /search/suggest.json (vu live : la
+                # marque On) — même dégradation qu'une erreur HTTP.
                 logger.warning("suggest failed on %s (%r): %s", site, query, exc)
                 continue
             for stub in stubs:
@@ -157,7 +160,7 @@ def _resolve_shopify(
                 seen_urls.add(url)
                 try:
                     full: dict[str, Any] | None = fetch_product(client, site, handle)
-                except httpx.HTTPError as exc:
+                except (httpx.HTTPError, ValueError) as exc:
                     logger.warning("fetch failed for %s: %s", url, exc)
                     continue
                 if full is None:

@@ -24,10 +24,12 @@ _ACCOUNT_CONFIG_DEFAULTS = (
     "meta_max_length",
 )
 
-# Review transitions allowed from each current status.
+# Review transitions allowed from each current status. `failed -> rejected`
+# est le geste « écarter » : nettoyer la liste d'un échec qu'on ne relancera
+# pas (l'item reste consultable, rien n'est supprimé).
 _REVIEW_TRANSITIONS = {
     "approved": ("ready_for_review",),
-    "rejected": ("ready_for_review", "approved"),
+    "rejected": ("ready_for_review", "approved", "failed"),
 }
 
 

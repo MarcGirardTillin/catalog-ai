@@ -38,6 +38,10 @@
     },
   }))
   const stats = $derived(statsQuery.data ?? null)
+  // Modules souscrits : le dashboard ne propose pas de portes vers un module
+  // coupé (le backend refuse en 403, mais un bouton mort reste un bouton).
+  const canImport = $derived(stats?.feature_import !== false)
+  const canEnrich = $derived(stats?.feature_enrich !== false)
   const errorMessage = $derived(
     statsQuery.isError ? "Impossible de charger les indicateurs." : null,
   )
@@ -162,11 +166,14 @@
   }
   const todoCards = $derived.by<TodoCard[] | null>(() => {
     if (!stats) return null
+    // Chaque compteur ne somme que les modules ACTIFS : un module coupé
+    // après coup peut laisser des données (ex. des échecs), et une carte
+    // pointant vers une page 403 serait pire que pas de carte.
     const cards: TodoCard[] = [
       {
         key: "review",
         label: "produits à vérifier",
-        count: stats.ready_items ?? 0,
+        count: canEnrich ? (stats.ready_items ?? 0) : 0,
         href: "/jobs",
         icon: ClipboardCheck,
         tone: "text-amber-600 dark:text-amber-500",
@@ -174,7 +181,7 @@
       {
         key: "transfer",
         label: "produits à transférer vers Tillin",
-        count: stats.imports_to_transfer ?? 0,
+        count: canImport ? (stats.imports_to_transfer ?? 0) : 0,
         href: "/imports",
         icon: Send,
         tone: "text-blue-600 dark:text-blue-500",
@@ -182,16 +189,20 @@
       {
         key: "running",
         label: "traitements en cours",
-        count: (stats.running_jobs ?? 0) + (stats.imports_processing ?? 0),
-        href: "/jobs",
+        count:
+          (canEnrich ? (stats.running_jobs ?? 0) : 0) +
+          (canImport ? (stats.imports_processing ?? 0) : 0),
+        href: canEnrich ? "/jobs" : "/imports",
         icon: LoaderCircle,
         tone: "text-muted-foreground",
       },
       {
         key: "failed",
         label: "échecs à relancer",
-        count: stats.failed_items ?? 0,
-        href: "/jobs",
+        count:
+          (canEnrich ? (stats.enrich_failed_items ?? 0) : 0) +
+          (canImport ? (stats.import_failed_items ?? 0) : 0),
+        href: canEnrich ? "/jobs" : "/imports",
         icon: TriangleAlert,
         tone: "text-destructive",
       },
@@ -218,20 +229,28 @@
         href: null as string | null,
         highlight: true,
       },
-      {
-        key: "enriched",
-        label: "Fiches enrichies",
-        value: String(stats.applied_this_month ?? 0),
-        href: null,
-        highlight: false,
-      },
-      {
-        key: "imported",
-        label: "Fiches importées",
-        value: String(stats.imported_this_month ?? 0),
-        href: null,
-        highlight: false,
-      },
+      ...(canEnrich
+        ? [
+            {
+              key: "enriched",
+              label: "Fiches enrichies",
+              value: String(stats.applied_this_month ?? 0),
+              href: null,
+              highlight: false,
+            },
+          ]
+        : []),
+      ...(canImport
+        ? [
+            {
+              key: "imported",
+              label: "Fiches importées",
+              value: String(stats.imported_this_month ?? 0),
+              href: null,
+              highlight: false,
+            },
+          ]
+        : []),
       {
         key: "usage",
         label: "Consommation du mois",
@@ -239,26 +258,30 @@
         href: "/usage",
         highlight: false,
       },
-      {
-        key: "avg",
-        label: "Temps moyen / produit",
-        value:
-          stats.avg_item_seconds != null
-            ? formatDuration(stats.avg_item_seconds)
-            : "—",
-        href: null,
-        highlight: false,
-      },
-      {
-        key: "auto",
-        label: "Résolution automatique",
-        value:
-          stats.auto_resolve_rate != null
-            ? `${Math.round(stats.auto_resolve_rate * 100)} %`
-            : "—",
-        href: null,
-        highlight: false,
-      },
+      ...(canEnrich
+        ? [
+            {
+              key: "avg",
+              label: "Temps moyen / produit",
+              value:
+                stats.avg_item_seconds != null
+                  ? formatDuration(stats.avg_item_seconds)
+                  : "—",
+              href: null,
+              highlight: false,
+            },
+            {
+              key: "auto",
+              label: "Résolution automatique",
+              value:
+                stats.auto_resolve_rate != null
+                  ? `${Math.round(stats.auto_resolve_rate * 100)} %`
+                  : "—",
+              href: null,
+              highlight: false,
+            },
+          ]
+        : []),
     ]
   })
 
@@ -273,10 +296,12 @@
       <div class="mx-auto flex max-w-4xl flex-col gap-4 p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Tableau de bord</h1>
-          <Button size="sm" onclick={() => navigate("/products?intent=enrich")}>
-            <Sparkles size={14} />
-            Enrichir des produits
-          </Button>
+          {#if canEnrich}
+            <Button size="sm" onclick={() => navigate("/products?intent=enrich")}>
+              <Sparkles size={14} />
+              Enrichir des produits
+            </Button>
+          {/if}
         </div>
 
         {#if errorMessage}
@@ -372,26 +397,30 @@
           <div class="mt-1 flex items-center justify-between gap-2">
             <h2 class="font-title text-sm font-bold">Activité récente</h2>
             <div class="flex items-center gap-3">
-              <a
-                href="/imports"
-                class="text-primary text-xs underline-offset-2 hover:underline"
-                onclick={(e) => {
-                  e.preventDefault()
-                  navigate("/imports")
-                }}
-              >
-                Imports →
-              </a>
-              <a
-                href="/jobs"
-                class="text-primary text-xs underline-offset-2 hover:underline"
-                onclick={(e) => {
-                  e.preventDefault()
-                  navigate("/jobs")
-                }}
-              >
-                Enrichissements →
-              </a>
+              {#if canImport}
+                <a
+                  href="/imports"
+                  class="text-primary text-xs underline-offset-2 hover:underline"
+                  onclick={(e) => {
+                    e.preventDefault()
+                    navigate("/imports")
+                  }}
+                >
+                  Imports →
+                </a>
+              {/if}
+              {#if canEnrich}
+                <a
+                  href="/jobs"
+                  class="text-primary text-xs underline-offset-2 hover:underline"
+                  onclick={(e) => {
+                    e.preventDefault()
+                    navigate("/jobs")
+                  }}
+                >
+                  Enrichissements →
+                </a>
+              {/if}
             </div>
           </div>
           {#if activity === null}

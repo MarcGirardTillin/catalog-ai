@@ -56,6 +56,14 @@ router = APIRouter(
 )
 
 
+# Le filtre « connecté e-commerce » n'existe pas côté Xano (origin[] n'est
+# pas filtrable par products_with_pagination — vérifié live : le paramètre
+# est ignoré). On parcourt donc les pages Xano et on re-pagine nous-mêmes,
+# avec un plafond de sécurité au-delà duquel le résultat est tronqué.
+_CONNECTED_SCAN_PAGE_SIZE = 100
+_CONNECTED_SCAN_MAX_PAGES = 10
+
+
 @router.get("", response_model=PaginatedResponse[Product])
 def list_products(
     xano: XanoDep,
@@ -66,10 +74,45 @@ def list_products(
     season: Annotated[int | None, Query(description="Filter by season id")] = None,
     tag: Annotated[int | None, Query(description="Filter by tag id")] = None,
     status: Annotated[str | None, Query(description="Filter by status")] = None,
+    connected: Annotated[
+        bool | None,
+        Query(description="true = connecté à un site e-commerce, false = non"),
+    ] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedResponse[Product]:
     """Return a page of canonical products matching the search + filters."""
+    if connected is not None:
+        matched: list[Product] = []
+        for scan_page in range(1, _CONNECTED_SCAN_MAX_PAGES + 1):
+            chunk = xano.search_products(
+                text=search,
+                brand=brand,
+                category=category,
+                supplier=supplier,
+                season=season,
+                tag=tag,
+                status=status,
+                page=scan_page,
+                per_page=_CONNECTED_SCAN_PAGE_SIZE,
+            )
+            matched.extend(p for p in chunk.items if bool(p.origins) == connected)
+            if scan_page * _CONNECTED_SCAN_PAGE_SIZE >= chunk.total:
+                break
+        else:
+            logger.warning(
+                "connected filter truncated at %d products",
+                _CONNECTED_SCAN_MAX_PAGES * _CONNECTED_SCAN_PAGE_SIZE,
+            )
+        start = (page - 1) * per_page
+        total = len(matched)
+        return PaginatedResponse(
+            items=matched[start : start + per_page],
+            total=total,
+            page=page,
+            page_size=per_page,
+            total_pages=(total + per_page - 1) // per_page if per_page else 0,
+        )
     result = xano.search_products(
         text=search,
         brand=brand,

@@ -22,6 +22,7 @@
   import type { ItemPublic, Product } from "@/client"
   import { client } from "@/client/client.gen"
   import { insufficientCreditsMessage } from "@/lib/api/credits"
+  import { statsDashboardStats } from "@/client"
   import { normalizeItemImage } from "@/lib/api/imaging"
   import { Button } from "@/lib/components/ui/button"
   import {
@@ -179,6 +180,15 @@
   // Normalisation par image (les originales sont stagées par défaut) :
   // une opération à la fois, l'item rechargé porte la nouvelle entrée.
   let normalizingUrl = $state<string | null>(null)
+
+  // Module Studio : la normalisation d'images est vendue à part — sans lui,
+  // pas de bouton (le backend refuse de toute façon en 403).
+  let canStudio = $state(true)
+  $effect(() => {
+    statsDashboardStats().then(({ data }) => {
+      if (data) canStudio = data.feature_studio !== false
+    })
+  })
 
   async function normalizeOne(image: { url: string; asset_id?: number }) {
     const it = item
@@ -652,6 +662,19 @@
                   {busy ? "…" : "Régénérer"}
                 </Button>
               {/if}
+              {#if item.status === "failed"}
+                <!-- Nettoyage : un échec qu'on ne relancera pas passe en
+                     « écarté » (rien n'est supprimé, l'item reste lisible). -->
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="text-destructive"
+                  disabled={busy}
+                  onclick={() => decide("reject")}
+                >
+                  Écarter
+                </Button>
+              {/if}
               <StatusBadge status={item.status} />
             </div>
           </div>
@@ -986,7 +1009,7 @@
                           <Check size={14} />
                         </span>
                       </button>
-                      {#if reviewable && isApplied("images")}
+                      {#if reviewable && isApplied("images") && canStudio}
                         <button
                           type="button"
                           class="bg-card/90 border-input text-foreground hover:bg-card absolute right-1.5 bottom-1.5 flex cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-60"

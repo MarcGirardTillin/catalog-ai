@@ -23,6 +23,17 @@ from app.models import User
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _user_public(db: SessionDep, user: User) -> UserPublic:
+    """UserPublic enrichi du nom de son compte (= son entreprise Tillin)."""
+    public = UserPublic.model_validate(user, from_attributes=True)
+    if user.account_id is not None:
+        from app.models import Account
+
+        account = db.get(Account, user.account_id)
+        public.account_name = account.name if account else None
+    return public
+
+
 def _set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=settings.AUTH_COOKIE_NAME,
@@ -105,7 +116,7 @@ def login(credentials: LoginRequest, response: Response, db: SessionDep) -> User
             message="Incorrect email or password",
         )
     _set_session_cookie(response, create_access_token(user.id))
-    return UserPublic.model_validate(user, from_attributes=True)
+    return _user_public(db, user)
 
 
 @router.post("/logout", status_code=204)
@@ -115,9 +126,9 @@ def logout(response: Response) -> None:
 
 
 @router.get("/me", response_model=UserPublic)
-def read_current_user(current_user: CurrentUserDep) -> UserPublic:
+def read_current_user(db: SessionDep, current_user: CurrentUserDep) -> UserPublic:
     """Return the currently authenticated user."""
-    return UserPublic.model_validate(current_user, from_attributes=True)
+    return _user_public(db, current_user)
 
 
 class PasswordChangeRequest(BaseModel):

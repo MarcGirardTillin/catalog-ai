@@ -45,6 +45,22 @@ def _bulk_images_path(product_id: int) -> str:
     return f"/product_image/{product_id}/bulk"
 
 
+def _collect_origins(raw: Mapping[str, Any]) -> list[str]:
+    """Connexions e-commerce du produit : `origin[].third_party`, dédupliqué.
+
+    Tillin y trace chaque liaison boutique en ligne ({id, third_party,
+    location_id}) — « Shopify », « Prestashop »… Liste vide = non connecté.
+    """
+    seen: list[str] = []
+    for entry in _as_list(raw.get("origin")):
+        if not isinstance(entry, Mapping):
+            continue
+        name = str(entry.get("third_party") or "").strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
 def _brand_website_urls_path(brand_id: int) -> str:
     return f"{BRANDS_PATH}/{brand_id}/website_urls"
 
@@ -445,6 +461,7 @@ def _map_product(
         price=price,
         variants=variants,
         images=_collect_images(raw),
+        origins=_collect_origins(raw),
     )
 
 

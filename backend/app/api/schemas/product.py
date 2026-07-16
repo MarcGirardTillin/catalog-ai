@@ -69,6 +69,9 @@ class Product(BaseModel):
     price: Decimal | None = None
     variants: list[ProductVariant] = Field(default_factory=list)
     images: list[ProductImage] = Field(default_factory=list)
+    # Connexions e-commerce (Tillin `origin[].third_party`, dédupliquées) :
+    # « Shopify », « Prestashop », « Woocommerce »… — vide = non connecté.
+    origins: list[str] = Field(default_factory=list)
 
 
 class ProductImagesUploadResult(BaseModel):

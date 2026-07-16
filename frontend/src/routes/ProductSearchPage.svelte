@@ -76,6 +76,11 @@
   let page = $state(1)
 
   // Filter options (loaded once) + current selections.
+  // Statut Tillin : "2" = actif (défaut). Libellés 1/3 déduits des données
+  // (1 = jamais publié, 3 = fiches vides) — à ajuster si Tillin dit mieux.
+  let status = $state<string>("2")
+  // "" = tous, "yes" = connectés à un site e-commerce, "no" = non connectés.
+  let connected = $state<"" | "yes" | "no">("")
   let brand = $state<number | null>(null)
   let category = $state<number | null>(null)
   let season = $state<number | null>(null)
@@ -106,6 +111,11 @@
   }))
   const canEnrich = $derived(featureStatsQuery.data?.feature_enrich !== false)
   const canStudio = $derived(featureStatsQuery.data?.feature_studio !== false)
+  const canImport = $derived(featureStatsQuery.data?.feature_import !== false)
+  const visibleTabs = $derived(canImport ? [...TABS] : TABS.filter((t) => t.key !== "import"))
+  $effect(() => {
+    if (!canImport && tab === "import") tab = "catalog"
+  })
 
   // Produits avec des visuels studio encore à vérifier (pastille par ligne).
   const pendingImagingQuery = createQuery(() => ({
@@ -136,6 +146,8 @@
         season,
         supplier,
         tag,
+        status,
+        connected,
       },
     ],
     queryFn: async () => {
@@ -147,6 +159,8 @@
           season,
           supplier,
           tag,
+          status: status || null,
+          connected: connected === "" ? null : connected === "yes",
           page,
           per_page: prefs.products_per_page,
         },
@@ -233,6 +247,8 @@
     search = ""
     submittedSearch = ""
     brand = category = season = supplier = tag = null
+    status = "2"
+    connected = ""
     page = 1
   }
 
@@ -531,7 +547,11 @@
           </div>
         {/if}
 
-        <TabBar tabs={TABS} bind:value={tab} label="Sources de produits" />
+        <!-- « Par import » n'existe qu'avec le module Import (ses lectures
+             répondraient 403). visibleTabs recale aussi l'onglet actif. -->
+        {#if visibleTabs.length > 1}
+          <TabBar tabs={visibleTabs} bind:value={tab} label="Sources de produits" />
+        {/if}
 
         {#if tab === "catalog"}
         <div class="relative">
@@ -550,12 +570,29 @@
         </div>
 
         {#if filters}
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             <FilterSelect label="Marque" options={filters.brands ?? []} bind:value={brand} onchange={onFilterChange} />
             <FilterSelect label="Catégorie" options={filters.categories ?? []} bind:value={category} onchange={onFilterChange} />
             <FilterSelect label="Saison" options={filters.seasons ?? []} bind:value={season} onchange={onFilterChange} />
             <FilterSelect label="Fournisseur" options={filters.suppliers ?? []} bind:value={supplier} onchange={onFilterChange} />
             <FilterSelect label="Tag" options={filters.tags ?? []} bind:value={tag} onchange={onFilterChange} />
+            <label class="flex min-w-0 flex-1 flex-col gap-1">
+              <span class="text-foreground text-xs font-medium">Statut</span>
+              <Select class="px-2" bind:value={status} onchange={onFilterChange}>
+                <option value="2">Actifs</option>
+                <option value="1">Non publiés</option>
+                <option value="3">Archivés</option>
+                <option value="">Tous</option>
+              </Select>
+            </label>
+            <label class="flex min-w-0 flex-1 flex-col gap-1">
+              <span class="text-foreground text-xs font-medium">Site e-commerce</span>
+              <Select class="px-2" bind:value={connected} onchange={onFilterChange}>
+                <option value="">Tous</option>
+                <option value="yes">Connectés</option>
+                <option value="no">Non connectés</option>
+              </Select>
+            </label>
           </div>
         {/if}
 
@@ -723,6 +760,18 @@
                           {#if product.brand?.name}
                             <span class="text-muted-foreground text-xs sm:hidden">
                               {product.brand.name}
+                            </span>
+                          {/if}
+                          {#if (product.origins ?? []).length > 0}
+                            <!-- Connexion e-commerce (origin[].third_party). -->
+                            <span class="flex flex-wrap gap-1">
+                              {#each product.origins ?? [] as origin (origin)}
+                                <span
+                                  class="bg-success text-success-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                                >
+                                  {origin}
+                                </span>
+                              {/each}
                             </span>
                           {/if}
                         </div>

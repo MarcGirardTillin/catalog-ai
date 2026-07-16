@@ -4323,6 +4323,13 @@ export const ProductSchema = {
             },
             type: 'array',
             title: 'Images'
+        },
+        origins: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Origins'
         }
     },
     type: 'object',
@@ -5283,6 +5290,17 @@ export const UserPublicSchema = {
             type: 'boolean',
             title: 'Is Admin',
             default: false
+        },
+        account_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Account Name'
         }
     },
     type: 'object',

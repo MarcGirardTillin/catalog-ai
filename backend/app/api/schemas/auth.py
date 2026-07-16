@@ -20,3 +20,6 @@ class UserPublic(BaseModel):
     # Platform operator: unlocks the admin console (pricing, per-client
     # monitoring). Regular client users are always False.
     is_admin: bool = False
+    # Nom du compte (= l'entreprise Tillin de l'utilisateur), affiché dans
+    # les paramètres. None tant que l'utilisateur n'a pas de compte.
+    account_name: str | None = None

@@ -72,7 +72,12 @@
       toast.error("Enregistrement impossible.")
       return
     }
-    brands = (brands ?? []).map((b) => (b.id === data.id ? data : b))
+    // Fusion, pas remplacement : la réponse du PUT ne porte pas le nom (le
+    // backend ne le relit pas) — l'écraser rendait la marque « Sans nom »,
+    // que le filtre de recherche actif faisait alors disparaître de la liste.
+    brands = (brands ?? []).map((b) =>
+      b.id === data.id ? { ...b, website_urls: data.website_urls } : b,
+    )
     editingId = null
     toast.success("Sites enregistrés")
   }
