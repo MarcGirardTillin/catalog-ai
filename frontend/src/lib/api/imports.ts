@@ -22,6 +22,7 @@ import {
   importsPreviewImportFile,
   importsPreviewImportRows,
   importsReadImport,
+  importsReconcileImport,
   importsSetImportLocation,
   importsSetImportProfile,
   importsTransferImport,
@@ -42,6 +43,7 @@ import type {
   ImportProducts,
   ImportProfileConfigOutput,
   ImportProfilePublic as GenImportProfilePublic,
+  ImportReconcileResult,
   ImportRenderPreview,
   ImportTransferResult,
 } from "@/client"
@@ -65,6 +67,7 @@ export type ImportProductsResponse = Required<ImportProducts> & {
 }
 export type ImportRowsPreview = Required<ImportRenderPreview>
 export type TransferResult = Required<ImportTransferResult>
+export type ReconcileResult = Required<ImportReconcileResult>
 export type ImportFilePreviewSheet = Required<GenImportFilePreviewSheet>
 export type ImportFilePreview = GenImportFilePreview & {
   sheets: ImportFilePreviewSheet[]
@@ -292,6 +295,16 @@ export function transferImport(
 ) {
   return importsTransferImport({ path: { import_id: id }, body }) as Promise<{
     data?: TransferResult
+    error?: unknown
+  }>
+}
+
+/** Réconciliation après un transfert dont la réponse s'est perdue (timeout) :
+ * chaque item encore « à transférer » est recherché dans Tillin par référence ;
+ * trouvé → marqué transféré + relié, introuvable → inchangé. */
+export function reconcileImport(id: number) {
+  return importsReconcileImport({ path: { import_id: id } }) as Promise<{
+    data?: ReconcileResult
     error?: unknown
   }>
 }

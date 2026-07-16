@@ -6,6 +6,7 @@
   import Eye from "@lucide/svelte/icons/eye"
   import EyeOff from "@lucide/svelte/icons/eye-off"
   import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw"
   import Send from "@lucide/svelte/icons/send"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { toast } from "svelte-sonner"
@@ -17,6 +18,7 @@
     getImportProducts,
     getImportRows,
     linkImportProducts,
+    reconcileImport,
     transferImport,
     type ImportJobPublic,
     type ImportRowsPreview,
@@ -126,6 +128,39 @@
   let transferring = $state(false)
   let transferred = $state(false)
 
+  // --- Réconciliation (transfert dont la réponse s'est perdue) ---
+  let reconciling = $state(false)
+  // Mise en avant après un timeout de transfert (le bouton reste toujours
+  // accessible tant qu'il y a des items « à transférer »).
+  let reconcilePrompt = $state(false)
+
+  async function runReconcile() {
+    if (reconciling) return
+    reconciling = true
+    const { data, error } = await reconcileImport(importId)
+    reconciling = false
+    if (error || !data) {
+      toast.error("Réconciliation avec Tillin impossible.")
+      return
+    }
+    reconcilePrompt = false
+    if (data.applied === 0) {
+      toast.info(
+        "Aucun produit de cet import trouvé dans Tillin — le transfert n'a pas abouti.",
+      )
+      return
+    }
+    toast.success(
+      `${data.applied} produit${data.applied > 1 ? "s" : ""} retrouvé${data.applied > 1 ? "s" : ""} dans Tillin et marqué${data.applied > 1 ? "s" : ""} transféré${data.applied > 1 ? "s" : ""}` +
+        (data.not_found.length > 0
+          ? ` — ${data.not_found.length} introuvable${data.not_found.length > 1 ? "s" : ""}`
+          : ""),
+    )
+    if (data.not_found.length === 0) transferred = true
+    // La page recharge job + items (statuts et liaisons mis à jour).
+    onTransferred()
+  }
+
   function toggleTransfer() {
     transferOpen = !transferOpen
     if (transferOpen) {
@@ -150,6 +185,18 @@
     })
     transferring = false
     if (error || !data || !data.ok) {
+      // Timeout côté Tillin : l'import a probablement abouti là-bas alors que
+      // la réponse s'est perdue — on propose la réconciliation au lieu d'un
+      // simple échec (sinon les items restent « à vérifier » à tort).
+      if ((error as { code?: string } | null)?.code === "transfer_pending") {
+        transferOpen = false
+        reconcilePrompt = true
+        toast.warning(
+          "Tillin met du temps à traiter l'import — il a probablement abouti. " +
+            "Utilisez « Réconcilier avec Tillin » pour vérifier.",
+        )
+        return
+      }
       toast.error("Transfert vers Tillin impossible.")
       return
     }
@@ -283,6 +330,22 @@
           ? "s"
           : ""} vers Tillin
       </Button>
+      {#if transferSummary.kept > 0}
+        <Button
+          variant={reconcilePrompt ? "default" : "outline"}
+          size="sm"
+          disabled={reconciling}
+          title="Vérifie dans Tillin, produit par produit, si un transfert a déjà abouti (utile après un transfert interrompu ou expiré) et met à jour les statuts."
+          onclick={runReconcile}
+        >
+          {#if reconciling}
+            <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+          {:else}
+            <RefreshCw size={14} aria-hidden="true" />
+          {/if}
+          Réconcilier avec Tillin
+        </Button>
+      {/if}
       {#if transferSummary.applied > 0}
         <span
           class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
@@ -293,6 +356,13 @@
         </span>
       {/if}
     </div>
+    {#if reconcilePrompt}
+      <p class="text-warning-foreground text-xs" role="alert">
+        Le transfert a expiré côté Tillin mais a probablement abouti —
+        cliquez sur « Réconcilier avec Tillin » pour vérifier et mettre à
+        jour les statuts.
+      </p>
+    {/if}
 
     {#if hasTransferred}
       <!-- Pont vers la suite du pipeline : produits créés dans Tillin. -->

@@ -87,6 +87,18 @@ class ImportLinkResult(BaseModel):
     not_found: list[str] = Field(default_factory=list)  # unresolved refs
 
 
+class ImportReconcileResult(BaseModel):
+    """POST /imports/{id}/reconcile outcome (lost-transfer recovery).
+
+    Each still-transferable item is looked up in Tillin by reference:
+    found → marked `applied` + linked; not found → left as-is.
+    """
+
+    checked: int = 0
+    applied: int = 0
+    not_found: list[str] = Field(default_factory=list)  # unresolved refs
+
+
 class ImportProductLine(BaseModel):
     """One row of the « Par import » products view (local data only)."""
 

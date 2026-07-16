@@ -2627,6 +2627,31 @@ export const ImportProfilesBulkUpdateSchema = {
     description: 'Harmonize the catalogue-wide conventions across several profiles.\n\nOnly the fields that behave the same for the whole catalogue are\nbulk-editable; None = leave that field untouched on every profile.'
 } as const;
 
+export const ImportReconcileResultSchema = {
+    properties: {
+        checked: {
+            type: 'integer',
+            title: 'Checked',
+            default: 0
+        },
+        applied: {
+            type: 'integer',
+            title: 'Applied',
+            default: 0
+        },
+        not_found: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Not Found'
+        }
+    },
+    type: 'object',
+    title: 'ImportReconcileResult',
+    description: 'POST /imports/{id}/reconcile outcome (lost-transfer recovery).\n\nEach still-transferable item is looked up in Tillin by reference:\nfound → marked `applied` + linked; not found → left as-is.'
+} as const;
+
 export const ImportRenderPreviewSchema = {
     properties: {
         columns: {

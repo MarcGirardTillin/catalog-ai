@@ -1547,6 +1547,29 @@ export type ImportProfilesBulkUpdate = {
 };
 
 /**
+ * ImportReconcileResult
+ *
+ * POST /imports/{id}/reconcile outcome (lost-transfer recovery).
+ *
+ * Each still-transferable item is looked up in Tillin by reference:
+ * found → marked `applied` + linked; not found → left as-is.
+ */
+export type ImportReconcileResult = {
+    /**
+     * Checked
+     */
+    checked?: number;
+    /**
+     * Applied
+     */
+    applied?: number;
+    /**
+     * Not Found
+     */
+    not_found?: Array<string>;
+};
+
+/**
  * ImportRenderPreview
  *
  * JSON preview of the rendered Tillin import CSV.
@@ -3269,11 +3292,11 @@ export type ProductsListProductsData = {
          */
         status?: string | null;
         /**
-         * Connected
+         * Ecommerce
          *
-         * true = connecté à un site e-commerce, false = non
+         * Connexion e-commerce (natif Xano) : 1 tous, 2 connectés, 3 partiellement connectés, 4 non connectés
          */
-        connected?: boolean | null;
+        ecommerce?: number | null;
         /**
          * Page
          */
@@ -4306,6 +4329,36 @@ export type ImportsTransferImportResponses = {
 };
 
 export type ImportsTransferImportResponse = ImportsTransferImportResponses[keyof ImportsTransferImportResponses];
+
+export type ImportsReconcileImportData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/reconcile';
+};
+
+export type ImportsReconcileImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsReconcileImportError = ImportsReconcileImportErrors[keyof ImportsReconcileImportErrors];
+
+export type ImportsReconcileImportResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportReconcileResult;
+};
+
+export type ImportsReconcileImportResponse = ImportsReconcileImportResponses[keyof ImportsReconcileImportResponses];
 
 export type ImportsLinkImportProductsData = {
     body?: never;

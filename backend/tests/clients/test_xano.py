@@ -118,12 +118,17 @@ def test_search_maps_payload_and_sends_filters() -> None:
         return httpx.Response(200, json={"items": [TILLIN_PRODUCT], "itemsTotal": 1})
 
     with _client(httpx.MockTransport(handler)) as client:
-        page = client.search_products(text="veste", brand=1332, page=2, per_page=10)
+        page = client.search_products(
+            text="veste", brand=1332, status="2", ecommerce=4, page=2, per_page=10
+        )
 
     request = captured["request"]
     assert request.headers["Authorization"] == "Bearer jwt-token"
     assert request.url.params["search_query_text"] == "veste"
     assert request.url.params["search_query_brand"] == "1332"
+    assert request.url.params["search_query_status"] == "2"
+    # Connexion e-commerce (natif Xano) : 1 tous, 2 connectés, 3 partiels, 4 non.
+    assert request.url.params["search_query_ecommerce"] == "4"
     assert request.url.params["external[page]"] == "2"
     assert request.url.params["external[per_page]"] == "10"
 

@@ -925,6 +925,8 @@ class _FakeXano:
         # Canned search results, keyed by the normalized (strip+lower) query.
         self.search_results: dict[str, list[Any]] = {}
         self.search_calls: list[str] = []
+        # When set, product_import raises instead of succeeding.
+        self.import_error: Exception | None = None
 
     def product_import(
         self, *, file_name: str, csv_bytes: bytes, location_id: int
@@ -936,6 +938,8 @@ class _FakeXano:
                 "location_id": location_id,
             }
         )
+        if self.import_error is not None:
+            raise self.import_error
         return {"ok": True}
 
     def search_products(
@@ -1097,6 +1101,120 @@ def test_transfer_nothing_to_transfer(
     # Nothing was marked applied and no transfer was recorded.
     db = _db()
     assert db.get(EnrichmentJob, job["id"]).config_json.get("transfer") is None
+
+
+def test_transfer_timeout_maps_to_transfer_pending(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """Xano keeps processing after our timeout: nothing is marked locally and
+    the caller is pointed at the reconcile flow instead of a plain failure."""
+    from app.clients.xano import XanoError
+
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    fake_xano.import_error = XanoError(
+        "Xano request timed out", code="xano_timeout", status_code=504
+    )
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 7, "profile_id": profile_id},
+    )
+    assert response.status_code == 504
+    assert response.json()["code"] == "transfer_pending"
+    # Outcome unknown: items stay untouched and no transfer is recorded.
+    db = _db()
+    statuses = {
+        item.payload_json["supplier_ref"]: item.status
+        for item in db.query(ImportItem).filter(ImportItem.job_id == job["id"])
+    }
+    assert statuses == {"REF-1": "ready_for_review", "REF-REJ": "rejected"}
+    assert db.get(EnrichmentJob, job["id"]).config_json.get("transfer") is None
+
+
+def test_transfer_other_xano_errors_pass_through(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    from app.clients.xano import XanoError
+
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    fake_xano.import_error = XanoError("Xano returned an error response")
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 7, "profile_id": profile_id},
+    )
+    assert response.status_code == 502
+    assert response.json()["code"] == "xano_error"
+
+
+# -- reconcile (POST /reconcile) ------------------------------------------------
+
+
+def test_reconcile_applies_found_items_and_records_transfer(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """Lost-transfer recovery: items found in Tillin become applied + linked,
+    and the transfer facts are recorded so link-products/enrich work."""
+    job = _staged_job(import_client)
+    import_client.put(f"/imports/{job['id']}/location", json={"location_id": 11})
+    fake_xano.search_results = {
+        "ref-1": [_tillin_product(101, "REF-1")],
+    }
+
+    response = import_client.post(f"/imports/{job['id']}/reconcile")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"checked": 1, "applied": 1, "not_found": []}
+    # Rejected items are never looked up.
+    assert fake_xano.search_calls == ["REF-1"]
+
+    db = _db()
+    item = (
+        db.query(ImportItem)
+        .filter(ImportItem.job_id == job["id"], ImportItem.status == "applied")
+        .one()
+    )
+    assert item.tillin_product_id == 101
+    transfer = db.get(EnrichmentJob, job["id"]).config_json["transfer"]
+    assert transfer["reconciled"] is True
+    assert transfer["location_id"] == 11
+    assert transfer["row_count"] == 1
+
+
+def test_reconcile_leaves_unfound_items_transferable(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """No match in Tillin → the item stays « à transférer » and nothing is
+    recorded (the transfer really failed)."""
+    job = _staged_job(import_client)
+
+    response = import_client.post(f"/imports/{job['id']}/reconcile")
+    assert response.status_code == 200
+    assert response.json() == {"checked": 1, "applied": 0, "not_found": ["REF-1"]}
+    # Recherche complète + repli préfixe : aucune n'a rien donné.
+    assert fake_xano.search_calls == ["REF-1"]
+
+    db = _db()
+    statuses = {
+        item.payload_json["supplier_ref"]: item.status
+        for item in db.query(ImportItem).filter(ImportItem.job_id == job["id"])
+    }
+    assert statuses == {"REF-1": "ready_for_review", "REF-REJ": "rejected"}
+    assert db.get(EnrichmentJob, job["id"]).config_json.get("transfer") is None
+
+
+def test_reconcile_skips_already_applied_items(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """Applied items are already in Tillin — reconcile only looks at the
+    still-transferable ones (idempotent after a successful transfer)."""
+    job = _transferred_job(import_client, ["REF-1"])
+
+    response = import_client.post(f"/imports/{job['id']}/reconcile")
+    assert response.status_code == 200
+    assert response.json() == {"checked": 0, "applied": 0, "not_found": []}
+    assert fake_xano.search_calls == []
 
 
 def test_transfer_requires_profile(

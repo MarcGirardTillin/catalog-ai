@@ -632,20 +632,25 @@ class XanoClient:
         *,
         files: MultipartFiles,
         data: Mapping[str, str] | None = None,
+        timeout: httpx.Timeout | float | None = None,
     ) -> Any:
         """POST multipart/form-data with bearer auth; re-login once on 401.
 
         ``files`` may be a mapping (one part per key) or a sequence of
         ``(field, (filename, bytes, content_type))`` tuples so several files
         can share one field name (e.g. a repeated ``files`` part for an array
-        input).
+        input). ``timeout`` overrides the client default for slow endpoints.
         """
         if self._token is None:
             self._login()
-        response = self._do_post_multipart(path, files=files, data=data)
+        response = self._do_post_multipart(
+            path, files=files, data=data, timeout=timeout
+        )
         if response.status_code == 401:
             self._reauthenticate()
-            response = self._do_post_multipart(path, files=files, data=data)
+            response = self._do_post_multipart(
+                path, files=files, data=data, timeout=timeout
+            )
         if response.status_code >= 400:
             raise XanoError(
                 "Xano returned an error response",
@@ -662,6 +667,7 @@ class XanoClient:
         *,
         files: MultipartFiles,
         data: Mapping[str, str] | None = None,
+        timeout: httpx.Timeout | float | None = None,
     ) -> httpx.Response:
         try:
             return self._client.post(
@@ -669,6 +675,7 @@ class XanoClient:
                 files=files,  # httpx accepts both a mapping and a list of tuples
                 data=dict(data) if data else None,
                 headers={"Authorization": f"Bearer {self._token}"},
+                timeout=timeout if timeout is not None else httpx.USE_CLIENT_DEFAULT,
             )
         except httpx.TimeoutException as exc:
             raise XanoError(
@@ -748,6 +755,7 @@ class XanoClient:
         season: int | None = None,
         tag: int | None = None,
         status: str | None = None,
+        ecommerce: int | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> ProductPage:
@@ -770,6 +778,9 @@ class XanoClient:
             params["search_query_tag"] = tag
         if status:
             params["search_query_status"] = status
+        if ecommerce:
+            # 1 Tous, 2 Connectés, 3 Partiellement connectés, 4 Non connectés.
+            params["search_query_ecommerce"] = ecommerce
 
         payload = self._request(PRODUCTS_PATH, params)
         if not isinstance(payload, Mapping):
@@ -975,9 +986,16 @@ class XanoClient:
         Multipart write: the CSV travels as the `file_import` part, the target
         location as a form field. Returns the raw upstream payload (shape
         unknown — callers only rely on success/failure).
+
+        Xano processes the whole CSV synchronously: a large import easily
+        exceeds the default 30 s client timeout (seen live on a ~50-product
+        transfer), while Xano keeps working and finishes the import anyway.
+        Hence the long read timeout — and the /reconcile route for the cases
+        where the response is still lost.
         """
         return self._post_multipart(
             PRODUCT_IMPORT_PATH,
             files={"file_import": (file_name, csv_bytes, "text/csv")},
             data={"location_id": str(location_id)},
+            timeout=httpx.Timeout(300.0, connect=10.0),
         )

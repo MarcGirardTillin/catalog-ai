@@ -76,11 +76,11 @@
   let page = $state(1)
 
   // Filter options (loaded once) + current selections.
-  // Statut Tillin : "2" = actif (défaut). Libellés 1/3 déduits des données
-  // (1 = jamais publié, 3 = fiches vides) — à ajuster si Tillin dit mieux.
+  // Statut Tillin : 1 = inactif, 2 = actif (défaut), 3 = archivé.
   let status = $state<string>("2")
-  // "" = tous, "yes" = connectés à un site e-commerce, "no" = non connectés.
-  let connected = $state<"" | "yes" | "no">("")
+  // Connexion e-commerce (enum Xano search_query_ecommerce) :
+  // "" = tous, "2" = connectés, "3" = partiellement, "4" = non connectés.
+  let ecommerce = $state<string>("")
   let brand = $state<number | null>(null)
   let category = $state<number | null>(null)
   let season = $state<number | null>(null)
@@ -147,7 +147,7 @@
         supplier,
         tag,
         status,
-        connected,
+        ecommerce,
       },
     ],
     queryFn: async () => {
@@ -160,7 +160,7 @@
           supplier,
           tag,
           status: status || null,
-          connected: connected === "" ? null : connected === "yes",
+          ecommerce: ecommerce === "" ? null : Number(ecommerce),
           page,
           per_page: prefs.products_per_page,
         },
@@ -248,7 +248,7 @@
     submittedSearch = ""
     brand = category = season = supplier = tag = null
     status = "2"
-    connected = ""
+    ecommerce = ""
     page = 1
   }
 
@@ -580,17 +580,18 @@
               <span class="text-foreground text-xs font-medium">Statut</span>
               <Select class="px-2" bind:value={status} onchange={onFilterChange}>
                 <option value="2">Actifs</option>
-                <option value="1">Non publiés</option>
+                <option value="1">Inactifs</option>
                 <option value="3">Archivés</option>
                 <option value="">Tous</option>
               </Select>
             </label>
             <label class="flex min-w-0 flex-1 flex-col gap-1">
               <span class="text-foreground text-xs font-medium">Site e-commerce</span>
-              <Select class="px-2" bind:value={connected} onchange={onFilterChange}>
+              <Select class="px-2" bind:value={ecommerce} onchange={onFilterChange}>
                 <option value="">Tous</option>
-                <option value="yes">Connectés</option>
-                <option value="no">Non connectés</option>
+                <option value="2">Connectés</option>
+                <option value="3">Partiellement connectés</option>
+                <option value="4">Non connectés</option>
               </Select>
             </label>
           </div>

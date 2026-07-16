@@ -52,6 +52,7 @@ from app.api.schemas.imports import (
     ImportProductLine,
     ImportProducts,
     ImportProfileSelection,
+    ImportReconcileResult,
     ImportRenderPreview,
     ImportTransferRequest,
     ImportTransferResult,
@@ -59,6 +60,7 @@ from app.api.schemas.imports import (
 from app.api.schemas.settings import AccountSettings
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import require_credits
+from app.clients.xano import XanoClient, XanoError
 from app.core.config import settings
 from app.enrich.pipeline import DEFAULT_TITLE_TEMPLATE
 from app.imports.schema import ImportedProduct
@@ -693,11 +695,27 @@ def transfer_import(
             message="No rows to transfer (every item is rejected, failed or "
             "already transferred)",
         )
-    xano.product_import(
-        file_name=_csv_file_name(job),
-        csv_bytes=render_csv(rows).encode("utf-8"),
-        location_id=int(location_id),
-    )
+    try:
+        xano.product_import(
+            file_name=_csv_file_name(job),
+            csv_bytes=render_csv(rows).encode("utf-8"),
+            location_id=int(location_id),
+        )
+    except XanoError as exc:
+        if exc.code == "xano_timeout":
+            # Vu en prod : Tillin continue de traiter le CSV après notre
+            # timeout et l'import aboutit quand même. On ne marque rien
+            # (l'issue est inconnue) et on oriente vers la réconciliation.
+            raise AppException(
+                status_code=504,
+                code="transfer_pending",
+                message=(
+                    "Tillin met du temps à traiter l'import — il a "
+                    "probablement abouti. Utilisez « Réconcilier avec "
+                    "Tillin » pour vérifier et mettre à jour les statuts."
+                ),
+            ) from exc
+        raise
     db.execute(
         update(ImportItem)
         .where(
@@ -716,6 +734,90 @@ def transfer_import(
     }
     db.commit()
     return ImportTransferResult(ok=True, row_count=len(rows))
+
+
+def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> int | None:
+    """Resolve one supplier reference to a Tillin product id (exact match).
+
+    La recherche plein-texte Xano ne trouve pas les références à slash
+    (« 10415-104/A » → 0 hit, « 10415-104 » → le bon produit) : on essaie la
+    référence complète puis le préfixe avant le slash. Le match reste exact
+    sur la référence COMPLÈTE, quel que soit le candidat qui a fait remonter
+    le produit. Plusieurs hits sont acceptés tant qu'ils pointent tous vers
+    UN produit ; une référence réellement ambiguë reste non résolue (None).
+    """
+    wanted = supplier_ref.strip().lower()
+    if not wanted:
+        return None
+    queries = [supplier_ref]
+    prefix = supplier_ref.split("/")[0].strip()
+    if prefix and prefix != supplier_ref:
+        queries.append(prefix)
+    for query in queries:
+        page = xano.search_products(text=query, per_page=5)
+        # Exact reference matches only (the search itself is fuzzy).
+        matched_ids = {
+            product.id
+            for product in page.items
+            if (product.reference_code or "").strip().lower() == wanted
+        }
+        if len(matched_ids) == 1:
+            return matched_ids.pop()
+        if matched_ids:
+            return None
+    return None
+
+
+@router.post("/{import_id}/reconcile", response_model=ImportReconcileResult)
+def reconcile_import(
+    import_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    xano: XanoDep,
+) -> ImportReconcileResult:
+    """Align local statuses with what actually exists in Tillin.
+
+    Rattrapage du transfert perdu : quand `/product_import` dépasse le
+    timeout, Tillin finit souvent l'import alors que la réponse est perdue —
+    les items restent « à vérifier » ici et le transfert n'est pas enregistré.
+    Chaque item encore transférable est recherché dans Tillin par référence :
+    trouvé → `applied` + lien produit ; introuvable → inchangé (il repartira
+    dans un prochain transfert, qui ne rend que les items non `applied`).
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    items = db.scalars(
+        select(ImportItem)
+        .where(
+            ImportItem.job_id == job.id,
+            ImportItem.status.not_in(EXCLUDED_RENDER_STATUSES),
+        )
+        .order_by(ImportItem.id)
+    ).all()
+    result = ImportReconcileResult(checked=len(items))
+    for item in items:
+        supplier_ref = str((item.payload_json or {}).get("supplier_ref") or "")
+        product_id = _match_tillin_product(xano, supplier_ref)
+        if product_id is None:
+            result.not_found.append(supplier_ref)
+            continue
+        item.status = "applied"
+        item.tillin_product_id = product_id
+        result.applied += 1
+    if result.applied and "transfer" not in (job.config_json or {}):
+        # Le transfert a bien eu lieu côté Tillin : on l'enregistre pour
+        # débloquer link-products et la vue « produits créés ».
+        job.config_json = {
+            **(job.config_json or {}),
+            "transfer": {
+                "location_id": (job.config_json or {}).get("location_id"),
+                "row_count": result.applied,
+                "transferred_at": datetime.now(UTC).isoformat(),
+                "reconciled": True,
+            },
+        }
+    db.commit()
+    return result
 
 
 @router.post("/{import_id}/link-products", response_model=ImportLinkResult)
@@ -751,35 +853,9 @@ def link_import_products(
             result.already_linked += 1
             continue
         supplier_ref = str((item.payload_json or {}).get("supplier_ref") or "")
-        wanted = supplier_ref.strip().lower()
-        if not wanted:
-            result.not_found.append(supplier_ref)
-            continue
-        # La recherche plein-texte Xano ne trouve pas les références à slash
-        # (« 10415-104/A » → 0 hit, « 10415-104 » → le bon produit) : on
-        # essaie la référence complète puis le préfixe avant le slash. Le
-        # match reste exact sur la référence COMPLÈTE, quel que soit le
-        # candidat qui a fait remonter le produit.
-        queries = [supplier_ref]
-        prefix = supplier_ref.split("/")[0].strip()
-        if prefix and prefix != supplier_ref:
-            queries.append(prefix)
-        matched_ids: set[int] = set()
-        for query in queries:
-            page = xano.search_products(text=query, per_page=5)
-            # Exact reference matches only (the search itself is fuzzy).
-            # Several hits are fine as long as they all point at ONE product;
-            # genuinely ambiguous references (distinct products) stay
-            # unresolved.
-            matched_ids = {
-                product.id
-                for product in page.items
-                if (product.reference_code or "").strip().lower() == wanted
-            }
-            if matched_ids:
-                break
-        if len(matched_ids) == 1:
-            item.tillin_product_id = matched_ids.pop()
+        product_id = _match_tillin_product(xano, supplier_ref)
+        if product_id is not None:
+            item.tillin_product_id = product_id
             result.linked += 1
         else:
             result.not_found.append(supplier_ref)

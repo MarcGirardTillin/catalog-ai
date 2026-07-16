@@ -390,22 +390,24 @@
             "description": "Filter by status"
           },
           {
-            "name": "connected",
+            "name": "ecommerce",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "boolean"
+                  "type": "integer",
+                  "maximum": 4,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "true = connecté à un site e-commerce, false = non",
-              "title": "Connected"
+              "description": "Connexion e-commerce (natif Xano) : 1 tous, 2 connectés, 3 partiellement connectés, 4 non connectés",
+              "title": "Ecommerce"
             },
-            "description": "true = connecté à un site e-commerce, false = non"
+            "description": "Connexion e-commerce (natif Xano) : 1 tous, 2 connectés, 3 partiellement connectés, 4 non connectés"
           },
           {
             "name": "page",
@@ -2640,6 +2642,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ImportTransferResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imports/{import_id}/reconcile": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Reconcile Import",
+        "description": "Align local statuses with what actually exists in Tillin.\n\nRattrapage du transfert perdu : quand `/product_import` dépasse le\ntimeout, Tillin finit souvent l'import alors que la réponse est perdue —\nles items restent « à vérifier » ici et le transfert n'est pas enregistré.\nChaque item encore transférable est recherché dans Tillin par référence :\ntrouvé → `applied` + lien produit ; introuvable → inchangé (il repartira\ndans un prochain transfert, qui ne rend que les items non `applied`).",
+        "operationId": "imports-reconcile_import",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReconcileResult"
                 }
               }
             }
@@ -8464,6 +8525,30 @@
         ],
         "title": "ImportProfilesBulkUpdate",
         "description": "Harmonize the catalogue-wide conventions across several profiles.\n\nOnly the fields that behave the same for the whole catalogue are\nbulk-editable; None = leave that field untouched on every profile."
+      },
+      "ImportReconcileResult": {
+        "properties": {
+          "checked": {
+            "type": "integer",
+            "title": "Checked",
+            "default": 0
+          },
+          "applied": {
+            "type": "integer",
+            "title": "Applied",
+            "default": 0
+          },
+          "not_found": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Not Found"
+          }
+        },
+        "type": "object",
+        "title": "ImportReconcileResult",
+        "description": "POST /imports/{id}/reconcile outcome (lost-transfer recovery).\n\nEach still-transferable item is looked up in Tillin by reference:\nfound → marked `applied` + linked; not found → left as-is."
       },
       "ImportRenderPreview": {
         "properties": {
