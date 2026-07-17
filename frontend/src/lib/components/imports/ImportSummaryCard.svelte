@@ -1,8 +1,9 @@
 <script lang="ts">
   // Synthèse d'un import : faits du document, profil d'import (sélection +
-  // création/édition inline), magasin de destination, fichiers sources
-  // (aperçu/téléchargement). Extrait d'ImportDetailPage (scission P5.2) —
-  // aucune modification de comportement.
+  // création/édition inline), fichiers sources (aperçu/téléchargement).
+  // Le magasin de destination se choisit au dépôt puis dans l'encart de
+  // transfert (le doublon affiché ici a été retiré — demande Marc
+  // 2026-07-17).
   import Download from "@lucide/svelte/icons/download"
   import Eye from "@lucide/svelte/icons/eye"
   import EyeOff from "@lucide/svelte/icons/eye-off"
@@ -16,12 +17,10 @@
     getImportFile,
     listImportProfiles,
     previewImportFile,
-    setImportLocation,
     setImportProfile,
     type ImportFilePreview,
     type ImportJobPublic,
     type ImportProfilePublic,
-    type LocationPublic,
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
@@ -37,15 +36,12 @@
     job = $bindable(),
     profiles = $bindable(),
     selectedProfileId = $bindable(),
-    locations,
     onRenderConfigChanged,
   }: {
     importId: number
     job: ImportJobPublic
     profiles: ImportProfilePublic[] | null
     selectedProfileId: number | null
-    /** Magasins Tillin (chargés par la page), null tant que non chargés. */
-    locations: LocationPublic[] | null
     /** Le rendu CSV dépend du profil : invalide l'aperçu côté export. */
     onRenderConfigChanged: () => void
   } = $props()
@@ -132,23 +128,6 @@
       }
     }
     onRenderConfigChanged()
-  }
-
-  // --- Magasin (location) du job ---
-  let settingLocation = $state(false)
-
-  async function changeLocation(event: Event) {
-    const raw = (event.currentTarget as HTMLSelectElement).value
-    const next = raw === "" ? null : Number(raw)
-    settingLocation = true
-    const { data, error } = await setImportLocation(importId, next)
-    settingLocation = false
-    if (error || !data) {
-      toast.error("Impossible de changer le magasin.")
-      return
-    }
-    job = data
-    toast.success(next === null ? "Magasin retiré" : "Magasin mis à jour")
   }
 
   // --- Fichier(s) source : sélection dans le lot, aperçu, téléchargement ---
@@ -396,30 +375,6 @@
             {/key}
           </div>
         {/if}
-      </div>
-    {/if}
-
-    <!-- Magasin de destination : corrigeable après l'extraction,
-         utilisé par défaut pour le transfert vers Tillin. -->
-    {#if locations !== null && locations.length > 0}
-      <div class="border-border flex flex-col gap-1.5 border-t pt-3">
-        <Label for="job-location">Magasin de destination</Label>
-        <Select
-          id="job-location"
-          class="sm:max-w-80"
-          disabled={settingLocation}
-          value={job.location_id == null ? "" : String(job.location_id)}
-          onchange={changeLocation}
-        >
-          <option value="">À choisir plus tard</option>
-          {#each locations as location (location.id)}
-            <option value={String(location.id)}>{location.title}</option>
-          {/each}
-        </Select>
-        <p class="text-muted-foreground text-xs">
-          Pré-sélectionné lors du transfert vers Tillin — corrigez ici
-          en cas d'erreur au dépôt.
-        </p>
       </div>
     {/if}
 

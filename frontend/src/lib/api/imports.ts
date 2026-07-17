@@ -23,7 +23,6 @@ import {
   importsPreviewImportRows,
   importsReadImport,
   importsReconcileImport,
-  importsSetImportLocation,
   importsSetImportProfile,
   importsTransferImport,
   importsUpdateImportItem,
@@ -254,14 +253,6 @@ export function setImportProfile(id: number, profileId: number | null) {
   return importsSetImportProfile({
     path: { import_id: id },
     body: { profile_id: profileId },
-  }) as Promise<{ data?: ImportJobPublic; error?: unknown }>
-}
-
-/** Associe (ou détache avec null) le magasin de destination du job. */
-export function setImportLocation(id: number, locationId: number | null) {
-  return importsSetImportLocation({
-    path: { import_id: id },
-    body: { location_id: locationId },
   }) as Promise<{ data?: ImportJobPublic; error?: unknown }>
 }
 

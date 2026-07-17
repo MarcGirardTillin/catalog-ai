@@ -267,7 +267,6 @@
             bind:job
             bind:profiles
             bind:selectedProfileId
-            {locations}
             onRenderConfigChanged={invalidateRender}
           />
 
