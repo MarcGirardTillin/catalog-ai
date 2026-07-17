@@ -700,8 +700,7 @@ def transfer_import(
         # zéro dans le fichier de transfert — demande Marc 2026-07-17).
         quantity_index = TILLIN_CSV_COLUMNS.index("quantity")
         rows = [
-            [*row[:quantity_index], "0", *row[quantity_index + 1 :]]
-            for row in rows
+            [*row[:quantity_index], "0", *row[quantity_index + 1 :]] for row in rows
         ]
     try:
         xano.product_import(
