@@ -135,6 +135,12 @@ export const AccountSettingsSchema = {
             title: 'Credit Cost Image Generate',
             default: 5
         },
+        credit_cost_image_finalize: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Image Finalize',
+            default: 5
+        },
         monthly_free_credits: {
             type: 'integer',
             minimum: 0,
@@ -272,6 +278,80 @@ export const AccountSettingsSchema = {
                 }
             ],
             title: 'Imaging Generation Instructions'
+        },
+        imaging_generation_engine: {
+            type: 'string',
+            enum: [
+                'fashn',
+                'photoroom'
+            ],
+            title: 'Imaging Generation Engine',
+            default: 'fashn'
+        },
+        imaging_generation_model_preset: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'avery',
+                        'sam',
+                        'taylor',
+                        'kendall',
+                        'jordan',
+                        'casey',
+                        'maya',
+                        'reece',
+                        'lena',
+                        'julia',
+                        'jackson',
+                        'sophia',
+                        'emma',
+                        'ava',
+                        'zoe',
+                        'fiona'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Imaging Generation Model Preset'
+        },
+        imaging_generation_scene_preset: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'random',
+                        'street',
+                        'bedroom',
+                        'sunset',
+                        'factory',
+                        'studio',
+                        'coloredstudio',
+                        'concretestudio',
+                        'beach',
+                        'tropical',
+                        'library',
+                        'forest',
+                        'businessdistrict',
+                        'countryside',
+                        'flowers',
+                        'goldenlight',
+                        'mountain',
+                        'pool',
+                        'latincity',
+                        'cafe',
+                        'asiancity',
+                        'nightlights',
+                        'desert'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Imaging Generation Scene Preset'
         }
     },
     type: 'object',
@@ -1398,6 +1478,159 @@ export const FilterOptionSchema = {
     description: 'One selectable value in a search filter (brand, category, …).'
 } as const;
 
+export const FinalizeRequestSchema = {
+    properties: {
+        shadow_mode: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'soft',
+                        'hard',
+                        'floating'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Shadow Mode'
+        },
+        shadow_intensity: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Shadow Intensity'
+        },
+        background_prompt: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Background Prompt'
+        },
+        ironing: {
+            type: 'boolean',
+            title: 'Ironing',
+            default: false
+        },
+        upscale_factor: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    enum: [
+                        2,
+                        4
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Upscale Factor'
+        },
+        beautify: {
+            type: 'boolean',
+            title: 'Beautify',
+            default: false
+        },
+        recolor_prompt: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Recolor Prompt'
+        }
+    },
+    type: 'object',
+    title: 'FinalizeRequest',
+    description: 'POST /imaging/assets/{id}/finalize — retouches IA « cuites » (payant).\n\nUn appel /v2/edit = un débit, quelles que soient les options combinées.\nAu moins une option doit être active (422 nothing_to_finalize sinon,\nvérifié dans la route pour un code d\'erreur métier explicite).'
+} as const;
+
+export const GenerateFlatOptionsSchema = {
+    properties: {
+        prompt: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Prompt'
+        },
+        ratio: {
+            type: 'string',
+            enum: [
+                '4:5',
+                '1:1',
+                '3:4',
+                '16:9',
+                'original'
+            ],
+            title: 'Ratio',
+            default: '4:5'
+        }
+    },
+    type: 'object',
+    title: 'GenerateFlatOptions',
+    description: 'Options communes aux verbes flat lay et ghost mannequin (Photoroom).'
+} as const;
+
+export const GenerateFlatRequestSchema = {
+    properties: {
+        image_url: {
+            type: 'string',
+            title: 'Image Url'
+        },
+        product_image_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Image Id'
+        },
+        options: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/GenerateFlatOptions'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    required: [
+        'image_url'
+    ],
+    title: 'GenerateFlatRequest'
+} as const;
+
 export const GenerateModelOptionsSchema = {
     properties: {
         prompt: {
@@ -1507,6 +1740,111 @@ export const GenerateModelOptionsSchema = {
             minimum: 1,
             title: 'Num Images',
             default: 1
+        },
+        engine: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'fashn',
+                        'photoroom'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Engine'
+        },
+        model_preset: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'avery',
+                        'sam',
+                        'taylor',
+                        'kendall',
+                        'jordan',
+                        'casey',
+                        'maya',
+                        'reece',
+                        'lena',
+                        'julia',
+                        'jackson',
+                        'sophia',
+                        'emma',
+                        'ava',
+                        'zoe',
+                        'fiona'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model Preset'
+        },
+        scene_preset: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'random',
+                        'street',
+                        'bedroom',
+                        'sunset',
+                        'factory',
+                        'studio',
+                        'coloredstudio',
+                        'concretestudio',
+                        'beach',
+                        'tropical',
+                        'library',
+                        'forest',
+                        'businessdistrict',
+                        'countryside',
+                        'flowers',
+                        'goldenlight',
+                        'mountain',
+                        'pool',
+                        'latincity',
+                        'cafe',
+                        'asiancity',
+                        'nightlights',
+                        'desert'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scene Preset'
+        },
+        photoroom_pose: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'random',
+                        'standing',
+                        '34turn',
+                        'powerstance',
+                        'walkingforward',
+                        'handinpocket',
+                        'crossedarms',
+                        'back',
+                        'overtheshoulder',
+                        'seated',
+                        'adjustingclothing',
+                        'playfulspin'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Photoroom Pose'
         }
     },
     type: 'object',
@@ -1540,6 +1878,21 @@ export const GenerateModelRequestSchema = {
                     type: 'null'
                 }
             ]
+        },
+        additional_image_urls: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string'
+                    },
+                    type: 'array',
+                    maxItems: 3
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Additional Image Urls'
         }
     },
     type: 'object',
@@ -1721,6 +2074,11 @@ export const ImageAssetPublicSchema = {
                     type: 'null'
                 }
             ]
+        },
+        finalized: {
+            type: 'boolean',
+            title: 'Finalized',
+            default: false
         },
         source_image: {
             anyOf: [
@@ -4048,6 +4406,12 @@ export const OperatorSettingsSchema = {
             type: 'integer',
             minimum: 0,
             title: 'Credit Cost Image Generate',
+            default: 5
+        },
+        credit_cost_image_finalize: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Credit Cost Image Finalize',
             default: 5
         },
         monthly_free_credits: {

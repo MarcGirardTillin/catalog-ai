@@ -81,9 +81,13 @@
   })
   let imageTemplateParts = $state<TemplatePart[]>([])
   let generationConfig = $state<GenerationConfig>({
+    engine: "fashn",
     framing: "full_body",
     scene: "studio",
     pose: "",
+    photoroomPose: "",
+    modelPreset: "",
+    scenePreset: "",
     instructions: "",
   })
 
@@ -143,9 +147,13 @@
       ? parseImageTemplate(data.image_title_template)
       : []
     generationConfig = {
+      engine: data.imaging_generation_engine ?? "fashn",
       framing: data.imaging_generation_framing ?? "full_body",
       scene: data.imaging_generation_scene ?? "studio",
       pose: data.imaging_generation_pose ?? "",
+      photoroomPose: "",
+      modelPreset: data.imaging_generation_model_preset ?? "",
+      scenePreset: data.imaging_generation_scene_preset ?? "",
       instructions: data.imaging_generation_instructions ?? "",
     }
     accountLoaded = true
@@ -198,6 +206,9 @@
       imaging_generation_pose: generationConfig.pose || null,
       imaging_generation_instructions:
         generationConfig.instructions.trim() || null,
+      imaging_generation_engine: generationConfig.engine,
+      imaging_generation_model_preset: generationConfig.modelPreset || null,
+      imaging_generation_scene_preset: generationConfig.scenePreset || null,
     })
     savingAccount = false
     if (!ok) {
@@ -370,7 +381,11 @@
               {#if !accountLoaded}
                 <Skeleton class="h-24 w-full" />
               {:else}
-                <GenerationOptions bind:config={generationConfig} idPrefix="settings-gen" />
+                <GenerationOptions
+                  bind:config={generationConfig}
+                  idPrefix="settings-gen"
+                  showEngine
+                />
               {/if}
             </CardContent>
           </Card>

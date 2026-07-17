@@ -4,18 +4,23 @@
 // <img src> cross-origin ne le porterait pas de façon fiable).
 import {
   type CropBox,
+  type FinalizeRequest,
+  type GenerateFlatOptions,
   type GenerateModelOptions,
   type ImageAssetPublic,
   type NormalizeOptions,
   type RenderRequest,
   type StagedFilePublic,
   imagingDiscardAsset,
+  imagingFinalizeAsset,
   imagingListImagingAssets,
   imagingListPendingProducts,
   imagingReadAsset,
   imagingRenderAsset,
   imagingSaveAsset,
   itemsNormalizeItemImageRoute,
+  productsGenerateFlatImage,
+  productsGenerateGhostImage,
   productsGenerateModelImage,
   productsNormalizeImage,
 } from "@/client"
@@ -23,6 +28,8 @@ import { client } from "@/client/client.gen"
 
 export type {
   CropBox,
+  FinalizeRequest,
+  GenerateFlatOptions,
   GenerateModelOptions,
   ImageAssetPublic,
   NormalizeOptions,
@@ -47,11 +54,50 @@ export function generateModelImage(
   imageUrl: string,
   productImageId: number | null,
   options?: GenerateModelOptions,
+  additionalImageUrls?: string[],
 ) {
   return productsGenerateModelImage({
     path: { product_id: productId },
+    body: {
+      image_url: imageUrl,
+      product_image_id: productImageId,
+      options,
+      additional_image_urls: additionalImageUrls,
+    },
+  })
+}
+
+/** Mise à plat stylisée (Photoroom flat lay) — 202 + polling. */
+export function generateFlatImage(
+  productId: number,
+  imageUrl: string,
+  productImageId: number | null,
+  options?: GenerateFlatOptions,
+) {
+  return productsGenerateFlatImage({
+    path: { product_id: productId },
     body: { image_url: imageUrl, product_image_id: productImageId, options },
   })
+}
+
+/** Mannequin invisible (Photoroom ghost mannequin) — 202 + polling. */
+export function generateGhostImage(
+  productId: number,
+  imageUrl: string,
+  productImageId: number | null,
+  options?: GenerateFlatOptions,
+) {
+  return productsGenerateGhostImage({
+    path: { product_id: productId },
+    body: { image_url: imageUrl, product_image_id: productImageId, options },
+  })
+}
+
+/** Finalisation IA d'une normalisation positionnée (payant, synchrone) :
+ *  ombre, décor IA, défroissage, upscale, beautifier, recoloration — un seul
+ *  appel Photoroom, un seul débit. Un re-render local ultérieur l'annule. */
+export function finalizeAsset(assetId: number, body: FinalizeRequest) {
+  return imagingFinalizeAsset({ path: { asset_id: assetId }, body })
 }
 
 export function getAsset(assetId: number) {
@@ -62,7 +108,7 @@ export function getAsset(assetId: number) {
  *  `pending` = terminés mais ni enregistrés ni écartés. */
 export function listAssets(query: {
   product_id?: number
-  verb?: "normalize" | "generate_model"
+  verb?: "normalize" | "generate_model" | "generate_flat" | "generate_ghost"
   pending?: boolean
   month?: string
 }) {

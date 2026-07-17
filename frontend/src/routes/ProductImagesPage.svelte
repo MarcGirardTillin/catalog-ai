@@ -17,6 +17,8 @@
   import {
     discardAsset,
     fetchAssetPreviews,
+    generateFlatImage,
+    generateGhostImage,
     generateModelImage,
     listAssets,
     normalizeImage,
@@ -40,6 +42,9 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import AssetResult, { type Work } from "@/lib/components/imaging/AssetResult.svelte"
+  import FlatGhostOptions, {
+    type FlatGhostConfig,
+  } from "@/lib/components/imaging/FlatGhostOptions.svelte"
   import GenerationOptions, {
     type GenerationConfig,
   } from "@/lib/components/imaging/GenerationOptions.svelte"
@@ -101,18 +106,29 @@
   let imageTemplate = $state("")
   // Config de génération (porté mannequin), pré-remplie des réglages.
   let genConfig = $state<GenerationConfig>({
+    engine: "fashn",
     framing: "full_body",
     scene: "studio",
     pose: "",
+    photoroomPose: "",
+    modelPreset: "",
+    scenePreset: "",
     instructions: "",
   })
   let genCount = $state(1)
+  // Photoroom Virtual Model : joindre les autres vues du produit (max 3).
+  let useOtherViews = $state(false)
+  // Options des générations Photoroom « une image -> une image ».
+  let flatConfig = $state<FlatGhostConfig>({ ratio: "4:5", prompt: "" })
+  let ghostConfig = $state<FlatGhostConfig>({ ratio: "4:5", prompt: "" })
 
   // Un seul encart à la fois (traiter OU générer) : afficher les deux prête
   // à confusion au moment de lancer une tâche.
   const MODE_TABS = [
     { key: "process", label: "Traitements" },
     { key: "generate", label: "Porté mannequin" },
+    { key: "flat", label: "Mise à plat" },
+    { key: "ghost", label: "Mannequin invisible" },
   ] as const
   let mode = $state<(typeof MODE_TABS)[number]["key"]>("process")
 
@@ -132,9 +148,13 @@
       hasImageTemplate = Boolean(data.image_title_template)
       imageTemplate = data.image_title_template ?? ""
       genConfig = {
+        engine: data.imaging_generation_engine ?? "fashn",
         framing: data.imaging_generation_framing ?? "full_body",
         scene: data.imaging_generation_scene ?? "studio",
         pose: data.imaging_generation_pose ?? "",
+        photoroomPose: "",
+        modelPreset: data.imaging_generation_model_preset ?? "",
+        scenePreset: data.imaging_generation_scene_preset ?? "",
         instructions: data.imaging_generation_instructions ?? "",
       }
     })
@@ -182,17 +202,30 @@
     for (const [key, work] of Object.entries(works)) {
       if (work.status === "idle" || work.filenamePrefilled) continue
       if (work.previewUrls.length > 1) continue
-      const baseUrl = key.endsWith(GEN_SUFFIX)
-        ? key.slice(0, -GEN_SUFFIX.length)
-        : key
-      if (!work.filename) work.filename = renderImageFilename(baseUrl)
+      if (!work.filename) work.filename = renderImageFilename(baseUrlOf(key))
       work.filenamePrefilled = true
     }
   })
 
-  // Clé de travail : URL source pour la normalisation, suffixe ::gen pour la
-  // génération (les deux peuvent coexister sur la même image).
+  // Clé de travail : URL source pour la normalisation, suffixe ::gen / ::flat
+  // / ::ghost pour les générations (plusieurs peuvent coexister par image).
   const GEN_SUFFIX = "::gen"
+  const FLAT_SUFFIX = "::flat"
+  const GHOST_SUFFIX = "::ghost"
+  const KEY_SUFFIXES = [GEN_SUFFIX, FLAT_SUFFIX, GHOST_SUFFIX] as const
+  const VERB_SUFFIX: Record<string, string> = {
+    generate_model: GEN_SUFFIX,
+    generate_flat: FLAT_SUFFIX,
+    generate_ghost: GHOST_SUFFIX,
+  }
+
+  /** URL source d'une clé de travail (suffixe de génération retiré). */
+  function baseUrlOf(key: string): string {
+    for (const suffix of KEY_SUFFIXES) {
+      if (key.endsWith(suffix)) return key.slice(0, -suffix.length)
+    }
+    return key
+  }
 
   // --- Réhydratation : les résultats non enregistrés survivent côté serveur
   // (asset + staging), on les réinstalle au retour dans le studio. ---
@@ -213,9 +246,7 @@
 
   function workKey(asset: ImageAssetPublic): string | null {
     if (!asset.source_image) return null
-    return asset.verb === "generate_model"
-      ? asset.source_image + GEN_SUFFIX
-      : asset.source_image
+    return asset.source_image + (VERB_SUFFIX[asset.verb] ?? "")
   }
 
   async function hydrate(asset: ImageAssetPublic) {
@@ -294,7 +325,10 @@
   const results = $derived.by(() => {
     const pairs = images.flatMap((image) => {
       const found: { key: string; image: ProductImage; work: Work }[] = []
-      for (const key of [image.url, image.url + GEN_SUFFIX]) {
+      for (const key of [
+        image.url,
+        ...KEY_SUFFIXES.map((suffix) => image.url + suffix),
+      ]) {
         const work = works[key]
         if (work && work.status !== "idle") found.push({ key, image, work })
       }
@@ -308,7 +342,7 @@
       pairs.push({
         key,
         image: {
-          url: key.endsWith(GEN_SUFFIX) ? key.slice(0, -GEN_SUFFIX.length) : key,
+          url: baseUrlOf(key),
           id: work.asset?.source_product_image_id ?? null,
         } as ProductImage,
         work,
@@ -379,32 +413,79 @@
   }
 
   function runGenerate(image: ProductImage) {
+    const photoroom = genConfig.engine === "photoroom"
+    // Multi-vues (Photoroom uniquement) : les autres images du produit.
+    const otherViews =
+      photoroom && useOtherViews
+        ? images
+            .map((i) => i.url)
+            .filter((url) => url !== image.url)
+            .slice(0, 3)
+        : undefined
     return runWork(
       image.url + GEN_SUFFIX,
       () =>
-        generateModelImage(productId, image.url, image.id ?? null, {
-          framing: genConfig.framing,
-          scene: genConfig.scene,
-          pose: genConfig.pose || null,
-          instructions: genConfig.instructions,
-          num_images: genCount,
+        generateModelImage(
+          productId,
+          image.url,
+          image.id ?? null,
+          {
+            engine: genConfig.engine,
+            framing: genConfig.framing,
+            scene: genConfig.scene,
+            pose: genConfig.pose || null,
+            photoroom_pose: photoroom ? genConfig.photoroomPose || null : null,
+            model_preset: photoroom ? genConfig.modelPreset || null : null,
+            scene_preset: photoroom ? genConfig.scenePreset || null : null,
+            instructions: genConfig.instructions,
+            num_images: photoroom ? 1 : genCount,
+          },
+          otherViews,
+        ),
+      "Lancement impossible (service de visuels indisponible ?).",
+    )
+  }
+
+  function runFlat(image: ProductImage) {
+    return runWork(
+      image.url + FLAT_SUFFIX,
+      () =>
+        generateFlatImage(productId, image.url, image.id ?? null, {
+          prompt: flatConfig.prompt.trim() || null,
+          ratio: flatConfig.ratio,
         }),
       "Lancement impossible (service de visuels indisponible ?).",
     )
   }
 
-  async function runSelected() {
-    const targets = images.filter((image) => selected.includes(image.url))
-    if (targets.length === 0) return
-    selected = []
-    await Promise.all(targets.map((image) => runOne(image)))
+  function runGhost(image: ProductImage) {
+    return runWork(
+      image.url + GHOST_SUFFIX,
+      () =>
+        generateGhostImage(productId, image.url, image.id ?? null, {
+          prompt: ghostConfig.prompt.trim() || null,
+          ratio: ghostConfig.ratio,
+        }),
+      "Lancement impossible (service de visuels indisponible ?).",
+    )
   }
 
-  async function runGenerateSelected() {
+  /** Lanceur de l'onglet courant (bouton unique de la grille). */
+  const runByMode = $derived(
+    mode === "generate"
+      ? runGenerate
+      : mode === "flat"
+        ? runFlat
+        : mode === "ghost"
+          ? runGhost
+          : runOne,
+  )
+
+  async function runSelectedByMode() {
     const targets = images.filter((image) => selected.includes(image.url))
     if (targets.length === 0) return
     selected = []
-    await Promise.all(targets.map((image) => runGenerate(image)))
+    await Promise.all(targets.map((image) => runByMode(image)))
   }
 
   async function saveOne(key: string) {
@@ -526,7 +607,7 @@
                 <ProcessingOptions bind:options disabled={runningCount > 0} />
               </CardContent>
             </Card>
-          {:else}
+          {:else if mode === "generate"}
             <Card size="sm">
               <CardHeader>
                 <CardTitle class="font-title text-sm">
@@ -543,22 +624,79 @@
                   bind:config={genConfig}
                   disabled={runningCount > 0}
                   idPrefix="studio-gen"
+                  showEngine
                 />
-                <div class="flex items-center gap-2">
-                  <label class="text-muted-foreground text-xs" for="gen-count">
-                    Visuels par image
-                  </label>
-                  <Select
-                    id="gen-count"
-                    class="h-8 w-auto px-2"
-                    disabled={runningCount > 0}
-                    bind:value={genCount}
+                {#if genConfig.engine === "photoroom"}
+                  <label
+                    class="text-muted-foreground flex items-center gap-2 text-xs"
                   >
-                    {#each [1, 2, 3, 4] as n (n)}
-                      <option value={n}>{n}</option>
-                    {/each}
-                  </Select>
-                </div>
+                    <input
+                      type="checkbox"
+                      class="accent-primary size-3.5"
+                      disabled={runningCount > 0}
+                      bind:checked={useOtherViews}
+                    />
+                    Utiliser les autres vues du produit (jusqu'à 3) pour guider
+                    le rendu
+                  </label>
+                {:else}
+                  <div class="flex items-center gap-2">
+                    <label class="text-muted-foreground text-xs" for="gen-count">
+                      Visuels par image
+                    </label>
+                    <Select
+                      id="gen-count"
+                      class="h-8 w-auto px-2"
+                      disabled={runningCount > 0}
+                      bind:value={genCount}
+                    >
+                      {#each [1, 2, 3, 4] as n (n)}
+                        <option value={n}>{n}</option>
+                      {/each}
+                    </Select>
+                  </div>
+                {/if}
+              </CardContent>
+            </Card>
+          {:else if mode === "flat"}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">
+                  Mise à plat (génération)
+                </CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  Génère une photo « posé à plat » stylisée à partir de l'image
+                  produit (Photoroom). Chaque visuel consomme des crédits de
+                  génération.
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-3">
+                <FlatGhostOptions
+                  bind:config={flatConfig}
+                  disabled={runningCount > 0}
+                  idPrefix="studio-flat"
+                />
+              </CardContent>
+            </Card>
+          {:else}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">
+                  Mannequin invisible (génération)
+                </CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  Efface le mannequin d'une photo portée (effet « ghost
+                  mannequin », Photoroom). Chaque visuel consomme des crédits de
+                  génération.
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-3">
+                <FlatGhostOptions
+                  bind:config={ghostConfig}
+                  disabled={runningCount > 0}
+                  idPrefix="studio-ghost"
+                  promptPlaceholder="Ex. col et manches structurés, fond blanc pur…"
+                />
               </CardContent>
             </Card>
           {/if}
@@ -578,13 +716,17 @@
               <Button
                 size="sm"
                 disabled={selected.length === 0 || runningCount > 0}
-                onclick={mode === "generate" ? runGenerateSelected : runSelected}
+                onclick={runSelectedByMode}
               >
                 {runningCount > 0
                   ? `Traitement… (${runningCount})`
                   : mode === "generate"
                     ? `Générer porté mannequin (${selected.length})`
-                    : `Normaliser la sélection (${selected.length})`}
+                    : mode === "flat"
+                      ? `Mettre à plat (${selected.length})`
+                      : mode === "ghost"
+                        ? `Générer sans mannequin (${selected.length})`
+                        : `Normaliser la sélection (${selected.length})`}
               </Button>
             </div>
           </div>
@@ -600,7 +742,16 @@
           {#if results.length > 0}
             <h2 class="font-title mt-1 text-sm font-bold">Résultats</h2>
             {#each results as pair (pair.key)}
-              {@const isGeneration = pair.key.endsWith(GEN_SUFFIX)}
+              {@const isGeneration = KEY_SUFFIXES.some((s) =>
+                pair.key.endsWith(s),
+              )}
+              {@const retry = pair.key.endsWith(GEN_SUFFIX)
+                ? runGenerate
+                : pair.key.endsWith(FLAT_SUFFIX)
+                  ? runFlat
+                  : pair.key.endsWith(GHOST_SUFFIX)
+                    ? runGhost
+                    : runOne}
               {#if pair.work.status === "running"}
                 <Card size="sm">
                   <CardContent class="text-muted-foreground py-6 text-center text-sm">
@@ -618,8 +769,7 @@
                     <Button
                       variant="outline"
                       size="sm"
-                      onclick={() =>
-                        isGeneration ? runGenerate(pair.image) : runOne(pair.image)}
+                      onclick={() => retry(pair.image)}
                     >
                       Réessayer
                     </Button>

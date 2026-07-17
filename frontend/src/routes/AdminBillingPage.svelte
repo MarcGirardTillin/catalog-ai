@@ -73,6 +73,7 @@
       credit_cost_enrich_item: settings.credit_cost_enrich_item,
       credit_cost_image_process: settings.credit_cost_image_process,
       credit_cost_image_generate: settings.credit_cost_image_generate,
+      credit_cost_image_finalize: settings.credit_cost_image_finalize,
       monthly_free_credits: settings.monthly_free_credits,
       low_credit_threshold: settings.low_credit_threshold,
       minutes_saved_per_import_product: settings.minutes_saved_per_import_product,
@@ -233,7 +234,7 @@
                 échoué ne consomme rien.
               </CardDescription>
             </CardHeader>
-            <CardContent class="grid gap-3 sm:grid-cols-4">
+            <CardContent class="grid gap-3 sm:grid-cols-5">
               <div class="flex flex-col gap-1.5">
                 <Label for="op-cr-import">Produit importé</Label>
                 <Input
@@ -276,6 +277,17 @@
                   step="1"
                   inputmode="numeric"
                   bind:value={settings.credit_cost_image_generate}
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label for="op-cr-finalize">Finalisation image</Label>
+                <Input
+                  id="op-cr-finalize"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  bind:value={settings.credit_cost_image_finalize}
                 />
               </div>
             </CardContent>

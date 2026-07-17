@@ -83,6 +83,10 @@ export type AccountSettings = {
      */
     credit_cost_image_generate?: number;
     /**
+     * Credit Cost Image Finalize
+     */
+    credit_cost_image_finalize?: number;
+    /**
      * Monthly Free Credits
      */
     monthly_free_credits?: number;
@@ -146,6 +150,18 @@ export type AccountSettings = {
      * Imaging Generation Instructions
      */
     imaging_generation_instructions?: string | null;
+    /**
+     * Imaging Generation Engine
+     */
+    imaging_generation_engine?: 'fashn' | 'photoroom';
+    /**
+     * Imaging Generation Model Preset
+     */
+    imaging_generation_model_preset?: 'avery' | 'sam' | 'taylor' | 'kendall' | 'jordan' | 'casey' | 'maya' | 'reece' | 'lena' | 'julia' | 'jackson' | 'sophia' | 'emma' | 'ava' | 'zoe' | 'fiona' | null;
+    /**
+     * Imaging Generation Scene Preset
+     */
+    imaging_generation_scene_preset?: 'random' | 'street' | 'bedroom' | 'sunset' | 'factory' | 'studio' | 'coloredstudio' | 'concretestudio' | 'beach' | 'tropical' | 'library' | 'forest' | 'businessdistrict' | 'countryside' | 'flowers' | 'goldenlight' | 'mountain' | 'pool' | 'latincity' | 'cafe' | 'asiancity' | 'nightlights' | 'desert' | null;
 };
 
 /**
@@ -855,6 +871,77 @@ export type FilterOption = {
 };
 
 /**
+ * FinalizeRequest
+ *
+ * POST /imaging/assets/{id}/finalize — retouches IA « cuites » (payant).
+ *
+ * Un appel /v2/edit = un débit, quelles que soient les options combinées.
+ * Au moins une option doit être active (422 nothing_to_finalize sinon,
+ * vérifié dans la route pour un code d'erreur métier explicite).
+ */
+export type FinalizeRequest = {
+    /**
+     * Shadow Mode
+     */
+    shadow_mode?: 'soft' | 'hard' | 'floating' | null;
+    /**
+     * Shadow Intensity
+     */
+    shadow_intensity?: number | null;
+    /**
+     * Background Prompt
+     */
+    background_prompt?: string | null;
+    /**
+     * Ironing
+     */
+    ironing?: boolean;
+    /**
+     * Upscale Factor
+     */
+    upscale_factor?: 2 | 4 | null;
+    /**
+     * Beautify
+     */
+    beautify?: boolean;
+    /**
+     * Recolor Prompt
+     */
+    recolor_prompt?: string | null;
+};
+
+/**
+ * GenerateFlatOptions
+ *
+ * Options communes aux verbes flat lay et ghost mannequin (Photoroom).
+ */
+export type GenerateFlatOptions = {
+    /**
+     * Prompt
+     */
+    prompt?: string | null;
+    /**
+     * Ratio
+     */
+    ratio?: '4:5' | '1:1' | '3:4' | '16:9' | 'original';
+};
+
+/**
+ * GenerateFlatRequest
+ */
+export type GenerateFlatRequest = {
+    /**
+     * Image Url
+     */
+    image_url: string;
+    /**
+     * Product Image Id
+     */
+    product_image_id?: number | null;
+    options?: GenerateFlatOptions | null;
+};
+
+/**
  * GenerateModelOptions
  *
  * Options of POST /products/{id}/images/generate-model (FASHN).
@@ -905,6 +992,22 @@ export type GenerateModelOptions = {
      * Num Images
      */
     num_images?: number;
+    /**
+     * Engine
+     */
+    engine?: 'fashn' | 'photoroom' | null;
+    /**
+     * Model Preset
+     */
+    model_preset?: 'avery' | 'sam' | 'taylor' | 'kendall' | 'jordan' | 'casey' | 'maya' | 'reece' | 'lena' | 'julia' | 'jackson' | 'sophia' | 'emma' | 'ava' | 'zoe' | 'fiona' | null;
+    /**
+     * Scene Preset
+     */
+    scene_preset?: 'random' | 'street' | 'bedroom' | 'sunset' | 'factory' | 'studio' | 'coloredstudio' | 'concretestudio' | 'beach' | 'tropical' | 'library' | 'forest' | 'businessdistrict' | 'countryside' | 'flowers' | 'goldenlight' | 'mountain' | 'pool' | 'latincity' | 'cafe' | 'asiancity' | 'nightlights' | 'desert' | null;
+    /**
+     * Photoroom Pose
+     */
+    photoroom_pose?: 'random' | 'standing' | '34turn' | 'powerstance' | 'walkingforward' | 'handinpocket' | 'crossedarms' | 'back' | 'overtheshoulder' | 'seated' | 'adjustingclothing' | 'playfulspin' | null;
 };
 
 /**
@@ -920,6 +1023,10 @@ export type GenerateModelRequest = {
      */
     product_image_id?: number | null;
     options?: GenerateModelOptions | null;
+    /**
+     * Additional Image Urls
+     */
+    additional_image_urls?: Array<string> | null;
 };
 
 /**
@@ -1027,6 +1134,10 @@ export type ImageAssetPublic = {
      */
     render_scale?: number;
     render_crop?: CropBox | null;
+    /**
+     * Finalized
+     */
+    finalized?: boolean;
     /**
      * Source Image
      */
@@ -2326,6 +2437,10 @@ export type OperatorSettings = {
      */
     credit_cost_image_generate?: number;
     /**
+     * Credit Cost Image Finalize
+     */
+    credit_cost_image_finalize?: number;
+    /**
      * Monthly Free Credits
      */
     monthly_free_credits?: number;
@@ -3490,6 +3605,66 @@ export type ProductsGenerateModelImageResponses = {
 
 export type ProductsGenerateModelImageResponse = ProductsGenerateModelImageResponses[keyof ProductsGenerateModelImageResponses];
 
+export type ProductsGenerateFlatImageData = {
+    body: GenerateFlatRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/generate-flat';
+};
+
+export type ProductsGenerateFlatImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsGenerateFlatImageError = ProductsGenerateFlatImageErrors[keyof ProductsGenerateFlatImageErrors];
+
+export type ProductsGenerateFlatImageResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImageAssetPublic;
+};
+
+export type ProductsGenerateFlatImageResponse = ProductsGenerateFlatImageResponses[keyof ProductsGenerateFlatImageResponses];
+
+export type ProductsGenerateGhostImageData = {
+    body: GenerateFlatRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/generate-ghost';
+};
+
+export type ProductsGenerateGhostImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsGenerateGhostImageError = ProductsGenerateGhostImageErrors[keyof ProductsGenerateGhostImageErrors];
+
+export type ProductsGenerateGhostImageResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImageAssetPublic;
+};
+
+export type ProductsGenerateGhostImageResponse = ProductsGenerateGhostImageResponses[keyof ProductsGenerateGhostImageResponses];
+
 export type ImagingListImagingAssetsData = {
     body?: never;
     path?: never;
@@ -3650,6 +3825,36 @@ export type ImagingRenderAssetResponses = {
 };
 
 export type ImagingRenderAssetResponse = ImagingRenderAssetResponses[keyof ImagingRenderAssetResponses];
+
+export type ImagingFinalizeAssetData = {
+    body: FinalizeRequest;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/finalize';
+};
+
+export type ImagingFinalizeAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingFinalizeAssetError = ImagingFinalizeAssetErrors[keyof ImagingFinalizeAssetErrors];
+
+export type ImagingFinalizeAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ImagingFinalizeAssetResponse = ImagingFinalizeAssetResponses[keyof ImagingFinalizeAssetResponses];
 
 export type ImagingDiscardAssetData = {
     body?: never;

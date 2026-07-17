@@ -28,18 +28,23 @@
   // dimensions, repositionnement manuel (aperçu en direct pendant le drag,
   // POST /render au relâchement — aucune refacturation), guides de placement,
   // zoom plein écran, renommage, enregistrement vers Tillin ou rejet.
+  import ChevronDown from "@lucide/svelte/icons/chevron-down"
   import CropIcon from "@lucide/svelte/icons/crop"
   import Grid3x3 from "@lucide/svelte/icons/grid-3x3"
   import Maximize2 from "@lucide/svelte/icons/maximize-2"
   import RotateCcw from "@lucide/svelte/icons/rotate-ccw"
+  import Sparkles from "@lucide/svelte/icons/sparkles"
   import { toast } from "svelte-sonner"
 
   import type { ProductImage } from "@/client"
-  import { fetchAssetPreviews, renderAsset } from "@/lib/api/imaging"
+  import { insufficientCreditsMessage } from "@/lib/api/credits"
+  import { fetchAssetPreviews, finalizeAsset, renderAsset } from "@/lib/api/imaging"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import { Input } from "@/lib/components/ui/input"
+  import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { formatFileSize } from "@/lib/format"
 
   import Lightbox from "./Lightbox.svelte"
@@ -243,6 +248,16 @@
 
   function onPointerDown(event: PointerEvent) {
     if (!canRender) return
+    if (finalized && !finalizeWarned) {
+      // La finalisation est « cuite » : le premier repositionnement qui suit
+      // recompose depuis le cutout et l'annule — on prévient une fois.
+      const proceed = window.confirm(
+        "Repositionner recompose l'image et annule la finalisation IA — " +
+          "une nouvelle finalisation sera facturée. Continuer ?",
+      )
+      if (!proceed) return
+      finalizeWarned = true
+    }
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
     if (cropMode) {
       cropDrawing = true
@@ -288,6 +303,65 @@
       work.scale !== 1 ||
       work.crop !== null,
   )
+
+  // --- Finalisation IA (payante, « cuite » dans l'image) : ombre, décor IA,
+  // défroissage, upscale, beautifier, recoloration — UN appel = UN débit.
+  // À appliquer une fois le cadrage validé : un re-render local l'annule.
+  const finalized = $derived(work.asset?.finalized === true)
+  let showFinalize = $state(false)
+  let finalizing = $state(false)
+  // Avertissement « repositionner annule la finalisation » : une seule
+  // confirmation par finalisation (le drag suivant recompose sans redemander).
+  let finalizeWarned = false
+  let fin = $state({
+    shadowMode: "" as "" | "soft" | "hard" | "floating",
+    shadowIntensity: 60,
+    backgroundKind: "keep" as "keep" | "prompt",
+    backgroundPrompt: "",
+    ironing: false,
+    beautify: false,
+    upscale: "" as "" | "2" | "4",
+    recolor: "",
+  })
+  const finHasOption = $derived(
+    fin.shadowMode !== "" ||
+      (fin.backgroundKind === "prompt" && fin.backgroundPrompt.trim() !== "") ||
+      fin.ironing ||
+      fin.beautify ||
+      fin.upscale !== "" ||
+      fin.recolor.trim() !== "",
+  )
+
+  async function runFinalize() {
+    const asset = work.asset
+    if (!asset || finalizing || work.rendering || work.saving) return
+    finalizing = true
+    const { data, error } = await finalizeAsset(asset.id, {
+      shadow_mode: fin.shadowMode || null,
+      shadow_intensity: fin.shadowMode ? fin.shadowIntensity / 100 : null,
+      background_prompt:
+        fin.backgroundKind === "prompt" ? fin.backgroundPrompt.trim() || null : null,
+      ironing: fin.ironing,
+      beautify: fin.beautify,
+      upscale_factor: fin.upscale ? (Number(fin.upscale) as 2 | 4) : null,
+      recolor_prompt: fin.recolor.trim() || null,
+    })
+    finalizing = false
+    if (error || !data) {
+      toast.error(
+        insufficientCreditsMessage(error) ??
+          "Finalisation impossible (service d'imagerie indisponible ?).",
+      )
+      return
+    }
+    work.asset = data
+    const previews = await fetchAssetPreviews(data)
+    for (const url of work.previewUrls) URL.revokeObjectURL(url)
+    work.previewUrls = previews
+    finalizeWarned = false
+    showFinalize = false
+    toast.success("Image finalisée")
+  }
 </script>
 
 <Card size="sm">
@@ -547,6 +621,152 @@
         </figcaption>
       </figure>
     </div>
+
+    {#if canRender}
+      <!-- Finalisation IA (optionnelle, payante) — sur la position validée. -->
+      <div class="border-border rounded-md border">
+        <button
+          type="button"
+          class="text-foreground flex w-full items-center justify-between gap-2 px-3 py-2 text-sm"
+          aria-expanded={showFinalize}
+          onclick={() => (showFinalize = !showFinalize)}
+        >
+          <span class="flex items-center gap-2">
+            <Sparkles size={14} aria-hidden="true" class="text-primary" />
+            Finalisation IA (optionnelle)
+            {#if finalized}
+              <span
+                class="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium"
+              >
+                Finalisée
+              </span>
+            {/if}
+          </span>
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            class="transition-transform {showFinalize ? 'rotate-180' : ''}"
+          />
+        </button>
+        {#if showFinalize}
+          <div class="flex flex-col gap-3 px-3 pb-3">
+            <p class="text-muted-foreground text-xs">
+              À appliquer une fois le cadrage validé : ces retouches sont
+              intégrées à l'image — repositionner ensuite les annule (une
+              nouvelle finalisation sera facturée).
+            </p>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="flex flex-col gap-1.5">
+                <Label for={`fin-shadow-${work.asset?.id}`}>Ombre portée</Label>
+                <Select
+                  id={`fin-shadow-${work.asset?.id}`}
+                  disabled={finalizing}
+                  bind:value={fin.shadowMode}
+                >
+                  <option value="">Aucune</option>
+                  <option value="soft">Douce</option>
+                  <option value="hard">Dure</option>
+                  <option value="floating">Flottante</option>
+                </Select>
+              </div>
+              {#if fin.shadowMode}
+                <div class="flex flex-col gap-1.5">
+                  <Label for={`fin-intensity-${work.asset?.id}`}>
+                    Intensité de l'ombre ({fin.shadowIntensity} %)
+                  </Label>
+                  <input
+                    id={`fin-intensity-${work.asset?.id}`}
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    class="accent-primary h-2 w-full self-center"
+                    disabled={finalizing}
+                    bind:value={fin.shadowIntensity}
+                  />
+                </div>
+              {/if}
+              <div class="flex flex-col gap-1.5">
+                <Label for={`fin-bg-${work.asset?.id}`}>Arrière-plan</Label>
+                <Select
+                  id={`fin-bg-${work.asset?.id}`}
+                  disabled={finalizing}
+                  bind:value={fin.backgroundKind}
+                >
+                  <option value="keep">Conserver la couleur</option>
+                  <option value="prompt">Décor IA (décrit ci-dessous)</option>
+                </Select>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label for={`fin-upscale-${work.asset?.id}`}>Agrandissement</Label>
+                <Select
+                  id={`fin-upscale-${work.asset?.id}`}
+                  disabled={finalizing}
+                  bind:value={fin.upscale}
+                >
+                  <option value="">Aucun</option>
+                  <option value="2">×2</option>
+                  <option value="4">×4</option>
+                </Select>
+              </div>
+            </div>
+            {#if fin.backgroundKind === "prompt"}
+              <div class="flex flex-col gap-1.5">
+                <Label for={`fin-bg-prompt-${work.asset?.id}`}>Décor IA</Label>
+                <textarea
+                  id={`fin-bg-prompt-${work.asset?.id}`}
+                  rows="2"
+                  class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-40 w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+                  placeholder="Décrivez le décor… (ex. table en marbre, lumière douce)"
+                  disabled={finalizing}
+                  bind:value={fin.backgroundPrompt}
+                ></textarea>
+              </div>
+            {/if}
+            <div class="flex flex-wrap items-center gap-4">
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  class="accent-primary size-4"
+                  disabled={finalizing}
+                  bind:checked={fin.ironing}
+                />
+                Défroissage du vêtement (IA)
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  class="accent-primary size-4"
+                  disabled={finalizing}
+                  bind:checked={fin.beautify}
+                />
+                Retouche beauté (IA)
+              </label>
+            </div>
+            <div class="flex min-w-48 flex-col gap-1.5">
+              <Label for={`fin-recolor-${work.asset?.id}`}>
+                Recoloration du vêtement (optionnel)
+              </Label>
+              <Input
+                id={`fin-recolor-${work.asset?.id}`}
+                placeholder="Ex. bordeaux, bleu marine délavé…"
+                disabled={finalizing}
+                bind:value={fin.recolor}
+              />
+            </div>
+            <div class="flex justify-end">
+              <Button
+                size="sm"
+                disabled={!finHasOption || finalizing || work.rendering}
+                onclick={runFinalize}
+              >
+                {finalizing ? "Finalisation…" : "Finaliser l'image (5 crédits)"}
+              </Button>
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Nom de fichier + enregistrement -->
     <div class="flex flex-wrap items-end gap-2">
