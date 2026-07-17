@@ -3640,6 +3640,74 @@
         }
       }
     },
+    "/items/{item_id}/page-preview": {
+      "get": {
+        "tags": [
+          "items"
+        ],
+        "summary": "Page Preview Route",
+        "description": "Thumbnail (og:image) of one of the item's resolution pages.\n\nBest-effort : image_url absente quand la page ne publie pas de visuel de\npartage ou ne répond pas. L'URL demandée doit être la page source de\nl'item ou l'un de ses candidats — jamais une URL arbitraire (anti-SSRF).",
+        "operationId": "items-page_preview_route",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Url"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/items/{item_id}/generate-copy": {
       "post": {
         "tags": [
@@ -10568,6 +10636,31 @@
         "type": "object",
         "title": "OperatorSettings",
         "description": "Operator-owned settings managed GLOBALLY (admin console, one form).\n\nWritten to every account so per-account values never diverge — the app is\nsingle-tenant today, and the pricing/consumption policy is the operator's,\nnot the client's. The legacy billing_coefficient is deliberately absent\n(superseded by the credit model; it stays at its stored value)."
+      },
+      "PagePreview": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "PagePreview",
+        "description": "Thumbnail of a resolution page (og:image) — best-effort, may be empty."
       },
       "PaginatedResponse_ImportItemPublic_": {
         "properties": {

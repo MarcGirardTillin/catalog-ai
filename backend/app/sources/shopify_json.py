@@ -77,25 +77,38 @@ def _title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
 
+def reference_key(value: Any) -> str:
+    """Formatting-insensitive comparison key for reference codes.
+
+    Chaque système écrit la même référence à sa façon (vécu Lemaire :
+    Tillin « BG0223 LL0108 » vs SKU site « BG0223 LL0108_GR211_OS », parfois
+    des tirets) : on ne garde que les alphanumériques, en minuscules.
+    """
+    return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+
+
 def score_product_match(product: Product, candidate: dict[str, Any]) -> float:
     """Score one full candidate product JSON against a Tillin product."""
     if _barcodes(product) & _candidate_barcodes(candidate):
         return SCORE_BARCODE
 
-    reference = (product.reference_code or "").strip().lower()
+    reference = reference_key(product.reference_code)
     if reference:
         skus = _candidate_skus(candidate)
-        handle = str(candidate.get("handle") or "").lower()
-        title = str(candidate.get("title") or "").lower()
-        tags = str(candidate.get("tags") or "").lower()
-        if reference in skus:
+        sku_keys = {reference_key(sku) for sku in skus}
+        if reference in sku_keys:
             return SCORE_REFERENCE_EXACT
-        haystacks = (handle, title, tags, *skus)
+        haystacks = (
+            reference_key(candidate.get("handle")),
+            reference_key(candidate.get("title")),
+            reference_key(candidate.get("tags")),
+            *sku_keys,
+        )
         if any(reference in h for h in haystacks if h):
             return SCORE_REFERENCE_CONTAINS
 
-    # TODO(plan): add the product's color as a tie-breaker once the canonical
-    # schema carries variant color options.
+    # The color tie-break between same-reference colorways happens in the
+    # resolver (it needs the FULL candidate list, not one pairwise score).
     if product.title:
         return TITLE_SIMILARITY_WEIGHT * _title_similarity(
             product.title, str(candidate.get("title") or "")

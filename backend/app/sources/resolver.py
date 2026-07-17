@@ -24,6 +24,7 @@ from app.sources.firecrawl_source import extract_source_product, reference_match
 from app.sources.shopify_json import (
     SCORE_BARCODE,
     fetch_product,
+    reference_key,
     score_product_match,
     search_suggest,
 )
@@ -38,6 +39,14 @@ FIRECRAWL_MAX_SITES = 2
 FIRECRAWL_MAX_EXTRACTS = 2
 FIRECRAWL_RESOLVED_SCORE = 0.9
 FIRECRAWL_CANDIDATE_SCORE = 0.3
+# Reference matched but the product's color is nowhere on the page: likely a
+# sibling colorway sharing the model code (vécu Lemaire : dark chocolate
+# résolu à la place de dark bronze) — candidate for review, never auto-staged.
+FIRECRAWL_COLOR_MISMATCH_SCORE = 0.5
+
+# Distinct needs_manual reasons (mapped to French in the review UI — keep them
+# provider-neutral, they are user-facing).
+REASON_COLOR_MISMATCH = "pages match the reference but not the product color"
 
 ResolveStatus = Literal["resolved", "needs_manual", "skipped"]
 Method = Literal["auto", "shopify_json", "firecrawl", "unlocker"]
@@ -62,6 +71,13 @@ class ResolveResult(BaseModel):
     # the pipeline can reuse it instead of paying a second extract. Excluded
     # from serialization: it never belongs in resolution_json.
     source_product: dict[str, Any] | None = Field(default=None, exclude=True)
+
+
+def _color_in_texts(color: str, *texts: Any) -> bool:
+    """True when the color appears in any text, formatting-insensitive
+    (« Dark Bronze » matche `…dark-bronze…` dans un handle ou une URL)."""
+    needle = reference_key(color)
+    return bool(needle) and any(needle in reference_key(t) for t in texts if t)
 
 
 def _single_color(product: Product) -> str | None:
@@ -204,7 +220,15 @@ def _resolve_shopify(
 
     candidates.sort(key=lambda c: c.score, reverse=True)
     if candidates and candidates[0].score >= AUTO_STAGE_THRESHOLD:
-        best = candidates[0]
+        best = _break_color_tie(product, candidates)
+        if best is None:
+            # Plusieurs coloris frères partagent la référence et aucun ne
+            # porte la couleur du produit : ne pas choisir avec assurance.
+            return ResolveResult(
+                status="needs_manual",
+                candidates=candidates[:5],
+                reason=REASON_COLOR_MISMATCH,
+            )
         return ResolveResult(
             status="resolved",
             url=best.url,
@@ -219,6 +243,54 @@ def _resolve_shopify(
             reason="no candidate above confidence threshold",
         )
     return ResolveResult(status="needs_manual", reason="no candidate found")
+
+
+def _break_color_tie(product: Product, candidates: list[Candidate]) -> Candidate | None:
+    """Pick among the top-score candidates using the product's color.
+
+    Une même référence modèle couvre plusieurs coloris chez certaines marques
+    (Lemaire : `BG0223 LL0108` sur tous les sacs) : les fiches coloris
+    arrivent ex æquo au score référence. La couleur du produit (quand elle
+    est unique) départage via le handle/titre de la fiche. Un candidat isolé
+    ou un produit sans couleur gardent le comportement historique ; une
+    égalité où AUCUN candidat ne porte la couleur renvoie None (à vérifier).
+    """
+    tied = [c for c in candidates if c.score == candidates[0].score]
+    if len(tied) == 1:
+        return tied[0]
+    color = _single_color(product)
+    if color is None:
+        return tied[0]
+    matching = [c for c in tied if _color_in_texts(color, c.url, c.title)]
+    if len(matching) == 1:
+        return matching[0]
+    if not matching:
+        return None
+    # Plusieurs fiches portent la couleur (rare) : ordre historique.
+    return matching[0]
+
+
+def _firecrawl_score(product: Product, url: str, extracted: dict[str, Any]) -> float:
+    """Score an extracted page: reference match, then color sanity check.
+
+    Le code modèle/matière est souvent partagé entre coloris (Lemaire) : un
+    match référence sur une page qui ne porte NULLE PART la couleur du
+    produit (URL, titre, description, codes) est un coloris frère probable —
+    candidat à vérifier, jamais auto-résolu. Sans couleur produit connue (ou
+    multi-coloris), le match référence garde son autorité historique.
+    """
+    if not reference_matches(product, extracted):
+        return FIRECRAWL_CANDIDATE_SCORE
+    color = _single_color(product)
+    if color is not None and not _color_in_texts(
+        color,
+        url,
+        extracted.get("title"),
+        extracted.get("body_html"),
+        *(extracted.get("_reference_codes") or []),
+    ):
+        return FIRECRAWL_COLOR_MISMATCH_SCORE
+    return FIRECRAWL_RESOLVED_SCORE
 
 
 def _resolve_firecrawl(
@@ -272,9 +344,7 @@ def _resolve_firecrawl(
             candidate = Candidate(
                 url=url,
                 title=extracted.get("title"),
-                score=FIRECRAWL_RESOLVED_SCORE
-                if reference_matches(product, extracted)
-                else FIRECRAWL_CANDIDATE_SCORE,
+                score=_firecrawl_score(product, url, extracted),
             )
             candidates.append(candidate)
             if candidate.score >= FIRECRAWL_RESOLVED_SCORE:
@@ -291,10 +361,15 @@ def _resolve_firecrawl(
 
     # Reasons are user-facing (review UI): never name the provider here.
     if candidates:
+        color_mismatch = any(
+            c.score == FIRECRAWL_COLOR_MISMATCH_SCORE for c in candidates
+        )
         return ResolveResult(
             status="needs_manual",
             candidates=candidates[:5],
-            reason="web search found pages but none matched the product reference",
+            reason=REASON_COLOR_MISMATCH
+            if color_mismatch
+            else "web search found pages but none matched the product reference",
         )
     return ResolveResult(
         status="needs_manual",

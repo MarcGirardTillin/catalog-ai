@@ -90,6 +90,21 @@ def test_reference_match_without_barcode() -> None:
     assert score_product_match(product, candidate) == 0.9
 
 
+def test_reference_match_ignores_formatting() -> None:
+    """Vécu Lemaire : Tillin « BG0223 LL0108 » vs SKU site
+    « BG0223 LL0108_GR211_OS » (et variantes à tirets) — le matching doit être
+    insensible aux espaces/underscores/tirets."""
+    candidate = {
+        "title": "Small Belted Hobo Bag in Leather",
+        "handle": "small-belted-hobo-bag",
+        "tags": "",
+        "variants": [{"sku": "BG0223 LL0108_GR211_OS", "barcode": ""}],
+    }
+    for reference in ("BG0223 LL0108", "bg0223-ll0108", "BG0223LL0108"):
+        product = Product(id=5, title="Small Belted Hobo Bag", reference_code=reference)
+        assert score_product_match(product, candidate) == 0.75, reference
+
+
 def test_tillin_sku_is_never_used() -> None:
     candidate = {
         "title": "Unrelated Jacket",
@@ -185,6 +200,76 @@ def test_non_shopify_site_returning_html_degrades_instead_of_crashing() -> None:
     assert alone.status == "needs_manual"
     assert both.status == "resolved"
     assert both.url == f"{SITE}/products/g-short-double-navy"
+
+
+# ---------------------------------------------------------------------------
+# Départage par couleur (chaîne Shopify) — coloris frères à référence partagée.
+# ---------------------------------------------------------------------------
+
+# Deux coloris du même modèle : même titre, même code modèle dans le SKU,
+# seule la couleur diffère (cas Lemaire réel, formats simplifiés).
+_BRONZE = {
+    "title": "Small Belted Hobo Bag in Leather",
+    "handle": "small-belted-hobo-bag-dark-bronze",
+    "tags": "",
+    "variants": [{"sku": "BG0223 LL0108_GR211_OS", "barcode": "111"}],
+}
+_CHOCOLATE = {
+    "title": "Small Belted Hobo Bag in Leather",
+    "handle": "small-belted-hobo-bag-dark-chocolate",
+    "tags": "",
+    "variants": [{"sku": "BG0223 LL0108_BR490_OS", "barcode": "222"}],
+}
+
+
+def _lemaire_product(color: str | None) -> Product:
+    return Product(
+        id=9,
+        title="Small Belted Hobo Bag in Leather",
+        reference_code="BG0223 LL0108",
+        variants=[ProductVariant(id=1, color=color, size="OS")],
+    )
+
+
+def test_shopify_color_breaks_reference_tie() -> None:
+    transport = _store(
+        {
+            "small-belted-hobo-bag-dark-chocolate": _CHOCOLATE,
+            "small-belted-hobo-bag-dark-bronze": _BRONZE,
+        }
+    )
+    with httpx.Client(transport=transport) as client:
+        result = resolve_source_url(client, _lemaire_product("Dark Bronze"), [SITE])
+
+    assert result.status == "resolved"
+    assert result.url == f"{SITE}/products/small-belted-hobo-bag-dark-bronze"
+
+
+def test_shopify_reference_tie_without_color_match_needs_manual() -> None:
+    """Tous les coloris partagent la référence mais aucun ne porte la couleur
+    du produit : ne pas choisir avec assurance."""
+    transport = _store(
+        {
+            "small-belted-hobo-bag-dark-chocolate": _CHOCOLATE,
+            "small-belted-hobo-bag-dark-bronze": _BRONZE,
+        }
+    )
+    with httpx.Client(transport=transport) as client:
+        result = resolve_source_url(client, _lemaire_product("Chianti"), [SITE])
+
+    assert result.status == "needs_manual"
+    assert result.reason == "pages match the reference but not the product color"
+    assert len(result.candidates) == 2
+
+
+def test_shopify_reference_tie_without_product_color_keeps_first() -> None:
+    """Sans couleur produit (ou multi-coloris), comportement historique."""
+    transport = _store({"small-belted-hobo-bag-dark-chocolate": _CHOCOLATE})
+    with httpx.Client(transport=transport) as client:
+        result = resolve_source_url(client, _lemaire_product(None), [SITE])
+
+    assert result.status == "resolved"
+    assert result.url == f"{SITE}/products/small-belted-hobo-bag-dark-chocolate"
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +483,65 @@ def test_firecrawl_skips_barcode_queries_in_web_search() -> None:
         "site:salomon.example G5FU-T081",
         "site:salomon.example Gramicci G-Short Double Navy",
     ]
+
+
+def test_firecrawl_reference_match_with_wrong_color_is_not_auto_resolved() -> None:
+    """Le code modèle est partagé entre coloris : un match référence sur une
+    page qui ne porte nulle part la couleur du produit reste un candidat à
+    vérifier (0,5) — et la page au bon coloris, extraite ensuite, gagne."""
+    product = Product(
+        id=9,
+        title="Small Belted Hobo Bag in Leather",
+        reference_code="BG0223 LL0108",
+        variants=[ProductVariant(id=1, color="Dark Bronze", size="OS")],
+    )
+    shared_ref = {
+        "title": "Small Belted Hobo Bag in Leather",
+        "description": "Ref. BG0223 LL0108.",
+        "images": [],
+        "reference_codes": ["BG0223 LL0108"],
+    }
+    chocolate_url = f"{NON_SHOPIFY_SITE}/products/hobo-bag-dark-chocolate"
+    bronze_url = f"{NON_SHOPIFY_SITE}/products/hobo-bag-dark-bronze"
+
+    # 1. Les deux pages remontent : chocolate (mauvais coloris, référence OK)
+    # extraite en premier ne court-circuite plus ; bronze résout à 0,9.
+    with (
+        _firecrawl_store({chocolate_url: shared_ref, bronze_url: shared_ref}) as fc,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        both = resolve_source_url(
+            client, product, [NON_SHOPIFY_SITE], method="firecrawl", firecrawl=fc
+        )
+    assert both.status == "resolved"
+    assert both.url == bronze_url
+    assert {(c.url, c.score) for c in both.candidates} >= {(chocolate_url, 0.5)}
+
+    # 2. Seul le mauvais coloris existe : à vérifier, raison couleur.
+    with (
+        _firecrawl_store({chocolate_url: shared_ref}) as fc,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        wrong_only = resolve_source_url(
+            client, product, [NON_SHOPIFY_SITE], method="firecrawl", firecrawl=fc
+        )
+    assert wrong_only.status == "needs_manual"
+    assert wrong_only.reason == "pages match the reference but not the product color"
+    assert [(c.url, c.score) for c in wrong_only.candidates] == [(chocolate_url, 0.5)]
+
+    # 3. Sans couleur produit connue : le match référence garde son autorité.
+    colorless = product.model_copy(
+        update={"variants": [ProductVariant(id=1, size="OS")]}
+    )
+    with (
+        _firecrawl_store({chocolate_url: shared_ref}) as fc,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        legacy = resolve_source_url(
+            client, colorless, [NON_SHOPIFY_SITE], method="firecrawl", firecrawl=fc
+        )
+    assert legacy.status == "resolved"
+    assert legacy.score == 0.9
 
 
 def test_web_search_adds_single_color_to_title_query() -> None:

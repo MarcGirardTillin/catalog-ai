@@ -2,6 +2,11 @@
 
 ## Latest Changes
 
+- Enrichissement : résolution de la page source plus fiable — références
+  comparées sans tenir compte de la mise en forme, couleur du produit
+  utilisée pour départager les coloris d'un même modèle (jamais de mauvais
+  coloris auto-résolu), et vignettes d'aperçu sur la page source et les
+  candidats dans la review.
 - Enrichissement : quand la page source est incertaine, la description n'est
   plus rédigée automatiquement — elle attend la validation d'une source ou le
   geste « Générer la description sans source » ; la couleur du produit précise

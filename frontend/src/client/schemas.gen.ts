@@ -4432,6 +4432,32 @@ export const OperatorSettingsSchema = {
     description: 'Operator-owned settings managed GLOBALLY (admin console, one form).\n\nWritten to every account so per-account values never diverge — the app is\nsingle-tenant today, and the pricing/consumption policy is the operator\'s,\nnot the client\'s. The legacy billing_coefficient is deliberately absent\n(superseded by the credit model; it stays at its stored value).'
 } as const;
 
+export const PagePreviewSchema = {
+    properties: {
+        url: {
+            type: 'string',
+            title: 'Url'
+        },
+        image_url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Image Url'
+        }
+    },
+    type: 'object',
+    required: [
+        'url'
+    ],
+    title: 'PagePreview',
+    description: 'Thumbnail of a resolution page (og:image) — best-effort, may be empty.'
+} as const;
+
 export const PaginatedResponse_ImportItemPublic_Schema = {
     properties: {
         items: {

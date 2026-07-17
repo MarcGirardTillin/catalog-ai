@@ -18,6 +18,7 @@ from app.api.schemas.enrichment import (
     ItemPatchRequest,
     ItemPublic,
     ItemResolveRequest,
+    PagePreview,
 )
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import credit_grid, require_credits
@@ -32,6 +33,7 @@ from app.api.services.enrichment import (
     update_staged_fields,
 )
 from app.destinations.xano_tillin import XanoTillinDestination
+from app.sources.preview import fetch_page_preview
 
 # Review = module « Enrichissement » (la normalisation d'images du review
 # en fait partie : c'est le flux d'enrichissement, pas le studio).
@@ -81,6 +83,35 @@ def resolve_item_route(
         db, item, payload.source_url, stage=pipeline.stage_from_url
     )
     return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.get("/{item_id}/page-preview", response_model=PagePreview)
+def page_preview_route(
+    item_id: int,
+    url: str,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> PagePreview:
+    """Thumbnail (og:image) of one of the item's resolution pages.
+
+    Best-effort : image_url absente quand la page ne publie pas de visuel de
+    partage ou ne répond pas. L'URL demandée doit être la page source de
+    l'item ou l'un de ses candidats — jamais une URL arbitraire (anti-SSRF).
+    """
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    allowed = {item.source_url} | {
+        str(candidate.get("url"))
+        for candidate in (item.resolution_json or {}).get("candidates") or []
+        if isinstance(candidate, dict)
+    }
+    if url not in allowed:
+        raise AppException(
+            status_code=422,
+            code="unknown_page",
+            message="URL is not one of this item's resolution pages",
+        )
+    return PagePreview(url=url, image_url=fetch_page_preview(url))
 
 
 @router.post("/{item_id}/generate-copy", response_model=ItemPublic)

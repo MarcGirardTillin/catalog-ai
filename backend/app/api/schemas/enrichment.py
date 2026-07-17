@@ -102,6 +102,13 @@ class ItemImageNormalizeRequest(BaseModel):
     revert: bool = False
 
 
+class PagePreview(BaseModel):
+    """Thumbnail of a resolution page (og:image) — best-effort, may be empty."""
+
+    url: str
+    image_url: str | None = None
+
+
 class ItemResolveRequest(BaseModel):
     """Manually point an item at a specific source product page.
 

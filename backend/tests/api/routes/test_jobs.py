@@ -281,6 +281,56 @@ def test_resolve_item_manually_restages(auth_client: TestClient) -> None:
         app.dependency_overrides.pop(get_enrichment_pipeline, None)
 
 
+def test_page_preview_restricted_to_resolution_pages(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """La vignette n'est servie que pour la page source ou un candidat de
+    l'item — jamais une URL arbitraire (anti-SSRF)."""
+    from app.api.deps import get_db
+    from app.api.routes import items as items_routes
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [559])
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).first()
+    assert item is not None
+    item.status = "ready_for_review"
+    item.source_url = "https://brand.example/products/bag"
+    item.resolution_json = {
+        "reason": None,
+        "candidates": [
+            {"url": "https://brand.example/products/candidate", "score": 0.5}
+        ],
+    }
+    db.commit()
+
+    monkeypatch.setattr(items_routes, "fetch_page_preview", lambda url: f"{url}/og.jpg")
+
+    source = auth_client.get(
+        f"/items/{item.id}/page-preview",
+        params={"url": "https://brand.example/products/bag"},
+    )
+    assert source.status_code == 200
+    assert source.json() == {
+        "url": "https://brand.example/products/bag",
+        "image_url": "https://brand.example/products/bag/og.jpg",
+    }
+
+    candidate = auth_client.get(
+        f"/items/{item.id}/page-preview",
+        params={"url": "https://brand.example/products/candidate"},
+    )
+    assert candidate.status_code == 200
+
+    foreign = auth_client.get(
+        f"/items/{item.id}/page-preview",
+        params={"url": "https://evil.example/internal"},
+    )
+    assert foreign.status_code == 422
+    assert foreign.json()["code"] == "unknown_page"
+
+
 def test_generate_item_copy_stages_catalog_only_copy(
     auth_client: TestClient,
 ) -> None:

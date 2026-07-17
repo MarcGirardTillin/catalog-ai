@@ -12,6 +12,7 @@
     itemsApplyItemRoute,
     itemsApproveItem,
     itemsGenerateItemCopyRoute,
+    itemsPagePreviewRoute,
     itemsPatchItem,
     itemsReadItem,
     itemsReadItemProduct,
@@ -413,6 +414,29 @@
   }
 
   type Candidate = { url: string; title?: string | null; score: number }
+
+  // Vignettes (og:image) de la page source et des candidats — best-effort,
+  // chargées une fois par URL (null = pas de visuel trouvé).
+  let previews = $state<Record<string, string | null>>({})
+  const previewsRequested = new Set<string>()
+  async function loadPreview(itemId: number, url: string) {
+    if (previewsRequested.has(url)) return
+    previewsRequested.add(url)
+    const { data } = await itemsPagePreviewRoute({
+      path: { item_id: itemId },
+      query: { url },
+    })
+    previews[url] = data?.image_url ?? null
+  }
+  $effect(() => {
+    if (!item) return
+    const urls = [
+      ...(item.source_url ? [item.source_url] : []),
+      ...candidates.map((c) => c.url),
+    ]
+    for (const url of urls) void loadPreview(item.id, url)
+  })
+
   const resolution = $derived(
     (item?.resolution_json ?? null) as {
       reason?: string | null
@@ -438,6 +462,8 @@
       case "web search found pages but none matched the product reference":
       case "firecrawl found pages but none matched the product reference":
         return "Des pages ont été trouvées sur le site de la marque mais aucune ne correspond à la référence du produit. Vérifie les candidats ci-dessous ou colle l'URL exacte."
+      case "pages match the reference but not the product color":
+        return "Des pages correspondent à la référence du produit mais aucune ne porte sa couleur (coloris frères probables). Vérifie les candidats ci-dessous ou colle l'URL du bon coloris."
       case "no candidate found (web search returned no usable page)":
       case "no candidate found (firecrawl search returned no usable page)":
         return "La recherche sur le site de la marque n'a renvoyé aucune page produit exploitable."
@@ -806,6 +832,16 @@
             <CardContent class="flex flex-col gap-2 text-xs">
               <div class="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
                 {#if item.source_url}
+                  {#if previews[item.source_url]}
+                    <a href={item.source_url} target="_blank" rel="noreferrer">
+                      <img
+                        src={previews[item.source_url]}
+                        alt="Aperçu de la page source"
+                        loading="lazy"
+                        class="bg-muted h-14 w-11 rounded object-cover"
+                      />
+                    </a>
+                  {/if}
                   <a
                     href={item.source_url}
                     target="_blank"
@@ -838,6 +874,18 @@
                       <div
                         class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border px-2 py-1.5"
                       >
+                        {#if previews[candidate.url]}
+                          <!-- Vignette (og:image) : le coloris se vérifie
+                               d'un coup d'œil sans ouvrir chaque page. -->
+                          <a href={candidate.url} target="_blank" rel="noreferrer">
+                            <img
+                              src={previews[candidate.url]}
+                              alt="Aperçu du candidat"
+                              loading="lazy"
+                              class="bg-muted h-14 w-11 shrink-0 rounded object-cover"
+                            />
+                          </a>
+                        {/if}
                         <span class="min-w-0 flex-1 truncate" title={candidate.url}>
                           {candidate.title ?? candidate.url}
                         </span>

@@ -902,3 +902,29 @@ n'y a pas de source à confirmer. Corollaires de la même session :
    capturée dans `payload_json["tillin_image_url"]` au moment du lien (la
    recherche est déjà payée) et rafraîchie par « Lier » pour les items liés
    sans image. Pas de fan-out Xano à l'affichage.
+
+## 2026-07-18 — Résolution : références normalisées + couleur à la décision + vignettes
+
+Suite du cas Lemaire (dark chocolate résolu à la place de dark bronze) :
+
+1. **Matching de référence insensible à la mise en forme** (`reference_key` :
+   alphanumériques minuscules) dans le scoring Shopify — Tillin
+   « BG0223 LL0108 » matche le SKU site « BG0223 LL0108_GR211_OS ». Remet la
+   chaîne Shopify (gratuite) en jeu là où elle échouait en silence et
+   basculait sur la recherche web payante.
+2. **Couleur = critère de DÉCISION, plus seulement de recherche.** Shopify :
+   les ex æquo au score référence (coloris frères) sont départagés par la
+   couleur du produit dans le handle/titre ; aucune ne matche → à vérifier
+   (`REASON_COLOR_MISMATCH`). Recherche web : un match référence sur une page
+   qui ne porte nulle part la couleur (URL/titre/description/codes) score
+   0,5 au lieu de 0,9 — jamais auto-résolu. Sans couleur produit connue ou
+   multi-coloris : comportement historique (pas de sur-blocage).
+3. **Vignettes de review** : `GET /items/{id}/page-preview?url=` renvoie
+   l'og:image de la page (GET plafonné 256 Ko, sans prestataire, gratuit).
+   URL restreinte à la page source / aux candidats de l'item (anti-SSRF).
+   Le frontend affiche la vignette à côté de la page source et de chaque
+   candidat — le coloris se vérifie d'un coup d'œil.
+
+Validé live sur lemaire.fr : le produit dark bronze (réf « BG0223 LL0108 »,
+couleur DARK BRONZE) résout désormais la bonne fiche via shopify_json (3
+coloris à 0,75, couleur départage) avec la bonne vignette.

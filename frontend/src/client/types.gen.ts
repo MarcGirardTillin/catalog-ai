@@ -2459,6 +2459,22 @@ export type OperatorSettings = {
 };
 
 /**
+ * PagePreview
+ *
+ * Thumbnail of a resolution page (og:image) — best-effort, may be empty.
+ */
+export type PagePreview = {
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Image Url
+     */
+    image_url?: string | null;
+};
+
+/**
  * PaginatedResponse[ImportItemPublic]
  */
 export type PaginatedResponseImportItemPublic = {
@@ -4957,6 +4973,41 @@ export type ItemsResolveItemRouteResponses = {
 };
 
 export type ItemsResolveItemRouteResponse = ItemsResolveItemRouteResponses[keyof ItemsResolveItemRouteResponses];
+
+export type ItemsPagePreviewRouteData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query: {
+        /**
+         * Url
+         */
+        url: string;
+    };
+    url: '/items/{item_id}/page-preview';
+};
+
+export type ItemsPagePreviewRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsPagePreviewRouteError = ItemsPagePreviewRouteErrors[keyof ItemsPagePreviewRouteErrors];
+
+export type ItemsPagePreviewRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: PagePreview;
+};
+
+export type ItemsPagePreviewRouteResponse = ItemsPagePreviewRouteResponses[keyof ItemsPagePreviewRouteResponses];
 
 export type ItemsGenerateItemCopyRouteData = {
     body?: never;
