@@ -26,6 +26,7 @@
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
+  import { Dialog } from "@/lib/components/ui/dialog"
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
@@ -417,83 +418,98 @@
       {/if}
     {/if}
 
-    {#if transferOpen}
-      <div class="border-border flex flex-col gap-3 rounded-md border p-3">
-        <p class="text-sm font-medium">Transférer vers Tillin</p>
-        {#if locationsError}
-          <div class="flex flex-col items-start gap-2">
-            <p class="text-destructive text-xs" role="alert">{locationsError}</p>
-            {#if onRetryLocations}
-              <Button variant="secondary" size="sm" onclick={onRetryLocations}>
-                Réessayer
-              </Button>
-            {/if}
-          </div>
-        {:else if locations === null}
-          <Skeleton class="h-9 w-full sm:max-w-80" />
-        {:else if locations.length === 0}
-          <p class="text-muted-foreground text-xs">
-            Aucun magasin disponible dans Tillin.
-          </p>
-        {:else}
-          <div class="flex flex-col gap-1.5 sm:max-w-80">
-            <Label for="transfer-location">Magasin</Label>
-            <Select id="transfer-location" bind:value={selectedLocationId}>
-              {#each locations as location (location.id)}
-                <option value={String(location.id)}>{location.title}</option>
-              {/each}
-            </Select>
-          </div>
-          <label class="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              class="accent-primary size-4"
-              bind:checked={createReception}
-            />
-            Créer la réception dans Tillin
-          </label>
-          {#if !createReception}
-            <p class="text-muted-foreground text-xs">
-              Les fiches seront créées sans stock : toutes les quantités du
-              fichier de transfert sont mises à zéro.
-            </p>
-          {/if}
-          <p class="text-muted-foreground text-xs">
-            <span class="text-foreground font-medium"
-              >{transferSummary.kept} produit{transferSummary.kept > 1
-                ? "s"
-                : ""}</span
-            >
-            {transferSummary.kept > 1 ? "seront créés" : "sera créé"} dans
-            Tillin sur ce magasin{#if transferSummary.excluded > 0}, {transferSummary.excluded}
-              écarté{transferSummary.excluded > 1 ? "s" : ""} ne
-              {transferSummary.excluded > 1 ? "seront" : "sera"} pas transféré{transferSummary.excluded >
-              1
-                ? "s"
-                : ""}{/if}. Cochez ou décochez les produits dans la liste
-            pour choisir ceux à transférer.
-          </p>
-        {/if}
-        <div class="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onclick={() => (transferOpen = false)}>
-            Annuler
-          </Button>
-          <Button
-            size="sm"
-            disabled={transferring ||
-              selectedLocationId === "" ||
-              transferSummary.kept === 0}
-            onclick={confirmTransfer}
-          >
-            {#if transferring}
-              <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
-            {/if}
-            {transferring
-              ? "Transfert…"
-              : `Confirmer (${transferSummary.kept})`}
-          </Button>
-        </div>
-      </div>
-    {/if}
   </CardContent>
 </Card>
+
+{#if transferOpen}
+  <!-- Confirmation en modale (et non en encart déroulé sous le bouton) :
+       le clic sur « Transférer… » ouvre une boîte de dialogue explicite. -->
+  <Dialog
+    title="Transférer vers Tillin"
+    dismissable={!transferring}
+    onClose={() => (transferOpen = false)}
+  >
+    {#if locationsError}
+      <div class="flex flex-col items-start gap-2">
+        <p class="text-destructive text-xs" role="alert">{locationsError}</p>
+        {#if onRetryLocations}
+          <Button variant="secondary" size="sm" onclick={onRetryLocations}>
+            Réessayer
+          </Button>
+        {/if}
+      </div>
+    {:else if locations === null}
+      <Skeleton class="h-9 w-full" />
+    {:else if locations.length === 0}
+      <p class="text-muted-foreground text-xs">
+        Aucun magasin disponible dans Tillin.
+      </p>
+    {:else}
+      <p class="text-muted-foreground text-sm">
+        <span class="text-foreground font-medium"
+          >{transferSummary.kept} produit{transferSummary.kept > 1
+            ? "s"
+            : ""}</span
+        >
+        {transferSummary.kept > 1 ? "seront créés" : "sera créé"} dans
+        Tillin{#if transferSummary.excluded > 0}
+          &nbsp;({transferSummary.excluded}
+          écarté{transferSummary.excluded > 1 ? "s" : ""} non transféré{transferSummary.excluded >
+          1
+            ? "s"
+            : ""}){/if}.
+      </p>
+      <div class="flex flex-col gap-1.5">
+        <Label for="transfer-location">Magasin</Label>
+        <Select
+          id="transfer-location"
+          disabled={transferring}
+          bind:value={selectedLocationId}
+        >
+          {#each locations as location (location.id)}
+            <option value={String(location.id)}>{location.title}</option>
+          {/each}
+        </Select>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          class="accent-primary size-4"
+          disabled={transferring}
+          bind:checked={createReception}
+        />
+        Créer la réception dans Tillin
+      </label>
+      {#if !createReception}
+        <p class="text-muted-foreground text-xs">
+          Les fiches seront créées sans stock : toutes les quantités du
+          fichier de transfert sont mises à zéro.
+        </p>
+      {/if}
+    {/if}
+    <div class="flex items-center justify-end gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={transferring}
+        onclick={() => (transferOpen = false)}
+      >
+        Annuler
+      </Button>
+      <Button
+        size="sm"
+        disabled={transferring ||
+          selectedLocationId === "" ||
+          transferSummary.kept === 0}
+        onclick={confirmTransfer}
+      >
+        {#if transferring}
+          <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+        {/if}
+        {transferring
+          ? "Transfert…"
+          : `Transférer (${transferSummary.kept})`}
+      </Button>
+    </div>
+  </Dialog>
+{/if}
