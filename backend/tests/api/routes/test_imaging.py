@@ -1095,7 +1095,7 @@ def test_finalize_replaces_output_debits_and_render_clears_flag(
 
     response = auth_client.post(
         f"/imaging/assets/{asset_id}/finalize",
-        json={"shadow_mode": "soft", "shadow_intensity": 0.5, "ironing": True},
+        json={"shadow_mode": "soft", "ironing": True},
     )
     assert response.status_code == 200, response.text
     body = response.json()

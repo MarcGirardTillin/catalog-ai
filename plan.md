@@ -434,32 +434,37 @@ scraping robustness stays in the infra sprint (Firecrawl fallback).
 
 ### Deferred / open items
 
-- **Extensions Photoroom `/v2/edit` (étudiées 2026-07-17, non planifiées) —
-  Marc a demandé de les garder au plan :**
-  - **Flat lay (3e verbe d'imagerie)** : FASHN n'a PAS de génération flat lay
-    en sortie (il l'accepte seulement en entrée de `product-to-model`) ; c'est
-    Photoroom qui l'a (`flatLay.mode=ai.auto` sur `/v2/edit`, 1K/2K/4K).
-    Cas d'usage : hero/vignette « posé à plat » stylisé, cohérent au catalogue.
-  - **Ombre IA (AI Shadows)** : option de `/v2/edit`. Piège d'architecture :
-    l'ombre est « cuite » dans l'image composée par Photoroom → le
-    repositionnement local gratuit (drag/zoom/crop sur le cutout) ne peut pas
-    la régénérer — soit positionner d'abord et appliquer l'ombre en dernier,
-    soit re-payer un appel par re-render. À trancher côté UX avant de coder.
-  - **Facturation combinée confirmée (doc pricing)** : un appel `/v2/edit`
-    accepte autant d'options que voulu SANS surcoût — $0,10/image plan Plus,
-    AI Shadows/Backgrounds/Relighting inclus. Nuance : la normalisation
-    actuelle (segment ~$0,02 + Pillow local gratuit) est ~5× moins chère —
-    garder le pipeline actuel par défaut, `/v2/edit` seulement quand une
-    feature IA (ombre, flat lay) est demandée.
-  - **Test comparatif génération mannequin** : Photoroom **Virtual Model**
-    (`virtualModel.*` sur `/v2/edit`, plan Plus) accepte PLUSIEURS vues du
-    produit (`additionalProductImages[]`), pose native (~12 presets),
-    mannequin custom par image (cohérence catalogue) — vs FASHN (1 seule
-    `product_image`, fidélité textile réputée meilleure, pose via prompt
-    depuis 2026-07-16). À départager par un test live sur 2-3 produits réels
-    avant tout changement de provider. Alternative généraliste si le
-    multi-images devient central : Google Nano Banana Pro (jusqu'à 14 images
-    de référence fusionnées).
+- ~~Extensions Photoroom `/v2/edit`~~ — **SHIPPED 2026-07-17** (commits
+  62d0228 backend + d51139e frontend + ajustements sandbox) :
+  - **Studio 4 onglets** : Traitements | Porté mannequin | **Mise à plat**
+    (flatLay) | **Mannequin invisible** (ghostMannequin) — nouveaux verbes
+    `generate_flat`/`generate_ghost` (202+polling, format + style libre).
+  - **Porté mannequin bi-moteur** : sélecteur FASHN / Photoroom Virtual Model
+    par génération + défaut compte (`imaging_generation_engine`) ; côté
+    Photoroom : 16 mannequins, 23 décors, 12 poses natives (presets FR),
+    multi-vues `additionalProductImages` (max 3), `virtualModel.prompt` pour
+    les directives. Test comparatif FASHN vs Virtual Model : à faire par Marc
+    sur produits réels via le sélecteur.
+  - **Finalisation IA** (`POST /imaging/assets/{id}/finalize`, synchrone) sur
+    une normalisation positionnée : ombre (soft/hard/floating — les overrides
+    d'intensité sont rejetés par l'API hors modèles avancés, vérifié live),
+    décor IA par prompt, défroissage, beautifier, agrandissement `ai.fast`
+    ×4 (⚠ entrée max 1 Mpx — inutilisable sur le canevas 1600×2000 plein,
+    utile sur sorties recadrées), recoloration via `editWithAI.prompt` (pas
+    de namespace recolor.* ; COMBINABLE avec l'ombre dans le même appel,
+    vérifié live). Envoi = recomposition RGBA transparente du positionnement
+    (POST multipart) ; un re-render local EFFACE la finalisation
+    (avertissement UI, re-payer pour re-finaliser).
+  - **Crédits** : flat/ghost/virtual model = action `image_generate` ;
+    finalisation = nouvelle action `image_finalize` (défaut 5, admin).
+  - **Clés** : `PHOTOROOM_EDIT_API_KEY` (sandbox de test, plan Basic) avec
+    repli sur `PHOTOROOM_API_KEY` — une fois passé au plan **Plus**, retirer
+    la variable (la clé principale sert pour tout). Ligne usage_price
+    `photoroom / photoroom-edit-v2 / images / 0,09 €` à saisir dans l'admin
+    au passage en prod.
+  - Backlog /v2/edit restant : relighting, text removal, expand/uncrop, blur,
+    outline, segmentation par texte, image from prompt, layers.
+    Alternative multi-images généraliste : Google Nano Banana Pro (14 vues).
 - ~~Logo CatalogAI~~ — **DONE 2026-07-17** : monogramme « C » + point violet
   fourni par Marc (Claude Design). Favicon = monogramme violet sans fond ;
   wordmark « Catalog » figé (Nunito 800, sans monogramme) à la place du nom

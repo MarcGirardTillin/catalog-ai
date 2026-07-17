@@ -166,11 +166,11 @@ class FinalizeRequest(BaseModel):
     """
 
     shadow_mode: Literal["soft", "hard", "floating"] | None = None
-    shadow_intensity: float | None = Field(default=None, ge=0, le=1)
     # Décor IA généré par prompt ; prioritaire sur la couleur conservée.
     background_prompt: str | None = Field(default=None, max_length=500)
     ironing: bool = False
-    upscale_factor: Literal[2, 4] | None = None
+    # Agrandissement IA ai.fast (×4) — Photoroom limite l'entrée à 1 Mpx.
+    upscale: bool = False
     beautify: bool = False
     # Recoloration du vêtement (via Edit With AI, gabarit serveur).
     recolor_prompt: str | None = Field(default=None, max_length=200)
@@ -180,7 +180,7 @@ class FinalizeRequest(BaseModel):
             self.shadow_mode
             or (self.background_prompt and self.background_prompt.strip())
             or self.ironing
-            or self.upscale_factor
+            or self.upscale
             or self.beautify
             or (self.recolor_prompt and self.recolor_prompt.strip())
         )

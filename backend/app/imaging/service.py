@@ -200,11 +200,12 @@ class FinalizeOptions:
     """
 
     shadow_mode: str | None = None  # "soft" | "hard" | "floating"
-    shadow_intensity: float | None = None  # 0-1
     background_color: str | None = None  # hex — fond conservé
     background_prompt: str | None = None  # décor IA (prioritaire sur color)
     ironing: bool = False
-    upscale_factor: int | None = None  # 2 | 4
+    # Agrandissement IA ai.fast (×4) — Photoroom refuse toute entrée > 1 Mpx
+    # (vérifié live 2026-07-17) : surtout utile sur les sorties recadrées.
+    upscale: bool = False
     beautify: bool = False
     recolor_prompt: str | None = None  # nouvelle couleur du vêtement
     # Repli sans cutout stagé (remove_bg désactivé à la normalisation) :
@@ -563,17 +564,17 @@ def finalize_image(
     """
     params: dict[str, Any] = {}
     if options.shadow_mode:
+        # Pas d'override (intensité…) : réservés aux modèles d'ombre avancés,
+        # rejetés en 400 avec ai.soft/hard/floating (vérifié live 2026-07-17).
         params["shadow"] = {"mode": f"ai.{options.shadow_mode}"}
-        if options.shadow_intensity is not None:
-            params["shadow"]["intensityOverride"] = options.shadow_intensity
     if options.background_prompt and options.background_prompt.strip():
         params["background"] = {"prompt": options.background_prompt.strip()}
     elif options.background_color:
         params["background"] = {"color": options.background_color.lstrip("#")}
     if options.ironing:
         params["ironing"] = {"mode": "ai.auto"}
-    if options.upscale_factor:
-        params["upscale"] = {"mode": "ai.auto", "factor": options.upscale_factor}
+    if options.upscale:
+        params["upscale"] = {"mode": "ai.fast"}
     if options.beautify:
         params["beautify"] = {"mode": "ai.auto"}
     if options.recolor_prompt and options.recolor_prompt.strip():

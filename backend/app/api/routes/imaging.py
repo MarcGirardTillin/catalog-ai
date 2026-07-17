@@ -327,13 +327,12 @@ def finalize_asset(
 
     options = FinalizeOptions(
         shadow_mode=body.shadow_mode,
-        shadow_intensity=body.shadow_intensity,
         # Le fond actuel est ré-appliqué par Photoroom autour de l'ombre —
         # sauf décor IA demandé, qui prime.
         background_color=str(stored.get("bg_color", "FFFFFF")),
         background_prompt=body.background_prompt,
         ironing=body.ironing,
-        upscale_factor=body.upscale_factor,
+        upscale=body.upscale,
         beautify=body.beautify,
         recolor_prompt=body.recolor_prompt,
         remove_background=not has_cutout,

@@ -847,3 +847,32 @@ Catalog est un SaaS multi-entreprises sur UNE instance. Décisions :
    l'aperçu, coupée en PIXELS CANEVAS en fin de composition (pas de resize) —
    la sortie garde les proportions du format. Composable avec le
    repositionnement (offsets/échelle) et annulable (Réinitialiser).
+
+## 2026-07-17 — Extensions Photoroom /v2/edit (flat lay, ghost, Virtual Model, finalisation IA)
+
+1. **Un client, deux clés** : `PhotoroomClient.edit()` générique (GET query
+   params pour une URL publique, POST multipart pour des bytes — le staging
+   local n'est pas public ; params imbriqués aplatis en notation pointée).
+   `PHOTOROOM_EDIT_API_KEY` = clé sandbox TEMPORAIRE de test (plan Basic),
+   repli sur `PHOTOROOM_API_KEY` ; à retirer après passage au plan Plus.
+2. **Finalisation IA = mutation de l'asset normalize, appliquée EN DERNIER**
+   (décision Marc) : le flux normalisation + repositionnement local gratuit
+   reste intact ; `POST /imaging/assets/{id}/finalize` (synchrone) remplace
+   l'output, pose `params_json.finalize`, et un re-render local EFFACE la
+   finalisation (repositionner = re-payer, avertissement UI). L'image envoyée
+   est la recomposition RGBA transparente du positionnement courant :
+   Photoroom pose l'ombre sur l'alpha puis remplit le fond.
+3. **Crédits** : flat lay / ghost / Virtual Model débitent `image_generate`
+   (même geste « générer un visuel ») ; la finalisation a sa propre action
+   `image_finalize` (défaut 5 crédits — décision Marc, un appel combiné = un
+   seul débit quelles que soient les options).
+4. **Virtual Model = 2e moteur du même verbe `generate_model`** (choix par
+   génération + défaut compte `imaging_generation_engine`) — un seul
+   historique studio ; deps provider « optionnelles » honorant les overrides
+   de test : la clé du moteur NON choisi peut manquer sans bloquer.
+5. **Limites API vérifiées live (sandbox)** : les overrides d'ombre
+   (`intensityOverride`…) sont rejetés hors modèles avancés → mode seul ;
+   `upscale.mode=ai.fast|ai.slow` (pas de factor, ×4 constaté) avec entrée
+   max 1 Mpx → inutilisable sur le canevas 1600×2000 plein, exposé pour les
+   sorties recadrées ; pas de namespace `recolor.*` → recoloration via
+   `editWithAI.prompt`, combinable avec l'ombre dans le même appel.

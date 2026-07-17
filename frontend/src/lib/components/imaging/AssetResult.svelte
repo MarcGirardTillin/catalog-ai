@@ -315,12 +315,11 @@
   let finalizeWarned = false
   let fin = $state({
     shadowMode: "" as "" | "soft" | "hard" | "floating",
-    shadowIntensity: 60,
     backgroundKind: "keep" as "keep" | "prompt",
     backgroundPrompt: "",
     ironing: false,
     beautify: false,
-    upscale: "" as "" | "2" | "4",
+    upscale: false,
     recolor: "",
   })
   const finHasOption = $derived(
@@ -328,7 +327,7 @@
       (fin.backgroundKind === "prompt" && fin.backgroundPrompt.trim() !== "") ||
       fin.ironing ||
       fin.beautify ||
-      fin.upscale !== "" ||
+      fin.upscale ||
       fin.recolor.trim() !== "",
   )
 
@@ -338,12 +337,11 @@
     finalizing = true
     const { data, error } = await finalizeAsset(asset.id, {
       shadow_mode: fin.shadowMode || null,
-      shadow_intensity: fin.shadowMode ? fin.shadowIntensity / 100 : null,
       background_prompt:
         fin.backgroundKind === "prompt" ? fin.backgroundPrompt.trim() || null : null,
       ironing: fin.ironing,
       beautify: fin.beautify,
-      upscale_factor: fin.upscale ? (Number(fin.upscale) as 2 | 4) : null,
+      upscale: fin.upscale,
       recolor_prompt: fin.recolor.trim() || null,
     })
     finalizing = false
@@ -669,23 +667,6 @@
                   <option value="floating">Flottante</option>
                 </Select>
               </div>
-              {#if fin.shadowMode}
-                <div class="flex flex-col gap-1.5">
-                  <Label for={`fin-intensity-${work.asset?.id}`}>
-                    Intensité de l'ombre ({fin.shadowIntensity} %)
-                  </Label>
-                  <input
-                    id={`fin-intensity-${work.asset?.id}`}
-                    type="range"
-                    min="10"
-                    max="100"
-                    step="5"
-                    class="accent-primary h-2 w-full self-center"
-                    disabled={finalizing}
-                    bind:value={fin.shadowIntensity}
-                  />
-                </div>
-              {/if}
               <div class="flex flex-col gap-1.5">
                 <Label for={`fin-bg-${work.asset?.id}`}>Arrière-plan</Label>
                 <Select
@@ -695,18 +676,6 @@
                 >
                   <option value="keep">Conserver la couleur</option>
                   <option value="prompt">Décor IA (décrit ci-dessous)</option>
-                </Select>
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <Label for={`fin-upscale-${work.asset?.id}`}>Agrandissement</Label>
-                <Select
-                  id={`fin-upscale-${work.asset?.id}`}
-                  disabled={finalizing}
-                  bind:value={fin.upscale}
-                >
-                  <option value="">Aucun</option>
-                  <option value="2">×2</option>
-                  <option value="4">×4</option>
                 </Select>
               </div>
             </div>
@@ -741,6 +710,18 @@
                   bind:checked={fin.beautify}
                 />
                 Retouche beauté (IA)
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  class="accent-primary size-4"
+                  disabled={finalizing}
+                  bind:checked={fin.upscale}
+                />
+                Agrandissement ×4 (IA)
+                <span class="text-muted-foreground text-xs">
+                  — images jusqu'à 1 Mpx (ex. sortie recadrée)
+                </span>
               </label>
             </div>
             <div class="flex min-w-48 flex-col gap-1.5">

@@ -1496,19 +1496,6 @@ export const FinalizeRequestSchema = {
             ],
             title: 'Shadow Mode'
         },
-        shadow_intensity: {
-            anyOf: [
-                {
-                    type: 'number',
-                    maximum: 1,
-                    minimum: 0
-                },
-                {
-                    type: 'null'
-                }
-            ],
-            title: 'Shadow Intensity'
-        },
         background_prompt: {
             anyOf: [
                 {
@@ -1526,20 +1513,10 @@ export const FinalizeRequestSchema = {
             title: 'Ironing',
             default: false
         },
-        upscale_factor: {
-            anyOf: [
-                {
-                    type: 'integer',
-                    enum: [
-                        2,
-                        4
-                    ]
-                },
-                {
-                    type: 'null'
-                }
-            ],
-            title: 'Upscale Factor'
+        upscale: {
+            type: 'boolean',
+            title: 'Upscale',
+            default: false
         },
         beautify: {
             type: 'boolean',

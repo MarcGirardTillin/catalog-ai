@@ -381,10 +381,9 @@ def test_finalize_image_combines_options_in_one_multipart_call(
         cutout_png(),
         options=FinalizeOptions(
             shadow_mode="soft",
-            shadow_intensity=0.6,
             background_color="#F5F5F5",
             ironing=True,
-            upscale_factor=2,
+            upscale=True,
             beautify=True,
             recolor_prompt="bordeaux",
             output_format="webp",
@@ -402,10 +401,11 @@ def test_finalize_image_combines_options_in_one_multipart_call(
     body = request.read()
     assert b"imageFile" in body
     assert b'name="shadow.mode"' in body and b"ai.soft" in body
-    assert b'name="shadow.intensityOverride"' in body
+    # Pas d'overrides d'ombre : rejetés (400) hors modèles avancés.
+    assert b"intensityOverride" not in body
     assert b'name="background.color"' in body and b"F5F5F5" in body
     assert b'name="ironing.mode"' in body
-    assert b'name="upscale.factor"' in body
+    assert b'name="upscale.mode"' in body and b"ai.fast" in body
     assert b'name="beautify.mode"' in body
     assert b'name="editWithAI.prompt"' in body and b"bordeaux" in body
     assert b'name="export.format"' in body and b"webp" in body

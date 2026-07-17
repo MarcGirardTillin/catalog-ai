@@ -885,10 +885,6 @@ export type FinalizeRequest = {
      */
     shadow_mode?: 'soft' | 'hard' | 'floating' | null;
     /**
-     * Shadow Intensity
-     */
-    shadow_intensity?: number | null;
-    /**
      * Background Prompt
      */
     background_prompt?: string | null;
@@ -897,9 +893,9 @@ export type FinalizeRequest = {
      */
     ironing?: boolean;
     /**
-     * Upscale Factor
+     * Upscale
      */
-    upscale_factor?: 2 | 4 | null;
+    upscale?: boolean;
     /**
      * Beautify
      */
