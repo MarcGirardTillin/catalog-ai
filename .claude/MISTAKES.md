@@ -191,3 +191,16 @@ resynchronise par recherche de référence. Leçon : pour tout appel upstream
 dont la durée croît avec la taille des données, prévoir dès le départ (1) un
 timeout dimensionné et (2) un chemin de réconciliation — un timeout n'est
 pas un échec, c'est une issue INCONNUE.
+
+## 2026-07-17 — Polling arrêté sur transition = dernier état périmé
+
+- **Symptôme** : à la fin d'une analyse d'import, la liste des produits
+  extraits restait vide jusqu'à un rechargement manuel de la page.
+- **Cause** : deux pollings conditionnés au statut « en cours » ; les données
+  finales sont écrites au moment MÊME de la transition de statut, donc le
+  dernier poll de la liste pouvait précéder l'écriture — et plus aucun
+  refetch après l'arrêt du polling.
+- **Leçon** : quand un polling s'arrête sur une transition d'état, toujours
+  déclencher UN refetch final APRÈS la transition (invalidateQueries sur le
+  flanc descendant), car l'état terminal porte souvent les données qu'on
+  attendait.
