@@ -1260,10 +1260,16 @@ def test_transfer_requires_profile(
 # -- link-back (POST /link-products) + products view (GET /products) -----------
 
 
-def _tillin_product(product_id: int, reference_code: str | None) -> Any:
-    from app.api.schemas import Product
+def _tillin_product(
+    product_id: int, reference_code: str | None, image_url: str | None = None
+) -> Any:
+    from app.api.schemas import Product, ProductImage
 
-    return Product(id=product_id, reference_code=reference_code)
+    return Product(
+        id=product_id,
+        reference_code=reference_code,
+        images=[ProductImage(url=image_url)] if image_url else [],
+    )
 
 
 def _transferred_job(client: TestClient, refs: list[str]) -> dict[str, Any]:
@@ -1325,15 +1331,49 @@ def test_link_products_is_idempotent(
     import_client: TestClient, fake_xano: _FakeXano
 ) -> None:
     job = _transferred_job(import_client, ["REF-1"])
-    fake_xano.search_results = {"ref-1": [_tillin_product(101, "REF-1")]}
+    fake_xano.search_results = {
+        "ref-1": [_tillin_product(101, "REF-1", image_url="https://tillin/1.jpg")]
+    }
 
     first = import_client.post(f"/imports/{job['id']}/link-products").json()
     assert first == {"linked": 1, "already_linked": 0, "not_found": []}
 
     second = import_client.post(f"/imports/{job['id']}/link-products").json()
     assert second == {"linked": 0, "already_linked": 1, "not_found": []}
-    # Already linked -> no second search.
+    # Already linked AVEC image capturée -> pas de seconde recherche.
     assert fake_xano.search_calls == ["REF-1"]
+
+
+def test_link_products_captures_and_refreshes_tillin_image(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """Le lien capture l'image du produit Tillin dans le payload (la vue
+    « Par import » l'affiche), et « Lier » rattrape les items liés avant la
+    capture — ou dont le produit n'avait pas encore de visuel."""
+    job = _transferred_job(import_client, ["REF-1"])
+    # 1er lien : le produit Tillin n'a pas encore d'image.
+    fake_xano.search_results = {"ref-1": [_tillin_product(101, "REF-1")]}
+    first = import_client.post(f"/imports/{job['id']}/link-products").json()
+    assert first == {"linked": 1, "already_linked": 0, "not_found": []}
+    db = _db()
+    item = db.query(ImportItem).filter(ImportItem.job_id == job["id"]).one()
+    assert "tillin_image_url" not in (item.payload_json or {})
+
+    # Une image apparaît côté Tillin (studio, réception…) : « Lier » relance
+    # la recherche pour les liés sans image et capture le visuel.
+    fake_xano.search_results = {
+        "ref-1": [_tillin_product(101, "REF-1", image_url="https://tillin/1.jpg")]
+    }
+    second = import_client.post(f"/imports/{job['id']}/link-products").json()
+    assert second == {"linked": 0, "already_linked": 1, "not_found": []}
+    assert fake_xano.search_calls == ["REF-1", "REF-1"]
+    db.expire_all()
+    item = db.query(ImportItem).filter(ImportItem.job_id == job["id"]).one()
+    assert item.payload_json["tillin_image_url"] == "https://tillin/1.jpg"
+
+    # La vue produits préfère l'image Tillin à celle extraite du fichier.
+    lines = import_client.get(f"/imports/{job['id']}/products").json()["items"]
+    assert lines[0]["image_url"] == "https://tillin/1.jpg"
 
 
 def test_link_products_tolerates_case_and_spaces(

@@ -35,7 +35,7 @@ from app.api.deps import (
     require_feature,
 )
 from app.api.exceptions import AppException
-from app.api.schemas import PaginatedResponse
+from app.api.schemas import PaginatedResponse, Product
 from app.api.schemas.import_profiles import ImportProfileConfig
 from app.api.schemas.imports import (
     ImportFilePreview,
@@ -744,8 +744,8 @@ def transfer_import(
     return ImportTransferResult(ok=True, row_count=len(rows))
 
 
-def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> int | None:
-    """Resolve one supplier reference to a Tillin product id (exact match).
+def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> Product | None:
+    """Resolve one supplier reference to its Tillin product (exact match).
 
     La recherche plein-texte Xano ne trouve pas les références à slash
     (« 10415-104/A » → 0 hit, « 10415-104 » → le bon produit) : on essaie la
@@ -753,6 +753,8 @@ def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> int | None:
     sur la référence COMPLÈTE, quel que soit le candidat qui a fait remonter
     le produit. Plusieurs hits sont acceptés tant qu'ils pointent tous vers
     UN produit ; une référence réellement ambiguë reste non résolue (None).
+    Renvoie le produit issu de la liste (id + images) pour que les appelants
+    capturent l'image Tillin sans lecture supplémentaire.
     """
     wanted = supplier_ref.strip().lower()
     if not wanted:
@@ -764,16 +766,31 @@ def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> int | None:
     for query in queries:
         page = xano.search_products(text=query, per_page=5)
         # Exact reference matches only (the search itself is fuzzy).
-        matched_ids = {
-            product.id
+        matched = {
+            product.id: product
             for product in page.items
             if (product.reference_code or "").strip().lower() == wanted
         }
-        if len(matched_ids) == 1:
-            return matched_ids.pop()
-        if matched_ids:
+        if len(matched) == 1:
+            return next(iter(matched.values()))
+        if matched:
             return None
     return None
+
+
+def _remember_tillin_image(item: ImportItem, product: Product) -> None:
+    """Snapshot the Tillin product's first image into the item payload.
+
+    The « Par import » products view is local-only and supplier files almost
+    never carry image URLs: the visual comes from the linked Tillin product,
+    captured here while the search result is already in hand.
+    """
+    if not product.images:
+        return
+    item.payload_json = {
+        **(item.payload_json or {}),
+        "tillin_image_url": product.images[0].url,
+    }
 
 
 @router.post("/{import_id}/reconcile", response_model=ImportReconcileResult)
@@ -805,12 +822,13 @@ def reconcile_import(
     result = ImportReconcileResult(checked=len(items))
     for item in items:
         supplier_ref = str((item.payload_json or {}).get("supplier_ref") or "")
-        product_id = _match_tillin_product(xano, supplier_ref)
-        if product_id is None:
+        product = _match_tillin_product(xano, supplier_ref)
+        if product is None:
             result.not_found.append(supplier_ref)
             continue
         item.status = "applied"
-        item.tillin_product_id = product_id
+        item.tillin_product_id = product.id
+        _remember_tillin_image(item, product)
         result.applied += 1
     if result.applied and "transfer" not in (job.config_json or {}):
         # Le transfert a bien eu lieu côté Tillin : on l'enregistre pour
@@ -857,13 +875,21 @@ def link_import_products(
     ).all()
     result = ImportLinkResult()
     for item in items:
+        supplier_ref = str((item.payload_json or {}).get("supplier_ref") or "")
         if item.tillin_product_id is not None:
             result.already_linked += 1
+            # Rattrapage visuel : les items liés avant la capture d'image (ou
+            # dont le produit n'avait pas encore de visuel) profitent aussi du
+            # geste « Lier » pour récupérer l'image Tillin.
+            if not (item.payload_json or {}).get("tillin_image_url"):
+                product = _match_tillin_product(xano, supplier_ref)
+                if product is not None and product.id == item.tillin_product_id:
+                    _remember_tillin_image(item, product)
             continue
-        supplier_ref = str((item.payload_json or {}).get("supplier_ref") or "")
-        product_id = _match_tillin_product(xano, supplier_ref)
-        if product_id is not None:
-            item.tillin_product_id = product_id
+        product = _match_tillin_product(xano, supplier_ref)
+        if product is not None:
+            item.tillin_product_id = product.id
+            _remember_tillin_image(item, product)
             result.linked += 1
         else:
             result.not_found.append(supplier_ref)
@@ -895,7 +921,12 @@ def list_import_products(
     unlinked_count = 0
     for item in items:
         payload = item.payload_json or {}
+        # Image Tillin capturée au lien (les fichiers fournisseurs ne portent
+        # quasiment jamais d'URL d'image), repli sur l'extraction du fichier.
         image_urls = payload.get("image_urls") or []
+        image_url = payload.get("tillin_image_url") or (
+            str(image_urls[0]) if image_urls else None
+        )
         lines.append(
             ImportProductLine(
                 item_id=item.id,
@@ -903,7 +934,7 @@ def list_import_products(
                 supplier_ref=str(payload.get("supplier_ref") or ""),
                 title=payload.get("title"),
                 brand=payload.get("brand"),
-                image_url=str(image_urls[0]) if image_urls else None,
+                image_url=image_url,
                 variant_count=len(payload.get("variants") or []),
                 tillin_product_id=item.tillin_product_id,
             )

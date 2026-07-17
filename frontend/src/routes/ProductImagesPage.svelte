@@ -265,7 +265,9 @@
       previewUrls,
       error: null,
       filename: "",
-      replace: false,
+      // Une image RENDUE (normalisation) remplace l'originale par défaut ;
+      // une génération (mannequin, mise à plat…) s'ajoute par défaut.
+      replace: asset.verb === "normalize",
       offsetX: asset.render_offset_x ?? 0,
       offsetY: asset.render_offset_y ?? 0,
       scale: asset.render_scale ?? 1,
@@ -361,7 +363,7 @@
     selected = selected.length === images.length ? [] : images.map((i) => i.url)
   }
 
-  function freshWork(previous?: Work): Work {
+  function freshWork(key: string, previous?: Work): Work {
     for (const url of previous?.previewUrls ?? []) URL.revokeObjectURL(url)
     return {
       status: "running",
@@ -369,7 +371,9 @@
       previewUrls: [],
       error: null,
       filename: previous?.filename ?? "",
-      replace: previous?.replace ?? false,
+      // Défaut : un traitement (clé sans suffixe) remplace l'originale, une
+      // génération (::gen/::flat/::ghost) s'ajoute au produit.
+      replace: previous?.replace ?? !key.includes("::"),
       offsetX: 0,
       offsetY: 0,
       scale: 1,
@@ -386,7 +390,7 @@
     failMessage: string,
   ) {
     if (works[key]?.status === "running") return
-    works[key] = freshWork(works[key])
+    works[key] = freshWork(key, works[key])
     const { data, error } = await launch()
     if (error || !data) {
       works[key].status = "failed"

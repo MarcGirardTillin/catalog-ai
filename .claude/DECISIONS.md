@@ -876,3 +876,29 @@ Catalog est un SaaS multi-entreprises sur UNE instance. Décisions :
    max 1 Mpx → inutilisable sur le canevas 1600×2000 plein, exposé pour les
    sorties recadrées ; pas de namespace `recolor.*` → recoloration via
    `editWithAI.prompt`, combinable avec l'ombre dans le même appel.
+
+## 2026-07-17 — Enrichissement : description retenue quand la source est incertaine
+
+Décision Marc (tests Lemaire) : quand la résolution finit `needs_manual`
+(candidats sous le seuil 0,75), le pipeline NE rédige PAS la description —
+elle attend soit la validation d'une source par le reviewer (resolve), soit
+le geste explicite `POST /items/{id}/generate-copy` (« ignorer les candidats
+et générer quand même », copie catalogue-seulement, pas de nouveau débit
+crédits : l'item est déjà payé au queue-time, seuls les tokens Claude sont
+métérés). `skipped` (marque sans site web) garde la génération directe : il
+n'y a pas de source à confirmer. Corollaires de la même session :
+
+1. Requêtes de recherche (Shopify suggest + recherche web) : la couleur du
+   produit est ajoutée à la requête titre quand elle est unique parmi les
+   variantes et absente du titre (une fiche par coloris chez les boutiques —
+   vécu : bon modèle, mauvais coloris). Multi-couleurs → pas d'ajout.
+2. `enrichment_item.product_title` (migration 0020) : snapshot du titre
+   catalogue posé à chaque run — les listes de tâches et fils d'ariane
+   affichent le titre, plus l'id opaque.
+3. Marque blanche : les `reason` de résolution et `source_method` ne doivent
+   jamais nommer un prestataire (Firecrawl) dans l'UI — raisons backend
+   neutres (« web search… ») + mapping français côté frontend.
+4. Vue « Par import » : l'image affichée vient du produit Tillin lié,
+   capturée dans `payload_json["tillin_image_url"]` au moment du lien (la
+   recherche est déjà payée) et rafraîchie par « Lier » pour les items liés
+   sans image. Pas de fan-out Xano à l'affichage.

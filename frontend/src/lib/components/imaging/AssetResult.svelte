@@ -595,12 +595,20 @@
                 />
                 <span class="text-muted-foreground text-xs">%</span>
               </span>
-              {#if repositioned}
-                <Button variant="ghost" size="sm" onclick={resetPosition}>
-                  <RotateCcw size={13} aria-hidden="true" data-icon="inline-start" />
-                  Réinitialiser
-                </Button>
-              {/if}
+              <!-- Toujours rendu (invisible tant que rien n'est repositionné) :
+                   le groupe est centré, un bouton qui apparaît/disparaît
+                   décalerait la barre de zoom à chaque premier geste. -->
+              <Button
+                variant="ghost"
+                size="sm"
+                class={repositioned ? undefined : "invisible"}
+                aria-hidden={!repositioned}
+                tabindex={repositioned ? undefined : -1}
+                onclick={resetPosition}
+              >
+                <RotateCcw size={13} aria-hidden="true" data-icon="inline-start" />
+                Réinitialiser
+              </Button>
             </div>
           {/if}
         {/if}
