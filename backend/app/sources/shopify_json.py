@@ -73,6 +73,37 @@ def _candidate_skus(candidate: dict[str, Any]) -> set[str]:
     }
 
 
+_COLOR_OPTION_NAMES = {"color", "colour", "couleur"}
+
+
+def candidate_color(candidate: dict[str, Any]) -> str | None:
+    """The candidate's color(s) from its Shopify options, when declared.
+
+    Certains sites (une fiche par coloris, ex. Lemaire) n'ont pas d'option
+    couleur du tout : None — l'UI affiche alors le slug de l'URL en repli.
+    """
+    options = candidate.get("options")
+    if not isinstance(options, list):
+        return None
+    position: int | None = None
+    for option in options:
+        if not isinstance(option, dict):
+            continue
+        if str(option.get("name") or "").strip().lower() in _COLOR_OPTION_NAMES:
+            raw = option.get("position")
+            position = int(raw) if isinstance(raw, int) else None
+            break
+    if position is None:
+        return None
+    key = f"option{position}"
+    values: list[str] = []
+    for variant in candidate.get("variants") or []:
+        value = str(variant.get(key) or "").strip()
+        if value and value not in values:
+            values.append(value)
+    return ", ".join(values[:3]) or None
+
+
 def _title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 

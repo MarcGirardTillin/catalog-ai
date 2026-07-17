@@ -413,7 +413,23 @@
     selectedImageUrls = allImagesSelected ? [] : images.map((i) => i.url)
   }
 
-  type Candidate = { url: string; title?: string | null; score: number }
+  type Candidate = {
+    url: string
+    title?: string | null
+    score: number
+    color?: string | null
+  }
+
+  /** Dernier segment de l'URL — souvent le seul endroit où le coloris se lit
+   * (« …-dark-chocolate-… ») quand la fiche ne déclare pas de couleur. */
+  function pageSlug(url: string): string {
+    try {
+      const segments = new URL(url).pathname.split("/").filter(Boolean)
+      return decodeURIComponent(segments.at(-1) ?? "")
+    } catch {
+      return url
+    }
+  }
 
   // Vignettes (og:image) de la page source et des candidats — best-effort,
   // chargées une fois par URL (null = pas de visuel trouvé).
@@ -886,9 +902,23 @@
                             />
                           </a>
                         {/if}
-                        <span class="min-w-0 flex-1 truncate" title={candidate.url}>
-                          {candidate.title ?? candidate.url}
-                        </span>
+                        <div class="min-w-0 flex-1" title={candidate.url}>
+                          <div class="flex items-center gap-2">
+                            <span class="min-w-0 truncate">
+                              {candidate.title ?? candidate.url}
+                            </span>
+                            {#if candidate.color}
+                              <span
+                                class="bg-muted text-foreground shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                              >
+                                {candidate.color}
+                              </span>
+                            {/if}
+                          </div>
+                          <p class="text-muted-foreground truncate font-mono text-[10px]">
+                            {pageSlug(candidate.url)}
+                          </p>
+                        </div>
                         <span class="shrink-0 font-mono"
                           >{candidate.score.toFixed(2)}</span
                         >

@@ -928,3 +928,16 @@ Suite du cas Lemaire (dark chocolate résolu à la place de dark bronze) :
 Validé live sur lemaire.fr : le produit dark bronze (réf « BG0223 LL0108 »,
 couleur DARK BRONZE) résout désormais la bonne fiche via shopify_json (3
 coloris à 0,75, couleur départage) avec la bonne vignette.
+
+Addendum (même jour, retour test #35 — titres templatés) : le titre Tillin
+étant souvent « {titre} - {marque} - {couleur} », la recherche prédictive
+Shopify (ET strict) ne matchait JAMAIS le titre complet → zéro hit → bascule
+web payante mal classée. Les requêtes titre essaient maintenant aussi le
+titre de base (segment avant le premier « - »), après le titre complet ;
+requêtes web plafonnées à 4 (coût crédits). Les candidats portent leur
+couleur quand elle est identifiable (option Shopify `Couleur`/`Color`, champ
+`color` de l'extraction de page → `_color`), utilisée aussi par le veto ;
+la review affiche couleur + slug d'URL sous chaque candidat (les fiches
+mono-coloris type Lemaire ne déclarent pas d'option couleur — le slug
+montre le coloris). Validé live : le titre templaté exact de l'item #35
+résout la fiche dark bronze via shopify_json.

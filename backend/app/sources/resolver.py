@@ -23,6 +23,7 @@ from app.clients.firecrawl import EXTRACT_CREDITS, SEARCH_CREDITS, FirecrawlClie
 from app.sources.firecrawl_source import extract_source_product, reference_matches
 from app.sources.shopify_json import (
     SCORE_BARCODE,
+    candidate_color,
     fetch_product,
     reference_key,
     score_product_match,
@@ -58,6 +59,10 @@ class Candidate(BaseModel):
     url: str
     title: str | None = None
     score: float
+    # Couleur de la fiche candidate quand elle est identifiable (option
+    # Shopify ou extraction de page) — affichée dans la review pour repérer
+    # le bon coloris d'un coup d'œil.
+    color: str | None = None
 
 
 class ResolveResult(BaseModel):
@@ -93,14 +98,27 @@ def _single_color(product: Product) -> str | None:
 
 
 def _title_queries(product: Product) -> list[str]:
-    """Title-based terms: `title + color` first (when unambiguous), then title."""
+    """Title-based terms, most-specific first.
+
+    Les titres Tillin sont souvent templatés « {titre} - {marque} -
+    {couleur} » : la recherche prédictive Shopify (ET strict sur tous les
+    mots) ne renvoie alors RIEN (vécu Lemaire). On essaie le titre complet
+    (+ couleur si absente), puis le titre de base (segment avant le premier
+    « - »), qui matche le vrai titre de la fiche.
+    """
     if not product.title:
         return []
     color = _single_color(product)
-    lowered = product.title.lower()
-    if color and color.lower() not in lowered:
-        return [f"{product.title} {color}", product.title]
-    return [product.title]
+    titles = [product.title]
+    base = product.title.split(" - ")[0].strip()
+    if base and base.lower() != product.title.lower():
+        titles.append(base)
+    queries: list[str] = []
+    for title in titles:
+        if color and color.lower() not in title.lower():
+            queries.append(f"{title} {color}")
+        queries.append(title)
+    return queries
 
 
 def _queries(product: Product) -> list[str]:
@@ -115,12 +133,13 @@ def _queries(product: Product) -> list[str]:
 
 def _web_queries(product: Product) -> list[str]:
     """Web-search terms: reference then title(+color). Barcodes are skipped —
-    they are rarely indexed by web search engines."""
+    they are rarely indexed by web search engines. Capped: chaque recherche
+    coûte des crédits, et la première qui renvoie des résultats gagne."""
     queries: list[str] = []
     if product.reference_code:
         queries.append(product.reference_code)
     queries.extend(_title_queries(product))
-    return queries
+    return queries[:4]
 
 
 def _host(site: str) -> str:
@@ -204,7 +223,12 @@ def _resolve_shopify(
                     continue
                 score = score_product_match(product, full)
                 candidates.append(
-                    Candidate(url=url, title=full.get("title"), score=score)
+                    Candidate(
+                        url=url,
+                        title=full.get("title"),
+                        score=score,
+                        color=candidate_color(full),
+                    )
                 )
                 if score >= SCORE_BARCODE:
                     # Near-perfect (barcode) match: early exit.
@@ -287,6 +311,7 @@ def _firecrawl_score(product: Product, url: str, extracted: dict[str, Any]) -> f
         url,
         extracted.get("title"),
         extracted.get("body_html"),
+        extracted.get("_color"),
         *(extracted.get("_reference_codes") or []),
     ):
         return FIRECRAWL_COLOR_MISMATCH_SCORE
@@ -345,6 +370,7 @@ def _resolve_firecrawl(
                 url=url,
                 title=extracted.get("title"),
                 score=_firecrawl_score(product, url, extracted),
+                color=extracted.get("_color"),
             )
             candidates.append(candidate)
             if candidate.score >= FIRECRAWL_RESOLVED_SCORE:

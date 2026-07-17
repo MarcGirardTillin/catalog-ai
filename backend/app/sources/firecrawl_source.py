@@ -60,6 +60,7 @@ def extract_source_product(
         return None
     images = [str(u) for u in extracted.get("images") or [] if u]
     references = [str(code) for code in extracted.get("reference_codes") or [] if code]
+    color = extracted.get("color")
     result: dict[str, Any] = {
         "title": extracted.get("title"),
         "body_html": extracted.get("description"),
@@ -68,6 +69,9 @@ def extract_source_product(
         "tags": None,
         "_firecrawl": True,
         "_reference_codes": references,
+        # Couleur de la fiche telle que lue sur la page : sert au contrôle de
+        # coloris du resolver et à l'affichage des candidats en review.
+        "_color": str(color) if color else None,
     }
     _apply_text_fields(result, extracted)
     return result

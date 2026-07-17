@@ -262,6 +262,55 @@ def test_shopify_reference_tie_without_color_match_needs_manual() -> None:
     assert len(result.candidates) == 2
 
 
+def test_templated_title_falls_back_to_base_segment() -> None:
+    """Titre Tillin templaté « {titre} - {marque} - {couleur} » : la recherche
+    prédictive Shopify (ET strict) ne matche jamais le titre complet — le
+    titre de base (avant le premier « - ») doit être essayé (vécu Lemaire :
+    zéro hit → bascule web payante et mal classée)."""
+    transport = _store(
+        {
+            "small-belted-hobo-bag-dark-chocolate": _CHOCOLATE,
+            "small-belted-hobo-bag-dark-bronze": _BRONZE,
+        }
+    )
+    product = Product(
+        id=10,
+        title="Small Belted Hobo Bag - LEMAIRE - Dark Bronze",
+        reference_code="BG0223 LL0108",
+        variants=[ProductVariant(id=1, color="Dark Bronze", size="OS")],
+    )
+    with httpx.Client(transport=transport) as client:
+        result = resolve_source_url(client, product, [SITE])
+
+    assert result.status == "resolved"
+    assert result.url == f"{SITE}/products/small-belted-hobo-bag-dark-bronze"
+
+
+def test_shopify_candidates_carry_declared_color() -> None:
+    """La couleur déclarée en option Shopify remonte sur les candidats
+    (affichée dans la review)."""
+    colored = {
+        "title": "Pull marin",
+        "handle": "pull-marin",
+        "tags": "",
+        "options": [
+            {"name": "Taille", "position": 1},
+            {"name": "Couleur", "position": 2},
+        ],
+        "variants": [
+            {"sku": "REF-9-M", "barcode": "", "option1": "M", "option2": "Marine"},
+            {"sku": "REF-9-L", "barcode": "", "option1": "L", "option2": "Marine"},
+        ],
+    }
+    transport = _store({"pull-marin": colored})
+    product = Product(id=11, title="Pull marin", reference_code="REF-9")
+    with httpx.Client(transport=transport) as client:
+        result = resolve_source_url(client, product, [SITE])
+
+    assert result.status == "resolved"
+    assert [c.color for c in result.candidates] == ["Marine"]
+
+
 def test_shopify_reference_tie_without_product_color_keeps_first() -> None:
     """Sans couleur produit (ou multi-coloris), comportement historique."""
     transport = _store({"small-belted-hobo-bag-dark-chocolate": _CHOCOLATE})
@@ -517,9 +566,12 @@ def test_firecrawl_reference_match_with_wrong_color_is_not_auto_resolved() -> No
     assert both.url == bronze_url
     assert {(c.url, c.score) for c in both.candidates} >= {(chocolate_url, 0.5)}
 
-    # 2. Seul le mauvais coloris existe : à vérifier, raison couleur.
+    # 2. Seul le mauvais coloris existe : à vérifier, raison couleur — et la
+    # couleur lue sur la page remonte sur le candidat (affichage review).
     with (
-        _firecrawl_store({chocolate_url: shared_ref}) as fc,
+        _firecrawl_store(
+            {chocolate_url: {**shared_ref, "color": "Dark Chocolate"}}
+        ) as fc,
         httpx.Client(transport=_store({})) as client,
     ):
         wrong_only = resolve_source_url(
@@ -527,7 +579,9 @@ def test_firecrawl_reference_match_with_wrong_color_is_not_auto_resolved() -> No
         )
     assert wrong_only.status == "needs_manual"
     assert wrong_only.reason == "pages match the reference but not the product color"
-    assert [(c.url, c.score) for c in wrong_only.candidates] == [(chocolate_url, 0.5)]
+    assert [(c.url, c.score, c.color) for c in wrong_only.candidates] == [
+        (chocolate_url, 0.5, "Dark Chocolate")
+    ]
 
     # 3. Sans couleur produit connue : le match référence garde son autorité.
     colorless = product.model_copy(
