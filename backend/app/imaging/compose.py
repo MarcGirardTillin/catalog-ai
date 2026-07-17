@@ -109,6 +109,7 @@ def compose(
     quality: int = 80,
     max_kb: int | None = None,
     crop_box: tuple[int, int, int, int] | None = None,
+    transparent_bg: bool = False,
 ) -> ComposedImage:
     """Compose the product onto a solid-color canvas and encode it.
 
@@ -121,6 +122,10 @@ def compose(
     `crop_box` (x, y, w, h in canvas px) recadre le canevas composé en toute
     fin — la sélection est verrouillée au ratio côté UI, donc la sortie garde
     les proportions du format choisi. Les bornes sont resserrées au canevas.
+
+    `transparent_bg` : canevas RGBA transparent (bg_color ignoré, PNG forcé) —
+    utilisé par la finalisation IA pour que Photoroom pose l'ombre sur l'alpha
+    puis remplisse le fond lui-même, en préservant le positionnement validé.
     """
     if ratio not in RATIOS:
         raise ValueError(f"unknown ratio {ratio!r}")
@@ -131,6 +136,8 @@ def compose(
     if scale <= 0:
         raise ValueError(f"scale must be positive: {scale!r}")
 
+    if transparent_bg:
+        fmt = "png"
     normalized_fmt = _FORMATS[fmt][0]
     background = _parse_hex(bg_color)
 
@@ -147,7 +154,10 @@ def compose(
             src = src.crop(bbox)
 
     canvas_w, canvas_h = _canvas_size(ratio, frame_w, frame_h)
-    canvas = Image.new("RGB", (canvas_w, canvas_h), background)
+    if transparent_bg:
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    else:
+        canvas = Image.new("RGB", (canvas_w, canvas_h), background)
 
     # Fit inside the margin box, then the user scale on top.
     avail_w = canvas_w * (1 - 2 * margin_pct)

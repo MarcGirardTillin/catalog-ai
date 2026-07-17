@@ -1,6 +1,7 @@
 """Imaging asset helpers shared by the /products and /imaging routes."""
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
 from app.api.schemas import CropBox, ImageAssetPublic, StagedFilePublic
+from app.api.schemas import GenerateFlatOptions as GenerateFlatOptionsSchema
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.schemas import NormalizeOptions as NormalizeOptionsSchema
 from app.api.schemas.settings import AccountSettings
@@ -18,10 +20,18 @@ from app.clients.photoroom import PhotoroomClient
 from app.core.db import SessionLocal
 from app.imaging import staging
 from app.imaging.service import (
+    PHOTOROOM_POSE_MAP,
+    PHOTOROOM_SCENE_MAP,
+    GenerateFlatOptions,
     GenerateModelOptions,
+    GenerateVirtualModelOptions,
+    ImagingResult,
     NormalizeOptions,
     NormalizeOutcome,
+    generate_flat_photo,
+    generate_ghost_photo,
     generate_model_photo,
+    generate_virtual_model_photo,
     normalize_product_image,
 )
 from app.models import Account, ImageAsset
@@ -109,6 +119,7 @@ def to_public(asset: ImageAsset) -> ImageAssetPublic:
         render_offset_y=int(render.get("offset_y") or 0),
         render_scale=float(render.get("scale") or 1.0),
         render_crop=CropBox.model_validate(crop) if isinstance(crop, dict) else None,
+        finalized=bool((asset.params_json or {}).get("finalize")),
         source_image=asset.source_image,
         source_product_image_id=asset.source_product_image_id,
         created_at=asset.created_at,
@@ -202,6 +213,63 @@ def to_service_options(options: GenerateModelOptionsSchema) -> GenerateModelOpti
         generation_mode=options.generation_mode,
         seed=options.seed,
         num_images=options.num_images,
+    )
+
+
+def to_flat_service_options(
+    options: GenerateFlatOptionsSchema | None,
+) -> GenerateFlatOptions:
+    """API schema -> service dataclass (flat lay / ghost mannequin)."""
+    if options is None:
+        return GenerateFlatOptions()
+    return GenerateFlatOptions(prompt=options.prompt, ratio=options.ratio)
+
+
+def to_virtual_model_service_options(
+    options: GenerateModelOptionsSchema,
+    stored: AccountSettings,
+    additional_image_urls: list[str] | None,
+) -> GenerateVirtualModelOptions:
+    """Traduit la config « porté mannequin » en options Photoroom Virtual Model.
+
+    Presets natifs d'abord (pose, décor, mannequin — explicites ou défauts du
+    compte), le prompt ne porte que ce qui n'a pas de preset : cadrage tête
+    coupée et directives libres. La scène studio/lifestyle des réglages FASHN
+    se traduit en preset décor quand aucun preset explicite n'est choisi.
+    """
+    pose: str | None = options.photoroom_pose
+    if pose is None:
+        fashn_pose = options.pose or stored.imaging_generation_pose
+        pose = PHOTOROOM_POSE_MAP.get(fashn_pose) if fashn_pose else None
+    scene_preset: str | None = (
+        options.scene_preset or stored.imaging_generation_scene_preset
+    )
+    if scene_preset is None:
+        scene = options.scene or stored.imaging_generation_scene
+        scene_preset = PHOTOROOM_SCENE_MAP.get(scene)
+
+    prompt_parts: list[str] = []
+    framing = options.framing or stored.imaging_generation_framing
+    if framing == "cropped_head":
+        # Pas de preset cadrage chez Photoroom : la consigne part au prompt.
+        prompt_parts.append("framed from the neck down, head cropped out of frame")
+    instructions = (
+        options.instructions
+        if options.instructions is not None
+        else stored.imaging_generation_instructions
+    )
+    if instructions and instructions.strip():
+        prompt_parts.append(instructions.strip())
+
+    return GenerateVirtualModelOptions(
+        prompt=", ".join(prompt_parts) if prompt_parts else None,
+        model_preset=options.model_preset or stored.imaging_generation_model_preset,
+        scene_preset=scene_preset,
+        pose=pose,
+        ratio="4:5"
+        if options.aspect_ratio not in {"1:1", "3:4", "16:9"}
+        else options.aspect_ratio,
+        additional_image_urls=list(additional_image_urls or [])[:3],
     )
 
 
@@ -414,3 +482,127 @@ def run_generate_model(
                 db.commit()
     finally:
         db.close()
+
+
+def _run_generation(
+    asset_id: int,
+    label: str,
+    produce: "Callable[[Session, int], list[ImagingResult]]",
+) -> None:
+    """Squelette commun des générations en tâche de fond (session propre) :
+    processing -> produce(db, account_id) -> staging -> débit image_generate ->
+    completed, ou failed + error. `produce` NE commit pas (métering inclus)."""
+    db = SessionLocal()
+    try:
+        asset = db.get(ImageAsset, asset_id)
+        if asset is None:  # pragma: no cover - defensive
+            logger.warning("image_asset %s vanished before processing", asset_id)
+            return
+        asset.status = "processing"
+        db.commit()
+        try:
+            results = produce(db, asset.account_id)
+            asset.staged_paths_json = [
+                staging.store(asset.id, index, result.data, result.format)
+                for index, result in enumerate(results)
+            ]
+            asset.staged_files_json = [
+                {
+                    "role": "output",
+                    "path": path,
+                    "bytes": len(result.data),
+                    "width": result.width,
+                    "height": result.height,
+                    "format": result.format,
+                    "index": index,
+                }
+                for index, (path, result) in enumerate(
+                    zip(asset.staged_paths_json, results, strict=True)
+                )
+            ]
+            asset.status = "completed"
+            asset.finished_at = datetime.now(UTC)
+            if results:
+                asset.params_json = {
+                    **(asset.params_json or {}),
+                    "trace": results[0].trace,
+                }
+                consume_credits(
+                    db,
+                    account_id=asset.account_id,
+                    action="image_generate",
+                    quantity=len(results),
+                    asset_id=asset.id,
+                )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.exception("%s failed for asset %s", label, asset_id)
+            asset = db.get(ImageAsset, asset_id)
+            if asset is not None:
+                asset.status = "failed"
+                asset.error = str(exc)
+                asset.finished_at = datetime.now(UTC)
+                db.commit()
+    finally:
+        db.close()
+
+
+def run_generate_flat(
+    asset_id: int,
+    image_url: str,
+    options: GenerateFlatOptions,
+    photoroom: PhotoroomClient,
+) -> None:
+    """BackgroundTask : mise à plat Photoroom (flat lay)."""
+    _run_generation(
+        asset_id,
+        "generate-flat",
+        lambda db, account_id: generate_flat_photo(
+            image_url,
+            options=options,
+            photoroom=photoroom,
+            db=db,
+            account_id=account_id,
+        ),
+    )
+
+
+def run_generate_ghost(
+    asset_id: int,
+    image_url: str,
+    options: GenerateFlatOptions,
+    photoroom: PhotoroomClient,
+) -> None:
+    """BackgroundTask : mannequin invisible Photoroom (ghost mannequin)."""
+    _run_generation(
+        asset_id,
+        "generate-ghost",
+        lambda db, account_id: generate_ghost_photo(
+            image_url,
+            options=options,
+            photoroom=photoroom,
+            db=db,
+            account_id=account_id,
+        ),
+    )
+
+
+def run_generate_virtual_model(
+    asset_id: int,
+    image_url: str,
+    options: GenerateVirtualModelOptions,
+    photoroom: PhotoroomClient,
+) -> None:
+    """BackgroundTask : porté mannequin, moteur Photoroom Virtual Model."""
+    _run_generation(
+        asset_id,
+        "generate-virtual-model",
+        lambda db, account_id: generate_virtual_model_photo(
+            image_url,
+            options=options,
+            photoroom=photoroom,
+            db=db,
+            account_id=account_id,
+        ),
+    )

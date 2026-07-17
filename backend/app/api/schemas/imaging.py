@@ -18,6 +18,68 @@ PoseOption = Literal[
     "three_quarter_left",
     "three_quarter_right",
 ]
+# Moteur du verbe « porté mannequin » : FASHN (historique) ou Photoroom
+# Virtual Model. None = réglage du compte (imaging_generation_engine).
+EngineOption = Literal["fashn", "photoroom"]
+# Presets natifs Photoroom Virtual Model (mannequins et décors).
+ModelPresetOption = Literal[
+    "avery",
+    "sam",
+    "taylor",
+    "kendall",
+    "jordan",
+    "casey",
+    "maya",
+    "reece",
+    "lena",
+    "julia",
+    "jackson",
+    "sophia",
+    "emma",
+    "ava",
+    "zoe",
+    "fiona",
+]
+ScenePresetOption = Literal[
+    "random",
+    "street",
+    "bedroom",
+    "sunset",
+    "factory",
+    "studio",
+    "coloredstudio",
+    "concretestudio",
+    "beach",
+    "tropical",
+    "library",
+    "forest",
+    "businessdistrict",
+    "countryside",
+    "flowers",
+    "goldenlight",
+    "mountain",
+    "pool",
+    "latincity",
+    "cafe",
+    "asiancity",
+    "nightlights",
+    "desert",
+]
+# Poses natives Photoroom (remplacent PoseOption quand engine=photoroom).
+PhotoroomPoseOption = Literal[
+    "random",
+    "standing",
+    "34turn",
+    "powerstance",
+    "walkingforward",
+    "handinpocket",
+    "crossedarms",
+    "back",
+    "overtheshoulder",
+    "seated",
+    "adjustingclothing",
+    "playfulspin",
+]
 
 
 class NormalizeOptions(BaseModel):
@@ -65,12 +127,63 @@ class GenerateModelOptions(BaseModel):
     generation_mode: Literal["fast", "balanced", "quality"] = "balanced"
     seed: int = 42
     num_images: int = Field(default=1, ge=1, le=4)
+    # Moteur : None = défaut du compte. Les champs suivants sont
+    # Photoroom-only (ignorés côté FASHN) ; resolution/generation_mode/seed/
+    # num_images sont FASHN-only (forcés à 1/None côté Photoroom).
+    engine: EngineOption | None = None
+    model_preset: ModelPresetOption | None = None
+    scene_preset: ScenePresetOption | None = None
+    photoroom_pose: PhotoroomPoseOption | None = None
 
 
 class GenerateModelRequest(BaseModel):
     image_url: str
     product_image_id: int | None = None
     options: GenerateModelOptions | None = None
+    # URLs publiques Tillin des autres vues du produit (Photoroom only).
+    additional_image_urls: list[str] | None = Field(default=None, max_length=3)
+
+
+class GenerateFlatOptions(BaseModel):
+    """Options communes aux verbes flat lay et ghost mannequin (Photoroom)."""
+
+    prompt: str | None = Field(default=None, max_length=500)
+    ratio: RatioOption = "4:5"
+
+
+class GenerateFlatRequest(BaseModel):
+    image_url: str
+    product_image_id: int | None = None
+    options: GenerateFlatOptions | None = None
+
+
+class FinalizeRequest(BaseModel):
+    """POST /imaging/assets/{id}/finalize — retouches IA « cuites » (payant).
+
+    Un appel /v2/edit = un débit, quelles que soient les options combinées.
+    Au moins une option doit être active (422 nothing_to_finalize sinon,
+    vérifié dans la route pour un code d'erreur métier explicite).
+    """
+
+    shadow_mode: Literal["soft", "hard", "floating"] | None = None
+    shadow_intensity: float | None = Field(default=None, ge=0, le=1)
+    # Décor IA généré par prompt ; prioritaire sur la couleur conservée.
+    background_prompt: str | None = Field(default=None, max_length=500)
+    ironing: bool = False
+    upscale_factor: Literal[2, 4] | None = None
+    beautify: bool = False
+    # Recoloration du vêtement (via Edit With AI, gabarit serveur).
+    recolor_prompt: str | None = Field(default=None, max_length=200)
+
+    def has_active_option(self) -> bool:
+        return bool(
+            self.shadow_mode
+            or (self.background_prompt and self.background_prompt.strip())
+            or self.ironing
+            or self.upscale_factor
+            or self.beautify
+            or (self.recolor_prompt and self.recolor_prompt.strip())
+        )
 
 
 class StagedFilePublic(BaseModel):
@@ -126,6 +239,9 @@ class ImageAssetPublic(BaseModel):
     render_scale: float = 1.0
     # Dernier recadrage appliqué (POST /render), pour réhydrater l'UI.
     render_crop: CropBox | None = None
+    # True quand une finalisation IA a été appliquée (retouches « cuites ») ;
+    # un re-render local recompose depuis le cutout et EFFACE ce flag.
+    finalized: bool = False
     source_image: str | None = None
     source_product_image_id: int | None = None
     created_at: datetime

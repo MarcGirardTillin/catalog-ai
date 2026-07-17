@@ -895,3 +895,276 @@ def test_discard_guards(
         409,
         "asset_not_completed",
     )
+
+
+# ---- Photoroom /v2/edit : generate-flat / generate-ghost / engine / finalize ----
+
+
+def _edit_ok_handler(request: httpx.Request) -> httpx.Response:
+    """Photoroom mock : segment -> cutout RGBA, /v2/edit -> JPEG généré."""
+    if request.url.path == "/v1/segment":
+        return httpx.Response(200, content=cutout_png())
+    assert request.url.path == "/v2/edit", request.url.path
+    return httpx.Response(200, content=source_jpeg())
+
+
+def _account_id(factory: sessionmaker[Session]) -> int:
+    db = _db(factory)
+    try:
+        account = db.scalar(select(Account))
+        assert account is not None
+        return account.id
+    finally:
+        db.close()
+
+
+def _credit_entries(factory: sessionmaker[Session]) -> list[Any]:
+    from app.models import CreditEntry
+
+    db = _db(factory)
+    try:
+        return list(db.scalars(select(CreditEntry).order_by(CreditEntry.id)))
+    finally:
+        db.close()
+
+
+def test_generate_flat_202_then_background_completes(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+    staging_dir: Path,
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    response = auth_client.post(
+        "/products/101/images/generate-flat",
+        json={
+            "image_url": "https://cdn.tillin/vm01-1.jpg",
+            "product_image_id": 501,
+            "options": {"prompt": "fond lin clair", "ratio": "1:1"},
+        },
+    )
+    assert response.status_code == 202, response.text
+    created = response.json()
+    assert created["verb"] == "generate_flat"
+    assert created["provider"] == "photoroom"
+    assert created["model"] == "photoroom-edit-v2"
+
+    body = auth_client.get(f"/imaging/assets/{created['id']}").json()
+    assert body["status"] == "completed"
+    assert len(body["preview_urls"]) == 1
+    assert (staging_dir / str(created["id"]) / "0.jpeg").is_file()
+
+    db = _db(db_session_factory)
+    try:
+        event = db.scalar(select(UsageEvent))
+        assert event is not None
+        assert (event.provider, event.model) == ("photoroom", "photoroom-edit-v2")
+    finally:
+        db.close()
+    debit = [e for e in _credit_entries(db_session_factory) if e.credits < 0]
+    assert [(e.action, e.credits) for e in debit] == [("image_generate", -5)]
+
+
+def test_generate_ghost_202_then_background_completes(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    response = auth_client.post(
+        "/products/101/images/generate-ghost",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
+    )
+    assert response.status_code == 202, response.text
+    created = response.json()
+    assert created["verb"] == "generate_ghost"
+    body = auth_client.get(f"/imaging/assets/{created['id']}").json()
+    assert body["status"] == "completed"
+
+
+def test_generate_flat_402_on_empty_balance(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    from app.api.services import credits as credits_service
+    from app.models import CreditEntry
+
+    override_photoroom(_edit_ok_handler)
+    assert auth_client.get("/stats/dashboard").status_code == 200
+    account_id = _account_id(db_session_factory)
+    db = _db(db_session_factory)
+    try:
+        balance = credits_service.balance(db, account_id)
+        db.add(CreditEntry(account_id=account_id, kind="adjustment", credits=-balance))
+        db.commit()
+    finally:
+        db.close()
+
+    response = auth_client.post(
+        "/products/101/images/generate-flat",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
+    )
+    assert response.status_code == 402
+    assert response.json()["code"] == "insufficient_credits"
+
+
+def test_generate_model_engine_photoroom_without_fashn_key(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    monkeypatch: pytest.MonkeyPatch,
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Le moteur Photoroom fonctionne même si FASHN n'est pas configuré."""
+    from app.api import deps
+
+    monkeypatch.setattr(deps, "_fashn_client", None)
+    monkeypatch.setattr(settings, "FASHN_API_KEY", "")
+    override_photoroom(_edit_ok_handler)
+    response = auth_client.post(
+        "/products/101/images/generate-model",
+        json={
+            "image_url": "https://cdn.tillin/vm01-1.jpg",
+            "options": {
+                "engine": "photoroom",
+                "model_preset": "avery",
+                "scene_preset": "studio",
+                "photoroom_pose": "34turn",
+            },
+            "additional_image_urls": ["https://cdn.tillin/vm01-2.jpg"],
+        },
+    )
+    assert response.status_code == 202, response.text
+    created = response.json()
+    assert created["verb"] == "generate_model"
+    assert created["provider"] == "photoroom"
+    assert created["model"] == "photoroom-edit-v2"
+    body = auth_client.get(f"/imaging/assets/{created['id']}").json()
+    assert body["status"] == "completed"
+    debit = [e for e in _credit_entries(db_session_factory) if e.credits < 0]
+    assert [(e.action, e.credits) for e in debit] == [("image_generate", -5)]
+
+
+def test_generate_model_engine_defaults_to_account_setting(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    put = auth_client.put(
+        "/settings/account", json={"imaging_generation_engine": "photoroom"}
+    )
+    assert put.status_code == 200
+    response = auth_client.post(
+        "/products/101/images/generate-model",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["provider"] == "photoroom"
+
+
+def test_generate_model_engine_fashn_503_without_key(
+    auth_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Moteur FASHN choisi sans clé FASHN : 503 propre, aucun asset créé."""
+    from app.api import deps
+
+    monkeypatch.setattr(deps, "_fashn_client", None)
+    monkeypatch.setattr(settings, "FASHN_API_KEY", "")
+    response = auth_client.post(
+        "/products/101/images/generate-model",
+        json={"image_url": "https://cdn.tillin/vm01-1.jpg"},
+    )
+    assert response.status_code == 503
+    assert response.json()["code"] == "fashn_not_configured"
+    db = _db(db_session_factory)
+    try:
+        assert db.scalar(select(ImageAsset)) is None  # no zombie asset
+    finally:
+        db.close()
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_finalize_replaces_output_debits_and_render_clears_flag(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    asset_id = _normalized_asset_id(auth_client)
+
+    response = auth_client.post(
+        f"/imaging/assets/{asset_id}/finalize",
+        json={"shadow_mode": "soft", "shadow_intensity": 0.5, "ironing": True},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["finalized"] is True
+    # L'output index 0 a été remplacé par le résultat /v2/edit (JPEG mock).
+    preview = auth_client.get(body["preview_urls"][0])
+    assert preview.status_code == 200
+    assert probe(preview.content)[2] == "jpeg"
+
+    debits = [e for e in _credit_entries(db_session_factory) if e.credits < 0]
+    assert ("image_finalize", -5) in [(e.action, e.credits) for e in debits]
+    db = _db(db_session_factory)
+    try:
+        events = list(db.scalars(select(UsageEvent)))
+        assert ("photoroom", "photoroom-edit-v2") in [
+            (e.provider, e.model) for e in events
+        ]
+    finally:
+        db.close()
+
+    # Repositionner recompose depuis le cutout : la finalisation est effacée.
+    render = auth_client.post(
+        f"/imaging/assets/{asset_id}/render", json={"offset_x": 10}
+    )
+    assert render.status_code == 200
+    assert render.json()["finalized"] is False
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_finalize_422_without_active_option(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    asset_id = _normalized_asset_id(auth_client)
+    response = auth_client.post(f"/imaging/assets/{asset_id}/finalize", json={})
+    assert response.status_code == 422
+    assert response.json()["code"] == "nothing_to_finalize"
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_finalize_guards_and_upstream_error_does_not_debit(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    # Verbe non finalisable (generate_model) -> 409.
+    other_id = _make_asset(db_session_factory, verb="generate_model")
+    response = auth_client.post(
+        f"/imaging/assets/{other_id}/finalize", json={"ironing": True}
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "unsupported_verb"
+
+    # Erreur Photoroom -> 502, PAS de débit ni de flag.
+    asset_id = _normalized_asset_id(auth_client)
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/segment":
+            return httpx.Response(200, content=cutout_png())
+        return httpx.Response(500, text="boom")
+
+    override_photoroom(failing)
+    before = len([e for e in _credit_entries(db_session_factory) if e.credits < 0])
+    response = auth_client.post(
+        f"/imaging/assets/{asset_id}/finalize", json={"shadow_mode": "soft"}
+    )
+    assert response.status_code == 502
+    after = len([e for e in _credit_entries(db_session_factory) if e.credits < 0])
+    assert after == before
+    assert auth_client.get(f"/imaging/assets/{asset_id}").json()["finalized"] is False

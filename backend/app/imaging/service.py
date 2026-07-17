@@ -27,6 +27,19 @@ from app.imaging.compose import compose, probe
 FASHN_PRODUCT_TO_MODEL = "product-to-model"
 PHOTOROOM_MODEL = "photoroom-v2"  # legacy /v2/edit (kept for old traces)
 PHOTOROOM_SEGMENT_MODEL = "photoroom-segment-v1"
+# Nouveaux appels /v2/edit (flat lay, ghost mannequin, virtual model,
+# finalisation IA) — 0,10 $/image quel que soit le nombre d'options.
+PHOTOROOM_EDIT_MODEL = "photoroom-edit-v2"
+
+# Ratio app -> preset `size` Photoroom (flatLay/ghostMannequin/virtualModel).
+# 4:5 n'a pas de preset exact : PORTRAIT_HD_4_3 est le plus proche (valeurs
+# à confirmer en sandbox ; repli outputSize=WxH si un preset est rejeté).
+PHOTOROOM_SIZE_PRESETS = {
+    "4:5": "PORTRAIT_HD_4_3",
+    "3:4": "PORTRAIT_HD_4_3",
+    "1:1": "SQUARE_HD",
+    "16:9": "LANDSCAPE_HD_16_9",
+}
 
 # Source download guards — the verb fetches the image itself: segment wants
 # multipart bytes, and the source weight/dims are part of the outcome.
@@ -127,6 +140,77 @@ class GenerateModelOptions:
     seed: int = 42
     num_images: int = 1
     output_format: str = "jpeg"
+
+
+# Pose FASHN (nos réglages) -> preset pose Photoroom Virtual Model. Les
+# profils stricts n'ont pas d'équivalent : l'UI affiche les poses Photoroom
+# quand le moteur est photoroom, ce mapping ne sert qu'au défaut de compte.
+PHOTOROOM_POSE_MAP = {
+    "face": "standing",
+    "back": "back",
+    "three_quarter_left": "34turn",
+    "three_quarter_right": "34turn",
+}
+# Poses natives Photoroom acceptées telles quelles (validation côté schéma).
+PHOTOROOM_POSES = {
+    "random",
+    "standing",
+    "34turn",
+    "powerstance",
+    "walkingforward",
+    "handinpocket",
+    "crossedarms",
+    "back",
+    "overtheshoulder",
+    "seated",
+    "adjustingclothing",
+    "playfulspin",
+}
+# Scène de nos réglages -> preset décor Photoroom (sauf preset explicite).
+PHOTOROOM_SCENE_MAP = {"studio": "studio", "lifestyle": "random"}
+
+
+@dataclass
+class GenerateFlatOptions:
+    """Options des verbes flat lay / ghost mannequin (Photoroom /v2/edit)."""
+
+    prompt: str | None = None  # style libre (ex. « fond lin clair »)
+    ratio: str = "4:5"
+
+
+@dataclass
+class GenerateVirtualModelOptions:
+    """Options du moteur Photoroom Virtual Model (porté mannequin)."""
+
+    prompt: str | None = None  # style libre (directives, cadrage)
+    model_preset: str | None = None  # avery…fiona ; None = Photoroom choisit
+    scene_preset: str | None = None  # studio…desert ; None = dérivé de scene
+    pose: str | None = None  # preset Photoroom ; None = libre
+    ratio: str = "4:5"
+    additional_image_urls: list[str] = field(default_factory=list)  # max 3
+
+
+@dataclass
+class FinalizeOptions:
+    """Options de la finalisation IA (un appel /v2/edit = un débit).
+
+    Toutes optionnelles ; le caller garantit qu'au moins une est active.
+    L'image d'entrée est la recomposition RGBA transparente du positionnement
+    validé : Photoroom pose l'ombre sur l'alpha puis remplit le fond.
+    """
+
+    shadow_mode: str | None = None  # "soft" | "hard" | "floating"
+    shadow_intensity: float | None = None  # 0-1
+    background_color: str | None = None  # hex — fond conservé
+    background_prompt: str | None = None  # décor IA (prioritaire sur color)
+    ironing: bool = False
+    upscale_factor: int | None = None  # 2 | 4
+    beautify: bool = False
+    recolor_prompt: str | None = None  # nouvelle couleur du vêtement
+    # Repli sans cutout stagé (remove_bg désactivé à la normalisation) :
+    # l'image envoyée est opaque, Photoroom re-détoure lui-même.
+    remove_background: bool = False
+    output_format: str = "png"
 
 
 @dataclass
@@ -327,9 +411,208 @@ def generate_model_photo(
     return results
 
 
-def generate_flat_photo() -> list[ImagingResult]:
-    """Worn -> flat packshot. Reserved: no confirmed FASHN endpoint yet."""
-    raise NotImplementedError(
-        "generate_flat_photo is deferred: no suitable FASHN endpoint is "
-        "available yet (reserved in the interface, see plan)"
+def _photoroom_size(ratio: str) -> str | None:
+    return PHOTOROOM_SIZE_PRESETS.get(ratio)
+
+
+def _run_photoroom_edit(
+    params: dict[str, Any],
+    *,
+    image_url: str,
+    photoroom: PhotoroomClient,
+    db: Session,
+    account_id: int,
+    trace_params: dict[str, Any],
+) -> list[ImagingResult]:
+    """Appel /v2/edit commun aux verbes génératifs (GET, URL publique Tillin) :
+    une image en retour, un usage_event photoroom-edit-v2. Ne commit pas."""
+    data = photoroom.edit(params, image_url=image_url)
+    try:
+        width, height, fmt = probe(data)
+    except Exception:  # trace best effort — l'image est retournée telle quelle
+        width, height, fmt = None, None, "png"
+    record_usage(
+        db,
+        account_id=account_id,
+        source="imaging",
+        provider="photoroom",
+        metric="images",
+        quantity=1,
+        model=PHOTOROOM_EDIT_MODEL,
+    )
+    return [
+        ImagingResult(
+            data=data,
+            width=width,
+            height=height,
+            format=fmt,
+            trace={
+                "provider": "photoroom",
+                "model": PHOTOROOM_EDIT_MODEL,
+                "params": trace_params,
+            },
+        )
+    ]
+
+
+def generate_flat_photo(
+    product_image: str,
+    *,
+    options: GenerateFlatOptions | None = None,
+    photoroom: PhotoroomClient,
+    db: Session,
+    account_id: int,
+) -> list[ImagingResult]:
+    """Photo produit -> mise à plat stylisée (Photoroom flat lay)."""
+    options = options or GenerateFlatOptions()
+    params: dict[str, Any] = {"flatLay": {"mode": "ai.auto"}}
+    if options.prompt and options.prompt.strip():
+        params["flatLay"]["prompt"] = options.prompt.strip()
+    if size := _photoroom_size(options.ratio):
+        params["flatLay"]["size"] = size
+    return _run_photoroom_edit(
+        params,
+        image_url=product_image,
+        photoroom=photoroom,
+        db=db,
+        account_id=account_id,
+        trace_params={"verb": "flat_lay", **asdict(options)},
+    )
+
+
+def generate_ghost_photo(
+    product_image: str,
+    *,
+    options: GenerateFlatOptions | None = None,
+    photoroom: PhotoroomClient,
+    db: Session,
+    account_id: int,
+) -> list[ImagingResult]:
+    """Photo portée/mannequin -> effet mannequin invisible (ghost mannequin)."""
+    options = options or GenerateFlatOptions()
+    params: dict[str, Any] = {"ghostMannequin": {"mode": "ai.auto"}}
+    if options.prompt and options.prompt.strip():
+        params["ghostMannequin"]["prompt"] = options.prompt.strip()
+    if size := _photoroom_size(options.ratio):
+        params["ghostMannequin"]["size"] = size
+    return _run_photoroom_edit(
+        params,
+        image_url=product_image,
+        photoroom=photoroom,
+        db=db,
+        account_id=account_id,
+        trace_params={"verb": "ghost_mannequin", **asdict(options)},
+    )
+
+
+def generate_virtual_model_photo(
+    product_image: str,
+    *,
+    options: GenerateVirtualModelOptions | None = None,
+    photoroom: PhotoroomClient,
+    db: Session,
+    account_id: int,
+) -> list[ImagingResult]:
+    """Photo produit -> portée par un mannequin virtuel (Photoroom).
+
+    2e moteur du verbe « porté mannequin » à côté de FASHN : presets natifs
+    (mannequin, décor, pose), multi-vues du produit, prompt de style libre.
+    """
+    options = options or GenerateVirtualModelOptions()
+    virtual: dict[str, Any] = {"mode": "ai.auto"}
+    if options.model_preset:
+        virtual["model"] = {"preset": {"name": options.model_preset}}
+    if options.pose and options.pose in PHOTOROOM_POSES:
+        virtual["pose"] = options.pose
+    if options.prompt and options.prompt.strip():
+        virtual["prompt"] = options.prompt.strip()
+    if options.additional_image_urls:
+        virtual["additionalProductImages"] = [
+            {"imageUrl": url} for url in options.additional_image_urls[:3]
+        ]
+    if size := _photoroom_size(options.ratio):
+        virtual["size"] = size
+    params: dict[str, Any] = {"virtualModel": virtual}
+    if options.scene_preset:
+        params["virtualModel"]["scene"] = {"preset": {"name": options.scene_preset}}
+    trace_options = asdict(options)
+    return _run_photoroom_edit(
+        params,
+        image_url=product_image,
+        photoroom=photoroom,
+        db=db,
+        account_id=account_id,
+        trace_params={"verb": "virtual_model", **trace_options},
+    )
+
+
+def finalize_image(
+    image_bytes: bytes,
+    *,
+    options: FinalizeOptions,
+    photoroom: PhotoroomClient,
+    db: Session,
+    account_id: int,
+) -> ImagingResult:
+    """Finalisation IA d'une normalisation positionnée (un appel = un débit).
+
+    `image_bytes` = recomposition RGBA transparente du positionnement validé
+    (POST multipart — le staging n'est pas public). Photoroom applique les
+    options « cuites » (ombre, décor, défroissage, upscale, beautifier,
+    recoloration) et remplit le fond.
+    """
+    params: dict[str, Any] = {}
+    if options.shadow_mode:
+        params["shadow"] = {"mode": f"ai.{options.shadow_mode}"}
+        if options.shadow_intensity is not None:
+            params["shadow"]["intensityOverride"] = options.shadow_intensity
+    if options.background_prompt and options.background_prompt.strip():
+        params["background"] = {"prompt": options.background_prompt.strip()}
+    elif options.background_color:
+        params["background"] = {"color": options.background_color.lstrip("#")}
+    if options.ironing:
+        params["ironing"] = {"mode": "ai.auto"}
+    if options.upscale_factor:
+        params["upscale"] = {"mode": "ai.auto", "factor": options.upscale_factor}
+    if options.beautify:
+        params["beautify"] = {"mode": "ai.auto"}
+    if options.recolor_prompt and options.recolor_prompt.strip():
+        # Pas de namespace recolor.* dans /v2/edit : la recoloration passe par
+        # Edit With AI en langage naturel (gabarit vérifié en sandbox).
+        params["editWithAI"] = {
+            "mode": "ai.auto",
+            "prompt": (
+                f"Change the color of the garment to {options.recolor_prompt.strip()}"
+            ),
+        }
+    if not params:
+        raise ValueError("finalize_image requires at least one active option")
+    if options.remove_background:
+        params["removeBackground"] = True
+    params["export"] = {"format": options.output_format}
+
+    data = photoroom.edit(params, image_bytes=image_bytes)
+    try:
+        width, height, fmt = probe(data)
+    except Exception:
+        width, height, fmt = None, None, options.output_format
+    record_usage(
+        db,
+        account_id=account_id,
+        source="imaging",
+        provider="photoroom",
+        metric="images",
+        quantity=1,
+        model=PHOTOROOM_EDIT_MODEL,
+    )
+    return ImagingResult(
+        data=data,
+        width=width,
+        height=height,
+        format=fmt,
+        trace={
+            "provider": "photoroom",
+            "model": PHOTOROOM_EDIT_MODEL,
+            "params": {"verb": "finalize", **asdict(options)},
+        },
     )

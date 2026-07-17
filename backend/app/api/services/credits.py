@@ -32,6 +32,7 @@ def credit_grid(db: Session, account_id: int) -> dict[str, int]:
         "enrich_item": settings.credit_cost_enrich_item,
         "image_process": settings.credit_cost_image_process,
         "image_generate": settings.credit_cost_image_generate,
+        "image_finalize": settings.credit_cost_image_finalize,
     }
 
 

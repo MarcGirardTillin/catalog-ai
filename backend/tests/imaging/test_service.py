@@ -13,11 +13,17 @@ from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
 from app.imaging.compose import probe
 from app.imaging.service import (
+    FinalizeOptions,
+    GenerateFlatOptions,
     GenerateModelOptions,
+    GenerateVirtualModelOptions,
     NormalizeOptions,
     fashn_credits,
+    finalize_image,
     generate_flat_photo,
+    generate_ghost_photo,
     generate_model_photo,
+    generate_virtual_model_photo,
     normalize_product_image,
 )
 from app.models import Account, UsageEvent
@@ -255,6 +261,187 @@ def test_build_generation_prompt_optional_pose() -> None:
     assert build_generation_prompt("full_body", "studio", None, "??") == baseline
 
 
-def test_generate_flat_photo_is_reserved() -> None:
-    with pytest.raises(NotImplementedError):
-        generate_flat_photo()
+def _edit_photoroom(captured: dict[str, httpx.Request]) -> PhotoroomClient:
+    """MockTransport /v2/edit : capture la requête, renvoie un JPEG valide."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(200, content=source_jpeg())
+
+    return PhotoroomClient(
+        "pr-key", edit_api_key="sandbox_pr-edit", transport=httpx.MockTransport(handler)
+    )
+
+
+def test_generate_flat_photo_calls_edit_and_meters(
+    db: Session, account_id: int
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    results = generate_flat_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateFlatOptions(prompt="  fond lin clair ", ratio="1:1"),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    db.commit()
+
+    request = captured["request"]
+    # GET query params aplatis en notation pointée (entrée = URL publique).
+    assert request.method == "GET"
+    assert request.url.host == "image-api.photoroom.com"
+    assert request.url.path == "/v2/edit"
+    assert request.url.params["flatLay.mode"] == "ai.auto"
+    assert request.url.params["flatLay.prompt"] == "fond lin clair"
+    assert request.url.params["flatLay.size"] == "SQUARE_HD"
+    assert request.url.params["imageUrl"] == "https://cdn.tillin/vm01-1.jpg"
+    # La clé edit (sandbox de test) prime sur la clé segment pour /v2/edit.
+    assert request.headers["x-api-key"] == "sandbox_pr-edit"
+
+    assert len(results) == 1
+    assert results[0].trace["model"] == "photoroom-edit-v2"
+    assert results[0].trace["params"]["verb"] == "flat_lay"
+    events = _usage_events(db)
+    assert [(e.provider, e.metric, e.quantity, e.model) for e in events] == [
+        ("photoroom", "images", 1, "photoroom-edit-v2")
+    ]
+
+
+def test_generate_ghost_photo_uses_ghost_mannequin_namespace(
+    db: Session, account_id: int
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    generate_ghost_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateFlatOptions(),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    params = captured["request"].url.params
+    assert params["ghostMannequin.mode"] == "ai.auto"
+    assert "ghostMannequin.prompt" not in params  # prompt absent = omis
+
+
+def test_generate_virtual_model_photo_maps_presets_and_views(
+    db: Session, account_id: int
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    generate_virtual_model_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateVirtualModelOptions(
+            prompt="street style",
+            model_preset="avery",
+            scene_preset="studio",
+            pose="34turn",
+            additional_image_urls=[
+                "https://cdn.tillin/vm01-2.jpg",
+                "https://cdn.tillin/vm01-3.jpg",
+            ],
+        ),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    params = captured["request"].url.params
+    assert params["virtualModel.mode"] == "ai.auto"
+    assert params["virtualModel.model.preset.name"] == "avery"
+    assert params["virtualModel.scene.preset.name"] == "studio"
+    assert params["virtualModel.pose"] == "34turn"
+    assert params["virtualModel.prompt"] == "street style"
+    assert (
+        params["virtualModel.additionalProductImages[0].imageUrl"]
+        == "https://cdn.tillin/vm01-2.jpg"
+    )
+    assert (
+        params["virtualModel.additionalProductImages[1].imageUrl"]
+        == "https://cdn.tillin/vm01-3.jpg"
+    )
+
+
+def test_generate_virtual_model_photo_skips_unknown_pose(
+    db: Session, account_id: int
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    generate_virtual_model_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateVirtualModelOptions(pose="not-a-pose"),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    assert "virtualModel.pose" not in captured["request"].url.params
+
+
+def test_finalize_image_combines_options_in_one_multipart_call(
+    db: Session, account_id: int
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    result = finalize_image(
+        cutout_png(),
+        options=FinalizeOptions(
+            shadow_mode="soft",
+            shadow_intensity=0.6,
+            background_color="#F5F5F5",
+            ironing=True,
+            upscale_factor=2,
+            beautify=True,
+            recolor_prompt="bordeaux",
+            output_format="webp",
+        ),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    db.commit()
+
+    request = captured["request"]
+    # Entrée en bytes (staging non public) -> POST multipart imageFile.
+    assert request.method == "POST"
+    assert request.url.path == "/v2/edit"
+    body = request.read()
+    assert b"imageFile" in body
+    assert b'name="shadow.mode"' in body and b"ai.soft" in body
+    assert b'name="shadow.intensityOverride"' in body
+    assert b'name="background.color"' in body and b"F5F5F5" in body
+    assert b'name="ironing.mode"' in body
+    assert b'name="upscale.factor"' in body
+    assert b'name="beautify.mode"' in body
+    assert b'name="editWithAI.prompt"' in body and b"bordeaux" in body
+    assert b'name="export.format"' in body and b"webp" in body
+
+    assert result.trace["params"]["verb"] == "finalize"
+    events = _usage_events(db)
+    assert [(e.provider, e.metric, e.quantity, e.model) for e in events] == [
+        ("photoroom", "images", 1, "photoroom-edit-v2")
+    ]
+
+
+def test_finalize_image_background_prompt_wins_over_color(
+    db: Session, account_id: int
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    finalize_image(
+        cutout_png(),
+        options=FinalizeOptions(
+            background_color="FFFFFF", background_prompt="marble table, soft light"
+        ),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    body = captured["request"].read()
+    assert b'name="background.prompt"' in body
+    assert b'name="background.color"' not in body
+
+
+def test_finalize_image_requires_an_active_option(db: Session, account_id: int) -> None:
+    with pytest.raises(ValueError):
+        finalize_image(
+            cutout_png(),
+            options=FinalizeOptions(),
+            photoroom=_edit_photoroom({}),
+            db=db,
+            account_id=account_id,
+        )
+    assert _usage_events(db) == []

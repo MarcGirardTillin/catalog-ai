@@ -185,3 +185,20 @@ def test_jpg_alias_normalizes_to_jpeg() -> None:
     result = compose(cutout_png(), has_alpha=True, fmt="jpg")
     assert result.format == "jpeg"
     assert probe(result.data)[2] == "jpeg"
+
+
+def test_transparent_bg_keeps_alpha_and_forces_png() -> None:
+    # Utilisé par la finalisation IA : Photoroom pose l'ombre sur l'alpha.
+    result = compose(
+        cutout_png(), has_alpha=True, transparent_bg=True, fmt="webp", bg_color="102030"
+    )
+    assert result.format == "png"
+    img = _open(result.data)
+    assert img.mode == "RGBA"
+    # Les coins restent transparents (pas de fond peint)…
+    corner = img.getpixel((2, 2))
+    assert isinstance(corner, tuple) and corner[3] == 0
+    # …et le produit est bien composé au centre, opaque.
+    center = img.getpixel((img.width // 2, img.height // 2))
+    assert isinstance(center, tuple)
+    assert center[:3] == PRODUCT and center[3] == 255

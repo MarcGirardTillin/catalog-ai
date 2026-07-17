@@ -4,7 +4,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.api.schemas.imaging import FormatOption, PoseOption, RatioOption
+from app.api.schemas.imaging import (
+    EngineOption,
+    FormatOption,
+    ModelPresetOption,
+    PoseOption,
+    RatioOption,
+    ScenePresetOption,
+)
 
 # How the rendered title is cased: left as-is, UPPER CASE, Capitalized
 # (first letters raised, rest untouched — preserves acronyms/brand styling),
@@ -76,6 +83,9 @@ class AccountSettings(BaseModel):
     credit_cost_enrich_item: int = Field(2, ge=0)
     credit_cost_image_process: int = Field(1, ge=0)
     credit_cost_image_generate: int = Field(5, ge=0)
+    # Finalisation IA d'une image normalisée (ombre/décor/défroissage/upscale/
+    # beautifier/recoloration combinés en UN appel = UN débit).
+    credit_cost_image_finalize: int = Field(5, ge=0)
     # Free credits granted once per month (subscription perk); 0 = none.
     monthly_free_credits: int = Field(0, ge=0)
     # Below this balance the client UI shows a low-credit warning.
@@ -102,6 +112,12 @@ class AccountSettings(BaseModel):
     # Orientation du mannequin par défaut ; None = laissée libre.
     imaging_generation_pose: PoseOption | None = None
     imaging_generation_instructions: str | None = None
+    # Moteur de génération par défaut : FASHN (historique) ou Photoroom
+    # Virtual Model — surchargable à chaque génération dans le studio.
+    imaging_generation_engine: EngineOption = "fashn"
+    # Presets Photoroom par défaut (engine=photoroom) ; None = choix libre.
+    imaging_generation_model_preset: ModelPresetOption | None = None
+    imaging_generation_scene_preset: ScenePresetOption | None = None
 
 
 class OperatorSettings(BaseModel):
@@ -120,6 +136,7 @@ class OperatorSettings(BaseModel):
     credit_cost_enrich_item: int = Field(2, ge=0)
     credit_cost_image_process: int = Field(1, ge=0)
     credit_cost_image_generate: int = Field(5, ge=0)
+    credit_cost_image_finalize: int = Field(5, ge=0)
     monthly_free_credits: int = Field(0, ge=0)
     low_credit_threshold: int = Field(50, ge=0)
     credit_packs: list[CreditPack] = Field(default_factory=list)

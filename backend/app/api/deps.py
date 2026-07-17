@@ -2,14 +2,15 @@
 
 import threading
 from collections.abc import Callable, Generator
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 
-from fastapi import Cookie, Depends
+from fastapi import Cookie, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
 from app.api.services.accounts import freshest_company_token, resolve_account_id
 from app.api.services.users import get_user_by_id
+from app.clients.base import NotConfiguredError
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
 from app.clients.xano import XanoClient
@@ -133,6 +134,34 @@ def get_fashn_client() -> FashnClient:
 
 PhotoroomDep = Annotated[PhotoroomClient, Depends(get_photoroom_client)]
 FashnDep = Annotated[FashnClient, Depends(get_fashn_client)]
+
+
+# Variantes « optionnelles » pour les routes multi-moteurs (generate-model :
+# FASHN ou Photoroom au choix par appel) : un provider non configuré donne
+# None au lieu d'un 503 — la route ne lève que si le moteur CHOISI manque.
+# Les overrides de test posés sur get_*_client sont honorés explicitement.
+def get_photoroom_client_optional(request: Request) -> PhotoroomClient | None:
+    provider = request.app.dependency_overrides.get(
+        get_photoroom_client, get_photoroom_client
+    )
+    try:
+        return cast(PhotoroomClient, provider())
+    except NotConfiguredError:
+        return None
+
+
+def get_fashn_client_optional(request: Request) -> FashnClient | None:
+    provider = request.app.dependency_overrides.get(get_fashn_client, get_fashn_client)
+    try:
+        return cast(FashnClient, provider())
+    except NotConfiguredError:
+        return None
+
+
+OptionalPhotoroomDep = Annotated[
+    PhotoroomClient | None, Depends(get_photoroom_client_optional)
+]
+OptionalFashnDep = Annotated[FashnClient | None, Depends(get_fashn_client_optional)]
 
 
 # Background job runner. Injected so the route can schedule enrichment after a

@@ -25,6 +25,7 @@ OPERATOR_SEEDED_KEYS = (
     "credit_cost_enrich_item",
     "credit_cost_image_process",
     "credit_cost_image_generate",
+    "credit_cost_image_finalize",
     "monthly_free_credits",
     "low_credit_threshold",
     "credit_packs",

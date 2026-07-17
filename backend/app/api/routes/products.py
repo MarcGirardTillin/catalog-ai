@@ -13,7 +13,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 
 from app.api.deps import (
     CurrentUserDep,
-    FashnDep,
+    OptionalFashnDep,
+    OptionalPhotoroomDep,
     PhotoroomDep,
     SessionDep,
     XanoDep,
@@ -21,8 +22,9 @@ from app.api.deps import (
     require_feature,
 )
 from app.api.exceptions import AppException
-from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
+from app.api.schemas import GenerateFlatOptions as GenerateFlatOptionsSchema
 from app.api.schemas import (
+    GenerateFlatRequest,
     GenerateModelRequest,
     ImageAssetPublic,
     NormalizeRequest,
@@ -30,15 +32,22 @@ from app.api.schemas import (
     Product,
     ProductImagesUploadResult,
 )
+from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import credit_grid, require_credits
 from app.api.services.imaging import (
     account_settings,
     merged_normalize_options,
+    run_generate_flat,
+    run_generate_ghost,
     run_generate_model,
+    run_generate_virtual_model,
     run_normalize,
+    to_flat_service_options,
     to_public,
+    to_virtual_model_service_options,
 )
+from app.clients.base import NotConfiguredError
 from app.imaging import service as imaging_service
 from app.imaging.uploads import prepare_upload
 from app.models import ImageAsset
@@ -227,17 +236,52 @@ def generate_model_image(
     body: GenerateModelRequest,
     db: SessionDep,
     current_user: CurrentUserDep,
-    fashn: FashnDep,
+    fashn: OptionalFashnDep,
+    photoroom: OptionalPhotoroomDep,
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
-    """Generative pipeline, 202 + asset id (FASHN takes 10-55 s).
+    """Generative pipeline, 202 + asset id (FASHN 10-55 s, Photoroom 5-60 s).
 
-    The FASHN dependency resolves BEFORE any row is written: a missing key is
-    a clean 503 with no zombie asset. The BackgroundTask polls FASHN, downloads
-    the outputs to staging and settles the asset with its own DB session.
+    Deux moteurs au choix par appel (défaut = réglage du compte) : FASHN
+    product-to-model (historique) ou Photoroom Virtual Model (presets natifs
+    mannequin/décor/pose, multi-vues). Les deux clients sont résolus en
+    variante optionnelle : seule la clé du moteur CHOISI est requise (503
+    propre AVANT toute écriture sinon).
     """
     account_id = resolve_account_id(db, current_user)
+    stored = account_settings(db, account_id)
     options = body.options or GenerateModelOptionsSchema()
+    engine = options.engine or stored.imaging_generation_engine
+
+    if engine == "photoroom":
+        if photoroom is None:
+            raise NotConfiguredError("photoroom")
+        # Photoroom rend UNE image par appel (pas de num_images/seed).
+        require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
+        vm_options = to_virtual_model_service_options(
+            options, stored, body.additional_image_urls
+        )
+        asset = ImageAsset(
+            account_id=account_id,
+            product_id=product_id,
+            verb="generate_model",
+            provider="photoroom",
+            model=imaging_service.PHOTOROOM_EDIT_MODEL,
+            status="pending",
+            source_image=body.image_url,
+            source_product_image_id=body.product_image_id,
+            params_json={"options": {**options.model_dump(), "engine": "photoroom"}},
+        )
+        db.add(asset)
+        db.commit()
+        db.refresh(asset)
+        background.add_task(
+            run_generate_virtual_model, asset.id, body.image_url, vm_options, photoroom
+        )
+        return to_public(asset)
+
+    if fashn is None:
+        raise NotConfiguredError("fashn")
     require_credits(
         db,
         account_id,
@@ -246,7 +290,6 @@ def generate_model_image(
     if options.prompt is None:
         # Instruction composée : champs explicites de la requête, repli sur
         # les réglages de génération du compte champ par champ.
-        stored = account_settings(db, account_id)
         options = options.model_copy(
             update={
                 "prompt": imaging_service.build_generation_prompt(
@@ -275,4 +318,84 @@ def generate_model_image(
     db.commit()
     db.refresh(asset)
     background.add_task(run_generate_model, asset.id, body.image_url, options, fashn)
+    return to_public(asset)
+
+
+@router.post(
+    "/{product_id}/images/generate-flat",
+    response_model=ImageAssetPublic,
+    status_code=202,
+    dependencies=[Depends(require_feature("feature_studio"))],
+)
+def generate_flat_image(
+    product_id: int,
+    body: GenerateFlatRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    photoroom: PhotoroomDep,
+    background: BackgroundTasks,
+) -> ImageAssetPublic:
+    """Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les
+    autres générations. Un appel = une image = un débit image_generate."""
+    account_id = resolve_account_id(db, current_user)
+    require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
+    options = to_flat_service_options(body.options)
+    asset = ImageAsset(
+        account_id=account_id,
+        product_id=product_id,
+        verb="generate_flat",
+        provider="photoroom",
+        model=imaging_service.PHOTOROOM_EDIT_MODEL,
+        status="pending",
+        source_image=body.image_url,
+        source_product_image_id=body.product_image_id,
+        params_json={
+            "options": (body.options or GenerateFlatOptionsSchema()).model_dump()
+        },
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    background.add_task(run_generate_flat, asset.id, body.image_url, options, photoroom)
+    return to_public(asset)
+
+
+@router.post(
+    "/{product_id}/images/generate-ghost",
+    response_model=ImageAssetPublic,
+    status_code=202,
+    dependencies=[Depends(require_feature("feature_studio"))],
+)
+def generate_ghost_image(
+    product_id: int,
+    body: GenerateFlatRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    photoroom: PhotoroomDep,
+    background: BackgroundTasks,
+) -> ImageAssetPublic:
+    """Mannequin invisible (Photoroom ghost mannequin) — efface le mannequin
+    d'une photo portée. Un appel = une image = un débit image_generate."""
+    account_id = resolve_account_id(db, current_user)
+    require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
+    options = to_flat_service_options(body.options)
+    asset = ImageAsset(
+        account_id=account_id,
+        product_id=product_id,
+        verb="generate_ghost",
+        provider="photoroom",
+        model=imaging_service.PHOTOROOM_EDIT_MODEL,
+        status="pending",
+        source_image=body.image_url,
+        source_product_image_id=body.product_image_id,
+        params_json={
+            "options": (body.options or GenerateFlatOptionsSchema()).model_dump()
+        },
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    background.add_task(
+        run_generate_ghost, asset.id, body.image_url, options, photoroom
+    )
     return to_public(asset)
