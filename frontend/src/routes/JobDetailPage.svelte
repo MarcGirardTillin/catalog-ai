@@ -121,6 +121,16 @@
     queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] })
   }
 
+  // Libellés neutres pour la méthode de résolution (white-label : jamais de
+  // nom de prestataire dans l'UI).
+  const SOURCE_LABELS: Record<string, string> = {
+    shopify_json: "automatique",
+    firecrawl: "recherche web",
+    manual: "manuelle",
+    needs_manual: "à confirmer",
+    skipped: "non recherchée",
+  }
+
   const COUNT_LABELS: [keyof Omit<typeof counts, "total">, string][] = [
     ["pending", "En attente"],
     ["processing", "En cours"],
@@ -232,14 +242,19 @@
                   <CardContent class="flex flex-col gap-1.5">
                     <div class="flex items-center justify-between gap-2">
                       <span class="text-sm font-medium">
-                        {item.staged_title ?? `Produit ${item.tillin_product_id}`}
+                        {item.product_title ??
+                          item.staged_title ??
+                          `Produit ${item.tillin_product_id}`}
                       </span>
                       <StatusBadge status={item.status} />
                     </div>
                     <div class="text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                       <span class="font-mono">#{item.tillin_product_id}</span>
                       {#if item.source_method}
-                        <span>source : {item.source_method}</span>
+                        <span>
+                          source : {SOURCE_LABELS[item.source_method] ??
+                            item.source_method}
+                        </span>
                       {/if}
                       {#if item.match_score != null}
                         <span class="font-mono">score {item.match_score.toFixed(2)}</span>

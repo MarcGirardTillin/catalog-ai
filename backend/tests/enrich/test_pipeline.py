@@ -990,6 +990,107 @@ def test_scrape_method_shopify_json_never_touches_firecrawl(
     db.close()
 
 
+def test_copy_withheld_when_source_needs_manual(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Source incertaine (needs_manual) : la description N'EST PAS rédigée —
+    elle attend la validation d'une source ou le geste explicite
+    « générer quand même » (décision Marc 2026-07-17)."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    claude = _FakeClaude()
+
+    with httpx.Client(transport=_store({})) as http_client:  # rien ne résout
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    assert item.source_method == "needs_manual"
+    assert item.staged_description is None
+    assert item.staged_meta is None
+    assert claude.calls == []
+    # Le snapshot du titre catalogue est posé même sans source.
+    assert item.product_title == PRODUCT.title
+    db.close()
+
+
+def test_copy_still_generated_when_brand_has_no_website(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """`skipped` (aucun site de marque) : il n'y a pas de source à confirmer,
+    la copie catalogue-seulement reste générée directement."""
+    db = db_session_factory()
+    item = _seed_item(db, 999)
+    bare = Product(id=999, title="Produit 999")
+    claude = _FakeClaude()
+
+    with httpx.Client(transport=_store({})) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: bare,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.source_method == "skipped"
+    assert item.staged_description == "Un short robuste et léger."
+    db.close()
+
+
+def test_stage_copy_only_generates_from_catalog(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Le geste « ignorer les candidats et générer quand même » : copie depuis
+    les seules données catalogue, la source reste non résolue."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+    item.status = "ready_for_review"
+    item.source_method = "needs_manual"
+    db.commit()
+    claude = _FakeClaude()
+
+    with httpx.Client(transport=_store({})) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        pipeline.stage_copy_only(item)
+
+    db.commit()
+    db.refresh(item)
+    assert item.staged_description == "Un short robuste et léger."
+    assert item.source_url is None  # la source n'a pas bougé
+    assert item.source_method == "needs_manual"
+    assert item.product_title == PRODUCT.title
+    # Le copywriter n'a vu que les données catalogue (pas de champs source_*).
+    ctx = claude.calls[0]["ctx"]
+    assert "source_description_html" not in ctx
+    db.close()
+
+
+def test_stage_copy_only_raises_when_unavailable(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id)
+
+    with httpx.Client(transport=_store({})) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,  # pas de client IA
+        )
+        with pytest.raises(RuntimeError):
+            pipeline.stage_copy_only(item)
+    db.close()
+
+
 def test_pipeline_missing_product_fails_item(
     db_session_factory: sessionmaker[Session],
 ) -> None:

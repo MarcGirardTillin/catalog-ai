@@ -281,6 +281,73 @@ def test_resolve_item_manually_restages(auth_client: TestClient) -> None:
         app.dependency_overrides.pop(get_enrichment_pipeline, None)
 
 
+def test_generate_item_copy_stages_catalog_only_copy(
+    auth_client: TestClient,
+) -> None:
+    """« Ignorer les candidats et générer quand même » : la copie est staged,
+    la source reste non résolue."""
+    from app.api.deps import get_db, get_enrichment_pipeline
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [557])
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).first()
+    assert item is not None
+    item_id = item.id
+
+    class _FakePipeline:
+        def stage_copy_only(self, it: EnrichmentItem) -> None:
+            it.product_title = "Small Belted Hobo Bag"
+            it.staged_description = "Description catalogue."
+            it.staged_meta = "Meta catalogue."
+
+    app.dependency_overrides[get_enrichment_pipeline] = lambda: _FakePipeline()
+    try:
+        # Pending item: pas encore en review, refus.
+        assert auth_client.post(f"/items/{item_id}/generate-copy").status_code == 409
+
+        item.status = "ready_for_review"
+        item.source_method = "needs_manual"
+        db.commit()
+
+        resp = auth_client.post(f"/items/{item_id}/generate-copy")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["staged_description"] == "Description catalogue."
+        assert body["product_title"] == "Small Belted Hobo Bag"
+        assert body["source_url"] is None
+    finally:
+        app.dependency_overrides.pop(get_enrichment_pipeline, None)
+
+
+def test_generate_item_copy_unavailable_maps_to_409(
+    auth_client: TestClient,
+) -> None:
+    from app.api.deps import get_db, get_enrichment_pipeline
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [558])
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).first()
+    assert item is not None
+    item.status = "ready_for_review"
+    db.commit()
+
+    class _UnavailablePipeline:
+        def stage_copy_only(self, _it: EnrichmentItem) -> None:
+            raise RuntimeError("copy generation unavailable")
+
+    app.dependency_overrides[get_enrichment_pipeline] = lambda: _UnavailablePipeline()
+    try:
+        resp = auth_client.post(f"/items/{item.id}/generate-copy")
+        assert resp.status_code == 409
+        assert resp.json()["code"] == "copy_unavailable"
+    finally:
+        app.dependency_overrides.pop(get_enrichment_pipeline, None)
+
+
 def test_retry_item_resets_and_requeues(auth_client: TestClient) -> None:
     from app.api.deps import get_db, get_job_runner
     from app.main import app

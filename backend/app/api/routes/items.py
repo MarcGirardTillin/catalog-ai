@@ -23,6 +23,7 @@ from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import credit_grid, require_credits
 from app.api.services.enrichment import (
     apply_item,
+    generate_item_copy,
     get_item,
     normalize_item_image,
     resolve_item_from_url,
@@ -79,6 +80,26 @@ def resolve_item_route(
     item = resolve_item_from_url(
         db, item, payload.source_url, stage=pipeline.stage_from_url
     )
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.post("/{item_id}/generate-copy", response_model=ItemPublic)
+def generate_item_copy_route(
+    item_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    pipeline: PipelineDep,
+) -> ItemPublic:
+    """Generate the copy from catalog data alone (source left unresolved).
+
+    The batch withholds the description when no source page cleared the
+    confidence gate; the reviewer can either confirm a source (resolve) or
+    ignore the candidates and ask for a catalog-only generation here. Claude
+    usage is metered as usual; the item's enrichment credit was already
+    consumed at queue time — no extra debit."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = generate_item_copy(db, item, stage=pipeline.stage_copy_only)
     return ItemPublic.model_validate(item, from_attributes=True)
 
 

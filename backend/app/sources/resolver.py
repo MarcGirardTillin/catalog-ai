@@ -64,25 +64,46 @@ class ResolveResult(BaseModel):
     source_product: dict[str, Any] | None = Field(default=None, exclude=True)
 
 
+def _single_color(product: Product) -> str | None:
+    """The product's color when it is unambiguous (all variants agree).
+
+    Boutiques usually run one product sheet per color: adding the color to the
+    title query disambiguates same-model pages that differ only by colorway
+    (e.g. « dark bronze » vs « dark chocolate »). A multi-color product yields
+    None — appending one arbitrary color would bias the search.
+    """
+    colors = {v.color.strip() for v in product.variants if v.color and v.color.strip()}
+    return colors.pop() if len(colors) == 1 else None
+
+
+def _title_queries(product: Product) -> list[str]:
+    """Title-based terms: `title + color` first (when unambiguous), then title."""
+    if not product.title:
+        return []
+    color = _single_color(product)
+    lowered = product.title.lower()
+    if color and color.lower() not in lowered:
+        return [f"{product.title} {color}", product.title]
+    return [product.title]
+
+
 def _queries(product: Product) -> list[str]:
     """Search terms in identifier-priority order. Tillin SKU is excluded."""
     queries: list[str] = []
     queries.extend(v.barcode for v in product.variants if v.barcode)
     if product.reference_code:
         queries.append(product.reference_code)
-    if product.title:
-        queries.append(product.title)
+    queries.extend(_title_queries(product))
     return queries
 
 
 def _web_queries(product: Product) -> list[str]:
-    """Firecrawl web-search terms: reference then title. Barcodes are skipped —
+    """Web-search terms: reference then title(+color). Barcodes are skipped —
     they are rarely indexed by web search engines."""
     queries: list[str] = []
     if product.reference_code:
         queries.append(product.reference_code)
-    if product.title:
-        queries.append(product.title)
+    queries.extend(_title_queries(product))
     return queries
 
 
@@ -268,13 +289,14 @@ def _resolve_firecrawl(
         if extracts >= FIRECRAWL_MAX_EXTRACTS:
             break
 
+    # Reasons are user-facing (review UI): never name the provider here.
     if candidates:
         return ResolveResult(
             status="needs_manual",
             candidates=candidates[:5],
-            reason="firecrawl found pages but none matched the product reference",
+            reason="web search found pages but none matched the product reference",
         )
     return ResolveResult(
         status="needs_manual",
-        reason="no candidate found (firecrawl search returned no usable page)",
+        reason="no candidate found (web search returned no usable page)",
     )

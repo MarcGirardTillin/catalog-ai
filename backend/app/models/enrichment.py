@@ -74,6 +74,9 @@ class EnrichmentItem(Base):
     account_id: Mapped[int] = mapped_column(ForeignKey("account.id"), index=True)
     tillin_product_id: Mapped[int] = mapped_column()
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    # Catalog title snapshot, captured at each processing run: lists and
+    # breadcrumbs label tasks by product title instead of the opaque id.
+    product_title: Mapped[str | None] = mapped_column(String(500), default=None)
 
     source_url: Mapped[str | None] = mapped_column(String(2048), default=None)
     source_method: Mapped[str | None] = mapped_column(String(30), default=None)

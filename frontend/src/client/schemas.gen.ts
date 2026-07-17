@@ -3824,6 +3824,17 @@ export const ItemPublicSchema = {
             type: 'integer',
             title: 'Tillin Product Id'
         },
+        product_title: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Title'
+        },
         status: {
             type: 'string',
             title: 'Status'
@@ -4023,7 +4034,7 @@ export const ItemResolveRequestSchema = {
         'source_url'
     ],
     title: 'ItemResolveRequest',
-    description: 'Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the Firecrawl fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review).'
+    description: 'Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the web-extraction fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review).'
 } as const;
 
 export const JobCountsSchema = {

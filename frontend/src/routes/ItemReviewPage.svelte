@@ -11,6 +11,7 @@
   import {
     itemsApplyItemRoute,
     itemsApproveItem,
+    itemsGenerateItemCopyRoute,
     itemsPatchItem,
     itemsReadItem,
     itemsReadItemProduct,
@@ -422,6 +423,8 @@
   const hasSource = $derived(item?.source_url != null && item.source_url !== "")
 
   // Human-friendly explanation of why no source was auto-resolved.
+  // (Les anciennes rédactions backend citaient le prestataire de recherche :
+  // on mappe les deux générations de messages vers un texte neutre.)
   const diagnostic = $derived.by(() => {
     if (hasSource) return null
     const reason = resolution?.reason
@@ -432,6 +435,12 @@
         return "Aucun produit correspondant trouvé sur le(s) site(s) de la marque (souvent : site non-Shopify, ou code-barres/référence absents du site)."
       case "no candidate above confidence threshold":
         return "Des candidats ont été trouvés mais aucun n'est assez fiable (seuil 0,75). Choisis-en un ou colle l'URL exacte ci-dessous."
+      case "web search found pages but none matched the product reference":
+      case "firecrawl found pages but none matched the product reference":
+        return "Des pages ont été trouvées sur le site de la marque mais aucune ne correspond à la référence du produit. Vérifie les candidats ci-dessous ou colle l'URL exacte."
+      case "no candidate found (web search returned no usable page)":
+      case "no candidate found (firecrawl search returned no usable page)":
+        return "La recherche sur le site de la marque n'a renvoyé aucune page produit exploitable."
       default:
         return reason ?? "Pas de page source résolue automatiquement."
     }
@@ -440,9 +449,11 @@
   // Variant count from the current Tillin product, for a quick sanity check.
   const variantCount = $derived((product?.variants ?? []).length)
 
-  // Human-friendly resolution method (avoid raw enum values in the UI).
+  // Human-friendly resolution method (avoid raw enum values in the UI —
+  // white-label : jamais de nom de prestataire).
   const METHOD_LABELS: Record<string, string> = {
     shopify_json: "trouvée automatiquement",
+    firecrawl: "trouvée par recherche web",
     manual: "choisie manuellement",
     needs_manual: "résolution manuelle requise",
     skipped: "non recherchée",
@@ -580,6 +591,24 @@
     manualUrl = ""
   }
 
+  // « Ignorer les candidats et générer quand même » : description rédigée à
+  // partir des seules données catalogue (la source reste non résolue).
+  let generatingCopy = $state(false)
+  async function generateCopyWithoutSource() {
+    if (!item) return
+    generatingCopy = true
+    const { data, error } = await itemsGenerateItemCopyRoute({
+      path: { item_id: item.id },
+    })
+    generatingCopy = false
+    if (error || !data) {
+      toast.error("Génération impossible pour le moment.")
+      return
+    }
+    toast.success("Description générée à partir du catalogue")
+    hydrate(data)
+  }
+
   // Keyboard shortcuts for serial review (opt-in via les préférences,
   // flèches comprises). Inactive while typing in a field.
   function onKeydown(event: KeyboardEvent) {
@@ -618,7 +647,14 @@
     return [
       { label: "Enrichissements", href: "/jobs" },
       { label: `Enrichissement #${item.job_id}`, href: `/jobs/${item.job_id}` },
-      { label: `Produit #${item.tillin_product_id}` },
+      {
+        // Titre produit (Tillin live, sinon snapshot du run) — l'id opaque
+        // reste le dernier repli.
+        label:
+          product?.title ??
+          item.product_title ??
+          `Produit #${item.tillin_product_id}`,
+      },
     ]
   })
 </script>
@@ -666,7 +702,9 @@
         {:else}
           <div class="flex items-start justify-between gap-2">
             <h1 class="font-title text-lg font-bold">
-              {product?.title ?? `Produit #${item.tillin_product_id}`}
+              {product?.title ??
+                item.product_title ??
+                `Produit #${item.tillin_product_id}`}
             </h1>
             <div class="flex shrink-0 items-center gap-2">
               {#if siblings.length > 1 && currentIndex >= 0}
@@ -851,6 +889,34 @@
                     </Button>
                   </div>
                 </div>
+
+                {#if !hasSource && !description.trim()}
+                  <!-- Source incertaine : la description a été retenue. Le
+                       reviewer confirme une source (ci-dessus) ou passe outre
+                       et génère depuis les seules données catalogue. -->
+                  <div class="border-border flex flex-col gap-1.5 border-t pt-2">
+                    <p class="text-muted-foreground">
+                      La description n'a pas été rédigée : la page source n'est
+                      pas confirmée. Choisis un candidat ou résous une URL pour
+                      la générer depuis la page — ou ignore les candidats et
+                      génère-la à partir des seules données du catalogue.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="self-start"
+                      disabled={generatingCopy || resolving}
+                      onclick={generateCopyWithoutSource}
+                    >
+                      {#if generatingCopy}
+                        <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                        Génération…
+                      {:else}
+                        Générer la description sans source
+                      {/if}
+                    </Button>
+                  </div>
+                {/if}
               {/if}
             </CardContent>
           </Card>

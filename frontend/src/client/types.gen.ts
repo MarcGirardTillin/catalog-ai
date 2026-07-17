@@ -2108,6 +2108,10 @@ export type ItemPublic = {
      */
     tillin_product_id: number;
     /**
+     * Product Title
+     */
+    product_title?: string | null;
+    /**
      * Status
      */
     status: string;
@@ -2186,7 +2190,7 @@ export type ItemPublic = {
  *
  * Manually point an item at a specific source product page.
  *
- * Any http(s) URL is accepted since the Firecrawl fallback: non-Shopify
+ * Any http(s) URL is accepted since the web-extraction fallback: non-Shopify
  * pages go through LLM extraction (the old validator required a Shopify
  * `/products/` URL and would have blocked e.g. salomon.com in the review).
  */
@@ -4953,6 +4957,36 @@ export type ItemsResolveItemRouteResponses = {
 };
 
 export type ItemsResolveItemRouteResponse = ItemsResolveItemRouteResponses[keyof ItemsResolveItemRouteResponses];
+
+export type ItemsGenerateItemCopyRouteData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/generate-copy';
+};
+
+export type ItemsGenerateItemCopyRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsGenerateItemCopyRouteError = ItemsGenerateItemCopyRouteErrors[keyof ItemsGenerateItemCopyRouteErrors];
+
+export type ItemsGenerateItemCopyRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsGenerateItemCopyRouteResponse = ItemsGenerateItemCopyRouteResponses[keyof ItemsGenerateItemCopyRouteResponses];
 
 export type ItemsRetryItemRouteData = {
     body?: never;

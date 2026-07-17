@@ -3640,6 +3640,65 @@
         }
       }
     },
+    "/items/{item_id}/generate-copy": {
+      "post": {
+        "tags": [
+          "items"
+        ],
+        "summary": "Generate Item Copy Route",
+        "description": "Generate the copy from catalog data alone (source left unresolved).\n\nThe batch withholds the description when no source page cleared the\nconfidence gate; the reviewer can either confirm a source (resolve) or\nignore the candidates and ask for a catalog-only generation here. Claude\nusage is metered as usual; the item's enrichment credit was already\nconsumed at queue time — no extra debit.",
+        "operationId": "items-generate_item_copy_route",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/items/{item_id}/retry": {
       "post": {
         "tags": [
@@ -9913,6 +9972,17 @@
             "type": "integer",
             "title": "Tillin Product Id"
           },
+          "product_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Title"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -10111,7 +10181,7 @@
           "source_url"
         ],
         "title": "ItemResolveRequest",
-        "description": "Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the Firecrawl fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review)."
+        "description": "Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the web-extraction fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review)."
       },
       "JobCounts": {
         "properties": {

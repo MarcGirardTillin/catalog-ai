@@ -289,7 +289,9 @@ def test_firecrawl_needs_manual_when_no_reference_match() -> None:
         )
 
     assert result.status == "needs_manual"
-    assert result.reason is not None and "firecrawl" in result.reason
+    # Raison affichée au reviewer : neutre, jamais le nom du prestataire.
+    assert result.reason is not None and "firecrawl" not in result.reason.lower()
+    assert "web search" in result.reason
     assert [(c.score, c.title) for c in result.candidates] == [
         (0.3, "Ridge Pant Olive")
     ]
@@ -396,3 +398,58 @@ def test_firecrawl_skips_barcode_queries_in_web_search() -> None:
         "site:salomon.example G5FU-T081",
         "site:salomon.example Gramicci G-Short Double Navy",
     ]
+
+
+def test_web_search_adds_single_color_to_title_query() -> None:
+    """Une boutique travaille souvent une fiche par couleur : la couleur (quand
+    elle est unique et absente du titre) précise la requête titre — vécu
+    Lemaire : bon modèle, mauvais coloris (dark chocolate vs dark bronze)."""
+    queries: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if request.url.path == "/v2/search":
+            queries.append(body["query"])
+            return httpx.Response(200, json={"success": True, "data": {"web": []}})
+        raise AssertionError("no extract expected")
+
+    product = Product(
+        id=3,
+        title="Small Belted Hobo Bag in Leather",
+        reference_code=None,
+        variants=[
+            ProductVariant(id=1, color="Dark Bronze", size="S"),
+            ProductVariant(id=2, color="Dark Bronze", size="M"),
+        ],
+    )
+    multi_color = product.model_copy(
+        update={
+            "variants": [
+                ProductVariant(id=1, color="Dark Bronze"),
+                ProductVariant(id=2, color="Dark Chocolate"),
+            ]
+        }
+    )
+    with (
+        FirecrawlClient("fc-key", transport=httpx.MockTransport(handler)) as firecrawl,
+        httpx.Client(transport=_store({})) as client,
+    ):
+        resolve_source_url(
+            client, product, [NON_SHOPIFY_SITE], method="firecrawl", firecrawl=firecrawl
+        )
+        single = list(queries)
+        queries.clear()
+        resolve_source_url(
+            client,
+            multi_color,
+            [NON_SHOPIFY_SITE],
+            method="firecrawl",
+            firecrawl=firecrawl,
+        )
+
+    assert single == [
+        "site:salomon.example Small Belted Hobo Bag in Leather Dark Bronze",
+        "site:salomon.example Small Belted Hobo Bag in Leather",
+    ]
+    # Couleur ambiguë (plusieurs coloris) : ne pas biaiser la recherche.
+    assert queries == ["site:salomon.example Small Belted Hobo Bag in Leather"]

@@ -298,6 +298,44 @@ def resolve_item_from_url(
     return item
 
 
+def generate_item_copy(
+    db: Session,
+    item: EnrichmentItem,
+    *,
+    stage: Callable[[EnrichmentItem], None],
+) -> EnrichmentItem:
+    """Generate the copy from catalog data alone, on the reviewer's demand.
+
+    The pipeline withholds the copy when resolution stays uncertain; this is
+    the explicit « ignorer les candidats et générer quand même » override
+    (`stage` = ``EnrichmentPipeline.stage_copy_only``)."""
+    if item.status not in ("ready_for_review", "approved"):
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message=f"Cannot generate copy for an item in status '{item.status}'",
+        )
+    try:
+        stage(item)
+    except LookupError as exc:
+        db.rollback()
+        raise AppException(
+            status_code=422,
+            code="product_not_found",
+            message=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        db.rollback()
+        raise AppException(
+            status_code=409,
+            code="copy_unavailable",
+            message=str(exc),
+        ) from exc
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 # Statuses a retry (re-generation) is allowed from. `applied` is deliberately
 # excluded for now: re-applying would re-send image URLs to Tillin's bulk
 # endpoint, which APPENDS (no replace) — needs a dedupe guard first.

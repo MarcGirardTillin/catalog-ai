@@ -52,6 +52,9 @@ class ItemPublic(BaseModel):
     id: int
     job_id: int
     tillin_product_id: int
+    # Catalog title snapshot (last processing run) — task lists/breadcrumbs
+    # label by title; None for items processed before the snapshot existed.
+    product_title: str | None = None
     status: str
     source_url: str | None = None
     source_method: str | None = None
@@ -102,7 +105,7 @@ class ItemImageNormalizeRequest(BaseModel):
 class ItemResolveRequest(BaseModel):
     """Manually point an item at a specific source product page.
 
-    Any http(s) URL is accepted since the Firecrawl fallback: non-Shopify
+    Any http(s) URL is accepted since the web-extraction fallback: non-Shopify
     pages go through LLM extraction (the old validator required a Shopify
     `/products/` URL and would have blocked e.g. salomon.com in the review).
     """

@@ -233,6 +233,9 @@ class EnrichmentPipeline:
             )
         config: dict[str, Any] = item.job.config_json or {}
         transforms = _transforms(config)
+        # Snapshot of the catalog title, for lists/breadcrumbs (the review UI
+        # must label tasks by product title, not by opaque Tillin id).
+        item.product_title = product.title
 
         # 1. Title template — pure, no source needed.
         if transforms["title"]:
@@ -315,7 +318,19 @@ class EnrichmentPipeline:
         self._stage_source(db, item, product, source_product, config)
 
         # 4. Copy generation — optional (needs an API key + its toggle).
-        self._stage_copy(db, item, product, source_product, config)
+        # `needs_manual` = the source page is UNCERTAIN (candidates below the
+        # confidence gate): the copy is withheld until the reviewer confirms a
+        # source (resolve) or explicitly asks for a catalog-only generation
+        # (POST /items/{id}/generate-copy) — user decision 2026-07-17.
+        # `skipped` (no brand website at all) keeps the catalog-only copy:
+        # there is no source to confirm, waiting would just add a click.
+        if resolved.status == "needs_manual":
+            logger.info(
+                "item %s: copy withheld (source unresolved, awaiting review)",
+                item.id,
+            )
+        else:
+            self._stage_copy(db, item, product, source_product, config)
 
     def stage_from_url(self, item: EnrichmentItem, url: str) -> None:
         """Manually (re)resolve an item from a specific source-page URL.
@@ -330,6 +345,7 @@ class EnrichmentPipeline:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"
             )
+        item.product_title = product.title
         config: dict[str, Any] = item.job.config_json or {}
         db = object_session(item)
 
@@ -374,6 +390,26 @@ class EnrichmentPipeline:
         item.source_method = "manual"
         self._stage_source(db, item, product, source_product, config)
         self._stage_copy(db, item, product, source_product, config)
+
+    def stage_copy_only(self, item: EnrichmentItem) -> None:
+        """Generate the copy from catalog data alone, ignoring the source.
+
+        The reviewer's escape hatch when resolution stayed uncertain
+        (`needs_manual` withholds the copy): « ignorer les candidats et
+        générer quand même ». Raises RuntimeError when copy generation is
+        unavailable (transform disabled or no AI client configured).
+        """
+        product = self._read_product(item.tillin_product_id, item.account_id)
+        if product is None:
+            raise LookupError(
+                f"product {item.tillin_product_id} not found at the source"
+            )
+        item.product_title = product.title
+        config: dict[str, Any] = item.job.config_json or {}
+        if not self._stage_copy(object_session(item), item, product, None, config):
+            raise RuntimeError(
+                "copy generation unavailable (transform disabled or AI not configured)"
+            )
 
     def _enrich_source_text(
         self,
@@ -500,14 +536,18 @@ class EnrichmentPipeline:
         product: Product,
         source_product: dict[str, Any] | None,
         config: dict[str, Any],
-    ) -> None:
-        """Generate FR copy — optional (needs an API key + its toggle)."""
+    ) -> bool:
+        """Generate FR copy — optional (needs an API key + its toggle).
+
+        Returns True when a copy was actually staged (callers that promise a
+        generation, like ``stage_copy_only``, need to tell a silent skip apart).
+        """
         if not _transforms(config)["copy"]:
             logger.info("item %s: copy skipped (transform disabled)", item.id)
-            return
+            return False
         if self._claude is None:
             logger.info("item %s: copy skipped (no AI client configured)", item.id)
-            return
+            return False
         copy = self._claude.generate_copy(
             _copy_context(
                 product, source_product, seo_keywords=config.get("seo_keywords")
@@ -529,6 +569,7 @@ class EnrichmentPipeline:
                 job_id=item.job_id,
                 item_id=item.id,
             )
+        return True
 
 
 def _candidate_websites(product: Product, config: dict[str, Any]) -> list[str]:
