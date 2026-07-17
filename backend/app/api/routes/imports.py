@@ -695,6 +695,14 @@ def transfer_import(
             message="No rows to transfer (every item is rejected, failed or "
             "already transferred)",
         )
+    if not body.create_reception:
+        # Pas de réception : les fiches sont créées SANS stock (quantités à
+        # zéro dans le fichier de transfert — demande Marc 2026-07-17).
+        quantity_index = TILLIN_CSV_COLUMNS.index("quantity")
+        rows = [
+            [*row[:quantity_index], "0", *row[quantity_index + 1 :]]
+            for row in rows
+        ]
     try:
         xano.product_import(
             file_name=_csv_file_name(job),
@@ -730,6 +738,7 @@ def transfer_import(
             "location_id": int(location_id),
             "row_count": len(rows),
             "transferred_at": datetime.now(UTC).isoformat(),
+            "create_reception": body.create_reception,
         },
     }
     db.commit()

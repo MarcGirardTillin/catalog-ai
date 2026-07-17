@@ -291,7 +291,7 @@ export function listLocations() {
  * location du job (400 `location_required` s'il n'y en a pas). */
 export function transferImport(
   id: number,
-  body: { location_id?: number; profile_id?: number },
+  body: { location_id?: number; profile_id?: number; create_reception?: boolean },
 ) {
   return importsTransferImport({ path: { import_id: id }, body }) as Promise<{
     data?: TransferResult

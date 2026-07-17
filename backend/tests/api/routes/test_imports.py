@@ -999,6 +999,33 @@ def test_transfer_pushes_csv_and_applies_items(
     assert transfer["transferred_at"]  # ISO timestamp
 
 
+def test_transfer_without_reception_zeroes_quantities(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """create_reception=False : fiches créées SANS stock — toutes les
+    quantités du fichier de transfert passent à zéro (demande Marc)."""
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/profile", json={"profile_id": profile_id})
+
+    response = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 7, "create_reception": False},
+    )
+    assert response.status_code == 200, response.text
+
+    csv_text = fake_xano.calls[0]["csv_bytes"].decode("utf-8")
+    lines = [line for line in csv_text.splitlines() if line.strip()]
+    header, *data = lines
+    assert header.split(",")[-1] == "quantity"
+    assert data  # au moins une ligne transférée
+    assert all(line.split(",")[-1] == "0" for line in data)
+
+    db = _db()
+    transfer = db.get(EnrichmentJob, job["id"]).config_json["transfer"]
+    assert transfer["create_reception"] is False
+
+
 def test_second_transfer_does_not_resend_applied_items(
     import_client: TestClient, fake_xano: _FakeXano
 ) -> None:

@@ -125,6 +125,8 @@
   // --- Transfert vers Tillin ---
   let transferOpen = $state(false)
   let selectedLocationId = $state("")
+  // Décoché = fiches créées SANS stock (quantités à zéro dans le fichier).
+  let createReception = $state(true)
   let transferring = $state(false)
   let transferred = $state(false)
 
@@ -181,6 +183,7 @@
     transferring = true
     const { data, error } = await transferImport(importId, {
       location_id: Number(selectedLocationId),
+      create_reception: createReception,
       ...(selectedProfileId != null ? { profile_id: selectedProfileId } : {}),
     })
     transferring = false
@@ -441,6 +444,20 @@
               {/each}
             </Select>
           </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="accent-primary size-4"
+              bind:checked={createReception}
+            />
+            Créer la réception dans Tillin
+          </label>
+          {#if !createReception}
+            <p class="text-muted-foreground text-xs">
+              Les fiches seront créées sans stock : toutes les quantités du
+              fichier de transfert sont mises à zéro.
+            </p>
+          {/if}
           <p class="text-muted-foreground text-xs">
             <span class="text-foreground font-medium"
               >{transferSummary.kept} produit{transferSummary.kept > 1

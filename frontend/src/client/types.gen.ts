@@ -1755,6 +1755,10 @@ export type ImportTransferRequest = {
      * Profile Id
      */
     profile_id?: number | null;
+    /**
+     * Create Reception
+     */
+    create_reception?: boolean;
 };
 
 /**

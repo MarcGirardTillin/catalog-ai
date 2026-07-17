@@ -3140,6 +3140,11 @@ export const ImportTransferRequestSchema = {
                 }
             ],
             title: 'Profile Id'
+        },
+        create_reception: {
+            type: 'boolean',
+            title: 'Create Reception',
+            default: true
         }
     },
     type: 'object',

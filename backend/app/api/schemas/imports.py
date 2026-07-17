@@ -178,6 +178,9 @@ class ImportTransferRequest(BaseModel):
 
     location_id: int | None = None
     profile_id: int | None = None
+    # Créer la réception dans Tillin : décoché = toutes les quantités du
+    # fichier de transfert sont mises à zéro (fiches créées sans stock).
+    create_reception: bool = True
 
 
 class ImportTransferResult(BaseModel):
