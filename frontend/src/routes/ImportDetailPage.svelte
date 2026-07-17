@@ -79,6 +79,24 @@
   $effect(() => {
     if (jobQuery.data) job = jobQuery.data
   })
+  // Course de fin d'analyse : les items sont écrits en base au moment où le
+  // job se termine, et les DEUX pollings s'arrêtent à cet instant — si le
+  // dernier poll de la liste est passé juste avant, elle restait vide jusqu'à
+  // un rechargement de la page. Un refetch final à la transition « en cours →
+  // terminé » resynchronise la liste (et les compteurs de la synthèse).
+  let wasRunning = false
+  $effect(() => {
+    if (jobRunning) {
+      wasRunning = true
+      return
+    }
+    if (wasRunning) {
+      wasRunning = false
+      void queryClient.invalidateQueries({
+        queryKey: ["imports", importId, "items"],
+      })
+    }
+  })
   $effect(() => {
     const data = itemsQuery.data
     if (data) {
