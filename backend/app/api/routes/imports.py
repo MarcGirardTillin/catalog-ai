@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     CurrentUserDep,
     ImportRunnerDep,
+    OptionalXanoDep,
     SessionDep,
     XanoDep,
     require_feature,
@@ -201,6 +202,7 @@ def create_import(
     run_import: ImportRunnerDep,
     location_id: Annotated[int | None, Form()] = None,
     profile_id: Annotated[int | None, Form()] = None,
+    instructions: Annotated[str | None, Form(max_length=2000)] = None,
 ) -> ImportJobPublic:
     """Upload one or more supplier files and start extracting in the background.
 
@@ -243,6 +245,9 @@ def create_import(
     config: dict[str, object] = {}
     if location_id is not None:
         config["location_id"] = location_id
+    if instructions and instructions.strip():
+        # Consignes libres du dépôt, injectées dans le prompt d'extraction.
+        config["instructions"] = instructions.strip()
     if profile_id is not None:
         profile = db.get(ImportProfile, profile_id)
         if profile is None or profile.account_id != account_id:
@@ -563,7 +568,11 @@ def set_import_location(
 
 
 def _resolve_render(
-    db: Session, job: EnrichmentJob, profile_id_param: int | None
+    db: Session,
+    job: EnrichmentJob,
+    profile_id_param: int | None,
+    *,
+    category_weights: dict[str, float] | None = None,
 ) -> tuple[list[list[str]], list[str]]:
     """Render the job's kept items with the requested (or selected) profile."""
     config_json = job.config_json or {}
@@ -606,6 +615,7 @@ def _resolve_render(
             fallback_supplier=fallback_supplier,
             title_template=account_settings.title_template or DEFAULT_TITLE_TEMPLATE,
             title_case=account_settings.title_case,
+            category_weights=category_weights,
         )
     except ValueError as exc:  # includes pydantic.ValidationError
         raise AppException(
@@ -631,12 +641,18 @@ def preview_import_rows(
     import_id: int,
     db: SessionDep,
     current_user: CurrentUserDep,
+    xano: OptionalXanoDep,
     profile_id: Annotated[int | None, Query()] = None,
 ) -> ImportRenderPreview:
     """JSON preview of the Tillin import CSV (same rows as the download)."""
     account_id = resolve_account_id(db, current_user)
     job = _get_import_job(db, account_id=account_id, job_id=import_id)
-    rows, warnings = _resolve_render(db, job, profile_id)
+    rows, warnings = _resolve_render(
+        db,
+        job,
+        profile_id,
+        category_weights=xano.category_default_weights() if xano else None,
+    )
     return ImportRenderPreview(
         columns=TILLIN_CSV_COLUMNS, rows=rows, warnings=warnings, row_count=len(rows)
     )
@@ -647,12 +663,18 @@ def download_import_csv(
     import_id: int,
     db: SessionDep,
     current_user: CurrentUserDep,
+    xano: OptionalXanoDep,
     profile_id: Annotated[int | None, Query()] = None,
 ) -> Response:
     """Download the rendered Tillin import CSV."""
     account_id = resolve_account_id(db, current_user)
     job = _get_import_job(db, account_id=account_id, job_id=import_id)
-    rows, _warnings = _resolve_render(db, job, profile_id)
+    rows, _warnings = _resolve_render(
+        db,
+        job,
+        profile_id,
+        category_weights=xano.category_default_weights() if xano else None,
+    )
     file_name = _csv_file_name(job)
     return Response(
         content=render_csv(rows),
@@ -687,7 +709,9 @@ def transfer_import(
             code="location_required",
             message="Select a Tillin location before transferring",
         )
-    rows, _warnings = _resolve_render(db, job, body.profile_id)
+    rows, _warnings = _resolve_render(
+        db, job, body.profile_id, category_weights=xano.category_default_weights()
+    )
     if not rows:
         raise AppException(
             status_code=400,

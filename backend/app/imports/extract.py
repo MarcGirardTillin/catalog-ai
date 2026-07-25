@@ -307,6 +307,7 @@ class ClaudeExtractor:
         model: str | None = None,
         http_client: httpx.Client | None = None,
         known_categories: list[str] | None = None,
+        extra_instructions: str | None = None,
     ) -> None:
         if not api_key:
             raise NotConfiguredError("claude")
@@ -318,6 +319,9 @@ class ClaudeExtractor:
         # Boutique category tree (« parent > enfant » paths); when provided,
         # extracted categories are mapped onto it (prompt + canonicalization).
         self._known_categories = [c for c in (known_categories or []) if c.strip()]
+        # Consignes libres saisies au dépôt du fichier (« détails du
+        # moment ») : ajoutées au prompt utilisateur, jamais au system.
+        self._extra_instructions = (extra_instructions or "").strip()
         self._category_canon = {
             _normalize_label(path.rsplit(">", 1)[-1]): path.rsplit(">", 1)[-1].strip()
             for path in self._known_categories
@@ -409,9 +413,16 @@ class ClaudeExtractor:
     # ---- request building ----
 
     def _user_prompt(self) -> str:
+        prompt = _USER_PROMPT
         if self._known_categories:
-            return _USER_PROMPT + _category_prompt(self._known_categories)
-        return _USER_PROMPT
+            prompt += _category_prompt(self._known_categories)
+        if self._extra_instructions:
+            prompt += (
+                "\n\nConsignes de l'utilisateur pour CET import (elles "
+                "précisent le contexte, jamais elles n'autorisent à inventer "
+                f"des valeurs) :\n{self._extra_instructions}"
+            )
+        return prompt
 
     def _build_content(self, document: RawDocument, warnings: list[str]) -> list[Any]:
         user_prompt = self._user_prompt()
@@ -743,6 +754,7 @@ def build_extractor(
     model: str | None = None,
     http_client: httpx.Client | None = None,
     known_categories: list[str] | None = None,
+    extra_instructions: str | None = None,
 ) -> Extractor:
     """Build the Claude-backed :class:`Extractor` (frozen entry point)."""
     return ClaudeExtractor(
@@ -750,4 +762,5 @@ def build_extractor(
         model=model,
         http_client=http_client,
         known_categories=known_categories,
+        extra_instructions=extra_instructions,
     )

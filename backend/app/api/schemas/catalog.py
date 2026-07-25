@@ -9,6 +9,15 @@ class FilterOption(BaseModel):
     id: int
     title: str
     parent_id: int | None = None
+    # Catégories uniquement : poids par défaut (kg) appliqué quand aucun
+    # poids source (0 = non renseigné). Champ Xano `default_weight_kg`.
+    default_weight_kg: float | None = None
+
+
+class CategoryWeightRequest(BaseModel):
+    """Poids par défaut (kg) d'une catégorie ; 0 = effacer."""
+
+    default_weight_kg: float
 
 
 class CatalogFilters(BaseModel):

@@ -56,6 +56,8 @@
   // « Automatique » : le backend l'auto-suggère après extraction (fournisseur).
   let profiles = $state<ImportProfilePublic[]>([])
   let selectedProfileId = $state("")
+  // Consignes libres transmises à l'analyse de CE dépôt (prompt extraction).
+  let instructions = $state("")
 
   onMount(() => {
     listLocations().then(({ data }) => {
@@ -144,6 +146,7 @@
       files.map((f) => f.file),
       selectedLocationId === "" ? undefined : Number(selectedLocationId),
       selectedProfileId === "" ? undefined : Number(selectedProfileId),
+      instructions,
     )
     submitting = false
     if (error || !data) {
@@ -299,6 +302,23 @@
                 </p>
               </div>
             {/if}
+
+            <div class="flex flex-col gap-1.5">
+              <Label for="import-instructions">Instructions (optionnel)</Label>
+              <textarea
+                id="import-instructions"
+                rows="2"
+                maxlength="2000"
+                disabled={submitting}
+                bind:value={instructions}
+                placeholder="Ex. les tailles sont en pouces ; la colonne « PVC » est le prix conseillé ; ignorer la page 3…"
+                class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
+              ></textarea>
+              <p class="text-muted-foreground text-xs">
+                Précisions du moment transmises à l'analyse de CE fichier
+                (contexte, colonnes ambiguës…).
+              </p>
+            </div>
 
             {#if locations !== null && locations.length > 0}
               <div class="flex flex-col gap-1.5 sm:max-w-80">

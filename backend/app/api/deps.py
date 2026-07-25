@@ -243,6 +243,27 @@ def get_xano_client(db: SessionDep, current_user: CurrentUserDep) -> XanoClient:
 XanoDep = Annotated[XanoClient, Depends(get_xano_client)]
 
 
+def get_xano_client_optional(
+    request: Request, db: SessionDep, current_user: CurrentUserDep
+) -> XanoClient | None:
+    """Xano « best-effort » : None quand le catalogue n'est pas joignable.
+
+    Pour les routes qui n'en font qu'un ENRICHISSEMENT du rendu (ex. poids
+    par défaut par catégorie sur l'aperçu CSV) — jamais un 503. Les overrides
+    de test posés sur get_xano_client sont honorés.
+    """
+    override = request.app.dependency_overrides.get(get_xano_client)
+    if override is not None:
+        return cast(XanoClient, override())
+    try:
+        return get_xano_client(db, current_user)
+    except (NotConfiguredError, AppException):
+        return None
+
+
+OptionalXanoDep = Annotated[XanoClient | None, Depends(get_xano_client_optional)]
+
+
 def require_feature(feature: str) -> Callable[[Session, User], None]:
     """Router/route guard: 403 when the account's module is switched off.
 

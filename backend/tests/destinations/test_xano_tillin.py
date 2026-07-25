@@ -505,3 +505,35 @@ def test_apply_without_images_only_enriches() -> None:
     assert fake.images is None
     assert fake.enrich is not None
     assert fake.enrich["description"] == "Desc"
+
+
+def test_apply_without_staged_weights_falls_back_to_category_default() -> None:
+    """Aucune proposition de poids : repli sur le poids par défaut de la
+    catégorie (jamais quand le produit a déjà un poids)."""
+    item = EnrichmentItem(
+        job_id=1, account_id=1, tillin_product_id=1911, status="approved"
+    )
+    fake = _FakeXano()
+    fake.product = Product(
+        id=1911,
+        title="Ceinture",
+        category="Accessoire",
+        variants=[ProductVariant(id=1, sku="S")],
+    )
+    fake.category_weights = {"accessoire": 0.25}  # type: ignore[attr-defined]
+    fake.category_default_weights = lambda: fake.category_weights  # type: ignore[attr-defined]
+    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.weight == ([1911], 0.25, "1")
+
+    # Produit qui a déjà un poids : rien n'est écrit.
+    fake2 = _FakeXano()
+    fake2.product = Product(
+        id=1911,
+        title="Ceinture",
+        category="Accessoire",
+        variants=[ProductVariant(id=1, sku="S", weight=0.4)],
+    )
+    fake2.category_default_weights = lambda: {"accessoire": 0.25}  # type: ignore[attr-defined]
+    XanoTillinDestination(fake2).apply(item)  # type: ignore[arg-type]
+    assert fake2.weight is None

@@ -81,6 +81,9 @@
         tax_rate: c.tax_rate,
         apply_title_template: c.apply_title_template ?? false,
         split_by_color: c.split_by_color ?? false,
+        color_option_name: c.color_option_name ?? "Couleur",
+        size_option_name: c.size_option_name ?? "Taille",
+        size_conversion: c.size_conversion ?? "none",
       }
     }
     const supplier = prefill?.supplier_label ?? prefill?.supplier_match ?? ""
@@ -98,6 +101,9 @@
       tax_rate: "20",
       apply_title_template: false,
       split_by_color: false,
+      color_option_name: "Couleur",
+      size_option_name: "Taille",
+      size_conversion: "none" as ImportProfileConfig["size_conversion"],
     }
   }
 
@@ -138,6 +144,9 @@
       status: "active",
       apply_title_template: form.apply_title_template,
       split_by_color: form.split_by_color,
+      color_option_name: form.color_option_name.trim() || "Couleur",
+      size_option_name: form.size_option_name.trim() || "Taille",
+      size_conversion: form.size_conversion,
     }
     // Le fournisseur sert aussi de clé d'auto-sélection (comparaison minuscule).
     const body = { name, supplier_match: supplier.toLowerCase(), config }
@@ -223,6 +232,52 @@
       />
       <p class="text-muted-foreground text-xs">0 pour un fournisseur étranger.</p>
     </div>
+    <!-- Noms des axes de variantes dans Tillin (Pointure pour les
+         chaussures, Tour de dos / Bonnet pour la lingerie…). -->
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-option1-name">Nom de l'option couleur</Label>
+      <Input
+        id="{uid}-option1-name"
+        list="{uid}-option-names"
+        placeholder="Couleur"
+        bind:value={form.color_option_name}
+      />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-option2-name">Nom de l'option taille</Label>
+      <Input
+        id="{uid}-option2-name"
+        list="{uid}-option-names"
+        placeholder="Taille"
+        bind:value={form.size_option_name}
+      />
+      <p class="text-muted-foreground text-xs">
+        Libellés des options Tillin (ex. Pointure, Tour de dos, Bonnet, Size).
+      </p>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-size-conversion">Conversion des pointures</Label>
+      <Select id="{uid}-size-conversion" bind:value={form.size_conversion}>
+        <option value="none">Aucune</option>
+        <option value="uk_to_eu">UK → EU</option>
+        <option value="us_to_eu">US → EU</option>
+      </Select>
+      <p class="text-muted-foreground text-xs">
+        Grille standard adulte (genre pris en compte) — appliquée au rendu
+        Tillin, visible dans l'aperçu CSV ; les grilles varient selon les
+        marques, vérifiez l'aperçu.
+      </p>
+    </div>
+    <datalist id="{uid}-option-names">
+      <option value="Couleur"></option>
+      <option value="Color"></option>
+      <option value="Coloris"></option>
+      <option value="Taille"></option>
+      <option value="Size"></option>
+      <option value="Pointure"></option>
+      <option value="Tour de dos"></option>
+      <option value="Bonnet"></option>
+    </datalist>
   </div>
 
   <Separator />

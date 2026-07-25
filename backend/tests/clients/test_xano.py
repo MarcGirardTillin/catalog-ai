@@ -189,7 +189,12 @@ def test_get_classification_normalizes_groups() -> None:
 
     # Sorted by title; suppliers `name` normalized to `title`.
     assert [b["title"] for b in filters["brands"]] == ["Alpha", "Zed"]
-    assert filters["categories"][0] == {"id": 5, "title": "Shoes", "parent_id": 0}
+    assert filters["categories"][0] == {
+        "id": 5,
+        "title": "Shoes",
+        "parent_id": 0,
+        "default_weight_kg": 0.0,
+    }
     assert filters["suppliers"][0]["title"] == "ACME"
     # The season with title=None is dropped.
     assert [s["title"] for s in filters["seasons"]] == ["SS25"]

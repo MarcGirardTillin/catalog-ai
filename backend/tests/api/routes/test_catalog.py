@@ -65,7 +65,13 @@ def test_filters_returns_classification(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["brands"] == [{"id": 1, "title": "Alpha", "parent_id": None}]
+    assert body["brands"] == [
+        {"id": 1, "title": "Alpha", "parent_id": None, "default_weight_kg": None}
+    ]
     assert body["categories"][0]["parent_id"] == 0
+    # Champ Xano default_weight_kg (0 quand absent du payload).
+    assert body["categories"][0]["default_weight_kg"] == 0.0
     assert body["suppliers"][0]["title"] == "ACME"
-    assert body["compositions"] == [{"id": 11, "title": "Coton", "parent_id": None}]
+    assert body["compositions"] == [
+        {"id": 11, "title": "Coton", "parent_id": None, "default_weight_kg": None}
+    ]

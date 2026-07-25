@@ -576,3 +576,25 @@ def test_pipes_are_replaced_at_extraction() -> None:
     product = result.products[0]
     assert product.title == "399 / Ilyano Straight F"
     assert product.variants[0].color == "Medium / Used"
+
+
+def test_extra_instructions_are_appended_to_user_prompt() -> None:
+    """Consignes libres du dépôt : ajoutées au prompt UTILISATEUR (jamais au
+    system), avec le rappel de ne pas inventer."""
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(200, json=_api_response(_payload()))
+
+    extractor = build_extractor(
+        "sk-test",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        extra_instructions="Les tailles sont en pouces.",
+    )
+    extractor(_tabular_document())
+
+    body = json.loads(captured["request"].content)
+    text = body["messages"][0]["content"][0]["text"]
+    assert "Les tailles sont en pouces." in text
+    assert "Les tailles sont en pouces." not in body["system"]

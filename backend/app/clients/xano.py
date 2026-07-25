@@ -847,6 +847,13 @@ class XanoClient:
                 option: dict[str, Any] = {"id": int(raw["id"]), "title": str(title)}
                 if "parent_id" in raw:
                     option["parent_id"] = raw.get("parent_id")
+                if group == "categories":
+                    # Poids par défaut de la catégorie (champ ajouté par Marc
+                    # le 2026-07-25) : 0 = non renseigné.
+                    weight = raw.get("default_weight_kg")
+                    option["default_weight_kg"] = (
+                        float(weight) if isinstance(weight, int | float) else 0.0
+                    )
                 options.append(option)
             options.sort(key=lambda o: o["title"].lower())
             result[group] = options
@@ -990,6 +997,41 @@ class XanoClient:
         if not ids:
             return
         self._put(PRODUCT_IMAGE_DEACTIVATE_PATH, {"product_image_ids": ids})
+
+    def category_default_weights(self) -> dict[str, float]:
+        """Poids par défaut par TITRE de catégorie (minuscule), > 0 seulement.
+
+        Sert de repli quand ni la source ni le fichier fournisseur ne portent
+        de poids : l'apply d'enrichissement et le transfert d'import matchent
+        par libellé de catégorie (c'est ce que portent produits et imports).
+        """
+        weights: dict[str, float] = {}
+        try:
+            for option in self.get_classification().get("categories", []):
+                weight = float(option.get("default_weight_kg") or 0)
+                if weight > 0:
+                    weights[str(option["title"]).strip().lower()] = weight
+        except XanoError:
+            logger.warning("could not load category default weights")
+        return weights
+
+    def set_category_default_weight(
+        self, category_id: int, weight: float, *, title: str
+    ) -> None:
+        """Écrit le poids par défaut d'une catégorie (`POST /category/{id}`).
+
+        ⚠ L'endpoint REMPLACE les champs absents par leurs défauts (vérifié
+        live 2026-07-25 : un POST sans `title` a vidé le titre) — le titre
+        actuel est donc TOUJOURS renvoyé avec le poids.
+        """
+        if not title.strip():
+            raise ValueError("category title is required (endpoint resets it)")
+        self._post(
+            f"/category/{int(category_id)}",
+            {"title": title, "default_weight_kg": float(weight)},
+        )
+        # Les caches classification portent maintenant une valeur périmée.
+        self._class_maps = None
 
     def set_brand_website_urls(self, brand_id: int, urls: list[str]) -> None:
         """Replace a brand's reference websites (`/brand/{id}/website_urls`).

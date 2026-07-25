@@ -80,6 +80,7 @@
     retail_price: string
   }
   type ProductDraft = {
+    supplier_ref: string
     title: string
     brand: string
     category: string
@@ -98,6 +99,7 @@
 
   function makeDraft(product: ImportedProduct): ProductDraft {
     return {
+      supplier_ref: product.supplier_ref ?? "",
       title: product.title ?? "",
       brand: product.brand ?? "",
       category: product.category ?? "",
@@ -126,6 +128,9 @@
     }
     return {
       ...original,
+      // La référence est OBLIGATOIRE (code-barres construit + lien
+      // post-transfert) : une saisie vidée retombe sur la valeur extraite.
+      supplier_ref: clean(draft.supplier_ref) ?? original.supplier_ref,
       title: clean(draft.title),
       brand: clean(draft.brand),
       category: clean(draft.category),
@@ -273,6 +278,7 @@
     referential?: ReviewReferential
     kind?: "gender"
   }[] = [
+    { key: "supplier_ref", label: "Référence" },
     { key: "title", label: "Titre" },
     { key: "brand", label: "Marque", referential: "brands" },
     { key: "category", label: "Catégorie", referential: "categories" },
@@ -316,6 +322,17 @@
     if (sizes.length === 0) return "—"
     if (sizes.length <= 3) return sizes.join(", ")
     return `${sizes[0]}–${sizes[sizes.length - 1]}`
+  }
+
+  /** Copie la valeur d'une cellule sur toutes les variantes SUIVANTES
+   * (geste tableur « étendre vers le bas », ex. renommer une couleur). */
+  function fillDown(itemId: number, field: keyof VariantDraft, from: number) {
+    const draft = drafts[itemId]
+    if (!draft) return
+    const value = draft.variants[from][field]
+    for (let i = from + 1; i < draft.variants.length; i += 1) {
+      draft.variants[i][field] = value
+    }
   }
 
   function formatPrice(raw: string | null): string {
@@ -598,49 +615,115 @@
                       {#each drafts[item.id].variants as _draftVariant, vIndex (vIndex)}
                         <tr class="border-border/50 border-b last:border-b-0">
                           <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
                             <Input
                               class="h-8 min-w-24 text-xs"
                               aria-label="Couleur de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].color}
                             />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "color", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
                           </td>
                           <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
                             <Input
                               class="h-8 min-w-16 text-xs"
                               aria-label="Taille de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].size}
                             />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "size", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
                           </td>
                           <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
                             <Input
                               class="h-8 min-w-36 font-mono text-xs"
                               aria-label="EAN de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].ean}
                             />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "ean", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
                           </td>
                           <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
                             <Input
                               class="h-8 min-w-14 text-xs"
                               inputmode="numeric"
                               aria-label="Quantité de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].quantity}
                             />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "quantity", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
                           </td>
                           <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
                             <Input
                               class="h-8 min-w-20 text-xs"
                               inputmode="decimal"
                               aria-label="Prix de gros de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].wholesale_price}
                             />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "wholesale_price", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
                           </td>
                           <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
                             <Input
                               class="h-8 min-w-20 text-xs"
                               inputmode="decimal"
                               aria-label="Prix conseillé de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].retail_price}
                             />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "retail_price", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
                           </td>
                           {#if coefficientConfig}
                             <td class="text-muted-foreground px-2 py-1 text-right whitespace-nowrap italic tabular-nums">

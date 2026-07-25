@@ -942,6 +942,9 @@ class _FakeXano:
             raise self.import_error
         return {"ok": True}
 
+    def category_default_weights(self) -> dict[str, float]:
+        return {}
+
     def search_products(
         self, *, text: str | None = None, page: int = 1, per_page: int = 20, **_: Any
     ) -> Any:

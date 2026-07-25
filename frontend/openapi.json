@@ -1609,6 +1609,75 @@
         }
       }
     },
+    "/catalog/categories/{category_id}/default-weight": {
+      "put": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Set Category Default Weight",
+        "description": "Poids par défaut (kg) d'une catégorie, éditable depuis CatalogAI.\n\nLe champ vit dans la table catégorie Xano (« comme la marque », décision\nMarc) — appliqué quand aucun poids source à l'apply d'enrichissement et\nau transfert d'import. Le titre actuel est relu et RENVOYÉ avec le poids\n(l'endpoint Xano remplace les champs absents — vérifié live).",
+        "operationId": "catalog-set_category_default_weight",
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryWeightRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterOption"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/jobs": {
       "post": {
         "tags": [
@@ -7049,6 +7118,18 @@
               }
             ],
             "title": "Profile Id"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
           }
         },
         "type": "object",
@@ -7216,6 +7297,20 @@
         "type": "object",
         "title": "CatalogFilters",
         "description": "Classification lists backing the product-search filters."
+      },
+      "CategoryWeightRequest": {
+        "properties": {
+          "default_weight_kg": {
+            "type": "number",
+            "title": "Default Weight Kg"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_weight_kg"
+        ],
+        "title": "CategoryWeightRequest",
+        "description": "Poids par défaut (kg) d'une catégorie ; 0 = effacer."
       },
       "ConnectionStatus": {
         "properties": {
@@ -7788,6 +7883,17 @@
               }
             ],
             "title": "Parent Id"
+          },
+          "default_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Weight Kg"
           }
         },
         "type": "object",
@@ -9069,6 +9175,28 @@
             "type": "boolean",
             "title": "Split By Color",
             "default": false
+          },
+          "color_option_name": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Color Option Name",
+            "default": "Couleur"
+          },
+          "size_option_name": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Size Option Name",
+            "default": "Taille"
+          },
+          "size_conversion": {
+            "type": "string",
+            "enum": [
+              "none",
+              "uk_to_eu",
+              "us_to_eu"
+            ],
+            "title": "Size Conversion",
+            "default": "none"
           }
         },
         "type": "object",
@@ -9161,6 +9289,28 @@
             "type": "boolean",
             "title": "Split By Color",
             "default": false
+          },
+          "color_option_name": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Color Option Name",
+            "default": "Couleur"
+          },
+          "size_option_name": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Size Option Name",
+            "default": "Taille"
+          },
+          "size_conversion": {
+            "type": "string",
+            "enum": [
+              "none",
+              "uk_to_eu",
+              "us_to_eu"
+            ],
+            "title": "Size Conversion",
+            "default": "none"
           }
         },
         "type": "object",

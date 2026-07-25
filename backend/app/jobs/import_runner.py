@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 # extractor is read from Xano with that company's token (multi-tenant).
 ParseFile = Callable[[bytes, str], "RawDocument"]
 Extractor = Callable[["RawDocument | list[RawDocument]"], "ExtractionResult"]
-BuildExtractor = Callable[[int], Extractor]
+# (account_id, consignes libres saisies au dépôt ou None) -> extracteur.
+BuildExtractor = Callable[[int, "str | None"], Extractor]
 
 
 def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
@@ -86,12 +87,15 @@ def _known_category_paths(account_id: int) -> list[str] | None:
     return paths or None
 
 
-def _default_build_extractor(account_id: int) -> Extractor:
+def _default_build_extractor(
+    account_id: int, extra_instructions: str | None = None
+) -> Extractor:
     from app.imports.extract import build_extractor
 
     return build_extractor(
         settings.ANTHROPIC_API_KEY,
         known_categories=_known_category_paths(account_id),
+        extra_instructions=extra_instructions,
     )
 
 
@@ -192,7 +196,8 @@ def _process(
         data = Path(file_path).read_bytes()
         documents.append(parse(data, file_name))
 
-    extractor = build(job.account_id)
+    instructions = str((job.config_json or {}).get("instructions") or "") or None
+    extractor = build(job.account_id, instructions)
     result = extractor(documents)
 
     # Profile conventions that shape the STAGED data (not just the render):

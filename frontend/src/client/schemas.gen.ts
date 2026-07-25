@@ -710,6 +710,18 @@ export const Body_imports_create_importSchema = {
                 }
             ],
             title: 'Profile Id'
+        },
+        instructions: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Instructions'
         }
     },
     type: 'object',
@@ -882,6 +894,21 @@ export const CatalogFiltersSchema = {
     type: 'object',
     title: 'CatalogFilters',
     description: 'Classification lists backing the product-search filters.'
+} as const;
+
+export const CategoryWeightRequestSchema = {
+    properties: {
+        default_weight_kg: {
+            type: 'number',
+            title: 'Default Weight Kg'
+        }
+    },
+    type: 'object',
+    required: [
+        'default_weight_kg'
+    ],
+    title: 'CategoryWeightRequest',
+    description: 'Poids par défaut (kg) d\'une catégorie ; 0 = effacer.'
 } as const;
 
 export const ConnectionStatusSchema = {
@@ -1467,6 +1494,17 @@ export const FilterOptionSchema = {
                 }
             ],
             title: 'Parent Id'
+        },
+        default_weight_kg: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Default Weight Kg'
         }
     },
     type: 'object',
@@ -2770,6 +2808,28 @@ export const ImportProfileConfig_InputSchema = {
             type: 'boolean',
             title: 'Split By Color',
             default: false
+        },
+        color_option_name: {
+            type: 'string',
+            maxLength: 40,
+            title: 'Color Option Name',
+            default: 'Couleur'
+        },
+        size_option_name: {
+            type: 'string',
+            maxLength: 40,
+            title: 'Size Option Name',
+            default: 'Taille'
+        },
+        size_conversion: {
+            type: 'string',
+            enum: [
+                'none',
+                'uk_to_eu',
+                'us_to_eu'
+            ],
+            title: 'Size Conversion',
+            default: 'none'
         }
     },
     type: 'object',
@@ -2863,6 +2923,28 @@ export const ImportProfileConfig_OutputSchema = {
             type: 'boolean',
             title: 'Split By Color',
             default: false
+        },
+        color_option_name: {
+            type: 'string',
+            maxLength: 40,
+            title: 'Color Option Name',
+            default: 'Couleur'
+        },
+        size_option_name: {
+            type: 'string',
+            maxLength: 40,
+            title: 'Size Option Name',
+            default: 'Taille'
+        },
+        size_conversion: {
+            type: 'string',
+            enum: [
+                'none',
+                'uk_to_eu',
+                'us_to_eu'
+            ],
+            title: 'Size Conversion',
+            default: 'none'
         }
     },
     type: 'object',

@@ -8,6 +8,7 @@ transfer — never three implementations.
 
 import csv
 import io
+import re
 from decimal import ROUND_CEILING, Decimal
 from typing import Any
 
@@ -101,6 +102,40 @@ def compute_barcode(
     return "-".join(depipe(part.strip()) for part in parts if part.strip())
 
 
+# Décalages pointure → EU par grille standard adulte (approximation assumée,
+# décision Marc 2026-07-18 : conversion visible dans l'aperçu avant transfert).
+# Genre « Femme » vs autres (Homme/Unisexe → grille homme).
+_SIZE_OFFSETS = {
+    "uk_to_eu": {"femme": 33.0, "default": 34.0},
+    "us_to_eu": {"femme": 31.0, "default": 33.0},
+}
+
+
+def convert_shoe_size(size: str | None, mode: str, gender: str | None) -> str | None:
+    """Pointure UK/US → EU (rendu uniquement) ; inconvertible = inchangée.
+
+    Accepte « 8 », « 8.5 », « UK 8 », « US9 »… — la partie numérique est
+    convertie, le reste est ignoré. Une taille non numérique (S/M/L, 176…)
+    reste telle quelle.
+    """
+    if not size or mode not in _SIZE_OFFSETS:
+        return size
+    match = re.search(r"\d+(?:[.,]5)?", size)
+    if match is None:
+        return size
+    value = float(match.group(0).replace(",", "."))
+    if not 1 <= value <= 16:  # hors plage pointure adulte : ne pas toucher
+        return size
+    offsets = _SIZE_OFFSETS[mode]
+    offset = (
+        offsets["femme"]
+        if (gender or "").strip().lower() == "femme"
+        else (offsets["default"])
+    )
+    converted = value + offset
+    return f"{converted:g}"
+
+
 def _product_color(product: ImportedProduct) -> str:
     """First non-empty variant color (boutique convention: one color/product)."""
     colors: list[str] = []
@@ -118,6 +153,7 @@ def render_rows(
     fallback_supplier: str | None = None,
     title_template: str | None = None,
     title_case: TitleCase = "none",
+    category_weights: dict[str, float] | None = None,
 ) -> tuple[list[list[str]], list[str]]:
     """One CSV row per variant, in TILLIN_CSV_COLUMNS order, plus warnings.
 
@@ -146,6 +182,10 @@ def render_rows(
         gender = product.gender or ""
         category = product.category or ""
         image_url = product.image_urls[0] if product.image_urls else ""
+        # Poids par défaut de la catégorie (table catégorie Xano, décision
+        # Marc 2026-07-25) : les fichiers fournisseurs ne portent jamais de
+        # poids — repli automatique quand la catégorie en définit un.
+        default_weight = (category_weights or {}).get(category.strip().lower())
         title = product.title or product.supplier_ref
         if config.apply_title_template and title_template:
             values = {
@@ -163,6 +203,14 @@ def render_rows(
             )
 
         for variant in product.variants:
+            if config.size_conversion != "none" and variant.size:
+                converted = convert_shoe_size(
+                    variant.size, config.size_conversion, product.gender
+                )
+                if converted != variant.size:
+                    # Copie locale : la donnée extraite/stockée reste intacte,
+                    # seul le rendu Tillin (option + code-barres) est converti.
+                    variant = variant.model_copy(update={"size": converted})
             price = compute_price(variant, config)
             if price is None:
                 warnings.append(
@@ -180,11 +228,21 @@ def render_rows(
                     {
                         "title": depipe(title),
                         "reference_code": depipe(product.supplier_ref),
-                        "option1_name": "Couleur" if variant.color else "",
+                        "option1_name": (
+                            (config.color_option_name or "Couleur")
+                            if variant.color
+                            else ""
+                        ),
                         "option1_value": depipe(variant.color or ""),
-                        "option2_name": "Taille" if variant.size else "",
+                        "option2_name": (
+                            (config.size_option_name or "Taille")
+                            if variant.size
+                            else ""
+                        ),
                         "option2_value": depipe(variant.size or ""),
                         "variant_barcode": barcode,
+                        "weight": f"{default_weight:g}" if default_weight else "",
+                        "weight_unit": "kg" if default_weight else "",
                         "image_url": image_url,
                         "wholesale_price": (
                             format_decimal(variant.wholesale_price)

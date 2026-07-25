@@ -146,8 +146,29 @@ class XanoTillinDestination:
                     self._client.set_product_weight(
                         [item.tillin_product_id], float(weight), unit
                     )
+            else:
+                # Aucune proposition de poids (page sans variantes, extraction
+                # web…) : repli sur le poids par défaut de la catégorie
+                # (table catégorie Xano, décision Marc 2026-07-25) — seulement
+                # si le produit n'a pas déjà un poids.
+                self._apply_category_default_weight(item)
 
         return warnings
+
+    def _apply_category_default_weight(self, item: EnrichmentItem) -> None:
+        """Best-effort : poids par défaut de la catégorie du produit."""
+        try:
+            product = self._client.get_product(item.tillin_product_id)
+        except Exception:  # pragma: no cover - réseau, best-effort
+            return
+        if product is None or not (product.category or "").strip():
+            return
+        if any(v.weight for v in product.variants):
+            return  # un poids existe déjà : ne jamais l'écraser
+        weights = self._client.category_default_weights()
+        default = weights.get(str(product.category).strip().lower())
+        if default:
+            self._client.set_product_weight([item.tillin_product_id], default, "1")
 
     def _push_images(
         self, item: EnrichmentItem, entries: list[dict[str, Any]]

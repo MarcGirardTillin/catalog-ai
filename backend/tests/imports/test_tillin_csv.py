@@ -245,3 +245,71 @@ def test_pipes_are_replaced_in_rendered_values() -> None:
     assert _col(row, "reference_code") == "399 / A"
     assert _col(row, "option1_value") == "Medium / Used"
     assert _col(row, "variant_barcode") == "399 / A-Medium / Used-176"
+
+
+def test_option_names_follow_profile() -> None:
+    """Noms d'options configurables par profil (ex. Pointure)."""
+    product = ImportedProduct(
+        supplier_ref="SHOE-1",
+        title="Bottine",
+        variants=[ImportedVariant(color="Noir", size="38", quantity=1)],
+    )
+    config = ImportProfileConfig(price_mode="retail_as_is", size_option_name="Pointure")
+    rows, _ = render_rows([product], config)
+    assert _col(rows[0], "option1_name") == "Couleur"
+    assert _col(rows[0], "option2_name") == "Pointure"
+
+
+def test_size_conversion_uk_to_eu_at_render() -> None:
+    """Pointures UK converties en EU au rendu (option + code-barres),
+    payload extrait intact ; tailles non numériques inchangées."""
+    product = ImportedProduct(
+        supplier_ref="SHOE-2",
+        title="Derby",
+        gender="Homme",
+        variants=[
+            ImportedVariant(color="Noir", size="UK 8", quantity=1),
+            ImportedVariant(color="Noir", size="8.5", quantity=1),
+            ImportedVariant(color="Noir", size="M", quantity=1),
+        ],
+    )
+    config = ImportProfileConfig(
+        price_mode="retail_as_is",
+        barcode_mode="constructed",
+        size_conversion="uk_to_eu",
+    )
+    rows, _ = render_rows([product], config)
+    assert _col(rows[0], "option2_value") == "42"  # UK 8 homme -> 42
+    assert _col(rows[0], "variant_barcode") == "SHOE-2-Noir-42"
+    assert _col(rows[1], "option2_value") == "42.5"
+    assert _col(rows[2], "option2_value") == "M"  # non numérique : intact
+    # La donnée d'origine n'a pas bougé.
+    assert product.variants[0].size == "UK 8"
+
+
+def test_size_conversion_women_grid() -> None:
+    from app.imports.tillin_csv import convert_shoe_size
+
+    assert convert_shoe_size("6", "uk_to_eu", "Femme") == "39"
+    assert convert_shoe_size("8", "us_to_eu", "Femme") == "39"
+    assert convert_shoe_size("9", "us_to_eu", "Homme") == "42"
+    assert convert_shoe_size("176", "uk_to_eu", "Homme") == "176"  # hors plage
+
+
+def test_category_default_weight_fills_weight_columns() -> None:
+    """Poids par défaut par catégorie (default_weight_kg Xano) : rempli au
+    rendu quand la catégorie en définit un, sinon colonnes vides."""
+    product = ImportedProduct(
+        supplier_ref="ACC-1",
+        title="Ceinture",
+        category="Accessoire",
+        variants=[ImportedVariant(color="Noir", size="U", quantity=1)],
+    )
+    config = ImportProfileConfig(price_mode="retail_as_is")
+    rows, _ = render_rows([product], config, category_weights={"accessoire": 0.25})
+    assert _col(rows[0], "weight") == "0.25"
+    assert _col(rows[0], "weight_unit") == "kg"
+
+    rows_no, _ = render_rows([product], config)
+    assert _col(rows_no[0], "weight") == ""
+    assert _col(rows_no[0], "weight_unit") == ""

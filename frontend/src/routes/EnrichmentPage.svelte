@@ -5,7 +5,11 @@
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
 
-  import { settingsReadAccountSettings } from "@/client"
+  import {
+    catalogGetFilters,
+    catalogSetCategoryDefaultWeight,
+    settingsReadAccountSettings,
+  } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -46,6 +50,7 @@
     { key: "context", label: "Contexte boutique" },
     { key: "title", label: "Modèle de titre" },
     { key: "imaging", label: "Imagerie" },
+    { key: "weights", label: "Poids par défaut" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("instructions")
@@ -158,6 +163,57 @@
     }
     accountLoaded = true
   })
+
+  // --- Poids par défaut par catégorie (champ default_weight_kg de la table
+  // catégorie Xano, éditable ici — « comme la marque », décision Marc). ---
+  type CategoryWeightRow = { id: number; title: string; value: string }
+  let categoryWeights = $state<CategoryWeightRow[]>([])
+  let categoryWeightsLoaded = $state(false)
+  let savingWeights = $state(false)
+  const initialWeights = new Map<number, string>()
+
+  $effect(() => {
+    if (categoryWeightsLoaded) return
+    catalogGetFilters().then(({ data }) => {
+      if (!data) return
+      categoryWeights = (data.categories ?? []).map((c) => ({
+        id: c.id,
+        title: c.title,
+        value:
+          c.default_weight_kg && c.default_weight_kg > 0
+            ? String(c.default_weight_kg)
+            : "",
+      }))
+      for (const row of categoryWeights) initialWeights.set(row.id, row.value)
+      categoryWeightsLoaded = true
+    })
+  })
+
+  async function saveCategoryWeights() {
+    if (savingWeights) return
+    savingWeights = true
+    let saved = 0
+    let failed = 0
+    for (const row of categoryWeights) {
+      if ((initialWeights.get(row.id) ?? "") === row.value) continue
+      const weight = Number(row.value.trim().replace(",", "."))
+      const { error } = await catalogSetCategoryDefaultWeight({
+        path: { category_id: row.id },
+        body: {
+          default_weight_kg:
+            row.value.trim() === "" || !Number.isFinite(weight) ? 0 : weight,
+        },
+      })
+      if (error) failed += 1
+      else {
+        saved += 1
+        initialWeights.set(row.id, row.value)
+      }
+    }
+    savingWeights = false
+    if (failed > 0) toast.error(`${failed} catégorie(s) non enregistrée(s).`)
+    else if (saved > 0) toast.success("Poids par défaut enregistrés")
+  }
 
   async function saveAccount() {
     const metaMax = Number(metaMaxLength)
@@ -409,6 +465,59 @@
           </Card>
 
           {@render saveAccountRow()}
+        </div>
+
+        <!-- Onglet Poids par défaut (par catégorie, stocké dans Tillin) -->
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "weights"}>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">
+                Poids par défaut par catégorie
+              </CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Appliqué quand ni la page de la marque ni le fichier
+                fournisseur ne donnent de poids (enrichissements et imports).
+                Stocké dans la catégorie Tillin — vide = pas de poids par
+                défaut.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-3">
+              {#if !categoryWeightsLoaded}
+                <Skeleton class="h-24 w-full" />
+              {:else if categoryWeights.length === 0}
+                <p class="text-muted-foreground text-xs italic">
+                  Aucune catégorie dans le référentiel Tillin.
+                </p>
+              {:else}
+                <div class="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {#each categoryWeights as row (row.id)}
+                    <label
+                      class="flex items-center justify-between gap-2 text-xs"
+                    >
+                      <span class="min-w-0 truncate" title={row.title}>
+                        {row.title}
+                      </span>
+                      <span class="flex shrink-0 items-center gap-1">
+                        <input
+                          type="text"
+                          inputmode="decimal"
+                          placeholder="—"
+                          class="border-input bg-card h-7 w-16 rounded-md border px-2 text-right font-mono text-xs tabular-nums"
+                          bind:value={row.value}
+                        />
+                        <span class="text-muted-foreground">kg</span>
+                      </span>
+                    </label>
+                  {/each}
+                </div>
+                <div class="flex justify-end">
+                  <Button size="sm" disabled={savingWeights} onclick={saveCategoryWeights}>
+                    {savingWeights ? "Enregistrement…" : "Enregistrer les poids"}
+                  </Button>
+                </div>
+              {/if}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </AppShell>

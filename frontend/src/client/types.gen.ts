@@ -403,6 +403,10 @@ export type BodyImportsCreateImport = {
      * Profile Id
      */
     profile_id?: number | null;
+    /**
+     * Instructions
+     */
+    instructions?: string | null;
 };
 
 /**
@@ -499,6 +503,18 @@ export type CatalogFilters = {
      * Tags
      */
     tags?: Array<FilterOption>;
+};
+
+/**
+ * CategoryWeightRequest
+ *
+ * Poids par défaut (kg) d'une catégorie ; 0 = effacer.
+ */
+export type CategoryWeightRequest = {
+    /**
+     * Default Weight Kg
+     */
+    default_weight_kg: number;
 };
 
 /**
@@ -868,6 +884,10 @@ export type FilterOption = {
      * Parent Id
      */
     parent_id?: number | null;
+    /**
+     * Default Weight Kg
+     */
+    default_weight_kg?: number | null;
 };
 
 /**
@@ -1533,6 +1553,18 @@ export type ImportProfileConfigInput = {
      * Split By Color
      */
     split_by_color?: boolean;
+    /**
+     * Color Option Name
+     */
+    color_option_name?: string;
+    /**
+     * Size Option Name
+     */
+    size_option_name?: string;
+    /**
+     * Size Conversion
+     */
+    size_conversion?: 'none' | 'uk_to_eu' | 'us_to_eu';
 };
 
 /**
@@ -1593,6 +1625,18 @@ export type ImportProfileConfigOutput = {
      * Split By Color
      */
     split_by_color?: boolean;
+    /**
+     * Color Option Name
+     */
+    color_option_name?: string;
+    /**
+     * Size Option Name
+     */
+    size_option_name?: string;
+    /**
+     * Size Conversion
+     */
+    size_conversion?: 'none' | 'uk_to_eu' | 'us_to_eu';
 };
 
 /**
@@ -4048,6 +4092,36 @@ export type CatalogGetFiltersResponses = {
 };
 
 export type CatalogGetFiltersResponse = CatalogGetFiltersResponses[keyof CatalogGetFiltersResponses];
+
+export type CatalogSetCategoryDefaultWeightData = {
+    body: CategoryWeightRequest;
+    path: {
+        /**
+         * Category Id
+         */
+        category_id: number;
+    };
+    query?: never;
+    url: '/catalog/categories/{category_id}/default-weight';
+};
+
+export type CatalogSetCategoryDefaultWeightErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CatalogSetCategoryDefaultWeightError = CatalogSetCategoryDefaultWeightErrors[keyof CatalogSetCategoryDefaultWeightErrors];
+
+export type CatalogSetCategoryDefaultWeightResponses = {
+    /**
+     * Successful Response
+     */
+    200: FilterOption;
+};
+
+export type CatalogSetCategoryDefaultWeightResponse = CatalogSetCategoryDefaultWeightResponses[keyof CatalogSetCategoryDefaultWeightResponses];
 
 export type JobsListJobsData = {
     body?: never;

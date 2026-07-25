@@ -31,6 +31,12 @@ BarcodeMode = Literal["ean", "constructed"]
 # - "fixed": always `brand_value` (Bambinoh: supplier folder name, lowercase).
 BrandMode = Literal["as_extracted", "fixed"]
 
+# Conversion des pointures au RENDU Tillin (les valeurs extraites restent
+# intactes) : grilles standard adulte, genre du produit pris en compte.
+# ⚠ approximation assumée — les grilles varient selon les marques ; la
+# conversion est visible dans l'aperçu CSV avant transfert.
+SizeConversion = Literal["none", "uk_to_eu", "us_to_eu"]
+
 
 class ImportProfileConfig(BaseModel):
     """Frozen convention shapes; every field has a safe default."""
@@ -61,6 +67,14 @@ class ImportProfileConfig(BaseModel):
     # Applied when the products are staged — attaching the profile after the
     # extraction does not re-split already staged items.
     split_by_color: bool = False
+    # Noms des axes de variantes dans le CSV Tillin (option1/option2) —
+    # « Pointure » pour les chaussures, « Tour de dos »/« Bonnet » pour la
+    # lingerie… (décision Marc 2026-07-18). Les valeurs extraites restent
+    # color/size ; seuls les LIBELLÉS Tillin changent.
+    color_option_name: str = Field(default="Couleur", max_length=40)
+    size_option_name: str = Field(default="Taille", max_length=40)
+    # Pointures UK/US converties en EU au rendu (chaussures) — "none" défaut.
+    size_conversion: SizeConversion = "none"
     # NOTE: gender/category defaults were removed on user request (2026-07-09):
     # those are per-product review-grid edits, not supplier conventions.
     # Stored configs may still carry the old keys — pydantic ignores them.

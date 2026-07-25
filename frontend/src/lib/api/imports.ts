@@ -121,11 +121,13 @@ export function createImport(
   files: File[],
   locationId?: number,
   profileId?: number,
+  instructions?: string,
 ) {
   const body = new FormData()
   for (const file of files) body.append("files", file, file.name)
   if (locationId != null) body.append("location_id", String(locationId))
   if (profileId != null) body.append("profile_id", String(profileId))
+  if (instructions?.trim()) body.append("instructions", instructions.trim())
   return client.post<{ 201: ImportJobPublic }, unknown>({
     responseType: "json",
     url: "/imports",
