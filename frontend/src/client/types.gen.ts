@@ -2042,6 +2042,37 @@ export type InstructionUpdate = {
 };
 
 /**
+ * ItemHistoryEntry
+ *
+ * Trace compacte d'un passage d'enrichissement pour UN produit.
+ *
+ * Alimente le panneau produit (« déjà enrichi ? écarté ? quand ? ») sans
+ * embarquer les champs staged (lourds) d'ItemPublic.
+ */
+export type ItemHistoryEntry = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Job Id
+     */
+    job_id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+};
+
+/**
  * ItemImageNormalizeRequest
  *
  * Per-image review action: normalize one staged image (or revert it).
@@ -4853,6 +4884,38 @@ export type LocationsListLocationsResponses = {
 };
 
 export type LocationsListLocationsResponse = LocationsListLocationsResponses[keyof LocationsListLocationsResponses];
+
+export type ItemsListProductItemHistoryData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    url: '/items';
+};
+
+export type ItemsListProductItemHistoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsListProductItemHistoryError = ItemsListProductItemHistoryErrors[keyof ItemsListProductItemHistoryErrors];
+
+export type ItemsListProductItemHistoryResponses = {
+    /**
+     * Response Items-List Product Item History
+     *
+     * Successful Response
+     */
+    200: Array<ItemHistoryEntry>;
+};
+
+export type ItemsListProductItemHistoryResponse = ItemsListProductItemHistoryResponses[keyof ItemsListProductItemHistoryResponses];
 
 export type ItemsReadItemData = {
     body?: never;

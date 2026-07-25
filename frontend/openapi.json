@@ -3388,6 +3388,69 @@
         }
       }
     },
+    "/items": {
+      "get": {
+        "tags": [
+          "items"
+        ],
+        "summary": "List Product Item History",
+        "description": "Historique d'enrichissement d'UN produit (plus récent en premier).\n\nAlimente le panneau produit : « déjà enrichi le … / écarté le … ».\nScopé compte (comme toute lecture d'items) ; limité aux 20 derniers.",
+        "operationId": "items-list_product_item_history",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemHistoryEntry"
+                  },
+                  "title": "Response Items-List Product Item History"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/items/{item_id}": {
       "get": {
         "tags": [
@@ -9929,6 +9992,48 @@
           "content"
         ],
         "title": "InstructionUpdate"
+      },
+      "ItemHistoryEntry": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "job_id": {
+            "type": "integer",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "job_id",
+          "status",
+          "updated_at"
+        ],
+        "title": "ItemHistoryEntry",
+        "description": "Trace compacte d'un passage d'enrichissement pour UN produit.\n\nAlimente le panneau produit (« déjà enrichi ? écarté ? quand ? ») sans\nembarquer les champs staged (lourds) d'ItemPublic."
       },
       "ItemImageNormalizeRequest": {
         "properties": {

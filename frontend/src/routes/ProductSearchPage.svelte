@@ -1,6 +1,4 @@
 <script lang="ts">
-  import ChevronDown from "@lucide/svelte/icons/chevron-down"
-  import ChevronUp from "@lucide/svelte/icons/chevron-up"
   import ImageIcon from "@lucide/svelte/icons/image"
   import Images from "@lucide/svelte/icons/images"
   import Link2 from "@lucide/svelte/icons/link-2"
@@ -35,6 +33,7 @@
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
+  import { Dialog } from "@/lib/components/ui/dialog"
   import { EmptyState } from "@/lib/components/ui/empty-state"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
@@ -264,6 +263,56 @@
       tab = "import"
       selectedImportId = importId
     }
+    // Filtres persistés dans l'URL : revenir du studio (ou recharger) ne
+    // perd plus la recherche en cours.
+    restoreFiltersFromUrl(params)
+    filtersRestored = true
+  })
+
+  // --- Filtres ⟷ URL : chaque changement réécrit la query string
+  // (replaceState, pas d'entrée d'historique) ; l'URL complète est mémorisée
+  // pour que le bouton retour du studio revienne sur la même liste. ---
+  let filtersRestored = $state(false)
+
+  function restoreFiltersFromUrl(params: URLSearchParams) {
+    const num = (key: string): number | null => {
+      const raw = params.get(key)
+      const value = raw ? Number(raw) : NaN
+      return Number.isFinite(value) ? value : null
+    }
+    if (params.get("q")) {
+      search = params.get("q") ?? ""
+      submittedSearch = search
+    }
+    if (params.get("tab") === "import") tab = "import"
+    if (params.get("status") !== null) status = params.get("status") ?? "2"
+    if (params.get("ecommerce")) ecommerce = params.get("ecommerce") ?? ""
+    brand = num("brand") ?? brand
+    category = num("category") ?? category
+    season = num("season") ?? season
+    supplier = num("supplier") ?? supplier
+    tag = num("tag") ?? tag
+    page = num("page") ?? page
+  }
+
+  $effect(() => {
+    if (!filtersRestored) return
+    const params = new URLSearchParams()
+    if (submittedSearch) params.set("q", submittedSearch)
+    if (tab !== "catalog") params.set("tab", tab)
+    if (status !== "2") params.set("status", status)
+    if (ecommerce) params.set("ecommerce", ecommerce)
+    if (brand != null) params.set("brand", String(brand))
+    if (category != null) params.set("category", String(category))
+    if (season != null) params.set("season", String(season))
+    if (supplier != null) params.set("supplier", String(supplier))
+    if (tag != null) params.set("tag", String(tag))
+    if (page > 1) params.set("page", String(page))
+    const query = params.toString()
+    const url = query ? `/products?${query}` : "/products"
+    window.history.replaceState(window.history.state, "", url)
+    // Le studio lit cette clé pour son bouton retour / fil d'ariane.
+    sessionStorage.setItem("catalogai:products-list-url", url)
   })
 
   // Les critères sont réactifs : changer un filtre relance la query (clé).
@@ -1068,35 +1117,48 @@
       <!-- Sticky selection/action bar (offset by the sidebar width on desktop) -->
       {#if selected.size > 0 && canEnrich}
         <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t sm:left-60">
-          <!-- Panneau d'options replié/déplié (monté en permanence : les
-               saisies survivent au repli, jusqu'à vider la sélection). -->
-          <div
-            class="border-border max-h-[55vh] overflow-y-auto border-b"
-            hidden={!optionsOpen}
-          >
-            <div class="mx-auto max-w-4xl p-3">
-              <JobOptionsPanel bind:this={optionsPanel} />
-            </div>
-          </div>
           <div class="p-3">
             <div class="mx-auto flex max-w-4xl items-center gap-3 sm:justify-end">
               <Button
-                variant="outline"
-                aria-expanded={optionsOpen}
-                onclick={() => (optionsOpen = !optionsOpen)}
+                class="flex-1 sm:min-w-44 sm:flex-none"
+                disabled={submitting}
+                onclick={() => (optionsOpen = true)}
               >
-                Options
-                {#if optionsOpen}
-                  <ChevronDown size={14} aria-hidden="true" data-icon="inline-end" />
-                {:else}
-                  <ChevronUp size={14} aria-hidden="true" data-icon="inline-end" />
-                {/if}
-              </Button>
-              <Button class="flex-1 sm:min-w-44 sm:flex-none" disabled={submitting} onclick={createJob}>
                 Enrichir la sélection ({selected.size})
               </Button>
             </div>
           </div>
+        </div>
+      {/if}
+
+      <!-- Options d'enrichissement en modale : un seul geste (clic sur
+           « Enrichir ») ouvre les options + confirmation. Montée tant qu'une
+           sélection existe pour conserver les saisies entre ouvertures. -->
+      {#if selected.size > 0 && canEnrich}
+        <div hidden={!optionsOpen}>
+          <Dialog
+            title={`Enrichir ${selected.size} produit${selected.size > 1 ? "s" : ""}`}
+            onClose={() => (optionsOpen = false)}
+            dismissable={!submitting}
+          >
+            <div class="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
+              <JobOptionsPanel bind:this={optionsPanel} />
+            </div>
+            <div class="mt-3 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={submitting}
+                onclick={() => (optionsOpen = false)}
+              >
+                Annuler
+              </Button>
+              <Button disabled={submitting} onclick={createJob}>
+                {submitting
+                  ? "Lancement…"
+                  : `Lancer l'enrichissement (${selected.size})`}
+              </Button>
+            </div>
+          </Dialog>
         </div>
       {/if}
 

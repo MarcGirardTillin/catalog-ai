@@ -102,6 +102,20 @@ class ItemImageNormalizeRequest(BaseModel):
     revert: bool = False
 
 
+class ItemHistoryEntry(BaseModel):
+    """Trace compacte d'un passage d'enrichissement pour UN produit.
+
+    Alimente le panneau produit (« déjà enrichi ? écarté ? quand ? ») sans
+    embarquer les champs staged (lourds) d'ItemPublic.
+    """
+
+    id: int
+    job_id: int
+    status: str
+    updated_at: datetime
+    finished_at: datetime | None = None
+
+
 class PagePreview(BaseModel):
     """Thumbnail of a resolution page (og:image) — best-effort, may be empty."""
 

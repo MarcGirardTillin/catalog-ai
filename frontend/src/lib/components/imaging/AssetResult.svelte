@@ -64,6 +64,16 @@
   } = $props()
 
   const outputFile = $derived(work.asset?.files?.[0] ?? null)
+
+  // Cadre « Après » au ratio RÉEL de la sortie : un cadre 4:5 figé autour
+  // d'une sortie carrée montrait des bandes grises (bg-muted) que l'œil
+  // prenait pour le fond de l'image (vécu : « fond e4e4e4 ? »). Repli 4:5
+  // tant que les dimensions ne sont pas connues.
+  const outputAspect = $derived(
+    outputFile?.width && outputFile?.height
+      ? `${outputFile.width} / ${outputFile.height}`
+      : "4 / 5",
+  )
   const multiOutput = $derived(work.previewUrls.length > 1)
   // Le repositionnement ne s'applique qu'aux sorties uniques (normalisation).
   const canRender = $derived(
@@ -405,7 +415,8 @@
                 <img
                   src={preview}
                   alt={`Visuel généré ${index + 1}`}
-                  class="bg-muted aspect-4/5 w-full rounded-md object-contain"
+                  class="bg-muted w-full rounded-md object-contain"
+                  style={`aspect-ratio: ${outputAspect}`}
                 />
               </button>
             {/each}
@@ -430,12 +441,14 @@
                 src={work.previewUrls[0]}
                 alt="Après"
                 draggable="false"
-                class="bg-muted aspect-4/5 w-full object-contain select-none {work.rendering
+                class="bg-muted w-full object-contain select-none {work.rendering
                   ? 'opacity-60'
                   : ''}"
-                style={previewShift.x !== 0 || previewShift.y !== 0
-                  ? `transform: translate(${previewShift.x}px, ${previewShift.y}px)`
-                  : undefined}
+                style={`aspect-ratio: ${outputAspect};${
+                  previewShift.x !== 0 || previewShift.y !== 0
+                    ? ` transform: translate(${previewShift.x}px, ${previewShift.y}px)`
+                    : ""
+                }`}
               />
             {:else}
               <div class="bg-muted aspect-4/5 w-full animate-pulse rounded-md"></div>

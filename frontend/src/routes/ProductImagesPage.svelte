@@ -57,6 +57,11 @@
 
   const productId = $derived(Number(id))
 
+  // Retour vers la liste produits AVEC ses filtres : la page produits
+  // mémorise son URL complète (query comprise) dans sessionStorage.
+  const productsListUrl =
+    sessionStorage.getItem("catalogai:products-list-url") ?? "/products"
+
   // Module Studio du compte (cache partagé avec l'AppShell, même queryKey).
   const featureStatsQuery = createQuery(() => ({
     queryKey: ["stats", "dashboard"],
@@ -492,10 +497,10 @@
     await Promise.all(targets.map((image) => runByMode(image)))
   }
 
-  async function saveOne(key: string) {
+  async function saveOne(key: string, options?: { silent?: boolean }): Promise<boolean> {
     const work = works[key]
     const asset = work?.asset
-    if (!work || !asset || work.saving) return
+    if (!work || !asset || work.saving) return false
     work.saving = true
     const replace = work.replace && asset.source_product_image_id != null
     const filenames =
@@ -503,18 +508,52 @@
     const { data, error } = await saveAsset(asset.id, replace, filenames)
     work.saving = false
     if (error || !data) {
-      toast.error("Échec de l'enregistrement dans Tillin.")
-      return
+      if (!options?.silent) toast.error("Échec de l'enregistrement dans Tillin.")
+      return false
     }
     work.status = "saved"
     work.asset = { ...asset, can_render: false }
-    toast.success(
-      `${data.created} image${data.created > 1 ? "s" : ""} enregistrée${data.created > 1 ? "s" : ""}${data.deactivated > 0 ? ", originale remplacée" : ""}`,
-    )
-    // La galerie Tillin a changé : rafraîchit le cache produit + les vues
-    // « à vérifier » (pastille catalogue, réhydratation).
+    if (!options?.silent) {
+      toast.success(
+        `${data.created} image${data.created > 1 ? "s" : ""} enregistrée${data.created > 1 ? "s" : ""}${data.deactivated > 0 ? ", originale remplacée" : ""}`,
+      )
+      // La galerie Tillin a changé : rafraîchit le cache produit + les vues
+      // « à vérifier » (pastille catalogue, réhydratation).
+      invalidatePendingAssets()
+      await queryClient.invalidateQueries({ queryKey: ["product", productId] })
+    }
+    return true
+  }
+
+  // « Tout enregistrer » : chaque résultat prêt, en SÉQUENTIEL (un upload
+  // Xano à la fois), puis un seul rafraîchissement + un toast récapitulatif.
+  let savingAll = $state(false)
+  const savableCount = $derived(
+    results.filter((p) => p.work.status === "done" && !p.work.rendering).length,
+  )
+  async function saveAll() {
+    if (savingAll) return
+    savingAll = true
+    let saved = 0
+    let failed = 0
+    for (const pair of results) {
+      if (pair.work.status !== "done" || pair.work.rendering) continue
+      const ok = await saveOne(pair.key, { silent: true })
+      if (ok) saved += 1
+      else failed += 1
+    }
+    savingAll = false
     invalidatePendingAssets()
     await queryClient.invalidateQueries({ queryKey: ["product", productId] })
+    if (failed > 0) {
+      toast.error(
+        `${saved} image${saved > 1 ? "s" : ""} enregistrée${saved > 1 ? "s" : ""}, ${failed} en échec.`,
+      )
+    } else if (saved > 0) {
+      toast.success(
+        `${saved} image${saved > 1 ? "s" : ""} enregistrée${saved > 1 ? "s" : ""} dans Tillin`,
+      )
+    }
   }
 
   // Révoque les aperçus blob au démontage.
@@ -533,7 +572,7 @@
       {appName}
       {user}
       breadcrumbs={[
-        { label: "Produits", href: "/products" },
+        { label: "Produits", href: productsListUrl },
         { label: `Studio images — ${productLabel}` },
       ]}
     >
@@ -559,7 +598,7 @@
               variant="ghost"
               size="sm"
               aria-label="Retour aux produits"
-              onclick={() => navigate("/products")}
+              onclick={() => navigate(productsListUrl)}
             >
               <ArrowLeft size={16} aria-hidden="true" />
             </Button>
@@ -744,7 +783,21 @@
 
           <!-- Résultats -->
           {#if results.length > 0}
-            <h2 class="font-title mt-1 text-sm font-bold">Résultats</h2>
+            <div class="mt-1 flex items-center justify-between gap-2">
+              <h2 class="font-title text-sm font-bold">Résultats</h2>
+              {#if savableCount > 1}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={savingAll || runningCount > 0}
+                  onclick={saveAll}
+                >
+                  {savingAll
+                    ? "Enregistrement…"
+                    : `Tout enregistrer (${savableCount})`}
+                </Button>
+              {/if}
+            </div>
             {#each results as pair (pair.key)}
               {@const isGeneration = KEY_SUFFIXES.some((s) =>
                 pair.key.endsWith(s),

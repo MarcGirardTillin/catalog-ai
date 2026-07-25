@@ -1,6 +1,7 @@
 """Enrichment item routes: detail, staged edits, review decisions, apply."""
 
 from fastapi import APIRouter, BackgroundTasks, Depends
+from sqlalchemy import select
 
 from app.api.deps import (
     CurrentUserDep,
@@ -14,6 +15,7 @@ from app.api.deps import (
 from app.api.exceptions import AppException
 from app.api.schemas import Product
 from app.api.schemas.enrichment import (
+    ItemHistoryEntry,
     ItemImageNormalizeRequest,
     ItemPatchRequest,
     ItemPublic,
@@ -33,6 +35,7 @@ from app.api.services.enrichment import (
     update_staged_fields,
 )
 from app.destinations.xano_tillin import XanoTillinDestination
+from app.models import EnrichmentItem
 from app.sources.preview import fetch_page_preview
 
 # Review = module « Enrichissement » (la normalisation d'images du review
@@ -42,6 +45,28 @@ router = APIRouter(
     tags=["items"],
     dependencies=[Depends(require_feature("feature_enrich"))],
 )
+
+
+@router.get("", response_model=list[ItemHistoryEntry])
+def list_product_item_history(
+    product_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> list[ItemHistoryEntry]:
+    """Historique d'enrichissement d'UN produit (plus récent en premier).
+
+    Alimente le panneau produit : « déjà enrichi le … / écarté le … ».
+    Scopé compte (comme toute lecture d'items) ; limité aux 20 derniers.
+    """
+    account_id = resolve_account_id(db, current_user)
+    rows = db.scalars(
+        select(EnrichmentItem)
+        .where(
+            EnrichmentItem.account_id == account_id,
+            EnrichmentItem.tillin_product_id == product_id,
+        )
+        .order_by(EnrichmentItem.id.desc())
+        .limit(20)
+    ).all()
+    return [ItemHistoryEntry.model_validate(row, from_attributes=True) for row in rows]
 
 
 @router.get("/{item_id}", response_model=ItemPublic)

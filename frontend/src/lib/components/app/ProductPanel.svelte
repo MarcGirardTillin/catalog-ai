@@ -17,7 +17,11 @@
   import { navigate } from "svelte5-router"
   import { fade, fly } from "svelte/transition"
 
-  import { type ProductImage, settingsReadAccountSettings } from "@/client"
+  import {
+    itemsListProductItemHistory,
+    type ProductImage,
+    settingsReadAccountSettings,
+  } from "@/client"
   import {
     fetchAssetPreviews,
     generateModelImage,
@@ -148,6 +152,9 @@
     imagingBusy = true
     imagingVerb = "normalize"
     disposeImagingResult()
+    // Une image TRAITÉE remplace l'originale par défaut (aligné studio) ;
+    // une génération s'ajoute par défaut.
+    replaceOriginal = true
     const { data, error } = await normalizeImage(id, sel.url, sel.id)
     if (error || !data) {
       imagingBusy = false
@@ -232,6 +239,31 @@
     onProductChanged?.()
   }
 
+  // --- Historique d'enrichissement du produit (« déjà enrichi ? écarté ? »).
+  // Best-effort : module non souscrit ou erreur → section simplement absente.
+  type HistoryEntry = {
+    id: number
+    job_id: number
+    status: string
+    updated_at: string
+    finished_at?: string | null
+  }
+  let itemHistory = $state<HistoryEntry[]>([])
+  const HISTORY_LABELS: Record<string, string> = {
+    applied: "Enrichi",
+    approved: "Enrichissement validé (non appliqué)",
+    rejected: "Enrichissement écarté",
+    ready_for_review: "Enrichissement à vérifier",
+    failed: "Enrichissement en échec",
+    pending: "Enrichissement en attente",
+    processing: "Enrichissement en cours",
+  }
+  const lastHistory = $derived(itemHistory[0] ?? null)
+  function historyDate(entry: HistoryEntry): string {
+    const raw = entry.finished_at ?? entry.updated_at
+    return new Date(raw).toLocaleDateString("fr-FR")
+  }
+
   // Réagit au changement de produit uniquement (productId). Le reste écrit —
   // et `clearStaged` LIT `stagedImages` en le remettant à zéro — donc on
   // l'exécute hors suivi (untrack) pour ne pas boucler l'effet.
@@ -240,9 +272,15 @@
     untrack(() => {
       product = null
       errorMessage = null
+      itemHistory = []
       clearStaged()
       clearImaging()
       if (id == null) return
+      itemsListProductItemHistory({ query: { product_id: id } }).then(
+        ({ data }) => {
+          if (productId === id) itemHistory = data ?? []
+        },
+      )
       loading = true
       getProduct(id).then(({ data, error }) => {
         loading = false
@@ -532,6 +570,35 @@
         <Skeleton class="h-24 w-full" />
         <Skeleton class="h-20 w-full" />
       {:else}
+        {#if lastHistory}
+          <!-- Historique d'enrichissement : dernier passage + accès direct. -->
+          <button
+            type="button"
+            class="border-border hover:bg-muted/50 flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors"
+            onclick={() => navigate(`/items/${lastHistory.id}`)}
+          >
+            <span class="flex items-center gap-2">
+              <span
+                class="size-2 shrink-0 rounded-full {lastHistory.status === 'applied'
+                  ? 'bg-emerald-500'
+                  : lastHistory.status === 'rejected' || lastHistory.status === 'failed'
+                    ? 'bg-muted-foreground'
+                    : 'bg-amber-500'}"
+                aria-hidden="true"
+              ></span>
+              {HISTORY_LABELS[lastHistory.status] ?? lastHistory.status}
+              le {historyDate(lastHistory)}
+              {#if itemHistory.length > 1}
+                <span class="text-muted-foreground">
+                  · {itemHistory.length} passages
+                </span>
+              {/if}
+            </span>
+            <span class="text-primary shrink-0 underline underline-offset-2">
+              voir
+            </span>
+          </button>
+        {/if}
         <!-- Galerie + ajout d'images (upload / capture) -->
         <div class="flex flex-col gap-2">
           <h3 class="text-sm font-medium">

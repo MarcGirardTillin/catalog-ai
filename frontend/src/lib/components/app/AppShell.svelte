@@ -189,14 +189,22 @@
       : visibleBaseGroups,
   )
 
-  type NavDot = { tone: string; title: string }
+  // count = nombre affiché DANS la pastille (null = simple point, ex. « en
+  // cours » ou solde bas — un chiffre n'y apporterait rien).
+  type NavDot = { tone: string; title: string; count: number | null }
 
   // Une seule pastille par menu, la plus urgente : échec > à vérifier > en cours.
   function navDot(failed: number, review: number, running: number): NavDot | null {
-    if (failed > 0) return { tone: "bg-destructive", title: `${failed} en échec` }
-    if (review > 0) return { tone: "bg-amber-500", title: `${review} à vérifier` }
+    if (failed > 0)
+      return { tone: "bg-destructive", title: `${failed} en échec`, count: failed }
+    if (review > 0)
+      return { tone: "bg-amber-500", title: `${review} à vérifier`, count: review }
     if (running > 0)
-      return { tone: "bg-primary animate-pulse", title: `${running} en cours` }
+      return {
+        tone: "bg-primary animate-pulse",
+        title: `${running} en cours`,
+        count: null,
+      }
     return null
   }
 
@@ -204,9 +212,13 @@
   // ambre sous le seuil configuré pour le compte.
   function creditDot(balance: number, threshold: number): NavDot | null {
     if (balance <= 0)
-      return { tone: "bg-destructive", title: "Crédits épuisés" }
+      return { tone: "bg-destructive", title: "Crédits épuisés", count: null }
     if (balance < threshold)
-      return { tone: "bg-amber-500", title: `Solde bas : ${balance} crédits` }
+      return {
+        tone: "bg-amber-500",
+        title: `Solde bas : ${balance} crédits`,
+        count: null,
+      }
     return null
   }
 
@@ -280,12 +292,24 @@
             {item.label}
             {#if navDots[item.href]}
               {@const dot = navDots[item.href]}
-              <span
-                class="ml-auto size-2 shrink-0 rounded-full {dot?.tone}"
-                title={dot?.title}
-                role="status"
-                aria-label={dot?.title}
-              ></span>
+              {#if dot?.count != null}
+                <!-- Pastille chiffrée : nb d'éléments à vérifier / en échec. -->
+                <span
+                  class="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white tabular-nums {dot.tone}"
+                  title={dot.title}
+                  role="status"
+                  aria-label={dot.title}
+                >
+                  {dot.count > 99 ? "99+" : dot.count}
+                </span>
+              {:else}
+                <span
+                  class="ml-auto size-2 shrink-0 rounded-full {dot?.tone}"
+                  title={dot?.title}
+                  role="status"
+                  aria-label={dot?.title}
+                ></span>
+              {/if}
             {/if}
           </button>
         {/each}

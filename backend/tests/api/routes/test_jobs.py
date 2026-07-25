@@ -707,3 +707,20 @@ def test_failed_item_can_be_dismissed_as_rejected(auth_client: TestClient) -> No
     db_item.status = "failed"
     db.commit()
     assert auth_client.post(f"/items/{item_id}/approve").status_code == 409
+
+
+def test_item_history_by_product(auth_client: TestClient) -> None:
+    """Historique d'enrichissement d'un produit : entrées compactes, plus
+    récent en premier, vide pour un produit jamais enrichi."""
+    _create_job(auth_client, [777])
+    _create_job(auth_client, [777, 778])
+
+    response = auth_client.get("/items", params={"product_id": 777})
+    assert response.status_code == 200
+    entries = response.json()
+    assert len(entries) == 2
+    assert entries[0]["id"] > entries[1]["id"]  # plus récent en premier
+    assert entries[0]["status"] == "pending"
+    assert {"id", "job_id", "status", "updated_at"} <= set(entries[0])
+
+    assert auth_client.get("/items", params={"product_id": 999_999}).json() == []

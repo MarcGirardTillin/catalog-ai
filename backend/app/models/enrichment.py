@@ -67,6 +67,8 @@ class EnrichmentItem(Base):
     __table_args__ = (
         # Worker queue scan: claim pending items in insertion order.
         Index("ix_enrichment_item_status_id", "status", "id"),
+        # Historique par produit (panneau produit : « déjà enrichi ? »).
+        Index("ix_enrichment_item_account_product", "account_id", "tillin_product_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

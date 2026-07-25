@@ -3712,6 +3712,49 @@ export const InstructionUpdateSchema = {
     title: 'InstructionUpdate'
 } as const;
 
+export const ItemHistoryEntrySchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        job_id: {
+            type: 'integer',
+            title: 'Job Id'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'job_id',
+        'status',
+        'updated_at'
+    ],
+    title: 'ItemHistoryEntry',
+    description: 'Trace compacte d\'un passage d\'enrichissement pour UN produit.\n\nAlimente le panneau produit (« déjà enrichi ? écarté ? quand ? ») sans\nembarquer les champs staged (lourds) d\'ItemPublic.'
+} as const;
+
 export const ItemImageNormalizeRequestSchema = {
     properties: {
         url: {
