@@ -100,6 +100,7 @@ def test_apply_pushes_images_then_copy() -> None:
         "product_id": 1911,
         "title": "Titre",
         "description": "Desc",
+        "description_html": None,
         "meta_description": "Meta",
     }
 
@@ -125,6 +126,7 @@ def test_apply_respects_field_selection() -> None:
         "product_id": 1911,
         "title": None,  # dropped
         "description": "Desc",
+        "description_html": None,
         "meta_description": "Meta",
     }
 

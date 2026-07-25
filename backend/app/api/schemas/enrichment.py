@@ -62,6 +62,7 @@ class ItemPublic(BaseModel):
     resolution_json: dict[str, Any] | None = None
     staged_title: str | None = None
     staged_description: str | None = None
+    staged_description_html: str | None = None
     staged_meta: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None
@@ -86,6 +87,7 @@ class ItemPatchRequest(BaseModel):
 
     staged_title: str | None = None
     staged_description: str | None = None
+    staged_description_html: str | None = None
     staged_meta: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None

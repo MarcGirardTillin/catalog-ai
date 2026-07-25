@@ -89,6 +89,9 @@ class EnrichmentItem(Base):
 
     staged_title: Mapped[str | None] = mapped_column(String(500), default=None)
     staged_description: Mapped[str | None] = mapped_column(default=None)
+    # Version riche (HTML léger p/br/ul/li/strong/em) écrite dans le champ
+    # Tillin `description_html` à l'apply (décision Marc 2026-07-18).
+    staged_description_html: Mapped[str | None] = mapped_column(default=None)
     staged_meta: Mapped[str | None] = mapped_column(String(500), default=None)
     staged_images_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     staged_weights_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)

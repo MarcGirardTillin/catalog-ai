@@ -13,6 +13,7 @@ from app.api.errors import handle_unexpected_exception, register_exception_handl
 from app.api.main import api_router
 from app.core.config import LOG_FORMAT, settings
 from app.core.db import ping_database
+from app.imaging import staging
 
 
 def configure_application_logging() -> None:
@@ -43,6 +44,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Validate critical startup dependencies before serving requests."""
     if not ping_database():
         raise RuntimeError("PostgreSQL is not reachable at startup")
+    # Rétention des fichiers d'imagerie stagés (90 j) : les visuels écartés
+    # restent consultables un temps, sans accumulation illimitée sur disque.
+    staging.sweep_older_than()
     logger.info("Startup app")
     yield
     logger.info("Shutdown app")

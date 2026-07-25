@@ -28,9 +28,25 @@ COPY_SCHEMA = {
     "type": "object",
     "properties": {
         "description_fr": {"type": "string"},
+        # Version riche (HTML léger) écrite dans `description_html` côté
+        # Tillin — décision Marc 2026-07-18 (style/emojis perdus en brut).
+        "description_html_fr": {"type": "string"},
         "meta_description_fr": {"type": "string"},
     },
-    "required": ["description_fr", "meta_description_fr"],
+    "required": ["description_fr", "description_html_fr", "meta_description_fr"],
+    "additionalProperties": False,
+}
+
+# Schéma de l'étage « sélection » de la résolution de page source (rapport
+# deep-research 2026-07-18 : choisir parmi les candidats ENSEMBLE bat le
+# matching par paires) : index du candidat, -1 = aucun ne correspond.
+SELECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "choice": {"type": "integer"},
+        "reason": {"type": "string"},
+    },
+    "required": ["choice", "reason"],
     "additionalProperties": False,
 }
 
@@ -45,7 +61,13 @@ def _system_prompt(meta_max_length: int) -> str:
         f"FR de {meta_max_length} caractères maximum. Intègre naturellement les "
         "détails techniques fournis quand ils existent — caractéristiques "
         "(source_features), composition, pays de fabrication, entretien — sans "
-        "jamais compléter un détail absent du contexte."
+        "jamais compléter un détail absent du contexte.\n"
+        "Fournis DEUX versions de la description : description_fr en texte "
+        "brut (paragraphes séparés par une ligne vide), et description_html_fr "
+        "en HTML léger STRICTEMENT limité aux balises <p>, <br>, <ul>, <li>, "
+        "<strong> et <em> — même contenu, mis en forme (paragraphes, liste "
+        "des caractéristiques), quelques emojis sobres autorisés si le ton "
+        "s'y prête. Jamais de <script>, de style inline ni d'attributs."
     )
 
 
@@ -60,7 +82,17 @@ class ClaudeUsage(BaseModel):
 class CopyResult(BaseModel):
     description_fr: str
     meta_description_fr: str
+    # HTML léger (balises p/br/ul/li/strong/em) — None sur les fakes/legacy.
+    description_html_fr: str | None = None
     # Filled by the client from the API response; None on fakes/legacy paths.
+    usage: ClaudeUsage | None = None
+
+
+class CandidateChoice(BaseModel):
+    """Résultat de l'étage de sélection : index choisi (-1 = aucun)."""
+
+    choice: int
+    reason: str = ""
     usage: ClaudeUsage | None = None
 
 
@@ -130,6 +162,69 @@ class ClaudeClient:
         except ValidationError as exc:
             raise ExternalServiceError(
                 "claude", "Claude returned an unparseable copy payload"
+            ) from exc
+        result.usage = ClaudeUsage(
+            model=response.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+        return result
+
+    def select_candidate(
+        self,
+        product_ctx: dict[str, Any],
+        candidates: list[dict[str, Any]],
+        *,
+        model: str | None = None,
+    ) -> CandidateChoice:
+        """Choisit LA page candidate correspondant au produit (ou aucune).
+
+        Étage « selecting » de la résolution (rapport deep-research
+        2026-07-18) : présenter tous les candidats ENSEMBLE — coloris frères
+        compris — avec l'option « aucun » bat le scoring par paires. Le
+        prompt exige la correspondance exacte du coloris.
+        """
+        user_content = (
+            "Produit du catalogue (JSON) :\n"
+            + json.dumps(product_ctx, ensure_ascii=False, sort_keys=True)
+            + "\n\nPages candidates (JSON, indexées) :\n"
+            + json.dumps(candidates, ensure_ascii=False)
+        )
+        system = (
+            "Tu identifies la page produit OFFICIELLE correspondant EXACTEMENT "
+            "au produit du catalogue (même modèle ET même coloris — un coloris "
+            "différent n'est PAS le bon produit, même si la référence "
+            "correspond). Réponds par l'index du candidat correspondant, ou "
+            "-1 si aucun ne correspond avec certitude. Justifie en une phrase."
+        )
+        try:
+            response = self._client.messages.create(
+                model=model or self._model,
+                max_tokens=512,
+                system=system,
+                output_config={
+                    "format": {"type": "json_schema", "schema": SELECT_SCHEMA}
+                },
+                messages=[{"role": "user", "content": user_content}],
+            )
+        except anthropic.APIConnectionError as exc:
+            raise ExternalServiceError("claude", "Claude is unreachable") from exc
+        except anthropic.APIStatusError as exc:
+            raise ExternalServiceError(
+                "claude",
+                "Claude returned an error response",
+                detail={"upstream_status": exc.status_code},
+            ) from exc
+        if response.stop_reason == "refusal":
+            raise ExternalServiceError("claude", "Claude refused the request")
+        text = next(
+            (block.text for block in response.content if block.type == "text"), ""
+        )
+        try:
+            result = CandidateChoice.model_validate_json(text)
+        except ValidationError as exc:
+            raise ExternalServiceError(
+                "claude", "Claude returned an unparseable selection payload"
             ) from exc
         result.usage = ClaudeUsage(
             model=response.model,

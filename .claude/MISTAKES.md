@@ -204,3 +204,13 @@ pas un échec, c'est une issue INCONNUE.
   déclencher UN refetch final APRÈS la transition (invalidateQueries sur le
   flanc descendant), car l'état terminal porte souvent les données qu'on
   attendait.
+
+## 2026-07-25 — POST /category/{id} Xano REMPLACE les champs absents
+
+Sonde live du champ `default_weight_kg` : un POST portant seulement le poids
+a VIDÉ le titre de la catégorie (l'endpoint applique les défauts de ses
+inputs aux champs non fournis — title=""). Restauré aussitôt.
+**Leçon** : sur les endpoints d'édition Xano, toujours renvoyer les champs
+texte existants avec la modification (le client `set_category_default_weight`
+exige `title`), et sonder les écritures Xano sur une donnée réversible en
+vérifiant TOUT l'objet retourné, pas seulement le champ modifié.

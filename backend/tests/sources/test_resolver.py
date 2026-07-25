@@ -450,7 +450,13 @@ def test_method_firecrawl_skips_shopify_entirely() -> None:
 
     assert result.status == "resolved"
     assert result.method_used == "firecrawl"
-    assert shopify_calls == []
+    # Le client http sert désormais aussi au sniff JSON-LD (gratuit) — seul
+    # le storefront Shopify (suggest/products) ne doit jamais être appelé.
+    assert [
+        r
+        for r in shopify_calls
+        if "suggest.json" in r.url.path or "/products/" in r.url.path
+    ] == []
 
 
 def test_method_shopify_json_never_touches_firecrawl() -> None:

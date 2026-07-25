@@ -967,3 +967,31 @@ backend ne comparait rien et passait l'item « applied ». Décisions :
    (dernier segment) — vérifié live : Dover Street Market résout désormais
    en Shopify JSON gratuit ; kikokostadinov.com a DÉSACTIVÉ ses endpoints
    storefront (404 partout) → extraction web inévitable sur ce site.
+
+## 2026-07-25 — Bilan 1 semaine : phases B–E livrées
+
+Plan « bilan 1 semaine » exécuté en 4 commits (B UX, C imports, D studio,
+E structurel). Décisions notables de la phase E :
+
+1. **Étage de sélection LLM** (reco n°1 du rapport deep-research) : quand la
+   résolution auto finit `needs_manual` AVEC des candidats, Claude les voit
+   ENSEMBLE (index, URL, slug, titre, couleur, score) et choisit — ou
+   s'abstient (-1). Un choix valide résout la source (`source_method="llm"`,
+   raison « sélection IA : … »), stage poids/images et génère la copie ;
+   une abstention conserve le comportement « source incertaine » (review,
+   pas de description). Best-effort : toute erreur IA laisse l'item en
+   review. Tokens Claude métérés comme la copie.
+2. **JSON-LD schema.org** (`sources/jsonld.py`) : sniff GRATUIT des pages
+   candidates (resolver web + résolution manuelle/LLM) avant toute
+   extraction Firecrawl payante — signal opportuniste, jamais supposé
+   présent (claims de prévalence réfutés par le rapport).
+3. **description_html** : le copywriter produit texte brut + HTML léger
+   (p/br/ul/li/strong/em, emojis sobres) ; colonne
+   `staged_description_html` (migration 0022), aperçu rendu dans la review,
+   envoyé à l'apply. ⚠ VÉRIFIÉ LIVE : l'endpoint Xano `/product/{id}/enrich`
+   IGNORE cet input aujourd'hui (il recopie `description` dans
+   `description_html`) — évolution Xano à faire par Marc ; l'envoi CatalogAI
+   est prêt et inoffensif d'ici là.
+4. **Consommation** : la page liste les visuels de TOUS les verbes (type
+   affiché) — trace des rendus payés, y compris écartés. Rétention staging
+   explicite : sweep 90 jours au démarrage de l'app.

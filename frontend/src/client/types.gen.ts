@@ -2151,6 +2151,10 @@ export type ItemPatchRequest = {
      */
     staged_description?: string | null;
     /**
+     * Staged Description Html
+     */
+    staged_description_html?: string | null;
+    /**
      * Staged Meta
      */
     staged_meta?: string | null;
@@ -2220,6 +2224,10 @@ export type ItemPublic = {
      * Staged Description
      */
     staged_description?: string | null;
+    /**
+     * Staged Description Html
+     */
+    staged_description_html?: string | null;
     /**
      * Staged Meta
      */

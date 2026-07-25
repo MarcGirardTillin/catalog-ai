@@ -496,6 +496,7 @@
   const METHOD_LABELS: Record<string, string> = {
     shopify_json: "trouvée automatiquement",
     firecrawl: "trouvée par recherche web",
+    llm: "choisie par l'IA (parmi les candidats)",
     manual: "choisie manuellement",
     needs_manual: "résolution manuelle requise",
     skipped: "non recherchée",
@@ -1071,6 +1072,28 @@
                     ></textarea>
                   </div>
                 </div>
+                {#if item.staged_description_html}
+                  <!-- Version riche générée en parallèle (HTML léger généré
+                       par notre copywriter — écrite dans description_html à
+                       l'apply). L'édition passe par le texte brut ; pour
+                       changer la version riche : « Régénérer ». -->
+                  <details class="border-border rounded-md border">
+                    <summary
+                      class="text-muted-foreground cursor-pointer px-2.5 py-1.5 text-xs"
+                    >
+                      Aperçu de la version mise en forme (envoyée dans
+                      description_html)
+                    </summary>
+                    <div
+                      class="prose-sm border-border max-h-80 overflow-y-auto border-t p-2.5 text-sm [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5"
+                    >
+                      <!-- eslint-disable-next-line svelte/no-at-html-tags —
+                           HTML produit par NOTRE copywriter (balises bornées
+                           par le prompt), jamais du contenu tiers. -->
+                      {@html item.staged_description_html}
+                    </div>
+                  </details>
+                {/if}
               </div>
               <!-- Meta description : actuelle vs proposée -->
               <div class="flex flex-col gap-1.5">

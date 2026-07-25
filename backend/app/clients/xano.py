@@ -898,6 +898,7 @@ class XanoClient:
         *,
         title: str | None = None,
         description: str | None = None,
+        description_html: str | None = None,
         meta_description: str | None = None,
     ) -> None:
         """Write staged copy back to Tillin (`/product/{id}/enrich`).
@@ -910,6 +911,8 @@ class XanoClient:
             body["title"] = title
         if description is not None:
             body["description"] = description
+        if description_html is not None:
+            body["description_html"] = description_html
         if meta_description is not None:
             body["meta_description"] = meta_description
         if not body:

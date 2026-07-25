@@ -1174,3 +1174,111 @@ def test_pipeline_missing_product_fails_item(
     assert item.error is not None
     assert "not found" in item.error
     db.close()
+
+
+class _SelectingClaude(_FakeClaude):
+    """FakeClaude avec l'étage de sélection (choice configurable)."""
+
+    def __init__(self, choice: int) -> None:
+        super().__init__()
+        self.choice = choice
+        self.select_calls: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+
+    def select_candidate(
+        self,
+        product_ctx: dict[str, Any],
+        candidates: list[dict[str, Any]],
+        *,
+        model: str | None = None,
+    ) -> Any:
+        from app.clients.claude import CandidateChoice, ClaudeUsage
+
+        self.select_calls.append((product_ctx, candidates))
+        return CandidateChoice(
+            choice=self.choice,
+            reason="coloris exact",
+            usage=ClaudeUsage(model="claude-test-1", input_tokens=10, output_tokens=5),
+        )
+
+
+_LEMAIRE_STORE = {
+    "hobo-dark-bronze": {
+        "title": "Small Belted Hobo Bag in Leather",
+        "handle": "hobo-dark-bronze",
+        "tags": "",
+        "variants": [{"sku": "BG0223 LL0108_GR211_OS", "barcode": "111"}],
+    },
+    "hobo-dark-chocolate": {
+        "title": "Small Belted Hobo Bag in Leather",
+        "handle": "hobo-dark-chocolate",
+        "tags": "",
+        "variants": [{"sku": "BG0223 LL0108_BR490_OS", "barcode": "222"}],
+    },
+}
+
+_LEMAIRE_PRODUCT = Product(
+    id=77,
+    title="Small Belted Hobo Bag in Leather",
+    reference_code="BG0223 LL0108",
+    brand=Brand(id=9, name="Lemaire", website_urls=[SITE]),
+    variants=[ProductVariant(id=1, color="Chianti", size="OS")],
+)
+
+
+def test_llm_selection_resolves_ambiguous_candidates(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Candidats ex æquo insolubles par heuristique : Claude les voit ENSEMBLE
+    et choisit — la source est résolue (`llm`), la copie est générée."""
+    db = db_session_factory()
+    item = _seed_item(db, _LEMAIRE_PRODUCT.id)
+    claude = _SelectingClaude(choice=1)
+
+    with httpx.Client(transport=_store(_LEMAIRE_STORE)) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: _LEMAIRE_PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    assert item.source_method == "llm"
+    assert item.source_url is not None and "/products/hobo-dark-" in item.source_url
+    assert item.staged_description == "Un short robuste et léger."
+    assert item.resolution_json is not None
+    assert str(item.resolution_json["reason"]).startswith("sélection IA")
+    # Le contexte de sélection portait les candidats indexés + la couleur.
+    ctx, candidates = claude.select_calls[0]
+    assert ctx["color"] == "Chianti"
+    assert [c["index"] for c in candidates] == [0, 1]
+    # Usage Claude facturé (2 événements sélection + 2 copie).
+    events = [e for e in db.query(UsageEvent).all() if e.provider == "claude"]
+    assert len(events) == 4
+    db.close()
+
+
+def test_llm_selection_abstains_keeps_manual_review(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Claude répond -1 (aucun candidat sûr) : l'item reste à vérifier, sans
+    description (comportement « source incertaine » inchangé)."""
+    db = db_session_factory()
+    item = _seed_item(db, _LEMAIRE_PRODUCT.id)
+    claude = _SelectingClaude(choice=-1)
+
+    with httpx.Client(transport=_store(_LEMAIRE_STORE)) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: _LEMAIRE_PRODUCT,
+            http_client=http_client,
+            claude=claude,  # type: ignore[arg-type]
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.source_method == "needs_manual"
+    assert item.source_url is None
+    assert item.staged_description is None
+    assert claude.calls == []  # pas de copie générée
+    db.close()

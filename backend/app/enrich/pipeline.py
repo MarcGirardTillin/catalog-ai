@@ -50,7 +50,13 @@ from app.sources.firecrawl_source import (
     merge_extracted_text,
     reference_matches,
 )
-from app.sources.resolver import Method, resolve_source_url
+from app.sources.jsonld import fetch_jsonld_product
+from app.sources.resolver import (
+    Method,
+    ResolveResult,
+    resolve_source_url,
+    single_product_color,
+)
 from app.sources.shopify_json import fetch_product, score_product_match
 
 logger = logging.getLogger(__name__)
@@ -348,6 +354,23 @@ class EnrichmentPipeline:
                     )
         self._stage_source(db, item, product, source_product, config)
 
+        # 3 bis. Étage de sélection LLM (rapport deep-research 2026-07-18) :
+        # quand la résolution reste incertaine avec des candidats, Claude les
+        # voit ENSEMBLE (coloris frères compris) et choisit — ou s'abstient.
+        llm_selected = False
+        if (
+            resolved.status == "needs_manual"
+            and resolved.candidates
+            and self._claude is not None
+        ):
+            selected = self._select_candidate_source(
+                db, item, product, config, resolved
+            )
+            if selected is not None:
+                source_product = selected
+                llm_selected = True
+                self._stage_source(db, item, product, source_product, config)
+
         # 4. Copy generation — optional (needs an API key + its toggle).
         # `needs_manual` = the source page is UNCERTAIN (candidates below the
         # confidence gate): the copy is withheld until the reviewer confirms a
@@ -355,13 +378,82 @@ class EnrichmentPipeline:
         # (POST /items/{id}/generate-copy) — user decision 2026-07-17.
         # `skipped` (no brand website at all) keeps the catalog-only copy:
         # there is no source to confirm, waiting would just add a click.
-        if resolved.status == "needs_manual":
+        if resolved.status == "needs_manual" and not llm_selected:
             logger.info(
                 "item %s: copy withheld (source unresolved, awaiting review)",
                 item.id,
             )
         else:
             self._stage_copy(db, item, product, source_product, config)
+
+    def _select_candidate_source(
+        self,
+        db: Session | None,
+        item: EnrichmentItem,
+        product: Product,
+        config: dict[str, Any],
+        resolved: "ResolveResult",
+    ) -> dict[str, Any] | None:
+        """Demande à Claude de choisir parmi les candidats (ou aucun).
+
+        Best-effort : toute erreur (IA, fetch de la page choisie) laisse
+        l'item en review manuelle, comme avant. Un choix valide résout la
+        source (`source_method="llm"`) et stage poids/images depuis la page.
+        """
+        candidates_payload = [
+            {
+                "index": index,
+                "url": candidate.url,
+                "slug": candidate.url.rstrip("/").rsplit("/", 1)[-1],
+                "title": candidate.title,
+                "color": candidate.color,
+                "score": candidate.score,
+            }
+            for index, candidate in enumerate(resolved.candidates)
+        ]
+        ctx = {
+            "title": product.title,
+            "reference": product.reference_code,
+            "brand": product.brand.name if product.brand else None,
+            "color": single_product_color(product),
+            "category": product.category,
+        }
+        assert self._claude is not None  # guarded by the caller
+        try:
+            choice = self._claude.select_candidate(
+                {k: v for k, v in ctx.items() if v}, candidates_payload
+            )
+        except ExternalServiceError as exc:
+            logger.warning("item %s: LLM selection failed (%s)", item.id, exc)
+            return None
+        if db is not None and choice.usage is not None:
+            record_claude_usage(
+                db,
+                account_id=item.account_id,
+                usage=choice.usage,
+                source="enrichment",
+                job_id=item.job_id,
+                item_id=item.id,
+            )
+        if not 0 <= choice.choice < len(resolved.candidates):
+            logger.info("item %s: LLM selected none of the candidates", item.id)
+            return None
+        url = resolved.candidates[choice.choice].url
+        try:
+            source_product, score = self._fetch_source_from_url(
+                db, item, product, config, _clean_page_url(url)
+            )
+        except LookupError as exc:
+            logger.warning("item %s: LLM-selected page unusable (%s)", item.id, exc)
+            return None
+        item.source_url = url
+        item.source_method = "llm"
+        item.match_score = score
+        item.resolution_json = {
+            **(item.resolution_json or {}),
+            "reason": f"sélection IA : {choice.reason}"[:300],
+        }
+        return source_product
 
     def stage_from_url(self, item: EnrichmentItem, url: str) -> None:
         """Manually (re)resolve an item from a specific source-page URL.
@@ -381,6 +473,31 @@ class EnrichmentPipeline:
         db = object_session(item)
 
         url = _clean_page_url(url)
+        source_product, score = self._fetch_source_from_url(
+            db, item, product, config, url
+        )
+        item.match_score = score
+        item.source_url = url
+        item.source_method = "manual"
+        self._stage_source(db, item, product, source_product, config)
+        self._stage_copy(db, item, product, source_product, config)
+
+    def _fetch_source_from_url(
+        self,
+        db: Session | None,
+        item: EnrichmentItem,
+        product: Product,
+        config: dict[str, Any],
+        url: str,
+    ) -> tuple[dict[str, Any], float]:
+        """Résout UNE URL de fiche en (source_product, score).
+
+        Chaîne : JSON Shopify (gratuit, avec fallback handle pour les routes
+        de thème) → JSON-LD schema.org (gratuit, signal opportuniste) →
+        extraction web Firecrawl (payante). Raises LookupError quand la page
+        ne donne aucun produit exploitable. Partagé par la résolution
+        manuelle (reviewer) et l'étage de sélection LLM.
+        """
         source_product: dict[str, Any] | None = None
         site, handle = _split_product_url(url)
         if not site:
@@ -393,18 +510,22 @@ class EnrichmentPipeline:
                 source_product = fetch_product(self._http, site, handle)
             except (httpx.HTTPError, ValueError) as exc:
                 logger.warning(
-                    "item %s: shopify fetch failed for %s (%s) — trying firecrawl",
+                    "item %s: shopify fetch failed for %s (%s) — trying fallbacks",
                     item.id,
                     url,
                     exc,
                 )
         if source_product is not None:
-            item.match_score = score_product_match(product, source_product)
+            score = score_product_match(product, source_product)
             # Même greffe hybride que le chemin automatique : la page rendue
             # complète le texte du JSON Shopify (accordéons, composition…).
             if _transforms(config)["copy"]:
                 source_product = self._enrich_source_text(db, item, url, source_product)
-        elif self._firecrawl is not None:
+            return source_product, score
+
+        # JSON-LD schema.org : structuré et GRATUIT quand la page le publie.
+        source_product = fetch_jsonld_product(url, client=self._http)
+        if source_product is None and self._firecrawl is not None:
             try:
                 source_product = extract_source_product(self._firecrawl, url)
             except ExternalServiceError as exc:
@@ -416,17 +537,11 @@ class EnrichmentPipeline:
                 )
             else:
                 self._firecrawl_recorder(db, item)(EXTRACT_CREDITS)
-            if source_product is not None:
-                item.match_score = (
-                    0.9 if reference_matches(product, source_product) else 0.5
-                )
         if source_product is None:
             raise LookupError(f"no product page at {url}")
-
-        item.source_url = url
-        item.source_method = "manual"
-        self._stage_source(db, item, product, source_product, config)
-        self._stage_copy(db, item, product, source_product, config)
+        return source_product, (
+            0.9 if reference_matches(product, source_product) else 0.5
+        )
 
     def stage_copy_only(self, item: EnrichmentItem) -> None:
         """Generate the copy from catalog data alone, ignoring the source.
@@ -594,6 +709,7 @@ class EnrichmentPipeline:
             meta_max_length=int(config.get("meta_max_length") or 160),
         )
         item.staged_description = copy.description_fr
+        item.staged_description_html = copy.description_html_fr
         item.staged_meta = copy.meta_description_fr
         # Metering (M1): one input_tokens + one output_tokens event per call,
         # committed alongside the staged result by the caller.

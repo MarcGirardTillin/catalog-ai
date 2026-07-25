@@ -21,6 +21,7 @@ from app.api.schemas import Product
 from app.clients.base import ExternalServiceError
 from app.clients.firecrawl import EXTRACT_CREDITS, SEARCH_CREDITS, FirecrawlClient
 from app.sources.firecrawl_source import extract_source_product, reference_matches
+from app.sources.jsonld import fetch_jsonld_product
 from app.sources.shopify_json import (
     SCORE_BARCODE,
     candidate_color,
@@ -83,6 +84,11 @@ def _color_in_texts(color: str, *texts: Any) -> bool:
     (« Dark Bronze » matche `…dark-bronze…` dans un handle ou une URL)."""
     needle = reference_key(color)
     return bool(needle) and any(needle in reference_key(t) for t in texts if t)
+
+
+def single_product_color(product: Product) -> str | None:
+    """Alias public de :func:`_single_color` (contexte de la sélection LLM)."""
+    return _single_color(product)
 
 
 def _single_color(product: Product) -> str | None:
@@ -177,11 +183,15 @@ def resolve_source_url(
             return ResolveResult(
                 status="skipped", reason="firecrawl client not configured"
             )
-        return _resolve_firecrawl(firecrawl, product, website_urls, usage_recorder)
+        return _resolve_firecrawl(
+            firecrawl, product, website_urls, usage_recorder, http_client=client
+        )
 
     result = _resolve_shopify(client, product, website_urls)
     if method == "auto" and result.status == "needs_manual" and firecrawl is not None:
-        fallback = _resolve_firecrawl(firecrawl, product, website_urls, usage_recorder)
+        fallback = _resolve_firecrawl(
+            firecrawl, product, website_urls, usage_recorder, http_client=client
+        )
         # Keep the Shopify near-misses visible to the reviewer alongside the
         # Firecrawl candidates.
         fallback.candidates = (fallback.candidates + result.candidates)[:5]
@@ -323,6 +333,8 @@ def _resolve_firecrawl(
     product: Product,
     website_urls: list[str],
     usage_recorder: UsageRecorder | None,
+    *,
+    http_client: httpx.Client | None = None,
 ) -> ResolveResult:
     """Site-scoped web search + structured extraction, capped for cost.
 
@@ -356,14 +368,18 @@ def _resolve_firecrawl(
             if extracts >= FIRECRAWL_MAX_EXTRACTS:
                 break
             url = str(hit["url"])
-            try:
-                extracted = extract_source_product(firecrawl, url)
-            except ExternalServiceError as exc:
-                logger.warning("firecrawl extract failed for %s: %s", url, exc)
-                continue
-            extracts += 1
-            if usage_recorder is not None:
-                usage_recorder(EXTRACT_CREDITS)
+            # JSON-LD schema.org d'abord : structuré et GRATUIT quand la page
+            # le publie (signal opportuniste — jamais supposé présent).
+            extracted = fetch_jsonld_product(url, client=http_client)
+            if extracted is None:
+                try:
+                    extracted = extract_source_product(firecrawl, url)
+                except ExternalServiceError as exc:
+                    logger.warning("firecrawl extract failed for %s: %s", url, exc)
+                    continue
+                extracts += 1
+                if usage_recorder is not None:
+                    usage_recorder(EXTRACT_CREDITS)
             if extracted is None:
                 continue
             candidate = Candidate(

@@ -123,6 +123,10 @@ class XanoTillinDestination:
             "description": item.staged_description
             if include.get("description", True)
             else None,
+            # Version riche (HTML léger) — suit la case « description ».
+            "description_html": item.staged_description_html
+            if include.get("description", True)
+            else None,
             "meta_description": item.staged_meta if include.get("meta", True) else None,
         }
         if any(value is not None for value in copy.values()):

@@ -1,15 +1,24 @@
 """Ephemeral disk staging for processed/generated images.
 
 Files live under ``settings.IMAGING_DIR`` as ``{asset_id}/{stem}.{fmt}`` —
-stems are output indexes ("0", "1", …) or roles ("cutout", "source") — and are
-purged after save (or by a simple TTL sweep later). Paths handed back to
-callers are always staging-relative; ``load`` refuses anything that resolves
-outside the staging root (path traversal).
+stems are output indexes ("0", "1", …) or roles ("cutout", "source") — and
+are purged after save, plus a retention sweep at startup (90 jours : les
+visuels écartés restent consultables un temps — trace de ce qui a été payé —
+sans transformer le disque du serveur en politique par défaut).
+Paths handed back to callers are always staging-relative; ``load`` refuses
+anything that resolves outside the staging root (path traversal).
 """
 
+import logging
+import time
 from pathlib import Path
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Rétention des fichiers stagés non sauvegardés (jours).
+RETENTION_DAYS = 90
 
 
 def _base_dir() -> Path:
@@ -39,6 +48,37 @@ def load(relpath: str) -> bytes:
     if not path.is_file():
         raise FileNotFoundError(relpath)
     return path.read_bytes()
+
+
+def sweep_older_than(days: int = RETENTION_DAYS) -> int:
+    """Purge les dossiers d'assets plus vieux que ``days`` (mtime).
+
+    Appelé au démarrage de l'app — assez pour un serveur redéployé
+    régulièrement. Retourne le nombre de dossiers purgés.
+    """
+    base = _base_dir()
+    if not base.is_dir():
+        return 0
+    cutoff = time.time() - days * 86_400
+    purged = 0
+    for directory in base.iterdir():
+        if not directory.is_dir():
+            continue
+        try:
+            newest = max(
+                (child.stat().st_mtime for child in directory.iterdir()),
+                default=directory.stat().st_mtime,
+            )
+            if newest < cutoff:
+                for child in directory.iterdir():
+                    child.unlink(missing_ok=True)
+                directory.rmdir()
+                purged += 1
+        except OSError as exc:  # fichier verrouillé, course… : on passera
+            logger.warning("staging sweep skipped %s: %s", directory, exc)
+    if purged:
+        logger.info("staging sweep: %d asset directories purged", purged)
+    return purged
 
 
 def purge_asset(asset_id: int) -> None:

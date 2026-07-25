@@ -3894,6 +3894,17 @@ export const ItemPatchRequestSchema = {
             ],
             title: 'Staged Description'
         },
+        staged_description_html: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Staged Description Html'
+        },
         staged_meta: {
             anyOf: [
                 {
@@ -4042,6 +4053,17 @@ export const ItemPublicSchema = {
                 }
             ],
             title: 'Staged Description'
+        },
+        staged_description_html: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Staged Description Html'
         },
         staged_meta: {
             anyOf: [

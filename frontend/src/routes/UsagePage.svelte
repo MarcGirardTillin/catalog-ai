@@ -99,16 +99,25 @@
     return CREDIT_KIND_LABELS[entry.kind] ?? entry.kind
   }
 
-  // --- Historique des générations mannequin du mois (revenir dessus) ---
+  // --- Historique des visuels du mois (TOUS les verbes : traitements,
+  // générations, mises à plat…) — trace des rendus, y compris écartés,
+  // pour comparer a posteriori (demande Marc 2026-07-18). ---
   const generationsQuery = createQuery(() => ({
     queryKey: ["imaging", "assets", "generations", month],
     queryFn: async () => {
-      const { data, error } = await listAssets({ verb: "generate_model", month })
+      const { data, error } = await listAssets({ month })
       if (error || !data) throw new Error("generations_load_failed")
       return data
     },
   }))
   const generations = $derived(generationsQuery.data ?? null)
+
+  const VERB_LABELS: Record<string, string> = {
+    normalize: "Traitement",
+    generate_model: "Porté mannequin",
+    generate_flat: "Mise à plat",
+    generate_ghost: "Mannequin invisible",
+  }
 
   const GENERATION_STATUS: Record<string, { label: string; tone: string }> = {
     completed: {
@@ -323,10 +332,11 @@
             </Card>
           {/if}
 
-          <!-- Historique des générations mannequin (revenir sur un visuel) -->
+          <!-- Historique des visuels du mois (revenir sur un rendu, y
+               compris écarté — trace de ce qui a été payé). -->
           <Card size="sm" class="mt-1">
             <CardHeader>
-              <CardTitle class="font-title text-sm">Générations mannequin</CardTitle>
+              <CardTitle class="font-title text-sm">Visuels du mois</CardTitle>
             </CardHeader>
             <CardContent class="px-0">
               {#if generationsQuery.isError}
@@ -349,6 +359,7 @@
                       <tr class="border-border border-b">
                         <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium" colspan="2">Visuel</th>
                         <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Produit</th>
+                        <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Type</th>
                         <th class="text-muted-foreground px-4 py-2 text-left text-xs font-medium">Statut</th>
                         <th class="text-muted-foreground px-4 py-2 text-right text-xs font-medium">Visuels</th>
                         <th class="text-muted-foreground px-4 py-2 text-right text-xs font-medium">Date</th>
@@ -378,6 +389,9 @@
                           </td>
                           <td class="px-4 py-1.5 whitespace-nowrap">
                             Produit #{asset.product_id}
+                          </td>
+                          <td class="text-muted-foreground px-4 py-1.5 text-xs whitespace-nowrap">
+                            {VERB_LABELS[asset.verb] ?? asset.verb}
                           </td>
                           <td class="px-4 py-1.5">
                             <span
