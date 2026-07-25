@@ -45,6 +45,16 @@ PHOTOROOM_SIZE_PRESETS = {
 # multipart bytes, and the source weight/dims are part of the outcome.
 SOURCE_TIMEOUT = 30.0
 SOURCE_MAX_BYTES = 30 * 1024 * 1024
+# Les CDN des revendeurs (Farfetch/Akamai, END…) répondent 403 aux clients
+# sans identité navigateur — on s'annonce comme un navigateur générique
+# (même esprit que le resolver Shopify et les previews og:image).
+SOURCE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+}
 
 # FASHN credits per image: resolution -> generation_mode -> credits.
 FASHN_CREDITS: dict[str, dict[str, int]] = {
@@ -262,7 +272,12 @@ def fashn_credits(resolution: str, generation_mode: str, num_images: int) -> int
 def _download_source(url: str) -> bytes:
     """Fetch the source image (30 s timeout, 30 MB cap, redirects followed)."""
     try:
-        response = httpx.get(url, timeout=SOURCE_TIMEOUT, follow_redirects=True)
+        response = httpx.get(
+            url,
+            timeout=SOURCE_TIMEOUT,
+            follow_redirects=True,
+            headers=SOURCE_HEADERS,
+        )
     except httpx.HTTPError as exc:
         raise ExternalServiceError(
             "source_image", "Source image is unreachable"
@@ -278,6 +293,17 @@ def _download_source(url: str) -> bytes:
             "source_image", "Source image is too large", status_code=422
         )
     return response.content
+
+
+def download_source_image(url: str) -> bytes:
+    """Public wrapper over `_download_source` (browser-identity fetch).
+
+    Used by the Tillin destination to re-host staged source images itself —
+    pushing raw URLs to Xano lets ITS server-side fetch fail silently on
+    anti-bot CDNs (vécu Farfetch). Resolved at call time so tests patching
+    `_download_source` keep working.
+    """
+    return _download_source(url)
 
 
 def normalize_product_image(

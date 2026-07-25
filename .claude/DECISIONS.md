@@ -941,3 +941,29 @@ la review affiche couleur + slug d'URL sous chaque candidat (les fiches
 mono-coloris type Lemaire ne déclarent pas d'option couleur — le slug
 montre le coloris). Validé live : le titre templaté exact de l'item #35
 résout la fiche dark bronze via shopify_json.
+
+## 2026-07-18 — Apply enrichissement : images poussées en octets vérifiés
+
+Bug de confiance n°1 du bilan à 1 semaine : des images visibles en review
+n'arrivaient jamais dans Tillin, silencieusement. Cause : le push par URL
+laissait Xano télécharger côté serveur ; les CDN anti-bot (Farfetch) lui
+répondent 403 et l'endpoint bulk Xano avale l'échec (200 amputé) — notre
+backend ne comparait rien et passait l'item « applied ». Décisions :
+
+1. CatalogAI télécharge lui-même chaque URL source (identité navigateur,
+   `download_source_image`) et pousse les OCTETS via `prepare_upload` (le
+   chemin déjà fiabilisé formats/extensions) — un seul bulk multipart pour
+   les entrées normalisées ET les URLs brutes.
+2. Échec de téléchargement → repli sur l'import par URL Xano
+   (`add_product_images` renvoie désormais les images créées), lui-même
+   vérifié.
+3. Tout écart (réponse amputée) devient un AVERTISSEMENT porté par l'item
+   (`Destination.apply -> list[str]`, affiché via `item.error` avec le
+   statut `applied`) ; en cas d'upload partiel, pas d'appariement d'ids ni
+   de purge du staging (positionnel = incertain).
+4. Même session : poids Xano 0 → None (décimal vide), pipe « | » → « / »
+   dès l'extraction d'import + rendu CSV + apply (décision Marc), URLs de
+   résolution manuelle nettoyées (query/fragment) + fallback handle Shopify
+   (dernier segment) — vérifié live : Dover Street Market résout désormais
+   en Shopify JSON gratuit ; kikokostadinov.com a DÉSACTIVÉ ses endpoints
+   storefront (404 partout) → extraction web inévitable sur ce site.

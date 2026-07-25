@@ -422,9 +422,13 @@ def apply_item(
             code="invalid_state",
             message=f"Cannot apply an item in status '{item.status}'",
         )
-    destination.apply(item)
+    warnings = destination.apply(item)
     item.status = "applied"
-    item.error = None
+    # Écarts partiels non bloquants (ex. images refusées par Tillin) : rendus
+    # visibles sur l'item — l'apply « propre » efface tout ancien message.
+    item.error = (
+        "Appliqué avec avertissements : " + " ; ".join(warnings) if warnings else None
+    )
     db.commit()
     db.refresh(item)
     return item

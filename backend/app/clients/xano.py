@@ -266,6 +266,15 @@ def _axis_value(
     return None
 
 
+def _positive_or_none(value: Any) -> float | None:
+    """Un décimal Xano vide remonte 0, pas null : 0/négatif = non renseigné."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 def _map_variant(raw: Mapping[str, Any], axes: Mapping[str, int]) -> ProductVariant:
     return ProductVariant(
         id=_first(raw, "id", "variant_id"),
@@ -273,7 +282,7 @@ def _map_variant(raw: Mapping[str, Any], axes: Mapping[str, int]) -> ProductVari
         barcode=_first(raw, "barcode"),
         color=_axis_value(raw, axes, "color"),
         size=_axis_value(raw, axes, "size"),
-        weight=_first(raw, "weight"),
+        weight=_positive_or_none(_first(raw, "weight")),
         weight_unit=_first(raw, "weight_unit"),
         price=_amount(raw, "price"),
         wholesale_price=_amount(raw, "wholesale_price"),
@@ -900,15 +909,39 @@ class XanoClient:
             return
         self._post(_enrich_path(product_id), body)
 
-    def add_product_images(self, product_id: int, image_urls: list[str]) -> None:
+    def add_product_images(
+        self, product_id: int, image_urls: list[str]
+    ) -> list[ProductImage]:
         """Append images to a product from URLs (`/product_image/{id}/bulk`).
 
         NOTE: the endpoint appends — it does not replace existing images.
+        Returns the images actually created : l'endpoint Xano télécharge
+        chaque URL côté serveur et AVALE les échecs (403 CDN anti-bot…) en
+        répondant 200 avec une liste amputée — les appelants DOIVENT comparer
+        créés vs demandés (vécu Farfetch : review OK, Tillin vide).
         """
         urls = [u for u in image_urls if u]
         if not urls:
-            return
-        self._post(_bulk_images_path(product_id), {"image_urls": urls})
+            return []
+        payload = self._post(_bulk_images_path(product_id), {"image_urls": urls})
+        return self._parse_created_images(payload)
+
+    @staticmethod
+    def _parse_created_images(payload: Any) -> list[ProductImage]:
+        """Map a bulk-images response (`{"images": [...]}`) to ProductImage."""
+        created: list[ProductImage] = []
+        images = payload.get("images") if isinstance(payload, Mapping) else None
+        for raw in _as_list(images):
+            if not isinstance(raw, Mapping):
+                continue
+            src = _normalize_url(str(_first(raw, "src", "url") or ""))
+            if src:
+                created.append(
+                    ProductImage(
+                        id=_first(raw, "id"), url=src, position=_first(raw, "position")
+                    )
+                )
+        return created
 
     def set_product_weight(
         self, product_ids: list[int], weight: float, weight_unit: str = "1"
@@ -945,19 +978,7 @@ class XanoClient:
         if not parts:
             return []
         payload = self._post_multipart(_bulk_images_path(product_id), files=parts)
-        created: list[ProductImage] = []
-        images = payload.get("images") if isinstance(payload, Mapping) else None
-        for raw in _as_list(images):
-            if not isinstance(raw, Mapping):
-                continue
-            src = _normalize_url(str(_first(raw, "src", "url") or ""))
-            if src:
-                created.append(
-                    ProductImage(
-                        id=_first(raw, "id"), url=src, position=_first(raw, "position")
-                    )
-                )
-        return created
+        return self._parse_created_images(payload)
 
     def deactivate_product_images(self, product_image_ids: list[int]) -> None:
         """Deactivate product images (`PUT /product_image/deactivate`).

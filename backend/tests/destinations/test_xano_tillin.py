@@ -6,13 +6,25 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.destinations.xano_tillin as xano_tillin
 from app.api.exceptions import AppException
 from app.api.schemas import Product, ProductImage, ProductVariant
+from app.clients.base import ExternalServiceError
 from app.clients.xano import FilePart
 from app.core.config import settings
 from app.destinations.xano_tillin import XanoTillinDestination, _selected_weights
 from app.imaging import staging
 from app.models import Account, EnrichmentItem, EnrichmentJob, ImageAsset
+from tests.images import source_jpeg
+
+# Les entrées « URL brute » sont désormais téléchargées par CatalogAI puis
+# poussées en octets — le réseau est coupé dans les tests.
+SOURCE_BYTES = source_jpeg()
+
+
+@pytest.fixture(autouse=True)
+def _patch_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(xano_tillin, "download_source_image", lambda url: SOURCE_BYTES)
 
 
 class _FakeXano:
@@ -22,20 +34,30 @@ class _FakeXano:
         self.enrich: dict[str, Any] | None = None
         self.weight: tuple[list[int], float, str] | None = None
         self.product: Product | None = None  # returned by get_product
+        # Simule le refus silencieux de Xano : N derniers fichiers/URLs jetés.
+        self.upload_skip = 0
+        self.url_skip = 0
 
     def get_product(self, product_id: int) -> Product | None:
         return self.product
 
-    def add_product_images(self, product_id: int, image_urls: list[str]) -> None:
+    def add_product_images(
+        self, product_id: int, image_urls: list[str]
+    ) -> list[ProductImage]:
         self.images = (product_id, image_urls)
+        kept = image_urls[: len(image_urls) - self.url_skip]
+        return [
+            ProductImage(id=8000 + index, url=url) for index, url in enumerate(kept)
+        ]
 
     def upload_product_images(
         self, product_id: int, files: list[FilePart]
     ) -> list[ProductImage]:
         self.uploads = (product_id, files)
+        kept = files[: len(files) - self.upload_skip]
         return [
             ProductImage(id=9000 + index, url=f"https://xano.example/{index}.webp")
-            for index in range(len(files))
+            for index in range(len(kept))
         ]
 
     def enrich_product(self, product_id: int, **kwargs: Any) -> None:
@@ -45,6 +67,11 @@ class _FakeXano:
         self, product_ids: list[int], weight: float, weight_unit: str = "1"
     ) -> None:
         self.weight = (product_ids, weight, weight_unit)
+
+
+def _upload_names(fake: _FakeXano) -> list[str]:
+    assert fake.uploads is not None
+    return [part[0] for part in fake.uploads[1]]
 
 
 def test_apply_pushes_images_then_copy() -> None:
@@ -59,9 +86,16 @@ def test_apply_pushes_images_then_copy() -> None:
         staged_images_json=[{"url": "https://a.jpg"}, {"url": "https://b.jpg"}],
     )
     fake = _FakeXano()
-    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+    warnings = XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.images == (1911, ["https://a.jpg", "https://b.jpg"])
+    # Les URLs brutes sont téléchargées par CatalogAI et poussées en octets
+    # (le push par URL laissait Xano échouer en silence — vécu Farfetch).
+    assert fake.images is None
+    assert fake.uploads == (
+        1911,
+        [("a.jpg", SOURCE_BYTES, "image/jpeg"), ("b.jpg", SOURCE_BYTES, "image/jpeg")],
+    )
+    assert warnings == []
     assert fake.enrich == {
         "product_id": 1911,
         "title": "Titre",
@@ -140,7 +174,7 @@ def test_apply_image_urls_subset_keeps_staged_order() -> None:
     fake = _FakeXano()
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.images == (1911, ["https://a.jpg", "https://c.jpg"])
+    assert _upload_names(fake) == ["a.jpg", "c.jpg"]
 
 
 def test_apply_image_urls_ignores_unknown_urls() -> None:
@@ -148,7 +182,7 @@ def test_apply_image_urls_ignores_unknown_urls() -> None:
     fake = _FakeXano()
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.images == (1911, ["https://b.jpg"])
+    assert _upload_names(fake) == ["b.jpg"]
 
 
 def test_apply_image_urls_empty_list_sends_nothing() -> None:
@@ -157,6 +191,7 @@ def test_apply_image_urls_empty_list_sends_nothing() -> None:
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
     assert fake.images is None
+    assert fake.uploads is None
 
 
 def test_apply_image_urls_absent_sends_all() -> None:
@@ -164,7 +199,7 @@ def test_apply_image_urls_absent_sends_all() -> None:
     fake = _FakeXano()
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.images == (1911, ["https://a.jpg", "https://b.jpg", "https://c.jpg"])
+    assert _upload_names(fake) == ["a.jpg", "b.jpg", "c.jpg"]
 
 
 def test_apply_images_false_overrides_image_urls() -> None:
@@ -173,6 +208,7 @@ def test_apply_images_false_overrides_image_urls() -> None:
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
     assert fake.images is None
+    assert fake.uploads is None
 
 
 def _weight_item(apply_fields: dict[str, Any] | None) -> EnrichmentItem:
@@ -303,21 +339,82 @@ def _seed_normalized_item(
     return item, asset
 
 
-def test_apply_uploads_normalized_bytes_and_adds_raw_urls(staged_db: Session) -> None:
+def test_apply_uploads_normalized_bytes_and_raw_urls_as_bytes(
+    staged_db: Session,
+) -> None:
     item, asset = _seed_normalized_item(staged_db)
     fake = _FakeXano()
-    XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+    warnings = XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    # Raw entry still goes through the URL bulk; normalized one as bytes.
-    assert fake.images == (1911, [RAW_URL])
+    # UN SEUL bulk multipart : l'entrée normalisée garde ses octets stagés,
+    # l'URL brute est téléchargée puis poussée en octets elle aussi.
+    assert fake.images is None
     assert fake.uploads == (
         1911,
-        [(f"normalize_{asset.id}_1.webp", NORMALIZED_BYTES, "image/webp")],
+        [
+            (f"normalize_{asset.id}_1.webp", NORMALIZED_BYTES, "image/webp"),
+            ("2.jpg", SOURCE_BYTES, "image/jpeg"),
+        ],
     )
+    assert warnings == []
     # The created Tillin image id is traced on the asset, staging is purged.
     assert asset.tillin_image_ids_json == [9000]
     with pytest.raises(FileNotFoundError):
         staging.load(f"{asset.id}/0.webp")
+
+
+def test_apply_falls_back_to_url_push_when_download_fails(
+    staged_db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CDN qui refuse aussi CatalogAI : repli sur l'import par URL côté Xano,
+    lui-même vérifié — ici Xano réussit, aucun avertissement."""
+    item, _asset = _seed_normalized_item(staged_db)
+
+    def _refuse(_url: str) -> bytes:
+        raise ExternalServiceError("source_image", "403")
+
+    monkeypatch.setattr(xano_tillin, "download_source_image", _refuse)
+    fake = _FakeXano()
+    warnings = XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert fake.images == (1911, [RAW_URL])
+    assert warnings == []
+
+
+def test_apply_warns_when_xano_refuses_url_import(
+    staged_db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ni CatalogAI ni Xano n'arrivent à récupérer l'image : l'apply passe
+    mais l'écart est remonté en avertissement (fini les pertes silencieuses)."""
+    item, _asset = _seed_normalized_item(staged_db)
+
+    def _refuse(_url: str) -> bytes:
+        raise ExternalServiceError("source_image", "403")
+
+    monkeypatch.setattr(xano_tillin, "download_source_image", _refuse)
+    fake = _FakeXano()
+    fake.url_skip = 1  # Xano « importe » 0 URL sur 1 (réponse 200 amputée)
+    warnings = XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert warnings == [
+        "1 image(s) sur 1 n'ont pas pu être importées par Tillin depuis leur "
+        "URL d'origine (site source protégé)"
+    ]
+
+
+def test_apply_warns_and_keeps_staging_when_xano_drops_an_upload(
+    staged_db: Session,
+) -> None:
+    """Xano répond 200 avec moins d'images que de fichiers envoyés :
+    avertissement, pas d'appariement d'ids (incertain), staging conservé."""
+    item, asset = _seed_normalized_item(staged_db)
+    fake = _FakeXano()
+    fake.upload_skip = 1
+    warnings = XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
+
+    assert warnings == ["1 image(s) sur 2 refusée(s) par Tillin à l'upload"]
+    assert asset.tillin_image_ids_json is None
+    assert staging.load(f"{asset.id}/0.webp") == NORMALIZED_BYTES
 
 
 def test_apply_uses_image_title_template_for_upload_names(
@@ -337,8 +434,9 @@ def test_apply_uses_image_title_template_for_upload_names(
     )
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.uploads is not None
-    assert [part[0] for part in fake.uploads[1]] == ["g5fu-t081-navy-1.webp"]
+    # Le modèle de titre d'image nomme TOUTES les entrées (normalisée en
+    # .webp stagé, URL brute re-téléchargée en .jpg réel).
+    assert _upload_names(fake) == ["g5fu-t081-navy-1.webp", "g5fu-t081-navy-2.jpg"]
 
 
 def test_apply_template_falls_back_when_product_missing(staged_db: Session) -> None:
@@ -350,8 +448,7 @@ def test_apply_template_falls_back_when_product_missing(staged_db: Session) -> N
     fake = _FakeXano()  # get_product renvoie None
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.uploads is not None
-    assert [part[0] for part in fake.uploads[1]] == [f"normalize_{asset.id}_1.webp"]
+    assert _upload_names(fake) == [f"normalize_{asset.id}_1.webp", "2.jpg"]
 
 
 def test_apply_selection_keeps_only_selected_normalized_entry(
@@ -375,8 +472,8 @@ def test_apply_selection_keeps_only_raw_entry(staged_db: Session) -> None:
     fake = _FakeXano()
     XanoTillinDestination(fake).apply(item)  # type: ignore[arg-type]
 
-    assert fake.images == (1911, [RAW_URL])
-    assert fake.uploads is None
+    assert _upload_names(fake) == ["2.jpg"]  # URL brute téléchargée -> octets
+    assert fake.images is None
     # Untouched asset: staging is still there, no Tillin id recorded.
     assert staging.load(f"{asset.id}/0.webp") == NORMALIZED_BYTES
     assert asset.tillin_image_ids_json is None

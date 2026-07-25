@@ -276,6 +276,20 @@ def _opt(value: str) -> str | None:
     return value.strip() or None
 
 
+def _depipe(value: str | None) -> str | None:
+    """Remplace « | » par « / » dans les valeurs destinées à Tillin.
+
+    Décision Marc 2026-07-18 : dès le début du pipeline — le pipe des titres
+    fournisseurs (« 399 | Ilyano ») est traité comme séparateur par le
+    gabarit de titre (`enrich/title.py`) et pollue les identifiants dérivés
+    (code-barres construit REF-COULEUR-TAILLE).
+    """
+    if value is None:
+        return None
+    cleaned = " / ".join(part.strip() for part in value.split("|") if part.strip())
+    return cleaned or None
+
+
 def _kept_confidence(raw: dict[str, float], present: set[str]) -> Confidence:
     """Keep confidences only for fields that carry a value, clamped to 0-1."""
     return {
@@ -506,9 +520,9 @@ class ClaudeExtractor:
             for raw_variant in raw.variants
         ]
         fields = {
-            "supplier_ref": raw.supplier_ref,
-            "title": _opt(raw.title),
-            "brand": _opt(raw.brand),
+            "supplier_ref": _depipe(raw.supplier_ref) or raw.supplier_ref,
+            "title": _depipe(_opt(raw.title)),
+            "brand": _depipe(_opt(raw.brand)),
             "category": _opt(raw.category),
             "season": _opt(raw.season),
             "gender": _opt(raw.gender),
@@ -553,8 +567,8 @@ class ClaudeExtractor:
             prices[field] = value
         fields = {
             "ean": _opt(raw.ean),
-            "color": _opt(raw.color),
-            "size": _opt(raw.size),
+            "color": _depipe(_opt(raw.color)),
+            "size": _depipe(_opt(raw.size)),
             "supplier_sku": _opt(raw.supplier_sku),
         }
         present = {key for key, value in fields.items() if value is not None}

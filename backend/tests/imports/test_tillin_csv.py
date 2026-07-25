@@ -223,3 +223,25 @@ def test_render_csv_has_exact_template_header() -> None:
     assert lines[0] == ",".join(TILLIN_CSV_COLUMNS)
     assert len(lines) == 3
     assert lines[1].startswith(",Manteau,,J1103GAH,")
+
+
+def test_pipes_are_replaced_in_rendered_values() -> None:
+    """Décision Marc 2026-07-18 : « | » → « / » au rendu Tillin (titres
+    fournisseurs type « 399 | Ilyano », vécu Garcia) — y compris dans le
+    code-barres construit."""
+    product = ImportedProduct(
+        supplier_ref="399|A",
+        title="399 | Ilyano Straight F",
+        brand="Garcia",
+        variants=[
+            ImportedVariant(color="Medium|Used", size="176", quantity=1),
+        ],
+    )
+    config = ImportProfileConfig(price_mode="retail_as_is", barcode_mode="constructed")
+    rows, _warnings = render_rows([product], config)
+
+    row = rows[0]
+    assert _col(row, "title") == "399 / Ilyano Straight F"
+    assert _col(row, "reference_code") == "399 / A"
+    assert _col(row, "option1_value") == "Medium / Used"
+    assert _col(row, "variant_barcode") == "399 / A-Medium / Used-176"

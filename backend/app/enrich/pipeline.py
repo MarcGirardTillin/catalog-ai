@@ -118,10 +118,41 @@ def _normalize_options(
     return options
 
 
+def _clean_page_url(url: str) -> str:
+    """Strip query/fragment and trailing slash from a pasted product URL.
+
+    Les URLs collées portent des paramètres de tracking (`?srsltid=…` vu sur
+    Dover Street Market) : sans nettoyage, le fetch Shopify devenait
+    `…/products/x?srsltid=….json` (le `.json` DANS la query) → HTML → repli
+    Firecrawl silencieux et payant.
+    """
+    return url.split("?")[0].split("#")[0].rstrip("/")
+
+
 def _split_product_url(url: str) -> tuple[str, str]:
     """Split a resolved `{site}/products/{handle}` URL back into its parts."""
     site, _, handle = url.rpartition("/products/")
     return site, handle
+
+
+def _fallback_site_handle(url: str) -> tuple[str, str]:
+    """Best-effort (site, handle) for a product URL WITHOUT `/products/`.
+
+    Beaucoup de thèmes Shopify servent la fiche sous une jolie route
+    (`/shop/men/<handle>` chez Kiko Kostadinov) alors que le JSON storefront
+    reste à `/products/<handle>.json` : on tente le dernier segment du chemin
+    comme handle. Un échec retombe simplement sur l'extraction web.
+    """
+    try:
+        parsed = httpx.URL(url)
+    except httpx.InvalidURL:
+        return "", ""
+    if not parsed.host:
+        return "", ""
+    segments = [part for part in parsed.path.split("/") if part]
+    if not segments:
+        return "", ""
+    return f"{parsed.scheme}://{parsed.host}", segments[-1]
 
 
 def normalize_staged_entry(
@@ -349,9 +380,15 @@ class EnrichmentPipeline:
         config: dict[str, Any] = item.job.config_json or {}
         db = object_session(item)
 
+        url = _clean_page_url(url)
         source_product: dict[str, Any] | None = None
         site, handle = _split_product_url(url)
-        if site:
+        if not site:
+            # URL sans `/products/` (route de thème, revendeur) : le dernier
+            # segment est souvent le handle Shopify — tentative gratuite
+            # avant l'extraction web payante (vécu kikokostadinov.com).
+            site, handle = _fallback_site_handle(url)
+        if site and handle:
             try:
                 source_product = fetch_product(self._http, site, handle)
             except (httpx.HTTPError, ValueError) as exc:

@@ -358,7 +358,8 @@
       { label: "Meta description", ok: hasText(p.meta_description) },
       {
         label: "Poids renseigné",
-        ok: (p.variants ?? []).some((v) => v.weight != null),
+        // Un décimal Xano vide remonte 0, pas null : 0 = NON renseigné.
+        ok: (p.variants ?? []).some((v) => v.weight != null && v.weight > 0),
       },
     ]
   })
@@ -851,6 +852,7 @@
                     <th class="py-1.5 pr-2 font-medium">Couleur</th>
                     <th class="py-1.5 pr-2 font-medium">EAN</th>
                     <th class="py-1.5 pr-2 font-medium">SKU</th>
+                    <th class="py-1.5 pr-2 text-right font-medium">Poids</th>
                     <th class="py-1.5 pr-2 text-right font-medium">Achat</th>
                     <th class="py-1.5 text-right font-medium">Vente</th>
                   </tr>
@@ -862,6 +864,11 @@
                       <td class="py-1.5 pr-2">{variant.color ?? "—"}</td>
                       <td class="py-1.5 pr-2 font-mono whitespace-nowrap">{variant.barcode ?? "—"}</td>
                       <td class="py-1.5 pr-2 font-mono whitespace-nowrap">{variant.sku ?? "—"}</td>
+                      <td class="py-1.5 pr-2 text-right whitespace-nowrap">
+                        {variant.weight != null && variant.weight > 0
+                          ? `${variant.weight} ${variant.weight_unit ?? "kg"}`
+                          : "—"}
+                      </td>
                       <td class="py-1.5 pr-2 text-right whitespace-nowrap">
                         {formatPrice(variant.wholesale_price)}
                       </td>

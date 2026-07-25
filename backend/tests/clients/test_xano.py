@@ -816,3 +816,19 @@ def test_verify_login_returns_token_and_company() -> None:
         "company_id": 51,
         "company_name": "JBS ACCESSOIRES",
     }
+
+
+def test_variant_weight_zero_maps_to_none() -> None:
+    """Un décimal Xano vide remonte 0, pas null : 0 = poids NON renseigné
+    (le panneau produit le comptait comme « renseigné » — vécu Lemaire)."""
+    from app.clients.xano import _map_variant
+
+    zero = _map_variant({"id": 1, "weight": 0, "weight_unit": "1"}, {})
+    real = _map_variant({"id": 2, "weight": 0.4, "weight_unit": "1"}, {})
+    absent = _map_variant({"id": 3}, {})
+    junk = _map_variant({"id": 4, "weight": "abc"}, {})
+
+    assert zero.weight is None
+    assert real.weight == 0.4
+    assert absent.weight is None
+    assert junk.weight is None

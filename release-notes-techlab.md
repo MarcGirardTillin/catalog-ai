@@ -2,6 +2,14 @@
 
 ## Latest Changes
 
+- Fiabilité : les images d'enrichissement sont désormais téléchargées par
+  CatalogAI et poussées en octets vérifiés vers Tillin — tout écart
+  (image refusée) est signalé sur la fiche au lieu d'être perdu en
+  silence ; un poids à 0 n'est plus compté comme renseigné (+ colonne
+  Poids dans le panneau produit) ; les « | » sont remplacés par « / »
+  dans les titres/références/variantes ; les URLs collées en résolution
+  manuelle sont nettoyées (paramètres de tracking) avec repli sur le
+  handle Shopify ; la case « Traduire » (sans effet) est retirée.
 - Enrichissement : résolution de la page source plus fiable — références
   comparées sans tenir compte de la mise en forme, couleur du produit
   utilisée pour départager les coloris d'un même modèle (jamais de mauvais

@@ -183,7 +183,6 @@
 
   // Selected product ids persist across pages/searches until the job is created.
   let selected = $state<Set<number>>(new Set())
-  let translate = $state(false)
   let submitting = $state(false)
 
   // Options de génération (panneau dépliable au-dessus de la barre d'action ;
@@ -336,7 +335,7 @@
       body: {
         selection: { ids: [...selected] },
         // Seules les options réellement renseignées partent dans la config.
-        config: { translate, ...(optionsPanel?.collectConfig() ?? {}) },
+        config: optionsPanel?.collectConfig() ?? {},
       },
     })
     submitting = false
@@ -1081,10 +1080,6 @@
           </div>
           <div class="p-3">
             <div class="mx-auto flex max-w-4xl items-center gap-3 sm:justify-end">
-              <label class="text-muted-foreground flex items-center gap-1.5 text-xs">
-                <input type="checkbox" bind:checked={translate} class="accent-primary size-3.5" />
-                Traduire
-              </label>
               <Button
                 variant="outline"
                 aria-expanded={optionsOpen}

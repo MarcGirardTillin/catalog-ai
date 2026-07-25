@@ -469,13 +469,19 @@ def test_retry_job_requeues_failed_and_rejected(auth_client: TestClient) -> None
 
 
 def test_apply_writes_to_destination_and_marks_applied(
-    auth_client: TestClient,
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     job = _create_job(auth_client, [1911])
 
+    import app.destinations.xano_tillin as xano_tillin
     from app.api.deps import get_db, get_xano_client
+    from app.api.schemas import ProductImage
     from app.main import app
     from app.models import EnrichmentItem
+    from tests.images import source_jpeg
+
+    # L'apply télécharge désormais les URLs brutes côté CatalogAI.
+    monkeypatch.setattr(xano_tillin, "download_source_image", lambda url: source_jpeg())
 
     # Stage + find the item.
     db = next(app.dependency_overrides[get_db]())
@@ -492,8 +498,17 @@ def test_apply_writes_to_destination_and_marks_applied(
     writes: dict[str, Any] = {}
 
     class _FakeXano:
-        def add_product_images(self, pid: int, urls: list[str]) -> None:
-            writes["images"] = (pid, urls)
+        def upload_product_images(
+            self, pid: int, files: list[Any]
+        ) -> list[ProductImage]:
+            writes["uploads"] = (pid, [part[0] for part in files])
+            return [
+                ProductImage(id=9000 + i, url=f"https://xano/{i}.jpg")
+                for i in range(len(files))
+            ]
+
+        def get_product(self, pid: int) -> None:
+            return None
 
         def enrich_product(self, pid: int, **kw: Any) -> None:
             writes["enrich"] = (pid, kw)
@@ -508,7 +523,8 @@ def test_apply_writes_to_destination_and_marks_applied(
         response = auth_client.post(f"/items/{item_id}/apply")
         assert response.status_code == 200
         assert response.json()["status"] == "applied"
-        assert writes["images"] == (1911, ["https://a.jpg"])
+        assert response.json()["error"] is None  # apply propre, pas d'écart
+        assert writes["uploads"] == (1911, ["a.jpg"])
         assert writes["enrich"][0] == 1911
         assert writes["enrich"][1]["title"] == "Nouveau titre"
 
@@ -516,6 +532,55 @@ def test_apply_writes_to_destination_and_marks_applied(
         assert auth_client.post(f"/items/{item_id}/apply").status_code == 409
     finally:
         app.dependency_overrides.pop(get_xano_client, None)
+
+
+def test_apply_surfaces_partial_image_failures_as_warning(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tillin refuse une image en silence (200 amputé) : l'item passe bien en
+    « applied » mais l'écart devient visible sur l'item — fini les pertes
+    silencieuses (vécu Farfetch)."""
+    job = _create_job(auth_client, [1912])
+
+    import app.destinations.xano_tillin as xano_tillin
+    from app.api.deps import get_db, get_xano_client
+    from app.api.schemas import ProductImage
+    from app.main import app
+    from app.models import EnrichmentItem
+    from tests.images import source_jpeg
+
+    monkeypatch.setattr(xano_tillin, "download_source_image", lambda url: source_jpeg())
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).first()
+    assert item is not None
+    item.status = "approved"
+    item.staged_images_json = [{"url": "https://a.jpg"}, {"url": "https://b.jpg"}]
+    db.commit()
+
+    class _DroppyXano:
+        def upload_product_images(
+            self, pid: int, files: list[Any]
+        ) -> list[ProductImage]:
+            # 2 fichiers envoyés, 1 seul créé — réponse 200 amputée.
+            return [ProductImage(id=1, url="https://xano/0.jpg")]
+
+        def get_product(self, pid: int) -> None:
+            return None
+
+        def enrich_product(self, pid: int, **kw: Any) -> None:
+            pass
+
+    app.dependency_overrides[get_xano_client] = lambda: _DroppyXano()
+    try:
+        response = auth_client.post(f"/items/{item.id}/apply")
+    finally:
+        app.dependency_overrides.pop(get_xano_client, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "applied"
+    assert body["error"] is not None
+    assert "1 image(s) sur 2" in body["error"]
 
 
 def test_normalize_item_image_per_entry_and_revert(

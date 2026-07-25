@@ -885,6 +885,72 @@ def test_stage_from_url_non_shopify_falls_back_to_firecrawl(
     db.close()
 
 
+def test_stage_from_url_strips_tracking_query(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """URL collée avec tracking (?srsltid=… vu sur Dover Street Market) : sans
+    nettoyage le fetch devenait `…?srsltid=….json` → HTML → repli Firecrawl
+    payant. Nettoyée, la chaîne Shopify gratuite suffit."""
+    db = db_session_factory()
+    # Copie désactivée : isole la résolution (l'hybride texte appellerait
+    # légitimement Firecrawl après un fetch Shopify réussi).
+    item = _seed_item(db, PRODUCT.id, config={"transforms": {"copy": False}})
+    item.status = "ready_for_review"
+    db.commit()
+
+    with (
+        httpx.Client(
+            transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+        ) as http_client,
+        _forbidden_firecrawl() as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+            firecrawl=fc,
+        )
+        pipeline.stage_from_url(
+            item, f"{SITE}/products/g-short-double-navy?srsltid=AfmBOo123#zoom"
+        )
+
+    db.commit()
+    db.refresh(item)
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    assert item.match_score == 1.0
+    assert item.staged_weights_json is not None  # variantes Shopify récupérées
+
+
+def test_stage_from_url_theme_route_falls_back_to_shopify_handle(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """URL sans `/products/` (route de thème, ex. kikokostadinov.com
+    `/shop/men/<handle>`) : le dernier segment est tenté comme handle Shopify
+    avant toute extraction web payante."""
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id, config={"transforms": {"copy": False}})
+    item.status = "ready_for_review"
+    db.commit()
+
+    with (
+        httpx.Client(
+            transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+        ) as http_client,
+        _forbidden_firecrawl() as fc,
+    ):
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+            firecrawl=fc,
+        )
+        pipeline.stage_from_url(item, f"{SITE}/shop/men/g-short-double-navy")
+
+    db.commit()
+    db.refresh(item)
+    assert item.source_method == "manual"
+    assert item.source_url == f"{SITE}/shop/men/g-short-double-navy"
+    assert item.match_score == 1.0
+
+
 def test_stage_images_dedupes_duplicate_source_urls(
     db_session_factory: sessionmaker[Session],
 ) -> None:

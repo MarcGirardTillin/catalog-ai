@@ -559,3 +559,20 @@ def test_ean13_checksum() -> None:
     assert not ean13_is_valid(INVALID_EAN)
     assert not ean13_is_valid("123")  # too short
     assert not ean13_is_valid("36078148668EA")  # non-digits
+
+
+def test_pipes_are_replaced_at_extraction() -> None:
+    """Décision Marc 2026-07-18 : « | » → « / » dès le début du pipeline
+    (titres fournisseurs type « 399 | Ilyano », vécu Garcia)."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        payload = _payload()
+        payload["products"][0]["title"] = "399 | Ilyano Straight F"
+        payload["products"][0]["variants"][0]["color"] = "Medium|Used"
+        return httpx.Response(200, json=_api_response(payload))
+
+    result = _extractor(handler)(_tabular_document())
+
+    product = result.products[0]
+    assert product.title == "399 / Ilyano Straight F"
+    assert product.variants[0].color == "Medium / Used"

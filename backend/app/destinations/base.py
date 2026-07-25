@@ -14,6 +14,11 @@ from app.models import EnrichmentItem
 class Destination(Protocol):
     """Writes an approved item's staged fields to a concrete catalog."""
 
-    def apply(self, item: EnrichmentItem) -> None:
-        """Push the item's staged enrichment; raise on failure."""
+    def apply(self, item: EnrichmentItem) -> list[str]:
+        """Push the item's staged enrichment; raise on failure.
+
+        Returns human-readable warnings for PARTIAL outcomes the destination
+        chose not to fail on (e.g. some images silently refused by the
+        catalog) — empty list = clean apply. Callers surface them on the item.
+        """
         ...

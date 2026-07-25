@@ -22,9 +22,12 @@ from sqlalchemy.orm import Session, object_session
 
 from app.api.exceptions import AppException
 from app.api.services.imaging import MEDIA_TYPES, account_settings
+from app.clients.base import ExternalServiceError
 from app.clients.xano import FilePart, XanoClient
 from app.imaging import staging
 from app.imaging.naming import render_image_filename
+from app.imaging.service import download_source_image
+from app.imaging.uploads import prepare_upload
 from app.models import EnrichmentItem, ImageAsset
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,14 @@ logger = logging.getLogger(__name__)
 # Staged weights are normalized to kg by the pipeline; map to Tillin's codes
 # (1=kg, 2=g, 3=lb, 4=oz) defensively in case that ever changes.
 _WEIGHT_UNIT_CODES = {"kg": "1", "g": "2", "lb": "3", "oz": "4"}
+
+
+def _depipe(value: str | None) -> str | None:
+    """« | » → « / » dans les valeurs écrites vers Tillin (décision Marc
+    2026-07-18 — le pipe est un séparateur pour les gabarits de titre)."""
+    if not value or "|" not in value:
+        return value
+    return " / ".join(part.strip() for part in value.split("|") if part.strip())
 
 
 def _image_entries(staged_images_json: Any) -> list[dict[str, Any]]:
@@ -97,17 +108,18 @@ class XanoTillinDestination:
     def __init__(self, client: XanoClient) -> None:
         self._client = client
 
-    def apply(self, item: EnrichmentItem) -> None:
+    def apply(self, item: EnrichmentItem) -> list[str]:
         # Reviewer's per-field keep/drop: a missing key means "apply it".
         include: dict[str, Any] = item.apply_fields_json or {}
 
+        warnings: list[str] = []
         if include.get("images", True):
             entries = _filter_image_entries(
                 _image_entries(item.staged_images_json), include.get("image_urls")
             )
-            self._push_images(item, entries)
+            warnings = self._push_images(item, entries)
         copy = {
-            "title": item.staged_title if include.get("title", True) else None,
+            "title": _depipe(item.staged_title) if include.get("title", True) else None,
             "description": item.staged_description
             if include.get("description", True)
             else None,
@@ -135,40 +147,96 @@ class XanoTillinDestination:
                         [item.tillin_product_id], float(weight), unit
                     )
 
-    def _push_images(self, item: EnrichmentItem, entries: list[dict[str, Any]]) -> None:
-        """Push the selected image entries: raw URLs by URL, normalized ones
-        as staged bytes (multipart bulk upload).
+        return warnings
+
+    def _push_images(
+        self, item: EnrichmentItem, entries: list[dict[str, Any]]
+    ) -> list[str]:
+        """Push the selected image entries as BYTES, and verify the outcome.
+
+        Raw source URLs are downloaded by CatalogAI itself (browser identity)
+        then normalized by ``prepare_upload`` — pushing URLs to Xano let ITS
+        server-side fetch fail silently on anti-bot CDNs (vécu Farfetch :
+        review OK, Tillin vide). Normalized entries keep their staged bytes.
+        Everything goes through ONE multipart bulk upload, whose response is
+        compared to what was sent ; a source we cannot download falls back to
+        the URL push (Xano may still succeed from its own IPs), itself
+        verified. Partial outcomes never fail the apply : they come back as
+        human-readable warnings surfaced on the item.
 
         All staged bytes are loaded BEFORE any write so a purged/missing
         staging fails the apply cleanly instead of uploading a partial set.
         """
-        raw_urls = [str(e["url"]) for e in entries if not e.get("asset_id")]
-        asset_entries = [e for e in entries if e.get("asset_id")]
+        if not entries:
+            return []
+        db = object_session(item)
+        if db is None and any(e.get("asset_id") for e in entries):
+            # pragma: no cover - defensive
+            raise AppException(
+                status_code=500,
+                code="staging_unavailable",
+                message="Cannot load normalized images: item has no session",
+            )
+        warnings: list[str] = []
+        stems = (
+            self._template_stems(db, item, entries)
+            if db is not None
+            else [None] * len(entries)
+        )
 
-        uploads: list[tuple[ImageAsset, FilePart]] = []
-        if asset_entries:
-            db = object_session(item)
-            if db is None:  # pragma: no cover - defensive
-                raise AppException(
-                    status_code=500,
-                    code="staging_unavailable",
-                    message="Cannot load normalized images: item has no session",
-                )
-            stems = self._template_stems(db, item, asset_entries)
-            for entry, stem in zip(asset_entries, stems, strict=True):
+        uploads: list[tuple[ImageAsset | None, FilePart]] = []
+        url_fallback: list[str] = []
+        for index, (entry, stem) in enumerate(zip(entries, stems, strict=True)):
+            if entry.get("asset_id"):
+                assert db is not None  # guarded above
                 uploads.append(self._load_upload(db, entry, stem=stem))
+                continue
+            url = str(entry["url"])
+            try:
+                data = download_source_image(url)
+                filename = stem or url.split("?")[0].split("#")[0]
+                uploads.append((None, prepare_upload(filename, data, index=index)))
+            except (ExternalServiceError, AppException) as exc:
+                logger.warning(
+                    "item %s: could not fetch/prepare %s locally (%s) — "
+                    "falling back to the Xano URL import",
+                    item.id,
+                    url,
+                    exc,
+                )
+                url_fallback.append(url)
 
-        if raw_urls:
-            self._client.add_product_images(item.tillin_product_id, raw_urls)
         if uploads:
             created = self._client.upload_product_images(
                 item.tillin_product_id, [part for _, part in uploads]
             )
-            created_ids = [image.id for image in created]
-            for index, (asset, _) in enumerate(uploads):
-                if index < len(created_ids) and created_ids[index] is not None:
-                    asset.tillin_image_ids_json = [created_ids[index]]
-                staging.purge_asset(asset.id)
+            if len(created) == len(uploads):
+                for (asset, _), image in zip(uploads, created, strict=True):
+                    if asset is not None:
+                        if image.id is not None:
+                            asset.tillin_image_ids_json = [image.id]
+                        staging.purge_asset(asset.id)
+            else:
+                # Tillin en a refusé une partie sans dire lesquelles :
+                # l'appariement positionnel n'est plus fiable — on n'assigne
+                # rien, on ne purge rien, on remonte l'écart.
+                missing = len(uploads) - len(created)
+                warnings.append(
+                    f"{missing} image(s) sur {len(uploads)} refusée(s) par "
+                    "Tillin à l'upload"
+                )
+        if url_fallback:
+            created_from_urls = self._client.add_product_images(
+                item.tillin_product_id, url_fallback
+            )
+            missing = len(url_fallback) - len(created_from_urls)
+            if missing > 0:
+                warnings.append(
+                    f"{missing} image(s) sur {len(url_fallback)} n'ont pas pu "
+                    "être importées par Tillin depuis leur URL d'origine "
+                    "(site source protégé)"
+                )
+        return warnings
 
     def _template_stems(
         self, db: Session, item: EnrichmentItem, entries: list[dict[str, Any]]

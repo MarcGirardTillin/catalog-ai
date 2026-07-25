@@ -78,6 +78,19 @@ def compute_price(
     return raw
 
 
+def depipe(value: str) -> str:
+    """Remplace « | » par « / » (décision Marc 2026-07-18).
+
+    Filet de sécurité au rendu : l'extraction nettoie déjà les nouveaux
+    imports, mais les payloads existants (et les éditions manuelles) peuvent
+    encore porter des pipes — traités comme séparateur par le gabarit de
+    titre et gênants dans les identifiants dérivés.
+    """
+    if "|" not in value:
+        return value
+    return " / ".join(part.strip() for part in value.split("|") if part.strip())
+
+
 def compute_barcode(
     product: ImportedProduct, variant: ImportedVariant, config: ImportProfileConfig
 ) -> str:
@@ -85,7 +98,7 @@ def compute_barcode(
     if config.barcode_mode == "ean":
         return variant.ean or ""
     parts = [product.supplier_ref, variant.color or "", variant.size or ""]
-    return "-".join(part.strip() for part in parts if part.strip())
+    return "-".join(depipe(part.strip()) for part in parts if part.strip())
 
 
 def _product_color(product: ImportedProduct) -> str:
@@ -165,12 +178,12 @@ def render_rows(
             rows.append(
                 _row(
                     {
-                        "title": title,
-                        "reference_code": product.supplier_ref,
+                        "title": depipe(title),
+                        "reference_code": depipe(product.supplier_ref),
                         "option1_name": "Couleur" if variant.color else "",
-                        "option1_value": variant.color or "",
+                        "option1_value": depipe(variant.color or ""),
                         "option2_name": "Taille" if variant.size else "",
-                        "option2_value": variant.size or "",
+                        "option2_value": depipe(variant.size or ""),
                         "variant_barcode": barcode,
                         "image_url": image_url,
                         "wholesale_price": (
