@@ -445,3 +445,52 @@ def test_finalize_image_requires_an_active_option(db: Session, account_id: int) 
             account_id=account_id,
         )
     assert _usage_events(db) == []
+
+
+def test_flat_lay_sends_background_garment_and_label_guard(
+    db: Session, account_id: int
+) -> None:
+    """Fond du compte + vêtement ciblé + garde-fou étiquette dans le prompt
+    (vécus Marc : « pas de background ? », « il met toute la tenue à plat »,
+    « l'étiquette du col n'est jamais bonne »)."""
+    captured: dict[str, httpx.Request] = {}
+    generate_flat_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateFlatOptions(
+            prompt="fond lin clair",
+            ratio="4:5",
+            background_color="#F5F5F5",
+            garment="veste",
+        ),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    params = captured["request"].url.params
+    assert params["background.color"] == "F5F5F5"
+    prompt = params["flatLay.prompt"]
+    assert prompt.startswith("flat lay of the veste only")
+    assert "inner neck label" in prompt
+    assert prompt.endswith("fond lin clair")
+
+
+def test_ghost_sends_background_color(db: Session, account_id: int) -> None:
+    captured: dict[str, httpx.Request] = {}
+    generate_ghost_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateFlatOptions(background_color="FFFFFF"),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    assert captured["request"].url.params["background.color"] == "FFFFFF"
+
+
+def test_generation_prompt_includes_dimensions() -> None:
+    from app.imaging.service import build_generation_prompt
+
+    prompt = build_generation_prompt(
+        "full_body", "studio", None, dimensions="30 x 22 x 10 cm"
+    )
+    assert "30 x 22 x 10 cm" in prompt
+    assert "realistic" in prompt

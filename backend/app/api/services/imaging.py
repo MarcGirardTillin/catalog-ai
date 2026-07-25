@@ -218,11 +218,22 @@ def to_service_options(options: GenerateModelOptionsSchema) -> GenerateModelOpti
 
 def to_flat_service_options(
     options: GenerateFlatOptionsSchema | None,
+    *,
+    background_color: str | None = None,
+    garment: str | None = None,
 ) -> GenerateFlatOptions:
-    """API schema -> service dataclass (flat lay / ghost mannequin)."""
-    if options is None:
-        return GenerateFlatOptions()
-    return GenerateFlatOptions(prompt=options.prompt, ratio=options.ratio)
+    """API schema -> service dataclass (flat lay / ghost mannequin).
+
+    `background_color` = couleur de fond du compte (imaging_bg_color) ;
+    `garment` = catégorie du produit (cible le vêtement à isoler).
+    """
+    base = options or GenerateFlatOptionsSchema()
+    return GenerateFlatOptions(
+        prompt=base.prompt,
+        ratio=base.ratio,
+        background_color=background_color,
+        garment=garment,
+    )
 
 
 def to_virtual_model_service_options(
@@ -258,6 +269,13 @@ def to_virtual_model_service_options(
         if options.instructions is not None
         else stored.imaging_generation_instructions
     )
+    if options.product_dimensions and options.product_dimensions.strip():
+        # Proportions réalistes (sacs) : même consigne que le prompt FASHN.
+        prompt_parts.append(
+            "the product's real dimensions are "
+            f"{options.product_dimensions.strip()}, keep its size realistic "
+            "relative to the model"
+        )
     if instructions and instructions.strip():
         prompt_parts.append(instructions.strip())
 

@@ -15,6 +15,7 @@ from app.api.deps import (
     CurrentUserDep,
     OptionalFashnDep,
     OptionalPhotoroomDep,
+    OptionalXanoDep,
     PhotoroomDep,
     SessionDep,
     XanoDep,
@@ -48,6 +49,7 @@ from app.api.services.imaging import (
     to_virtual_model_service_options,
 )
 from app.clients.base import NotConfiguredError
+from app.clients.xano import XanoClient
 from app.imaging import service as imaging_service
 from app.imaging.uploads import prepare_upload
 from app.models import ImageAsset
@@ -299,6 +301,7 @@ def generate_model_image(
                     if options.instructions is not None
                     else stored.imaging_generation_instructions,
                     pose=options.pose or stored.imaging_generation_pose,
+                    dimensions=options.product_dimensions,
                 )
             }
         )
@@ -321,6 +324,17 @@ def generate_model_image(
     return to_public(asset)
 
 
+def _product_garment(xano: XanoClient | None, product_id: int) -> str | None:
+    """Catégorie du produit (cible du flat lay/ghost) — best-effort."""
+    if xano is None:
+        return None
+    try:
+        product = xano.get_product(product_id)
+    except Exception:  # noqa: BLE001 — enrichissement du prompt, jamais bloquant
+        return None
+    return product.category if product else None
+
+
 @router.post(
     "/{product_id}/images/generate-flat",
     response_model=ImageAssetPublic,
@@ -333,13 +347,19 @@ def generate_flat_image(
     db: SessionDep,
     current_user: CurrentUserDep,
     photoroom: PhotoroomDep,
+    xano: OptionalXanoDep,
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
     """Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les
     autres générations. Un appel = une image = un débit image_generate."""
     account_id = resolve_account_id(db, current_user)
     require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
-    options = to_flat_service_options(body.options)
+    stored = account_settings(db, account_id)
+    options = to_flat_service_options(
+        body.options,
+        background_color=stored.imaging_bg_color,
+        garment=_product_garment(xano, product_id),
+    )
     asset = ImageAsset(
         account_id=account_id,
         product_id=product_id,
@@ -372,13 +392,19 @@ def generate_ghost_image(
     db: SessionDep,
     current_user: CurrentUserDep,
     photoroom: PhotoroomDep,
+    xano: OptionalXanoDep,
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
     """Mannequin invisible (Photoroom ghost mannequin) — efface le mannequin
     d'une photo portée. Un appel = une image = un débit image_generate."""
     account_id = resolve_account_id(db, current_user)
     require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
-    options = to_flat_service_options(body.options)
+    stored = account_settings(db, account_id)
+    options = to_flat_service_options(
+        body.options,
+        background_color=stored.imaging_bg_color,
+        garment=_product_garment(xano, product_id),
+    )
     asset = ImageAsset(
         account_id=account_id,
         product_id=product_id,

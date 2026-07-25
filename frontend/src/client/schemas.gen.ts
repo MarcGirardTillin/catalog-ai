@@ -1719,6 +1719,18 @@ export const GenerateModelOptionsSchema = {
             ],
             title: 'Instructions'
         },
+        product_dimensions: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Dimensions'
+        },
         aspect_ratio: {
             type: 'string',
             title: 'Aspect Ratio',

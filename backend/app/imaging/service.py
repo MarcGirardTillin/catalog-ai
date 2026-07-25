@@ -113,7 +113,11 @@ POSE_PROMPTS = {
 
 
 def build_generation_prompt(
-    framing: str, scene: str, instructions: str | None, pose: str | None = None
+    framing: str,
+    scene: str,
+    instructions: str | None,
+    pose: str | None = None,
+    dimensions: str | None = None,
 ) -> str:
     """Compose the FASHN instruction from the structured config + free text.
 
@@ -128,6 +132,13 @@ def build_generation_prompt(
     ]
     if pose and pose in POSE_PROMPTS:
         parts.append(POSE_PROMPTS[pose])
+    if dimensions and dimensions.strip():
+        # Proportions réalistes pour les accessoires (sacs) : sans dimensions
+        # le modèle invente l'échelle (vécu : sac Lemaire surdimensionné).
+        parts.append(
+            f"the product's real dimensions are {dimensions.strip()}, "
+            "keep its size realistic relative to the model"
+        )
     if instructions and instructions.strip():
         parts.append(instructions.strip())
     return ", ".join(parts)
@@ -186,6 +197,12 @@ class GenerateFlatOptions:
 
     prompt: str | None = None  # style libre (ex. « fond lin clair »)
     ratio: str = "4:5"
+    # Fond uni demandé à Photoroom (hex, défaut = couleur du compte) — sans
+    # lui le fond vient du modèle génératif (vécu : « pas de background ? »).
+    background_color: str | None = None
+    # Vêtement à isoler (catégorie produit) : sans lui Photoroom met à plat
+    # TOUTE la tenue du mannequin (vécu Marc).
+    garment: str | None = None
 
 
 @dataclass
@@ -482,6 +499,31 @@ def _run_photoroom_edit(
     ]
 
 
+def _flat_prompt(options: GenerateFlatOptions, *, verb: str) -> str | None:
+    """Gabarit serveur du prompt flat/ghost : isole le vêtement + étiquette.
+
+    Sans consigne, Photoroom met à plat TOUTE la tenue du mannequin et
+    invente le texte de l'étiquette intérieure (limites vécues) — la
+    catégorie produit cible le vêtement, la consigne étiquette borne
+    l'invention. Le style libre de l'utilisateur vient en dernier.
+    """
+    parts: list[str] = []
+    if options.garment and options.garment.strip():
+        garment = options.garment.strip()
+        if verb == "flat":
+            parts.append(
+                f"flat lay of the {garment} only, ignore any other garment "
+                "worn in the photo"
+            )
+        else:
+            parts.append(f"keep only the {garment}")
+    if options.garment:
+        parts.append("keep any inner neck label plain and unreadable")
+    if options.prompt and options.prompt.strip():
+        parts.append(options.prompt.strip())
+    return ", ".join(parts) or None
+
+
 def generate_flat_photo(
     product_image: str,
     *,
@@ -493,10 +535,13 @@ def generate_flat_photo(
     """Photo produit -> mise à plat stylisée (Photoroom flat lay)."""
     options = options or GenerateFlatOptions()
     params: dict[str, Any] = {"flatLay": {"mode": "ai.auto"}}
-    if options.prompt and options.prompt.strip():
-        params["flatLay"]["prompt"] = options.prompt.strip()
+    prompt = _flat_prompt(options, verb="flat")
+    if prompt:
+        params["flatLay"]["prompt"] = prompt
     if size := _photoroom_size(options.ratio):
         params["flatLay"]["size"] = size
+    if options.background_color:
+        params["background"] = {"color": options.background_color.lstrip("#")}
     return _run_photoroom_edit(
         params,
         image_url=product_image,
@@ -518,10 +563,13 @@ def generate_ghost_photo(
     """Photo portée/mannequin -> effet mannequin invisible (ghost mannequin)."""
     options = options or GenerateFlatOptions()
     params: dict[str, Any] = {"ghostMannequin": {"mode": "ai.auto"}}
-    if options.prompt and options.prompt.strip():
-        params["ghostMannequin"]["prompt"] = options.prompt.strip()
+    prompt = _flat_prompt(options, verb="ghost")
+    if prompt:
+        params["ghostMannequin"]["prompt"] = prompt
     if size := _photoroom_size(options.ratio):
         params["ghostMannequin"]["size"] = size
+    if options.background_color:
+        params["background"] = {"color": options.background_color.lstrip("#")}
     return _run_photoroom_edit(
         params,
         image_url=product_image,

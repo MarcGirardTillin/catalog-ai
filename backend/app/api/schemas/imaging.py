@@ -122,6 +122,9 @@ class GenerateModelOptions(BaseModel):
     # Orientation du mannequin (face/dos/profil/trois-quarts) ; None = libre.
     pose: PoseOption | None = None
     instructions: str | None = None
+    # Dimensions réelles du produit (« 30 × 22 × 10 cm ») : proportions
+    # réalistes pour les accessoires — partagé FASHN / Photoroom VM.
+    product_dimensions: str | None = Field(default=None, max_length=100)
     aspect_ratio: str = "4:5"
     resolution: Literal["1k", "2k", "4k"] = "1k"
     generation_mode: Literal["fast", "balanced", "quality"] = "balanced"

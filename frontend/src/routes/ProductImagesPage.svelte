@@ -123,6 +123,18 @@
   let genCount = $state(1)
   // Photoroom Virtual Model : joindre les autres vues du produit (max 3).
   let useOtherViews = $state(false)
+  // Vues de référence CHOISIES (URLs) — vide = les 3 premières hors source.
+  let refViews = $state<string[]>([])
+  // Dimensions réelles du produit (sacs) : proportions réalistes au rendu.
+  let genDimensions = $state("")
+
+  function toggleRefView(url: string) {
+    refViews = refViews.includes(url)
+      ? refViews.filter((u) => u !== url)
+      : refViews.length < 3
+        ? [...refViews, url]
+        : refViews
+  }
   // Options des générations Photoroom « une image -> une image ».
   let flatConfig = $state<FlatGhostConfig>({ ratio: "4:5", prompt: "" })
   let ghostConfig = $state<FlatGhostConfig>({ ratio: "4:5", prompt: "" })
@@ -423,13 +435,18 @@
 
   function runGenerate(image: ProductImage) {
     const photoroom = genConfig.engine === "photoroom"
-    // Multi-vues (Photoroom uniquement) : les autres images du produit.
+    // Multi-vues (Photoroom uniquement) : vues CHOISIES par vignette, repli
+    // sur les 3 premières images hors source.
+    const fallbackViews = images
+      .map((i) => i.url)
+      .filter((url) => url !== image.url)
+      .slice(0, 3)
+    const chosenViews = refViews.filter((url) => url !== image.url).slice(0, 3)
     const otherViews =
       photoroom && useOtherViews
-        ? images
-            .map((i) => i.url)
-            .filter((url) => url !== image.url)
-            .slice(0, 3)
+        ? chosenViews.length > 0
+          ? chosenViews
+          : fallbackViews
         : undefined
     return runWork(
       image.url + GEN_SUFFIX,
@@ -447,6 +464,7 @@
             model_preset: photoroom ? genConfig.modelPreset || null : null,
             scene_preset: photoroom ? genConfig.scenePreset || null : null,
             instructions: genConfig.instructions,
+            product_dimensions: genDimensions.trim() || null,
             num_images: photoroom ? 1 : genCount,
           },
           otherViews,
@@ -669,6 +687,24 @@
                   idPrefix="studio-gen"
                   showEngine
                 />
+                <div class="flex flex-col gap-1.5 sm:max-w-80">
+                  <label class="text-xs font-medium" for="studio-gen-dimensions">
+                    Dimensions du produit (optionnel)
+                  </label>
+                  <input
+                    id="studio-gen-dimensions"
+                    type="text"
+                    maxlength="100"
+                    placeholder="Ex. 30 × 22 × 10 cm"
+                    disabled={runningCount > 0}
+                    bind:value={genDimensions}
+                    class="border-input bg-card h-8 rounded-md border px-2.5 text-sm outline-none disabled:opacity-50"
+                  />
+                  <p class="text-muted-foreground text-xs">
+                    Garde des proportions réalistes (utile pour les sacs et
+                    accessoires) — les deux moteurs en tiennent compte.
+                  </p>
+                </div>
                 {#if genConfig.engine === "photoroom"}
                   <label
                     class="text-muted-foreground flex items-center gap-2 text-xs"
@@ -682,6 +718,37 @@
                     Utiliser les autres vues du produit (jusqu'à 3) pour guider
                     le rendu
                   </label>
+                  {#if useOtherViews && images.length > 1}
+                    <!-- Choix explicite des vues de référence (vécu : une vue
+                         étiquette partait d'office dans les 3 premières). -->
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      {#each images as refImage (refImage.url)}
+                        <button
+                          type="button"
+                          class="relative overflow-hidden rounded transition-shadow {refViews.includes(refImage.url)
+                            ? 'ring-primary ring-2'
+                            : 'opacity-60 hover:opacity-100'}"
+                          title={refViews.includes(refImage.url)
+                            ? "Retirer cette vue de référence"
+                            : "Utiliser cette vue comme référence"}
+                          aria-pressed={refViews.includes(refImage.url)}
+                          onclick={() => toggleRefView(refImage.url)}
+                        >
+                          <img
+                            src={refImage.url}
+                            alt=""
+                            loading="lazy"
+                            class="bg-muted h-14 w-11 object-cover"
+                          />
+                        </button>
+                      {/each}
+                      <span class="text-muted-foreground text-xs">
+                        {refViews.length === 0
+                          ? "aucune sélection = les 3 premières vues"
+                          : `${refViews.length}/3 sélectionnée${refViews.length > 1 ? "s" : ""}`}
+                      </span>
+                    </div>
+                  {/if}
                 {:else}
                   <div class="flex items-center gap-2">
                     <label class="text-muted-foreground text-xs" for="gen-count">

@@ -989,6 +989,10 @@ export type GenerateModelOptions = {
      */
     instructions?: string | null;
     /**
+     * Product Dimensions
+     */
+    product_dimensions?: string | null;
+    /**
      * Aspect Ratio
      */
     aspect_ratio?: string;
