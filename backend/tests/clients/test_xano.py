@@ -414,6 +414,39 @@ def test_deactivate_product_images_noop_on_empty_ids() -> None:
         client.deactivate_product_images([])  # returns without calling
 
 
+def test_set_product_image_positions_puts_entries() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        captured["request"] = request
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.set_product_image_positions([(900, 2), (901, 5)])
+
+    request = captured["request"]
+    assert request.method == "PUT"
+    assert request.url.path.endswith("/product_image/positions")
+    assert json.loads(request.content) == {
+        "positions": [
+            {"product_image_id": 900, "position": 2},
+            {"product_image_id": 901, "position": 5},
+        ]
+    }
+
+
+def test_set_product_image_positions_noop_on_empty() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        raise AssertionError("no request expected for empty positions")
+
+    with _client(httpx.MockTransport(handler)) as client:
+        client.set_product_image_positions([])  # returns without calling
+
+
 def test_set_product_weight_posts_ids_weight_and_unit() -> None:
     captured: dict[str, httpx.Request] = {}
 

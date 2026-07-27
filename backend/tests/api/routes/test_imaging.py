@@ -709,6 +709,19 @@ def test_save_with_replace_deactivates_the_original(
         if request.url.path.endswith("/product_image/deactivate"):
             captured["deactivate"] = request
             return httpx.Response(200, json={"ok": True})
+        if request.url.path.endswith("/product_image/positions"):
+            captured["positions"] = request
+            return httpx.Response(200, json={"ok": True})
+        if request.url.path.endswith("/product/101"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 101,
+                    "product_images": [
+                        {"id": 501, "src": "https://xano.test/old.webp", "position": 2},
+                    ],
+                },
+            )
         return httpx.Response(404)
 
     override_xano(handler)
@@ -735,6 +748,12 @@ def test_save_with_replace_deactivates_the_original(
     request = captured["deactivate"]
     assert request.method == "PUT"
     assert json.loads(request.content) == {"product_image_ids": [501]}
+    # La nouvelle image hérite de la position de l'originale (2, pas 4).
+    positions = captured["positions"]
+    assert positions.method == "PUT"
+    assert json.loads(positions.content) == {
+        "positions": [{"product_image_id": 900, "position": 2}]
+    }
 
 
 def test_save_with_custom_filenames_slugs_and_imposes_extension(

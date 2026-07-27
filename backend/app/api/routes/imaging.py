@@ -476,11 +476,38 @@ def save_asset(
                 MEDIA_TYPES.get(extension, "application/octet-stream"),
             )
         )
+    # Position de l'originale AVANT toute écriture : après la désactivation la
+    # ligne peut disparaître de la galerie. Best-effort — un échec ici ne doit
+    # pas bloquer l'enregistrement.
+    source_position: int | None = None
+    if body.replace and asset.source_product_image_id is not None:
+        product = template_product
+        try:
+            if product is None:
+                product = xano.get_product(asset.product_id)
+            if product is not None:
+                source_position = next(
+                    (
+                        image.position
+                        for image in product.images
+                        if image.id == asset.source_product_image_id
+                    ),
+                    None,
+                )
+        except AppException:
+            source_position = None
     created = xano.upload_product_images(asset.product_id, parts)
     deactivated = 0
     if body.replace and asset.source_product_image_id is not None:
         xano.deactivate_product_images([asset.source_product_image_id])
         deactivated = 1
+        first_id = next((image.id for image in created if image.id is not None), None)
+        if first_id is not None and source_position is not None:
+            try:
+                xano.set_product_image_positions([(first_id, source_position)])
+            except AppException:
+                # La nouvelle image reste en fin de galerie — non bloquant.
+                pass
     asset.tillin_image_ids_json = [
         image.id for image in created if image.id is not None
     ]

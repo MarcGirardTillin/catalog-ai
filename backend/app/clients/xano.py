@@ -35,6 +35,7 @@ LOGIN_PATH = "/auth/login"
 PRODUCT_IMPORT_PATH = "/product_import"
 PRODUCT_WEIGHT_PATH = "/product/weight"
 PRODUCT_IMAGE_DEACTIVATE_PATH = "/product_image/deactivate"
+PRODUCT_IMAGE_POSITIONS_PATH = "/product_image/positions"
 
 
 def _enrich_path(product_id: int) -> str:
@@ -1000,6 +1001,22 @@ class XanoClient:
         if not ids:
             return
         self._put(PRODUCT_IMAGE_DEACTIVATE_PATH, {"product_image_ids": ids})
+
+    def set_product_image_positions(self, positions: list[tuple[int, int]]) -> None:
+        """Set gallery positions on images (`PUT /product_image/positions`).
+
+        The bulk upload only APPENDS (end of gallery) : after a replacement
+        the new image inherits the original's position through this endpoint.
+        Body: {"positions": [{"product_image_id": id, "position": n}, ...]}.
+        """
+        entries = [
+            {"product_image_id": int(image_id), "position": int(position)}
+            for image_id, position in positions
+            if image_id is not None and position is not None
+        ]
+        if not entries:
+            return
+        self._put(PRODUCT_IMAGE_POSITIONS_PATH, {"positions": entries})
 
     def category_default_weights(self) -> dict[str, float]:
         """Poids par défaut par TITRE de catégorie (minuscule), > 0 seulement.
