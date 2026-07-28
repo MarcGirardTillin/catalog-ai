@@ -83,6 +83,19 @@ class ItemPublic(BaseModel):
         return self
 
 
+class ItemApplyRequest(BaseModel):
+    """Optional apply body — required semantics for RE-propagation.
+
+    `apply_fields` (même forme que `apply_fields_json` : {"title": bool, …,
+    "image_urls": [...], "weight_variant_ids": [...]}) remplace la sélection
+    stockée pour CETTE écriture. Sur un item déjà `applied`, il est
+    OBLIGATOIRE : re-propager sans sélection explicite re-pousserait toutes
+    les images (endpoint Xano append-only → doublons).
+    """
+
+    apply_fields: dict[str, Any] | None = None
+
+
 class ItemPatchRequest(BaseModel):
     """Editable staged fields (review-time corrections)."""
 

@@ -899,11 +899,19 @@ export const itemsRejectItem = <ThrowOnError extends boolean = false>(options: O
  * Apply Item Route
  *
  * Write an approved item's staged enrichment back to Tillin (Xano).
+ *
+ * Avec un corps `apply_fields`, la sélection remplace celle stockée — c'est
+ * aussi la clé de la RE-propagation d'un item déjà `applied` (sélection
+ * explicite obligatoire : l'endpoint images Xano est append-only).
  */
 export const itemsApplyItemRoute = <ThrowOnError extends boolean = false>(options: Options<ItemsApplyItemRouteData, ThrowOnError>): RequestResult<ItemsApplyItemRouteResponses, ItemsApplyItemRouteErrors, ThrowOnError> => (options.client ?? client).post<ItemsApplyItemRouteResponses, ItemsApplyItemRouteErrors, ThrowOnError>({
     responseType: 'json',
     url: '/items/{item_id}/apply',
-    ...options
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

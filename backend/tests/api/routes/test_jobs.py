@@ -528,8 +528,32 @@ def test_apply_writes_to_destination_and_marks_applied(
         assert writes["enrich"][0] == 1911
         assert writes["enrich"][1]["title"] == "Nouveau titre"
 
-        # Re-applying an already-applied item is rejected.
-        assert auth_client.post(f"/items/{item_id}/apply").status_code == 409
+        # Re-applying without an explicit selection is rejected (the images
+        # endpoint is append-only — a blind re-push would duplicate).
+        blind = auth_client.post(f"/items/{item_id}/apply")
+        assert blind.status_code == 409
+        assert blind.json()["code"] == "apply_fields_required"
+
+        # Re-propagation ciblée : seule la sélection explicite est écrite
+        # (cas d'usage : images refusées par un CDN au premier apply).
+        writes.clear()
+        response = auth_client.post(
+            f"/items/{item_id}/apply",
+            json={
+                "apply_fields": {
+                    "title": False,
+                    "description": False,
+                    "meta": False,
+                    "price": False,
+                    "weights": False,
+                    "images": True,
+                }
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "applied"
+        assert writes["uploads"] == (1911, ["a.jpg"])  # images re-poussées
+        assert "enrich" not in writes  # copie non ré-écrite
     finally:
         app.dependency_overrides.pop(get_xano_client, None)
 

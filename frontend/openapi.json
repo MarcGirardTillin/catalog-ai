@@ -4149,7 +4149,7 @@
           "items"
         ],
         "summary": "Apply Item Route",
-        "description": "Write an approved item's staged enrichment back to Tillin (Xano).",
+        "description": "Write an approved item's staged enrichment back to Tillin (Xano).\n\nAvec un corps `apply_fields`, la sélection remplace celle stockée — c'est\naussi la clé de la RE-propagation d'un item déjà `applied` (sélection\nexplicite obligatoire : l'endpoint images Xano est append-only).",
         "operationId": "items-apply_item_route",
         "parameters": [
           {
@@ -4178,6 +4178,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ItemApplyRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -10203,6 +10220,25 @@
           "content"
         ],
         "title": "InstructionUpdate"
+      },
+      "ItemApplyRequest": {
+        "properties": {
+          "apply_fields": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apply Fields"
+          }
+        },
+        "type": "object",
+        "title": "ItemApplyRequest",
+        "description": "Optional apply body — required semantics for RE-propagation.\n\n`apply_fields` (même forme que `apply_fields_json` : {\"title\": bool, …,\n\"image_urls\": [...], \"weight_variant_ids\": [...]}) remplace la sélection\nstockée pour CETTE écriture. Sur un item déjà `applied`, il est\nOBLIGATOIRE : re-propager sans sélection explicite re-pousserait toutes\nles images (endpoint Xano append-only → doublons)."
       },
       "ItemHistoryEntry": {
         "properties": {

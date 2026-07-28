@@ -341,6 +341,60 @@
 
   const reviewable = $derived(item?.status === "ready_for_review")
   const applicable = $derived(item?.status === "approved")
+  const appliedStatus = $derived(item?.status === "applied")
+
+  // --- Re-propagation d'un item déjà appliqué (rattraper un apply partiel,
+  // ex. images refusées par un CDN) : sélection EXPLICITE de champs, car
+  // l'endpoint images Xano est append-only (tout re-pousser = doublons). ---
+  let repropOpen = $state(false)
+  let repropFields = $state<Record<string, boolean>>({})
+  const REPROP_LABELS: [string, string][] = [
+    ["title", "Titre"],
+    ["description", "Description"],
+    ["meta", "Meta description"],
+    ["price", "Prix de vente"],
+    ["images", "Images"],
+    ["weights", "Poids"],
+  ]
+  function openReprop() {
+    if (!item) return
+    // Pré-coche uniquement les images quand l'avertissement les concerne —
+    // le cas d'usage type (échec total de transfert, re-push sans doublon).
+    const imagesFailed = /image/i.test(item.error ?? "")
+    repropFields = {
+      title: false,
+      description: false,
+      meta: false,
+      price: false,
+      weights: false,
+      images: imagesFailed && images.length > 0,
+    }
+    repropOpen = true
+  }
+  async function repropagate() {
+    if (!item) return
+    const fields: Record<string, unknown> = { ...repropFields }
+    if (repropFields.images) fields.image_urls = selectedImageUrls
+    if (repropFields.weights) fields.weight_variant_ids = selectedWeightIds
+    busy = true
+    const { data, error } = await itemsApplyItemRoute({
+      path: { item_id: item.id },
+      body: { apply_fields: fields },
+    })
+    busy = false
+    if (error || !data) {
+      toast.error("Re-propagation impossible. Réessayez.")
+      return
+    }
+    item = data
+    repropOpen = false
+    if (data.error) toast.warning("Re-propagé, avec avertissements.")
+    else toast.success("Re-propagé vers Tillin.")
+    // Rafraîchit le produit : les images re-poussées doivent apparaître.
+    itemsReadItemProduct({ path: { item_id: data.id } }).then(({ data: p }) => {
+      product = p ?? null
+    })
+  }
   // Full re-generation allowed while under review or after reject/failure
   // (`applied` is excluded: Tillin's bulk image endpoint appends, no replace).
   const retryable = $derived(
@@ -845,6 +899,72 @@
               {/if}
             </CardContent>
           </Card>
+
+          {#if appliedStatus}
+            <!-- Re-propagation : rattraper un apply partiel sans relancer. -->
+            <Card size="sm">
+              <CardContent class="flex flex-col gap-2.5 text-xs">
+                {#if item.error}
+                  <p class="text-destructive" role="alert">{item.error}</p>
+                {/if}
+                {#if !repropOpen}
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-muted-foreground">
+                      Déjà appliqué — vous pouvez re-propager une partie des
+                      champs vers Tillin (ex. images en échec).
+                    </span>
+                    <Button variant="secondary" size="sm" onclick={openReprop}>
+                      Re-propager…
+                    </Button>
+                  </div>
+                {:else}
+                  <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {#each REPROP_LABELS as [key, label] (key)}
+                      <label
+                        class="flex items-center gap-1.5 {hasStaged(key)
+                          ? ''
+                          : 'opacity-40'}"
+                      >
+                        <input
+                          type="checkbox"
+                          class="accent-primary"
+                          disabled={!hasStaged(key)}
+                          bind:checked={repropFields[key]}
+                        />
+                        {label}
+                        {#if key === "images" && hasStaged("images")}
+                          ({selectedImageUrls.length} sélectionnée{selectedImageUrls.length > 1 ? "s" : ""})
+                        {/if}
+                      </label>
+                    {/each}
+                  </div>
+                  <p class="text-muted-foreground">
+                    ⚠ Les images s'AJOUTENT à la galerie Tillin (pas de
+                    remplacement) : le produit en compte actuellement
+                    {(product?.images ?? []).length} — ne cochez « Images » que
+                    si elles manquent réellement, sous peine de doublons.
+                  </p>
+                  <div class="flex items-center gap-2 self-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onclick={() => (repropOpen = false)}
+                    >
+                      Annuler
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={busy || !Object.values(repropFields).some(Boolean)}
+                      onclick={repropagate}
+                    >
+                      {busy ? "Écriture…" : "Re-propager vers Tillin"}
+                    </Button>
+                  </div>
+                {/if}
+              </CardContent>
+            </Card>
+          {/if}
 
           <!-- Source resolution + manual override. -->
           <Card size="sm">

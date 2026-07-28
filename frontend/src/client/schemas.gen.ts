@@ -3855,6 +3855,26 @@ export const InstructionUpdateSchema = {
     title: 'InstructionUpdate'
 } as const;
 
+export const ItemApplyRequestSchema = {
+    properties: {
+        apply_fields: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Apply Fields'
+        }
+    },
+    type: 'object',
+    title: 'ItemApplyRequest',
+    description: 'Optional apply body — required semantics for RE-propagation.\n\n`apply_fields` (même forme que `apply_fields_json` : {"title": bool, …,\n"image_urls": [...], "weight_variant_ids": [...]}) remplace la sélection\nstockée pour CETTE écriture. Sur un item déjà `applied`, il est\nOBLIGATOIRE : re-propager sans sélection explicite re-pousserait toutes\nles images (endpoint Xano append-only → doublons).'
+} as const;
+
 export const ItemHistoryEntrySchema = {
     properties: {
         id: {

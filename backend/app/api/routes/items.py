@@ -15,6 +15,7 @@ from app.api.deps import (
 from app.api.exceptions import AppException
 from app.api.schemas import Product
 from app.api.schemas.enrichment import (
+    ItemApplyRequest,
     ItemHistoryEntry,
     ItemImageNormalizeRequest,
     ItemPatchRequest,
@@ -242,10 +243,24 @@ def reject_item(
 
 @router.post("/{item_id}/apply", response_model=ItemPublic)
 def apply_item_route(
-    item_id: int, db: SessionDep, current_user: CurrentUserDep, xano: XanoDep
+    item_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    xano: XanoDep,
+    payload: ItemApplyRequest | None = None,
 ) -> ItemPublic:
-    """Write an approved item's staged enrichment back to Tillin (Xano)."""
+    """Write an approved item's staged enrichment back to Tillin (Xano).
+
+    Avec un corps `apply_fields`, la sélection remplace celle stockée — c'est
+    aussi la clé de la RE-propagation d'un item déjà `applied` (sélection
+    explicite obligatoire : l'endpoint images Xano est append-only).
+    """
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
-    item = apply_item(db, item, XanoTillinDestination(xano))
+    item = apply_item(
+        db,
+        item,
+        XanoTillinDestination(xano),
+        apply_fields=payload.apply_fields if payload else None,
+    )
     return ItemPublic.model_validate(item, from_attributes=True)

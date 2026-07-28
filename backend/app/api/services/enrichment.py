@@ -412,16 +412,38 @@ def review_item(db: Session, item: EnrichmentItem, decision: str) -> EnrichmentI
 
 
 def apply_item(
-    db: Session, item: EnrichmentItem, destination: Destination
+    db: Session,
+    item: EnrichmentItem,
+    destination: Destination,
+    *,
+    apply_fields: dict[str, Any] | None = None,
 ) -> EnrichmentItem:
     """Write an approved item's staged fields to the destination, then mark it
-    applied. Only `approved` items can be applied (guards double-writes)."""
-    if item.status != "approved":
+    applied. Only `approved` items can be applied (guards double-writes) —
+    sauf la RE-propagation : un item `applied` peut être ré-écrit avec une
+    sélection de champs EXPLICITE (demande Marc 2026-07-28 — rattraper un
+    apply partiel, ex. images Jacquemus refusées, sans relancer la tâche).
+    La sélection explicite est exigée car l'endpoint images Xano est
+    append-only : tout re-pousser créerait des doublons."""
+    if item.status == "applied" and apply_fields is None:
+        raise AppException(
+            status_code=409,
+            code="apply_fields_required",
+            message=(
+                "Re-propagating an applied item requires an explicit "
+                "apply_fields selection"
+            ),
+        )
+    if item.status not in ("approved", "applied"):
         raise AppException(
             status_code=409,
             code="invalid_state",
             message=f"Cannot apply an item in status '{item.status}'",
         )
+    if apply_fields is not None:
+        # La sélection de cette écriture devient la sélection stockée (la
+        # destination lit apply_fields_json).
+        item.apply_fields_json = apply_fields
     warnings = destination.apply(item)
     item.status = "applied"
     # Écarts partiels non bloquants (ex. images refusées par Tillin) : rendus

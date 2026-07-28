@@ -2114,6 +2114,26 @@ export type InstructionUpdate = {
 };
 
 /**
+ * ItemApplyRequest
+ *
+ * Optional apply body — required semantics for RE-propagation.
+ *
+ * `apply_fields` (même forme que `apply_fields_json` : {"title": bool, …,
+ * "image_urls": [...], "weight_variant_ids": [...]}) remplace la sélection
+ * stockée pour CETTE écriture. Sur un item déjà `applied`, il est
+ * OBLIGATOIRE : re-propager sans sélection explicite re-pousserait toutes
+ * les images (endpoint Xano append-only → doublons).
+ */
+export type ItemApplyRequest = {
+    /**
+     * Apply Fields
+     */
+    apply_fields?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
  * ItemHistoryEntry
  *
  * Trace compacte d'un passage d'enrichissement pour UN produit.
@@ -5341,7 +5361,10 @@ export type ItemsRejectItemResponses = {
 export type ItemsRejectItemResponse = ItemsRejectItemResponses[keyof ItemsRejectItemResponses];
 
 export type ItemsApplyItemRouteData = {
-    body?: never;
+    /**
+     * Payload
+     */
+    body?: ItemApplyRequest | null;
     path: {
         /**
          * Item Id
