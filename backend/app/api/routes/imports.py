@@ -792,7 +792,10 @@ def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> Product | None
         if prefix and prefix != supplier_ref and prefix not in queries:
             queries.append(prefix)
     for query in queries:
-        page = xano.search_products(text=query, per_page=5)
+        # 20 résultats : une grosse famille de déclinaisons (48814-BLK/-BURG/
+        # -CNGR…) peut repousser la bonne référence au-delà des 5 premiers
+        # hits du préfixe — le match exact filtre tout le bruit de toute façon.
+        page = xano.search_products(text=query, per_page=20)
         # Exact reference matches only (the search itself is fuzzy).
         matched = {
             product.id: product
