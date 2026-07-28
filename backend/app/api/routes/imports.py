@@ -317,6 +317,53 @@ def read_import(
     return _to_public(db, _get_import_job(db, account_id=account_id, job_id=import_id))
 
 
+@router.post("/{import_id}/retry", response_model=ImportJobPublic)
+def retry_import(
+    import_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    background: BackgroundTasks,
+    run_import: ImportRunnerDep,
+) -> ImportJobPublic:
+    """Relance l'extraction d'un import en ÉCHEC (fichiers déjà stockés).
+
+    Réservé au statut `failed` : un import terminé se ré-analyse en re-déposant
+    le fichier (les items déjà relus seraient écrasés sinon). Les échecs
+    d'extraction sont souvent transitoires (crédit API, réponse tronquée avant
+    l'élargissement du plafond…) — pas de re-dépôt à exiger.
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    if job.status != "failed":
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message="Seul un import en échec peut être relancé",
+        )
+    stored = stored_import_files(job)
+    if not stored or not all(
+        entry["file_path"] and Path(entry["file_path"]).is_file() for entry in stored
+    ):
+        raise AppException(
+            status_code=409,
+            code="file_not_found",
+            message="Les fichiers source de cet import ne sont plus disponibles",
+        )
+    # Repart d'un job propre : erreur effacée, éventuels items partiels purgés
+    # (l'extraction committe en une fois — normalement aucun item sur un échec).
+    db.query(ImportItem).filter(ImportItem.job_id == job.id).delete()
+    config = dict(job.config_json or {})
+    config.pop("error", None)
+    job.config_json = config
+    job.status = "pending"
+    job.started_at = None
+    job.finished_at = None
+    db.commit()
+    db.refresh(job)
+    background.add_task(run_import, job.id)
+    return _to_public(db, job)
+
+
 def _get_stored_file(
     db: Session, *, account_id: int, job_id: int, index: int = 0
 ) -> tuple[Path, str]:

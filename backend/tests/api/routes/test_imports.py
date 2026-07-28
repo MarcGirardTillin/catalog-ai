@@ -111,6 +111,54 @@ def test_upload_schedules_background_runner(
     assert len(list(upload_dir.iterdir())) == 1
 
 
+def test_retry_requeues_a_failed_import(
+    import_client: TestClient, upload_dir: Path
+) -> None:
+    """Relance d'un échec (crédit API, réponse tronquée…) : erreur effacée,
+    job repassé pending et runner re-planifié — sans re-dépôt des fichiers."""
+    job = _upload(import_client)
+    db = _db()
+    row = db.get(EnrichmentJob, job["id"])
+    row.status = "failed"
+    row.config_json = {
+        **(row.config_json or {}),
+        "error": "ExternalServiceError: tronqué",
+    }
+    db.commit()
+
+    seen: list[int] = []
+    app.dependency_overrides[get_import_runner] = lambda: seen.append
+
+    response = import_client.post(f"/imports/{job['id']}/retry")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["error"] is None
+    assert seen == [job["id"]]
+    assert len(list(upload_dir.iterdir())) == 1  # fichiers conservés
+
+    # Un import qui n'est pas en échec ne se relance pas.
+    again = import_client.post(f"/imports/{job['id']}/retry")
+    assert again.status_code == 409
+    assert again.json()["code"] == "invalid_state"
+
+
+def test_retry_refuses_when_stored_files_are_gone(
+    import_client: TestClient, upload_dir: Path
+) -> None:
+    job = _upload(import_client)
+    db = _db()
+    row = db.get(EnrichmentJob, job["id"])
+    row.status = "failed"
+    db.commit()
+    for path in upload_dir.iterdir():
+        path.unlink()
+
+    response = import_client.post(f"/imports/{job['id']}/retry")
+    assert response.status_code == 409
+    assert response.json()["code"] == "file_not_found"
+
+
 def test_upload_rejects_unsupported_extension(import_client: TestClient) -> None:
     for name in ("virus.exe", "notes.txt", "archive.pdf.zip", "sansextension"):
         response = import_client.post("/imports", files={"files": (name, b"x")})

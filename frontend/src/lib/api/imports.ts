@@ -22,6 +22,7 @@ import {
   importsPreviewImportFile,
   importsPreviewImportRows,
   importsReadImport,
+  importsRetryImport,
   importsReconcileImport,
   importsSetImportProfile,
   importsTransferImport,
@@ -144,6 +145,14 @@ export function listImports(query?: { page?: number; page_size?: number }) {
 
 export function readImport(id: number) {
   return importsReadImport({ path: { import_id: id } }) as Promise<{
+    data?: ImportJobPublic
+    error?: unknown
+  }>
+}
+
+/** Relance l'extraction d'un import en échec (les fichiers sont conservés). */
+export function retryImport(id: number) {
+  return importsRetryImport({ path: { import_id: id } }) as Promise<{
     data?: ImportJobPublic
     error?: unknown
   }>

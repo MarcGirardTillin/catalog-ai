@@ -4438,6 +4438,36 @@ export type ImportsReadImportResponses = {
 
 export type ImportsReadImportResponse = ImportsReadImportResponses[keyof ImportsReadImportResponses];
 
+export type ImportsRetryImportData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/retry';
+};
+
+export type ImportsRetryImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsRetryImportError = ImportsRetryImportErrors[keyof ImportsRetryImportErrors];
+
+export type ImportsRetryImportResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportJobPublic;
+};
+
+export type ImportsRetryImportResponse = ImportsRetryImportResponses[keyof ImportsRetryImportResponses];
+
 export type ImportsDownloadImportFileData = {
     body?: never;
     path: {

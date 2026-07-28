@@ -2220,6 +2220,65 @@
         }
       }
     },
+    "/imports/{import_id}/retry": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Retry Import",
+        "description": "Relance l'extraction d'un import en ÉCHEC (fichiers déjà stockés).\n\nRéservé au statut `failed` : un import terminé se ré-analyse en re-déposant\nle fichier (les items déjà relus seraient écrasés sinon). Les échecs\nd'extraction sont souvent transitoires (crédit API, réponse tronquée avant\nl'élargissement du plafond…) — pas de re-dépôt à exiger.",
+        "operationId": "imports-retry_import",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/imports/{import_id}/file": {
       "get": {
         "tags": [

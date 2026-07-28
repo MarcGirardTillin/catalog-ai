@@ -17,6 +17,7 @@
     getImportFile,
     listImportProfiles,
     previewImportFile,
+    retryImport,
     setImportProfile,
     type ImportFilePreview,
     type ImportJobPublic,
@@ -37,6 +38,7 @@
     profiles = $bindable(),
     selectedProfileId = $bindable(),
     onRenderConfigChanged,
+    onRetried,
   }: {
     importId: number
     job: ImportJobPublic
@@ -44,6 +46,8 @@
     selectedProfileId: number | null
     /** Le rendu CSV dépend du profil : invalide l'aperçu côté export. */
     onRenderConfigChanged: () => void
+    /** Après relance d'un échec : le parent resynchronise son polling. */
+    onRetried?: () => void
   } = $props()
 
   const running = $derived(job.status === "pending" || job.status === "processing")
@@ -71,6 +75,22 @@
     const value = Number.parseFloat(raw)
     if (Number.isNaN(value)) return raw
     return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })
+  }
+
+  // --- Relance d'une analyse en échec (fichiers conservés côté serveur) ---
+  let retrying = $state(false)
+  async function retryAnalysis() {
+    if (retrying) return
+    retrying = true
+    const { data, error } = await retryImport(importId)
+    retrying = false
+    if (error || !data) {
+      toast.error("Relance impossible (fichiers source indisponibles ?).")
+      return
+    }
+    job = data
+    toast.success("Analyse relancée.")
+    onRetried?.()
   }
 
   // --- Profil d'import associé au job ---
@@ -279,7 +299,16 @@
     {/if}
 
     {#if job.error}
-      <p class="text-destructive text-xs" role="alert">{job.error}</p>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="text-destructive min-w-0 flex-1 text-xs" role="alert">{job.error}</p>
+        {#if job.status === "failed"}
+          <!-- Échecs souvent transitoires (crédit API, réponse tronquée…) :
+               relance sans re-déposer les fichiers. -->
+          <Button variant="secondary" size="sm" disabled={retrying} onclick={retryAnalysis}>
+            {retrying ? "Relance…" : "Réessayer l'analyse"}
+          </Button>
+        {/if}
+      </div>
     {/if}
 
     <!-- Profil d'import : règles d'export Tillin appliquées au job.

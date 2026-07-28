@@ -37,9 +37,10 @@ from app.imports.schema import (
 )
 
 # Large purchase orders produce a lot of JSON (hundreds of variants) —
-# ~100 output tokens per variant, so 16K truncated a 186-variant order.
-# Sonnet 5 allows up to 128K output; 32K covers ~300 variants comfortably.
-MAX_TOKENS = 32_000
+# ~100 output tokens per variant, so 16K truncated a 186-variant order and
+# 32K un bon AMI 2026 (JSON coupé à ~60K caractères → « unparseable »).
+# Sonnet 5 allows up to 128K output; 64K covers ~600 variants comfortably.
+MAX_TOKENS = 64_000
 
 # Explicit per-request timeout: the SDK refuses non-streaming requests with a
 # large max_tokens unless a timeout is set (idle-connection guard). A 250-line
@@ -525,6 +526,16 @@ class ClaudeExtractor:
         try:
             raw = _RawExtraction.model_validate(json.loads(text))
         except (json.JSONDecodeError, ValidationError) as exc:
+            if response.stop_reason == "max_tokens":
+                # JSON coupé net par le plafond de sortie (vécu : bon AMI
+                # tronqué à ~60K caractères) — dire la vraie cause plutôt
+                # qu'un « unparseable » opaque.
+                raise ExternalServiceError(
+                    "claude",
+                    "Réponse d'extraction tronquée : le bon de commande est "
+                    "trop volumineux pour une seule extraction — réessayez, "
+                    "et si l'erreur persiste découpez le fichier",
+                ) from exc
             raise ExternalServiceError(
                 "claude", "Claude returned an unparseable extraction payload"
             ) from exc

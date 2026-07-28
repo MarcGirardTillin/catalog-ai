@@ -286,6 +286,8 @@
             bind:profiles
             bind:selectedProfileId
             onRenderConfigChanged={invalidateRender}
+            onRetried={() =>
+              void queryClient.invalidateQueries({ queryKey: ["imports", importId] })}
           />
 
           <h2 class="font-title mt-1 text-sm font-bold">Produits extraits</h2>
