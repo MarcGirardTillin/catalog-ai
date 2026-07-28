@@ -36,6 +36,7 @@ from app.clients.base import ExternalServiceError
 from app.clients.claude import ClaudeClient
 from app.clients.firecrawl import EXTRACT_CREDITS, FirecrawlClient
 from app.clients.photoroom import PhotoroomClient
+from app.enrich.price import source_price
 from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
 from app.imaging import staging
@@ -279,7 +280,7 @@ class EnrichmentPipeline:
             template = config.get("title_template") or DEFAULT_TITLE_TEMPLATE
             case: TitleCase = (
                 config["title_case"]
-                if config.get("title_case") in ("upper", "capitalize")
+                if config.get("title_case") in ("upper", "capitalize", "title")
                 else "none"
             )
             item.staged_title = apply_title_template(product, template, case) or None
@@ -634,6 +635,11 @@ class EnrichmentPipeline:
                 product.variants, source_product.get("variants") or []
             )
             item.staged_weights_json = proposals or None
+        # Prix : proposition opportuniste, seulement quand le catalogue n'en a
+        # pas (0 € = « non renseigné » côté Tillin) — jamais d'écrasement.
+        if product.price is None or product.price <= 0:
+            staged = source_price(source_product)
+            item.staged_price = str(staged) if staged is not None else None
         if transforms["images"]:
             self._stage_images(db, item, source_product, config)
 

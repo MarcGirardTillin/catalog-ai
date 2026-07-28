@@ -69,6 +69,9 @@ def extract_source_product(
         "tags": None,
         "_firecrawl": True,
         "_reference_codes": references,
+        # Prix affiché sur la page (texte libre) — proposé à l'apply quand le
+        # catalogue n'a pas de prix.
+        "_price": str(extracted["price"]) if extracted.get("price") else None,
         # Couleur de la fiche telle que lue sur la page : sert au contrôle de
         # coloris du resolver et à l'affichage des candidats en review.
         "_color": str(color) if color else None,

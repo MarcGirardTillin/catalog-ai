@@ -84,12 +84,20 @@ def _to_source_product(node: dict[str, Any]) -> dict[str, Any] | None:
     # Offers may carry the identifiers instead of the product node.
     offers = node.get("offers")
     offer_list = offers if isinstance(offers, list) else [offers]
+    price: str | None = None
     for offer in offer_list:
         if isinstance(offer, dict):
             for key in _ID_KEYS:
                 value = offer.get(key)
                 if isinstance(value, str | int) and str(value).strip():
                     references.append(str(value).strip())
+            raw_price = offer.get("price")
+            if raw_price is None and isinstance(offer.get("priceSpecification"), dict):
+                raw_price = offer["priceSpecification"].get("price")
+            if price is None and isinstance(raw_price, str | int | float):
+                text = str(raw_price).strip()
+                if text:
+                    price = text
     images = _images_of(node)
     color = node.get("color")
     description = str(node.get("description") or "").strip() or None
@@ -105,6 +113,7 @@ def _to_source_product(node: dict[str, Any]) -> dict[str, Any] | None:
         "tags": None,
         "_jsonld": True,
         "_reference_codes": list(dict.fromkeys(references)),
+        "_price": price,
         "_color": str(color).strip()
         if isinstance(color, str) and color.strip()
         else None,

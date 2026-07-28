@@ -128,6 +128,9 @@ class XanoTillinDestination:
             if include.get("description", True)
             else None,
             "meta_description": item.staged_meta if include.get("meta", True) else None,
+            # Prix source, proposé seulement quand le catalogue n'en avait pas
+            # (staging conditionnel) — l'endpoint ignore le 0 de toute façon.
+            "price": item.staged_price if include.get("price", True) else None,
         }
         if any(value is not None for value in copy.values()):
             self._client.enrich_product(item.tillin_product_id, **copy)

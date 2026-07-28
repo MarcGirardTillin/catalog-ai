@@ -64,6 +64,7 @@ class ItemPublic(BaseModel):
     staged_description: str | None = None
     staged_description_html: str | None = None
     staged_meta: str | None = None
+    staged_price: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None
     apply_fields_json: dict[str, Any] | None = None
@@ -89,6 +90,7 @@ class ItemPatchRequest(BaseModel):
     staged_description: str | None = None
     staged_description_html: str | None = None
     staged_meta: str | None = None
+    staged_price: str | None = None
     staged_images_json: list[Any] | None = None
     staged_weights_json: list[Any] | None = None
     # Per-field keep/drop for the apply step ({"title": false, ...}), plus

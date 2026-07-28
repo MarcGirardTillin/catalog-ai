@@ -102,6 +102,7 @@ def test_apply_pushes_images_then_copy() -> None:
         "description": "Desc",
         "description_html": None,
         "meta_description": "Meta",
+        "price": None,
     }
 
 
@@ -128,6 +129,7 @@ def test_apply_respects_field_selection() -> None:
         "description": "Desc",
         "description_html": None,
         "meta_description": "Meta",
+        "price": None,
     }
 
 

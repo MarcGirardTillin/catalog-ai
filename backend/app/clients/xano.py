@@ -901,11 +901,14 @@ class XanoClient:
         description: str | None = None,
         description_html: str | None = None,
         meta_description: str | None = None,
+        price: float | str | None = None,
     ) -> None:
         """Write staged copy back to Tillin (`/product/{id}/enrich`).
 
         Only the provided fields are sent; None values are omitted so the
-        endpoint leaves them untouched.
+        endpoint leaves them untouched. `price` écrit
+        `product_variant.price.amount` ; l'endpoint ignore 0 (vérifié live
+        2026-07-28) mais on n'envoie que du strictement positif.
         """
         body: dict[str, Any] = {}
         if title is not None:
@@ -916,6 +919,8 @@ class XanoClient:
             body["description_html"] = description_html
         if meta_description is not None:
             body["meta_description"] = meta_description
+        if price is not None and float(price) > 0:
+            body["price"] = float(price)
         if not body:
             return
         self._post(_enrich_path(product_id), body)

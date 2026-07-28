@@ -93,6 +93,10 @@ class EnrichmentItem(Base):
     # Tillin `description_html` à l'apply (décision Marc 2026-07-18).
     staged_description_html: Mapped[str | None] = mapped_column(default=None)
     staged_meta: Mapped[str | None] = mapped_column(String(500), default=None)
+    # Prix de vente lu sur la page source, proposé UNIQUEMENT quand le
+    # catalogue n'a pas de prix (0/None) — écrit via l'input `price` de
+    # l'endpoint enrich à l'apply. Stocké en texte décimal (« 129.90 »).
+    staged_price: Mapped[str | None] = mapped_column(String(20), default=None)
     staged_images_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     staged_weights_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     # Reviewer's per-field keep/drop choices for the apply step, e.g.
