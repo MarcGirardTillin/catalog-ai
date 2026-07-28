@@ -771,22 +771,26 @@ def transfer_import(
 def _match_tillin_product(xano: XanoClient, supplier_ref: str) -> Product | None:
     """Resolve one supplier reference to its Tillin product (exact match).
 
-    La recherche plein-texte Xano ne trouve pas les références à slash
-    (« 10415-104/A » → 0 hit, « 10415-104 » → le bon produit) : on essaie la
-    référence complète puis le préfixe avant le slash. Le match reste exact
-    sur la référence COMPLÈTE, quel que soit le candidat qui a fait remonter
-    le produit. Plusieurs hits sont acceptés tant qu'ils pointent tous vers
-    UN produit ; une référence réellement ambiguë reste non résolue (None).
-    Renvoie le produit issu de la liste (id + images) pour que les appelants
-    capturent l'image Tillin sans lecture supplémentaire.
+    La recherche plein-texte Xano trahit les références à séparateur de deux
+    façons (vécues) : « 10415-104/A » → 0 hit alors que « 10415-104 » trouve
+    le produit ; et « 48814-BLK » → des dizaines de produits « -BLK- » d'autres
+    gammes qui NOIENT le bon (absent des premiers hits) alors que « 48814 » le
+    renvoie seul. On essaie donc la référence complète puis ses préfixes avant
+    slash et avant tiret. Le match reste exact sur la référence COMPLÈTE, quel
+    que soit le candidat qui a fait remonter le produit. Plusieurs hits sont
+    acceptés tant qu'ils pointent tous vers UN produit ; une référence
+    réellement ambiguë reste non résolue (None). Renvoie le produit issu de la
+    liste (id + images) pour que les appelants capturent l'image Tillin sans
+    lecture supplémentaire.
     """
     wanted = supplier_ref.strip().lower()
     if not wanted:
         return None
     queries = [supplier_ref]
-    prefix = supplier_ref.split("/")[0].strip()
-    if prefix and prefix != supplier_ref:
-        queries.append(prefix)
+    for separator in ("/", "-"):
+        prefix = supplier_ref.split(separator)[0].strip()
+        if prefix and prefix != supplier_ref and prefix not in queries:
+            queries.append(prefix)
     for query in queries:
         page = xano.search_products(text=query, per_page=5)
         # Exact reference matches only (the search itself is fuzzy).

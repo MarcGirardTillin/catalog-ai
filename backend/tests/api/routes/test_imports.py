@@ -1222,8 +1222,8 @@ def test_reconcile_leaves_unfound_items_transferable(
     response = import_client.post(f"/imports/{job['id']}/reconcile")
     assert response.status_code == 200
     assert response.json() == {"checked": 1, "applied": 0, "not_found": ["REF-1"]}
-    # Recherche complète + repli préfixe : aucune n'a rien donné.
-    assert fake_xano.search_calls == ["REF-1"]
+    # Recherche complète + repli préfixe (avant tiret) : rien n'a donné.
+    assert fake_xano.search_calls == ["REF-1", "REF"]
 
     db = _db()
     statuses = {
@@ -1316,7 +1316,8 @@ def test_link_products_resolves_by_reference_code(
         "already_linked": 0,
         "not_found": ["REF-2"],
     }
-    assert fake_xano.search_calls == ["REF-1", "REF-2"]
+    # REF-2 introuvable → repli sur le préfixe avant tiret (« REF »).
+    assert fake_xano.search_calls == ["REF-1", "REF-2", "REF"]
 
     db = _db()
     by_ref = {
@@ -1417,6 +1418,35 @@ def test_link_products_falls_back_to_the_slash_prefix(
     db = _db()
     item = db.query(ImportItem).filter(ImportItem.job_id == job["id"]).one()
     assert item.tillin_product_id == 2712
+
+
+def test_link_products_falls_back_to_the_dash_prefix(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """La recherche plein-texte découpe sur les tirets et un suffixe fréquent
+    noie le bon produit (observé live : « 48814-BLK » → 10 produits « -BLK- »
+    d'autres gammes, « 48814 » → le produit seul) : repli sur le préfixe avant
+    tiret, match exact sur la référence complète."""
+    job = _transferred_job(import_client, ["48814-BLK"])
+    fake_xano.search_results = {
+        # La réf complète remonte des produits « -BLK- » d'autres gammes.
+        "48814-blk": [
+            _tillin_product(900, "TP-WST-TRS-BLK-00"),
+            _tillin_product(901, "TP-WBA-BSL-BLK-27"),
+        ],
+        "48814": [
+            _tillin_product(218761, "48814-BLK"),
+            _tillin_product(218762, "48814-CNGR"),
+        ],
+    }
+
+    response = import_client.post(f"/imports/{job['id']}/link-products")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"linked": 1, "already_linked": 0, "not_found": []}
+    assert fake_xano.search_calls == ["48814-BLK", "48814"]
+    db = _db()
+    item = db.query(ImportItem).filter(ImportItem.job_id == job["id"]).one()
+    assert item.tillin_product_id == 218761
 
 
 def test_link_products_ambiguous_reference_is_not_found(

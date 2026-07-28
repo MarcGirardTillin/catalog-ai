@@ -14,6 +14,7 @@ re-render (new options, manual reposition) never re-bills the provider.
 
 from dataclasses import asdict, dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -46,15 +47,37 @@ PHOTOROOM_SIZE_PRESETS = {
 SOURCE_TIMEOUT = 30.0
 SOURCE_MAX_BYTES = 30 * 1024 * 1024
 # Les CDN des revendeurs (Farfetch/Akamai, END…) répondent 403 aux clients
-# sans identité navigateur — on s'annonce comme un navigateur générique
-# (même esprit que le resolver Shopify et les previews og:image).
+# sans identité navigateur. L'empreinte doit être COMPLÈTE : Jacquemus
+# (Salesforce Commerce Cloud) rejette tout sous-ensemble — UA seul, UA+Referer,
+# UA+Sec-Fetch → 403 ; le jeu complet UA (version complète) + Accept +
+# Accept-Language + Referer + Sec-Fetch-* + sec-ch-ua-* → 200 (bisecté live
+# 2026-07-28). L'AVIF est volontairement absent d'Accept : le CDN sert alors
+# du webp/jpeg, décodables partout (le décodeur AVIF de Pillow dépend du
+# build). Le Referer, propre à chaque URL, est ajouté par _download_source.
 SOURCE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     ),
-    "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+    "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "Sec-Fetch-Dest": "image",
+    "Sec-Fetch-Mode": "no-cors",
+    "Sec-Fetch-Site": "same-origin",
+    "sec-ch-ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
 }
+
+
+def _source_headers_for(url: str) -> dict[str, str]:
+    """SOURCE_HEADERS + Referer sur l'origine de l'URL (exigé par certains WAF)."""
+    parsed = urlparse(url)
+    headers = dict(SOURCE_HEADERS)
+    if parsed.scheme and parsed.netloc:
+        headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+    return headers
+
 
 # FASHN credits per image: resolution -> generation_mode -> credits.
 FASHN_CREDITS: dict[str, dict[str, int]] = {
@@ -293,7 +316,7 @@ def _download_source(url: str) -> bytes:
             url,
             timeout=SOURCE_TIMEOUT,
             follow_redirects=True,
-            headers=SOURCE_HEADERS,
+            headers=_source_headers_for(url),
         )
     except httpx.HTTPError as exc:
         raise ExternalServiceError(
