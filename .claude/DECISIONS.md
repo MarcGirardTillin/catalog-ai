@@ -995,3 +995,33 @@ E structurel). Décisions notables de la phase E :
 4. **Consommation** : la page liste les visuels de TOUS les verbes (type
    affiché) — trace des rendus payés, y compris écartés. Rétention staging
    explicite : sweep 90 jours au démarrage de l'app.
+
+## 2026-07-28 — Feedback semaine 2 : diagnostics vérifiés + imports v3
+
+1. **Empreinte navigateur COMPLÈTE pour les téléchargements d'images**
+   (`imaging/service.py SOURCE_HEADERS` + `_source_headers_for`) : le WAF
+   Jacquemus (Salesforce Commerce Cloud) rejette tout sous-ensemble de
+   headers (bisecté live : UA seul, UA+Referer, UA+Sec-Fetch → 403 ; jeu
+   complet UA/Accept/Accept-Language/Referer/Sec-Fetch-*/sec-ch-ua-* → 200).
+   AVIF volontairement absent d'Accept (décodeur Pillow dépendant du build).
+   Referer = origine de l'URL, posé par requête.
+2. **Liaison post-transfert** : repli sur le préfixe avant TIRET en plus du
+   slash — la recherche plein-texte Xano découpe sur les tirets et un
+   suffixe fréquent (« -BLK ») noie le bon produit hors des premiers hits
+   (vécu 48814-BLK ; « 48814 » → le produit seul). Match exact conservé.
+3. **Prix scrappé** (`enrich/price.py`, migration 0023 `staged_price`) :
+   proposé UNIQUEMENT quand le produit Tillin est à 0 €/None ; variantes
+   Shopify prioritaires (prix divergents → abstention), sinon `_price`
+   JSON-LD/Firecrawl. Écrit via l'input `price` de l'enrich (vérifié live :
+   0 ignoré, décimal écrit dans price.amount ; ⚠ `price_tax_incl` non mis à
+   jour par l'endpoint — à voir côté Xano).
+4. **Imports** : remise fournisseur extraite (variante `wholesale_discount`,
+   % tel qu'imprimé → colonne CSV, champ Tillin
+   `product_variant.wholesale_discount_id`) ; codes-barres validés en GTIN
+   8/12/13/14 (UPC-A) ; pays canonisés en français complet (prompt + filet
+   `_COUNTRY_FR`) ; genre par défaut RÉINTRODUIT par profil (repli
+   seulement, l'extrait/édité garde la main) ; nom de couleur prioritaire
+   sur le code ; grille EU prioritaire quand plusieurs grilles cohabitent.
+5. **Pastilles menu** : compteurs de DOSSIERS (imports/tâches ayant ≥ 1
+   élément à vérifier — `imports_to_review`/`enrich_jobs_to_review`), pas
+   de produits.
