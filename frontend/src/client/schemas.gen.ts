@@ -1383,6 +1383,16 @@ export const DashboardStatsSchema = {
             title: 'Imports To Transfer',
             default: 0
         },
+        imports_to_review: {
+            type: 'integer',
+            title: 'Imports To Review',
+            default: 0
+        },
+        enrich_jobs_to_review: {
+            type: 'integer',
+            title: 'Enrich Jobs To Review',
+            default: 0
+        },
         imports_processing: {
             type: 'integer',
             title: 'Imports Processing',
@@ -2842,6 +2852,12 @@ export const ImportProfileConfig_InputSchema = {
             ],
             title: 'Size Conversion',
             default: 'none'
+        },
+        default_gender: {
+            type: 'string',
+            maxLength: 40,
+            title: 'Default Gender',
+            default: ''
         }
     },
     type: 'object',
@@ -2957,6 +2973,12 @@ export const ImportProfileConfig_OutputSchema = {
             ],
             title: 'Size Conversion',
             default: 'none'
+        },
+        default_gender: {
+            type: 'string',
+            maxLength: 40,
+            title: 'Default Gender',
+            default: ''
         }
     },
     type: 'object',
@@ -3587,6 +3609,21 @@ export const ImportedVariant_InputSchema = {
             ],
             title: 'Retail Price'
         },
+        wholesale_discount: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wholesale Discount'
+        },
         supplier_sku: {
             anyOf: [
                 {
@@ -3680,6 +3717,18 @@ export const ImportedVariant_OutputSchema = {
                 }
             ],
             title: 'Retail Price'
+        },
+        wholesale_discount: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wholesale Discount'
         },
         supplier_sku: {
             anyOf: [
@@ -3916,6 +3965,17 @@ export const ItemPatchRequestSchema = {
             ],
             title: 'Staged Meta'
         },
+        staged_price: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Staged Price'
+        },
         staged_images_json: {
             anyOf: [
                 {
@@ -4075,6 +4135,17 @@ export const ItemPublicSchema = {
                 }
             ],
             title: 'Staged Meta'
+        },
+        staged_price: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Staged Price'
         },
         staged_images_json: {
             anyOf: [

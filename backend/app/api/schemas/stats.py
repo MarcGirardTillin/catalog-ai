@@ -24,6 +24,11 @@ class DashboardStats(BaseModel):
     # --- « À traiter » (actionable counters, all types) ---
     # Import products awaiting transfer to Tillin (import_item ready_for_review).
     imports_to_transfer: int = 0
+    # Pastilles du menu : nombre d'IMPORTS (dossiers) ayant ≥ 1 produit à
+    # vérifier, et de TÂCHES d'enrichissement ayant ≥ 1 item à vérifier —
+    # préférés aux comptes de produits (demande Marc 2026-07-28).
+    imports_to_review: int = 0
+    enrich_jobs_to_review: int = 0
     # Import analyses still running (import jobs pending/processing).
     imports_processing: int = 0
     # Failed items, enrichment + import combined.

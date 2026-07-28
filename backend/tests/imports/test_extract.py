@@ -310,7 +310,7 @@ def test_pdf_invalid_ean13_is_removed() -> None:
     variant = result.products[0].variants[0]
     assert variant.ean is None
     assert variant.confidence["ean"] == 0.0
-    assert any(INVALID_EAN in w and "EAN-13" in w for w in result.warnings)
+    assert any(INVALID_EAN in w and "EAN/UPC" in w for w in result.warnings)
 
 
 def test_max_tokens_stop_reason_adds_truncation_warning() -> None:
@@ -494,7 +494,7 @@ def test_multi_pdf_plus_tabular_drops_invalid_check_digit_ean() -> None:
     variant = result.products[0].variants[0]
     assert variant.ean is None
     assert variant.confidence["ean"] == 0.0
-    assert any("EAN-13" in w for w in result.warnings)
+    assert any("EAN/UPC" in w for w in result.warnings)
 
 
 def test_multi_all_pdf_keeps_model_price_confidence() -> None:
@@ -559,6 +559,32 @@ def test_ean13_checksum() -> None:
     assert not ean13_is_valid(INVALID_EAN)
     assert not ean13_is_valid("123")  # too short
     assert not ean13_is_valid("36078148668EA")  # non-digits
+
+
+def test_barcode_checksum_accepts_gtin_lengths() -> None:
+    """Les fichiers américains portent des UPC-A (12 chiffres) : la validation
+    PDF doit les accepter au même titre que les EAN-8/13 et GTIN-14."""
+    from app.imports.extract import barcode_is_valid
+
+    assert barcode_is_valid(VALID_EAN)  # EAN-13 : même clé que ean13_is_valid
+    assert barcode_is_valid("036000291452")  # UPC-A valide
+    assert barcode_is_valid("96385074")  # EAN-8 valide
+    assert not barcode_is_valid("036000291453")  # clé UPC fausse
+    assert not barcode_is_valid(INVALID_EAN)
+    assert not barcode_is_valid("1234567890")  # longueur hors GTIN
+
+
+def test_countries_are_canonicalized_to_french() -> None:
+    """Tillin attend le nom complet français (« Italie », pas « IT »/« Italy »)."""
+    from app.imports.extract import _canonical_country
+
+    assert _canonical_country("IT") == "Italie"
+    assert _canonical_country("italy") == "Italie"
+    assert _canonical_country("CHINA") == "Chine"
+    assert _canonical_country("Italie") == "Italie"
+    # Inconnu : conservé tel quel pour la relecture, jamais supprimé.
+    assert _canonical_country("Zubrowka") == "Zubrowka"
+    assert _canonical_country(None) is None
 
 
 def test_pipes_are_replaced_at_extraction() -> None:

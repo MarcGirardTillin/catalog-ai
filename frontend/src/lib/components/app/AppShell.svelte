@@ -226,14 +226,16 @@
     const s = statsQuery.data
     if (!s) return {}
     return {
+      // Compte les DOSSIERS (imports/tâches) à vérifier, pas les produits
+      // qu'ils contiennent (préférence Marc 2026-07-28).
       "/imports": navDot(
         s.import_failed_items ?? 0,
-        s.imports_to_transfer ?? 0,
+        s.imports_to_review ?? 0,
         s.imports_processing ?? 0,
       ),
       "/jobs": navDot(
         s.enrich_failed_items ?? 0,
-        s.ready_items ?? 0,
+        s.enrich_jobs_to_review ?? 0,
         s.running_jobs ?? 0,
       ),
       "/usage": creditDot(s.credit_balance ?? 0, s.low_credit_threshold ?? 0),

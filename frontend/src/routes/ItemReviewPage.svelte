@@ -152,6 +152,8 @@
         return item.staged_description != null
       case "meta":
         return item.staged_meta != null
+      case "price":
+        return item.staged_price != null
       case "images":
         return ((item.staged_images_json ?? []) as unknown[]).length > 0
       case "weights":
@@ -1134,6 +1136,29 @@
                   </div>
                 </div>
               </div>
+              {#if item.staged_price != null}
+                <!-- Prix source, proposé seulement quand le catalogue est à 0 €. -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center gap-3">
+                    <Label>Prix de vente</Label>
+                    {@render applyCheckbox("price")}
+                  </div>
+                  <div class="grid gap-2 sm:grid-cols-2">
+                    <div class="flex flex-col gap-1">
+                      <span class="text-muted-foreground text-xs">Actuel</span>
+                      <div class="text-muted-foreground bg-muted/50 rounded-md p-2.5 text-sm">
+                        <span class="italic">Non renseigné (0 €)</span>
+                      </div>
+                    </div>
+                    <div class="flex flex-col gap-1" class:opacity-60={!isApplied("price")}>
+                      <span class="text-muted-foreground text-xs">Proposé (lu sur la page source)</span>
+                      <div class="bg-card border-input rounded-md border p-2.5 text-sm font-medium tabular-nums">
+                        {item.staged_price} €
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/if}
               {#if reviewable && dirty}
                 <Button
                   variant="secondary"

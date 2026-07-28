@@ -41,6 +41,9 @@ class ImportedVariant(BaseModel):
     quantity: int | None = None  # ordered quantity
     wholesale_price: Decimal | None = None  # per-unit purchase price
     retail_price: Decimal | None = None  # supplier public/suggested price
+    # Remise fournisseur en % telle qu'imprimée (« 30 » = -30 %) → colonne CSV
+    # `wholesale_discount` (champ Tillin product_variant.wholesale_discount_id).
+    wholesale_discount: Decimal | None = None
     supplier_sku: str | None = None  # supplier's own SKU when distinct from EAN
     confidence: Confidence = Field(default_factory=dict)
 

@@ -84,6 +84,7 @@
         color_option_name: c.color_option_name ?? "Couleur",
         size_option_name: c.size_option_name ?? "Taille",
         size_conversion: c.size_conversion ?? "none",
+        default_gender: c.default_gender ?? "",
       }
     }
     const supplier = prefill?.supplier_label ?? prefill?.supplier_match ?? ""
@@ -104,6 +105,7 @@
       color_option_name: "Couleur",
       size_option_name: "Taille",
       size_conversion: "none" as ImportProfileConfig["size_conversion"],
+      default_gender: "",
     }
   }
 
@@ -147,6 +149,7 @@
       color_option_name: form.color_option_name.trim() || "Couleur",
       size_option_name: form.size_option_name.trim() || "Taille",
       size_conversion: form.size_conversion,
+      default_gender: form.default_gender.trim(),
     }
     // Le fournisseur sert aussi de clé d'auto-sélection (comparaison minuscule).
     const body = { name, supplier_match: supplier.toLowerCase(), config }
@@ -253,6 +256,20 @@
       />
       <p class="text-muted-foreground text-xs">
         Libellés des options Tillin (ex. Pointure, Tour de dos, Bonnet, Size).
+      </p>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-default-gender">Genre par défaut</Label>
+      <Select id="{uid}-default-gender" bind:value={form.default_gender}>
+        <option value="">Aucun</option>
+        <option value="Femme">Femme</option>
+        <option value="Homme">Homme</option>
+        <option value="Unisexe">Unisexe</option>
+        <option value="Enfant">Enfant</option>
+      </Select>
+      <p class="text-muted-foreground text-xs">
+        Appliqué seulement quand le document ne mentionne pas de genre — une
+        valeur extraite ou éditée en relecture garde la main.
       </p>
     </div>
     <div class="flex flex-col gap-1.5">

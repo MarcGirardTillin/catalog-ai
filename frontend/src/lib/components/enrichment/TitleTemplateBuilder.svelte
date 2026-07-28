@@ -103,7 +103,7 @@
   <div class="flex flex-wrap items-center gap-1.5">
     {#if tokens.length === 0}
       <span class="text-muted-foreground text-xs italic">
-        Aucun token — le modèle par défaut {"{title}"} sera utilisé.
+        Aucun champ — le modèle par défaut {"{title}"} sera utilisé.
       </span>
     {/if}
     {#each tokens as key, index (key)}
@@ -119,7 +119,7 @@
         <button
           type="button"
           class="hover:bg-primary/20 -mr-1 cursor-pointer rounded-full p-0.5"
-          aria-label={`Retirer le token ${key}`}
+          aria-label={`Retirer le champ ${key}`}
           onclick={() => removeToken(key)}
         >
           <svg
@@ -155,7 +155,7 @@
 
   <div class="flex flex-wrap gap-3">
     <div class="flex flex-col gap-1.5 sm:max-w-56">
-      <Label for="template-separator">Séparateur entre tokens</Label>
+      <Label for="template-separator">Séparateur entre champs</Label>
       <Select id="template-separator" bind:value={separator}>
         {#each SEPARATORS as sep (sep.value)}
           <option value={sep.value}>{sep.label}</option>

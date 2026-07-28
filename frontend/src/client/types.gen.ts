@@ -797,6 +797,14 @@ export type DashboardStats = {
      */
     imports_to_transfer?: number;
     /**
+     * Imports To Review
+     */
+    imports_to_review?: number;
+    /**
+     * Enrich Jobs To Review
+     */
+    enrich_jobs_to_review?: number;
+    /**
      * Imports Processing
      */
     imports_processing?: number;
@@ -1569,6 +1577,10 @@ export type ImportProfileConfigInput = {
      * Size Conversion
      */
     size_conversion?: 'none' | 'uk_to_eu' | 'us_to_eu';
+    /**
+     * Default Gender
+     */
+    default_gender?: string;
 };
 
 /**
@@ -1641,6 +1653,10 @@ export type ImportProfileConfigOutput = {
      * Size Conversion
      */
     size_conversion?: 'none' | 'uk_to_eu' | 'us_to_eu';
+    /**
+     * Default Gender
+     */
+    default_gender?: string;
 };
 
 /**
@@ -1970,6 +1986,10 @@ export type ImportedVariantInput = {
      */
     retail_price?: number | string | null;
     /**
+     * Wholesale Discount
+     */
+    wholesale_discount?: number | string | null;
+    /**
      * Supplier Sku
      */
     supplier_sku?: string | null;
@@ -2011,6 +2031,10 @@ export type ImportedVariantOutput = {
      * Retail Price
      */
     retail_price?: string | null;
+    /**
+     * Wholesale Discount
+     */
+    wholesale_discount?: string | null;
     /**
      * Supplier Sku
      */
@@ -2159,6 +2183,10 @@ export type ItemPatchRequest = {
      */
     staged_meta?: string | null;
     /**
+     * Staged Price
+     */
+    staged_price?: string | null;
+    /**
      * Staged Images Json
      */
     staged_images_json?: Array<unknown> | null;
@@ -2232,6 +2260,10 @@ export type ItemPublic = {
      * Staged Meta
      */
     staged_meta?: string | null;
+    /**
+     * Staged Price
+     */
+    staged_price?: string | null;
     /**
      * Staged Images Json
      */

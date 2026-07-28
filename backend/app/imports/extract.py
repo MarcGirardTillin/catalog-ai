@@ -57,13 +57,26 @@ SYSTEM_PROMPT = (
     "les couples couleur × taille.\n"
     "- N'invente JAMAIS une valeur. Si un champ est absent du document, "
     'renvoie une chaîne vide "".\n'
-    "- Recopie les EAN chiffre à chiffre, exactement comme imprimés.\n"
+    "- ean = le code-barres de la variante, quel que soit son nom dans le "
+    "document : EAN, UPC, GTIN, « barcode », « code-barres », « code "
+    "article »… Recopie-le chiffre à chiffre, exactement comme imprimé.\n"
     "- Les prix sont les valeurs numériques telles qu'imprimées (sans "
     "symbole monétaire), recopiées à l'identique (ex. « 39,90 »). "
     "wholesale_price = prix d'achat unitaire HT ; retail_price = prix "
     "public conseillé.\n"
+    "- wholesale_discount = remise fournisseur en pourcentage (« remise », "
+    "« discount », « rabais »…), chiffres uniquement (ex. « 30 » pour "
+    "-30 %) ; chaîne vide si le document n'en mentionne pas.\n"
     "- quantity = quantité commandée pour la variante (chiffres uniquement, "
     "chaîne vide si inconnue).\n"
+    "- color = le NOM de la couleur ; si le document porte à la fois un "
+    "code et un nom (« 410 - Marine », « BLK Black »), renvoie uniquement "
+    "le nom. Le code seul est gardé tel quel s'il n'y a pas de nom.\n"
+    "- size : si plusieurs grilles de tailles cohabitent (US, UK, EU…), "
+    "renvoie la taille EU (européenne). Sinon la taille telle qu'imprimée.\n"
+    "- manufacturing_country = le nom complet du pays en français avec "
+    "majuscule initiale (« Italie », « Chine ») même si le document porte "
+    "un code ou un nom anglais.\n"
     "- brand et category uniquement si elles figurent littéralement dans "
     "le document — ne les déduis jamais.\n"
     "- Pour chaque champ, fournis une auto-évaluation de confiance entre "
@@ -136,6 +149,7 @@ _VARIANT_FIELDS = [
     "quantity",
     "wholesale_price",
     "retail_price",
+    "wholesale_discount",
     "supplier_sku",
 ]
 _PRODUCT_FIELDS = [
@@ -198,6 +212,7 @@ class _RawVariant(BaseModel):
     quantity: str = ""
     wholesale_price: str = ""
     retail_price: str = ""
+    wholesale_discount: str = ""
     supplier_sku: str = ""
     confidence: dict[str, float] = Field(default_factory=dict)
 
@@ -269,6 +284,139 @@ def ean13_is_valid(ean: str) -> bool:
     digits = [int(char) for char in ean]
     total = sum(d * (1 if i % 2 == 0 else 3) for i, d in enumerate(digits[:12]))
     return (10 - total % 10) % 10 == digits[12]
+
+
+def barcode_is_valid(code: str) -> bool:
+    """GTIN check digit — EAN-8, UPC-A (12), EAN-13 ou GTIN-14.
+
+    Les fichiers fournisseurs américains portent des UPC à 12 chiffres
+    (colonne parfois nommée « UPC » et pas « barcode ») : la validation
+    best-effort des PDF doit les accepter au même titre que les EAN-13.
+    """
+    if not code.isdigit() or len(code) not in (8, 12, 13, 14):
+        return False
+    digits = [int(char) for char in code]
+    payload, check = digits[:-1], digits[-1]
+    total = sum(
+        digit * (3 if index % 2 == 0 else 1)
+        for index, digit in enumerate(reversed(payload))
+    )
+    return (10 - total % 10) % 10 == check
+
+
+# Pays de fabrication : Tillin attend le nom complet FRANÇAIS avec majuscule
+# initiale. Le prompt le demande déjà ; ce filet déterministe rattrape les
+# codes ISO et les noms anglais les plus fréquents des documents fournisseurs.
+_COUNTRY_FR = {
+    "fr": "France",
+    "france": "France",
+    "it": "Italie",
+    "italy": "Italie",
+    "italia": "Italie",
+    "italie": "Italie",
+    "cn": "Chine",
+    "china": "Chine",
+    "chine": "Chine",
+    "pt": "Portugal",
+    "portugal": "Portugal",
+    "es": "Espagne",
+    "spain": "Espagne",
+    "espagne": "Espagne",
+    "tr": "Turquie",
+    "turkey": "Turquie",
+    "turquie": "Turquie",
+    "in": "Inde",
+    "india": "Inde",
+    "inde": "Inde",
+    "vn": "Vietnam",
+    "vietnam": "Vietnam",
+    "viet nam": "Vietnam",
+    "bd": "Bangladesh",
+    "bangladesh": "Bangladesh",
+    "ma": "Maroc",
+    "morocco": "Maroc",
+    "maroc": "Maroc",
+    "tn": "Tunisie",
+    "tunisia": "Tunisie",
+    "tunisie": "Tunisie",
+    "pk": "Pakistan",
+    "pakistan": "Pakistan",
+    "gb": "Royaume-Uni",
+    "uk": "Royaume-Uni",
+    "united kingdom": "Royaume-Uni",
+    "royaume-uni": "Royaume-Uni",
+    "de": "Allemagne",
+    "germany": "Allemagne",
+    "allemagne": "Allemagne",
+    "us": "États-Unis",
+    "usa": "États-Unis",
+    "united states": "États-Unis",
+    "etats-unis": "États-Unis",
+    "états-unis": "États-Unis",
+    "nl": "Pays-Bas",
+    "netherlands": "Pays-Bas",
+    "pays-bas": "Pays-Bas",
+    "be": "Belgique",
+    "belgium": "Belgique",
+    "belgique": "Belgique",
+    "pl": "Pologne",
+    "poland": "Pologne",
+    "pologne": "Pologne",
+    "ro": "Roumanie",
+    "romania": "Roumanie",
+    "roumanie": "Roumanie",
+    "bg": "Bulgarie",
+    "bulgaria": "Bulgarie",
+    "bulgarie": "Bulgarie",
+    "gr": "Grèce",
+    "greece": "Grèce",
+    "grece": "Grèce",
+    "grèce": "Grèce",
+    "jp": "Japon",
+    "japan": "Japon",
+    "japon": "Japon",
+    "kr": "Corée du Sud",
+    "south korea": "Corée du Sud",
+    "coree du sud": "Corée du Sud",
+    "corée du sud": "Corée du Sud",
+    "th": "Thaïlande",
+    "thailand": "Thaïlande",
+    "thailande": "Thaïlande",
+    "thaïlande": "Thaïlande",
+    "id": "Indonésie",
+    "indonesia": "Indonésie",
+    "indonesie": "Indonésie",
+    "indonésie": "Indonésie",
+    "kh": "Cambodge",
+    "cambodia": "Cambodge",
+    "cambodge": "Cambodge",
+    "mm": "Myanmar",
+    "myanmar": "Myanmar",
+    "lk": "Sri Lanka",
+    "sri lanka": "Sri Lanka",
+    "eg": "Égypte",
+    "egypt": "Égypte",
+    "egypte": "Égypte",
+    "égypte": "Égypte",
+    "ua": "Ukraine",
+    "ukraine": "Ukraine",
+    "cz": "Tchéquie",
+    "czech republic": "Tchéquie",
+    "czechia": "Tchéquie",
+    "tchequie": "Tchéquie",
+    "tchéquie": "Tchéquie",
+}
+
+
+def _canonical_country(value: str | None) -> str | None:
+    """Nom de pays au format Tillin (français, majuscule) quand il est connu.
+
+    Une valeur inconnue est renvoyée telle quelle (le reviewer la corrigera) —
+    jamais supprimée.
+    """
+    if value is None:
+        return None
+    return _COUNTRY_FR.get(" ".join(value.split()).casefold(), value)
 
 
 def _opt(value: str) -> str | None:
@@ -539,7 +687,9 @@ class ClaudeExtractor:
             "gender": _opt(raw.gender),
             "composition": _opt(raw.composition),
             "hs_code": _opt(raw.hs_code),
-            "manufacturing_country": _opt(raw.manufacturing_country),
+            "manufacturing_country": _canonical_country(
+                _opt(raw.manufacturing_country)
+            ),
         }
         present = {key for key, value in fields.items() if value is not None}
         return ImportedProduct(
@@ -564,12 +714,12 @@ class ClaudeExtractor:
                 )
         prices: dict[str, Decimal | None] = {}
         unreadable: list[str] = []
-        for field in ("wholesale_price", "retail_price"):
+        for field in ("wholesale_price", "retail_price", "wholesale_discount"):
             printed = _opt(getattr(raw, field))
             if printed is None:
                 prices[field] = None
                 continue
-            value = _parse_decimal(printed)
+            value = _parse_decimal(printed.rstrip("%"))
             if value is None:
                 warnings.append(
                     f"Prix illisible {printed!r} ({field}, réf {supplier_ref}) — retiré"
@@ -594,6 +744,7 @@ class ClaudeExtractor:
             quantity=quantity,
             wholesale_price=prices["wholesale_price"],
             retail_price=prices["retail_price"],
+            wholesale_discount=prices["wholesale_discount"],
             confidence=confidence,
         )
 
@@ -673,9 +824,9 @@ class ClaudeExtractor:
                 if variant.ean is None:
                     continue
                 normalized = _normalize_ean(variant.ean.strip())
-                if not ean13_is_valid(normalized):
+                if not barcode_is_valid(normalized):
                     warnings.append(
-                        f"EAN {variant.ean} invalide (clé de contrôle EAN-13) — retiré"
+                        f"EAN {variant.ean} invalide (clé de contrôle EAN/UPC) — retiré"
                     )
                     variant.ean = None
                     variant.confidence["ean"] = 0.0
@@ -717,11 +868,11 @@ class ClaudeExtractor:
                     normalized = _normalize_ean(variant.ean.strip())
                     if normalized in ean_cells:
                         variant.confidence["ean"] = 1.0
-                    elif has_pdf and ean13_is_valid(normalized):
+                    elif has_pdf and barcode_is_valid(normalized):
                         pass  # unverifiable in text but plausible; keep as-is
                     else:
                         reason = (
-                            "invalide (clé de contrôle EAN-13)"
+                            "invalide (clé de contrôle EAN/UPC)"
                             if has_pdf
                             else "introuvable dans la source"
                         )

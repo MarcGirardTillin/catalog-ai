@@ -75,8 +75,12 @@ class ImportProfileConfig(BaseModel):
     size_option_name: str = Field(default="Taille", max_length=40)
     # Pointures UK/US converties en EU au rendu (chaussures) — "none" défaut.
     size_conversion: SizeConversion = "none"
-    # NOTE: gender/category defaults were removed on user request (2026-07-09):
-    # those are per-product review-grid edits, not supplier conventions.
+    # Genre appliqué quand le document n'en porte pas ("" = aucun repli).
+    # Réintroduit sur demande Marc 2026-07-28 (retiré 2026-07-09) : REPLI
+    # seulement — un genre extrait ou édité en review garde toujours la main.
+    default_gender: str = Field(default="", max_length=40)
+    # NOTE: the category default stays removed (2026-07-09): that one is a
+    # per-product review-grid edit, not a supplier convention.
     # Stored configs may still carry the old keys — pydantic ignores them.
 
 

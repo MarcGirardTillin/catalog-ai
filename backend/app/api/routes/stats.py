@@ -57,6 +57,27 @@ def _dashboard_stats(
         .tuples()
         .all()
     )
+    # Pastilles du menu : Marc préfère compter les IMPORTS/TÂCHES à vérifier
+    # (nombre de dossiers ouverts) plutôt que les produits qu'ils contiennent
+    # (demande 2026-07-28) — nombre de jobs distincts ayant ≥ 1 item à revoir.
+    imports_to_review = int(
+        db.scalar(
+            select(func.count(func.distinct(ImportItem.job_id))).where(
+                ImportItem.account_id == account_id,
+                ImportItem.status == "ready_for_review",
+            )
+        )
+        or 0
+    )
+    enrich_jobs_to_review = int(
+        db.scalar(
+            select(func.count(func.distinct(EnrichmentItem.job_id))).where(
+                EnrichmentItem.account_id == account_id,
+                EnrichmentItem.status == "ready_for_review",
+            )
+        )
+        or 0
+    )
 
     # « Ce mois-ci » : items created this month that ended applied (both types).
     now = datetime.now(UTC)
@@ -129,6 +150,8 @@ def _dashboard_stats(
         if resolved_methods
         else None,
         imports_to_transfer=import_item_counts.get("ready_for_review", 0),
+        imports_to_review=imports_to_review,
+        enrich_jobs_to_review=enrich_jobs_to_review,
         imports_processing=job_counts_typed.get(("import", "pending"), 0)
         + job_counts_typed.get(("import", "processing"), 0),
         failed_items=item_counts.get("failed", 0) + import_item_counts.get("failed", 0),

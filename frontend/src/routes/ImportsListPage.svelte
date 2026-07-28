@@ -115,6 +115,7 @@
                 <thead>
                   <tr class="border-border border-b">
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Fichier</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Fournisseur</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Statut</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Produits extraits</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Suivi produits</th>
@@ -145,6 +146,13 @@
                             </span>
                           {/if}
                         </span>
+                      </td>
+                      <td class="max-w-40 px-4 {cellPad}">
+                        {#if job.supplier}
+                          <span class="block truncate" title={job.supplier}>{job.supplier}</span>
+                        {:else}
+                          <span class="text-muted-foreground text-xs">—</span>
+                        {/if}
                       </td>
                       <td class="px-4 {cellPad}"><StatusBadge status={job.status} /></td>
                       <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">

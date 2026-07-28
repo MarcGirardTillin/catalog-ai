@@ -179,7 +179,8 @@ def render_rows(
         )
         supplier = config.supplier_label or fallback_supplier or ""
         season = config.season_label or product.season or ""
-        gender = product.gender or ""
+        # Repli de profil : le genre extrait/édité garde toujours la main.
+        gender = product.gender or config.default_gender or ""
         category = product.category or ""
         image_url = product.image_urls[0] if product.image_urls else ""
         # Poids par défaut de la catégorie (table catégorie Xano, décision
@@ -205,7 +206,7 @@ def render_rows(
         for variant in product.variants:
             if config.size_conversion != "none" and variant.size:
                 converted = convert_shoe_size(
-                    variant.size, config.size_conversion, product.gender
+                    variant.size, config.size_conversion, gender or None
                 )
                 if converted != variant.size:
                     # Copie locale : la donnée extraite/stockée reste intacte,
@@ -249,7 +250,11 @@ def render_rows(
                             if variant.wholesale_price is not None
                             else ""
                         ),
-                        "wholesale_discount": "0",
+                        "wholesale_discount": (
+                            format_decimal(variant.wholesale_discount)
+                            if variant.wholesale_discount is not None
+                            else "0"
+                        ),
                         "wholesale_tax_rate": config.wholesale_tax_rate,
                         "price": format_decimal(price) if price is not None else "",
                         "tax_rate": config.tax_rate,

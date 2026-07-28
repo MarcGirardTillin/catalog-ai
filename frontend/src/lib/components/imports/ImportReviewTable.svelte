@@ -78,6 +78,7 @@
     quantity: string
     wholesale_price: string
     retail_price: string
+    wholesale_discount: string
   }
   type ProductDraft = {
     supplier_ref: string
@@ -115,6 +116,7 @@
         quantity: v.quantity == null ? "" : String(v.quantity),
         wholesale_price: v.wholesale_price ?? "",
         retail_price: v.retail_price ?? "",
+        wholesale_discount: v.wholesale_discount ?? "",
       })),
     }
   }
@@ -151,6 +153,7 @@
           quantity: quantity === "" ? null : Number(quantity),
           wholesale_price: clean(v.wholesale_price),
           retail_price: clean(v.retail_price),
+          wholesale_discount: clean(v.wholesale_discount),
         }
       }),
     }
@@ -603,6 +606,7 @@
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Remise %</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix conseillé</th>
                         {#if coefficientConfig}
                           <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
@@ -701,6 +705,25 @@
                                 title="Appliquer cette valeur aux variantes suivantes"
                                 aria-label="Appliquer cette valeur aux variantes suivantes"
                                 onclick={() => fillDown(item.id, "wholesale_price", vIndex)}
+                              >
+                                ↓
+                              </button>
+                            </div>
+                          </td>
+                          <td class="px-1 py-1">
+                            <div class="flex items-center gap-0.5">
+                            <Input
+                              class="h-8 min-w-14 text-xs"
+                              inputmode="decimal"
+                              aria-label="Remise fournisseur de la variante {vIndex + 1}"
+                              bind:value={drafts[item.id].variants[vIndex].wholesale_discount}
+                            />
+                              <button
+                                type="button"
+                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                title="Appliquer cette valeur aux variantes suivantes"
+                                aria-label="Appliquer cette valeur aux variantes suivantes"
+                                onclick={() => fillDown(item.id, "wholesale_discount", vIndex)}
                               >
                                 ↓
                               </button>
@@ -816,6 +839,7 @@
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Remise %</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
                         {#if coefficientConfig}
                           <th class="text-muted-foreground px-2 py-1.5 text-right font-medium italic">
@@ -857,6 +881,13 @@
                               : ''}"
                           >
                             {formatPrice(variant.wholesale_price)}
+                          </td>
+                          <td
+                            class="px-2 py-1.5 text-right whitespace-nowrap tabular-nums {lowConfidence(variant.confidence, 'wholesale_discount')
+                              ? 'text-warning-foreground'
+                              : ''}"
+                          >
+                            {variant.wholesale_discount ?? "—"}
                           </td>
                           <td
                             class="px-2 py-1.5 text-right whitespace-nowrap tabular-nums {lowConfidence(variant.confidence, 'retail_price')
