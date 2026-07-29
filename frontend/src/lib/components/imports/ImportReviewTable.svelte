@@ -44,6 +44,7 @@
     coefficientConfig,
     catalogFilters,
     renderedByRef = null,
+    extraOptionLabel = null,
     onChanged,
   }: {
     importId: number
@@ -61,9 +62,19 @@
     /** Rendu Tillin par référence (titre/saison après profil), null = pas
      *  de profil sélectionné. Aperçu en lecture seule sous le titre extrait. */
     renderedByRef?: Record<string, { title: string; season: string }> | null
+    /** Libellé du 3e axe d'options du profil (null = pas de 3e axe) —
+     *  la colonne « extra » s'affiche si le profil en a un OU si une
+     *  variante extraite en porte une valeur. */
+    extraOptionLabel?: string | null
     /** Items/statuts modifiés : la page rafraîchit le job + l'aperçu CSV. */
     onChanged: () => void
   } = $props()
+
+  const extraHeader = $derived(extraOptionLabel ?? "Option 3")
+  const showExtra = $derived(
+    extraOptionLabel !== null ||
+      items.some((item) => item.payload.variants?.some((v) => v.extra)),
+  )
 
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
@@ -74,6 +85,7 @@
   type VariantDraft = {
     color: string
     size: string
+    extra: string
     ean: string
     quantity: string
     wholesale_price: string
@@ -112,6 +124,7 @@
       variants: product.variants.map((v) => ({
         color: v.color ?? "",
         size: v.size ?? "",
+        extra: v.extra ?? "",
         ean: v.ean ?? "",
         quantity: v.quantity == null ? "" : String(v.quantity),
         wholesale_price: v.wholesale_price ?? "",
@@ -149,6 +162,7 @@
           ...variant,
           color: clean(v.color),
           size: clean(v.size),
+          extra: clean(v.extra),
           ean: clean(v.ean),
           quantity: quantity === "" ? null : Number(quantity),
           wholesale_price: clean(v.wholesale_price),
@@ -603,6 +617,9 @@
                       <tr class="border-border border-b">
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
+                        {#if showExtra}
+                          <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">{extraHeader}</th>
+                        {/if}
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
@@ -654,6 +671,26 @@
                               </button>
                             </div>
                           </td>
+                          {#if showExtra}
+                            <td class="px-1 py-1">
+                              <div class="flex items-center gap-0.5">
+                                <Input
+                                  class="h-8 min-w-16 text-xs"
+                                  aria-label="{extraHeader} de la variante {vIndex + 1}"
+                                  bind:value={drafts[item.id].variants[vIndex].extra}
+                                />
+                                <button
+                                  type="button"
+                                  class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
+                                  title="Appliquer cette valeur aux variantes suivantes"
+                                  aria-label="Appliquer cette valeur aux variantes suivantes"
+                                  onclick={() => fillDown(item.id, "extra", vIndex)}
+                                >
+                                  ↓
+                                </button>
+                              </div>
+                            </td>
+                          {/if}
                           <td class="px-1 py-1">
                             <div class="flex items-center gap-0.5">
                             <Input
@@ -836,6 +873,9 @@
                       <tr class="border-border border-b">
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
+                        {#if showExtra}
+                          <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">{extraHeader}</th>
+                        {/if}
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
@@ -865,6 +905,15 @@
                           >
                             {variant.size ?? "—"}
                           </td>
+                          {#if showExtra}
+                            <td
+                              class="px-2 py-1.5 {lowConfidence(variant.confidence, 'extra')
+                                ? 'text-warning-foreground'
+                                : ''}"
+                            >
+                              {variant.extra ?? "—"}
+                            </td>
+                          {/if}
                           <td
                             class="px-2 py-1.5 font-mono whitespace-nowrap {lowConfidence(variant.confidence, 'ean')
                               ? 'text-warning-foreground'

@@ -61,7 +61,53 @@
   // touché ; en édition on ne réécrit jamais le nom saisi.
   let nameEdited = $state(untrack(() => profile !== null))
 
+  // --- Axes d'options Tillin (option1..option3) : ordre + libellés ---
+  type OptionSource = "color" | "size" | "extra"
+  type OptionAxisDraft = { source: OptionSource; label: string }
+  const SOURCE_LABELS: Record<OptionSource, string> = {
+    color: "Couleur extraite",
+    size: "Taille extraite",
+    extra: "3e dimension extraite",
+  }
+  const DEFAULT_AXIS_LABELS: Record<OptionSource, string> = {
+    color: "Couleur",
+    size: "Taille",
+    extra: "Option 3",
+  }
+  function defaultAxes(): OptionAxisDraft[] {
+    return [
+      { source: "color", label: "Couleur" },
+      { source: "size", label: "Taille" },
+    ]
+  }
+
   let form = $state(initialForm())
+
+  function moveAxis(index: number, delta: number) {
+    const target = index + delta
+    if (target < 0 || target >= form.option_axes.length) return
+    const axes = [...form.option_axes]
+    ;[axes[index], axes[target]] = [axes[target], axes[index]]
+    form.option_axes = axes
+  }
+
+  function removeAxis(index: number) {
+    if (form.option_axes.length <= 1) return
+    form.option_axes = form.option_axes.filter((_, i) => i !== index)
+  }
+
+  function addAxis() {
+    if (form.option_axes.length >= 3) return
+    const used = new Set(form.option_axes.map((a) => a.source))
+    const source = (["extra", "size", "color"] as OptionSource[]).find(
+      (s) => !used.has(s),
+    )
+    if (!source) return
+    form.option_axes = [
+      ...form.option_axes,
+      { source, label: source === "extra" ? "" : DEFAULT_AXIS_LABELS[source] },
+    ]
+  }
 
   function initialForm() {
     if (profile) {
@@ -81,8 +127,9 @@
         tax_rate: c.tax_rate,
         apply_title_template: c.apply_title_template ?? false,
         split_by_color: c.split_by_color ?? false,
-        color_option_name: c.color_option_name ?? "Couleur",
-        size_option_name: c.size_option_name ?? "Taille",
+        option_axes: (c.option_axes?.length
+          ? c.option_axes.map((a) => ({ source: a.source, label: a.label }))
+          : defaultAxes()) as OptionAxisDraft[],
         size_conversion: c.size_conversion ?? "none",
         default_gender: c.default_gender ?? "",
       }
@@ -102,8 +149,7 @@
       tax_rate: "20",
       apply_title_template: false,
       split_by_color: false,
-      color_option_name: "Couleur",
-      size_option_name: "Taille",
+      option_axes: defaultAxes(),
       size_conversion: "none" as ImportProfileConfig["size_conversion"],
       default_gender: "",
     }
@@ -146,8 +192,10 @@
       status: "active",
       apply_title_template: form.apply_title_template,
       split_by_color: form.split_by_color,
-      color_option_name: form.color_option_name.trim() || "Couleur",
-      size_option_name: form.size_option_name.trim() || "Taille",
+      option_axes: form.option_axes.map((axis) => ({
+        source: axis.source,
+        label: axis.label.trim() || DEFAULT_AXIS_LABELS[axis.source],
+      })),
       size_conversion: form.size_conversion,
       default_gender: form.default_gender.trim(),
     }
@@ -235,27 +283,86 @@
       />
       <p class="text-muted-foreground text-xs">0 pour un fournisseur étranger.</p>
     </div>
-    <!-- Noms des axes de variantes dans Tillin (Pointure pour les
-         chaussures, Tour de dos / Bonnet pour la lingerie…). -->
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-option1-name">Nom de l'option couleur</Label>
-      <Input
-        id="{uid}-option1-name"
-        list="{uid}-option-names"
-        placeholder="Couleur"
-        bind:value={form.color_option_name}
-      />
-    </div>
-    <div class="flex flex-col gap-1.5">
-      <Label for="{uid}-option2-name">Nom de l'option taille</Label>
-      <Input
-        id="{uid}-option2-name"
-        list="{uid}-option-names"
-        placeholder="Taille"
-        bind:value={form.size_option_name}
-      />
+    <!-- Axes de variantes Tillin (option1..option3) : ordre + libellés.
+         2 par défaut (Couleur, Taille) ; jusqu'à 3 (lingerie : Couleur,
+         Tour de dos, Bonnet). -->
+    <div class="flex flex-col gap-1.5 sm:col-span-2">
+      <Label>Options de variantes (ordre Tillin)</Label>
+      <div class="flex flex-col gap-1.5">
+        {#each form.option_axes as axis, index (index)}
+          <div class="flex items-center gap-1.5">
+            <span class="text-muted-foreground w-4 shrink-0 text-right text-xs tabular-nums">
+              {index + 1}.
+            </span>
+            <Select
+              class="h-9 w-44 shrink-0"
+              aria-label="Champ source de l'option {index + 1}"
+              bind:value={form.option_axes[index].source}
+            >
+              {#each Object.entries(SOURCE_LABELS) as [source, label] (source)}
+                <option
+                  value={source}
+                  disabled={source !== axis.source &&
+                    form.option_axes.some((a) => a.source === source)}
+                >
+                  {label}
+                </option>
+              {/each}
+            </Select>
+            <Input
+              class="min-w-24 flex-1"
+              list="{uid}-option-names"
+              placeholder={DEFAULT_AXIS_LABELS[axis.source]}
+              aria-label="Libellé Tillin de l'option {index + 1}"
+              bind:value={form.option_axes[index].label}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="px-2"
+              disabled={index === 0}
+              aria-label="Monter l'option {index + 1}"
+              onclick={() => moveAxis(index, -1)}
+            >
+              ↑
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="px-2"
+              disabled={index === form.option_axes.length - 1}
+              aria-label="Descendre l'option {index + 1}"
+              onclick={() => moveAxis(index, 1)}
+            >
+              ↓
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="px-2"
+              disabled={form.option_axes.length <= 1}
+              aria-label="Retirer l'option {index + 1}"
+              onclick={() => removeAxis(index)}
+            >
+              ✕
+            </Button>
+          </div>
+        {/each}
+      </div>
+      {#if form.option_axes.length < 3}
+        <div>
+          <Button type="button" variant="outline" size="sm" onclick={addAxis}>
+            + Ajouter une option
+          </Button>
+        </div>
+      {/if}
       <p class="text-muted-foreground text-xs">
-        Libellés des options Tillin (ex. Pointure, Tour de dos, Bonnet, Size).
+        Ordre et libellés des options Tillin (ex. Pointure, Tour de dos,
+        Bonnet). La « 3e dimension » est extraite du document quand il en
+        porte une (bonnet, longueur…) — éditable en relecture.
       </p>
     </div>
     <div class="flex flex-col gap-1.5">

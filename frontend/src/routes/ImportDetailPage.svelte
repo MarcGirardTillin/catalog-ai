@@ -147,6 +147,13 @@
   // Saison imposée par le profil : valeur effective affichée dans la grille.
   const profileSeason = $derived((selectedProfile?.config.season_label ?? "").trim())
 
+  // Libellé du 3e axe d'options du profil (null = profil à 2 axes) : la
+  // review affiche alors la colonne « extra » des variantes.
+  const extraOptionLabel = $derived(
+    selectedProfile?.config.option_axes?.find((a) => a.source === "extra")?.label ??
+      null,
+  )
+
   // Prix de vente calculé par le profil (mode coefficient uniquement) —
   // aperçu local dans la grille, le calcul réel est appliqué au CSV.
   const coefficientConfig = $derived.by(() => {
@@ -329,6 +336,7 @@
               {coefficientConfig}
               {catalogFilters}
               {renderedByRef}
+              {extraOptionLabel}
               onChanged={onItemsChanged}
             />
           {/if}

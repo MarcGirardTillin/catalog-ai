@@ -75,6 +75,10 @@ SYSTEM_PROMPT = (
     "le nom. Le code seul est gardé tel quel s'il n'y a pas de nom.\n"
     "- size : si plusieurs grilles de tailles cohabitent (US, UK, EU…), "
     "renvoie la taille EU (européenne). Sinon la taille telle qu'imprimée.\n"
+    "- extra = une éventuelle TROISIÈME dimension de variante, distincte de "
+    "la couleur et de la taille (bonnet, longueur de jambe, largeur, "
+    "contenance…), uniquement si le document la porte explicitement ; chaîne "
+    "vide dans l'immense majorité des cas.\n"
     "- manufacturing_country = le nom complet du pays en français avec "
     "majuscule initiale (« Italie », « Chine ») même si le document porte "
     "un code ou un nom anglais.\n"
@@ -147,6 +151,7 @@ _VARIANT_FIELDS = [
     "ean",
     "color",
     "size",
+    "extra",
     "quantity",
     "wholesale_price",
     "retail_price",
@@ -210,6 +215,7 @@ class _RawVariant(BaseModel):
     ean: str = ""
     color: str = ""
     size: str = ""
+    extra: str = ""
     quantity: str = ""
     wholesale_price: str = ""
     retail_price: str = ""
@@ -741,6 +747,7 @@ class ClaudeExtractor:
             "ean": _opt(raw.ean),
             "color": _depipe(_opt(raw.color)),
             "size": _depipe(_opt(raw.size)),
+            "extra": _depipe(_opt(raw.extra)),
             "supplier_sku": _opt(raw.supplier_sku),
         }
         present = {key for key, value in fields.items() if value is not None}

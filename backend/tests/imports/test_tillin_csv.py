@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.api.schemas.import_profiles import ImportProfileConfig
+from app.api.schemas.import_profiles import ImportProfileConfig, OptionAxis
 from app.imports.schema import ImportedProduct, ImportedVariant
 from app.imports.tillin_csv import (
     TILLIN_CSV_COLUMNS,
@@ -254,7 +254,13 @@ def test_option_names_follow_profile() -> None:
         title="Bottine",
         variants=[ImportedVariant(color="Noir", size="38", quantity=1)],
     )
-    config = ImportProfileConfig(price_mode="retail_as_is", size_option_name="Pointure")
+    config = ImportProfileConfig(
+        price_mode="retail_as_is",
+        option_axes=[
+            OptionAxis(source="color", label="Couleur"),
+            OptionAxis(source="size", label="Pointure"),
+        ],
+    )
     rows, _ = render_rows([product], config)
     assert _col(rows[0], "option1_name") == "Couleur"
     assert _col(rows[0], "option2_name") == "Pointure"
@@ -313,3 +319,82 @@ def test_category_default_weight_fills_weight_columns() -> None:
     rows_no, _ = render_rows([product], config)
     assert _col(rows_no[0], "weight") == ""
     assert _col(rows_no[0], "weight_unit") == ""
+
+
+def test_option_axes_reordered_render_size_first() -> None:
+    config = ImportProfileConfig(
+        price_mode="retail_as_is",
+        option_axes=[
+            OptionAxis(source="size", label="Taille"),
+            OptionAxis(source="color", label="Couleur"),
+        ],
+    )
+    product = ImportedProduct(
+        supplier_ref="REF-1",
+        variants=[ImportedVariant(color="Marine", size="M", retail_price=Decimal(10))],
+    )
+
+    rows, _ = render_rows([product], config)
+
+    assert _col(rows[0], "option1_name") == "Taille"
+    assert _col(rows[0], "option1_value") == "M"
+    assert _col(rows[0], "option2_name") == "Couleur"
+    assert _col(rows[0], "option2_value") == "Marine"
+    assert _col(rows[0], "option3_name") == ""
+
+
+def test_option_axes_third_extra_axis_and_constructed_barcode() -> None:
+    config = ImportProfileConfig(
+        price_mode="retail_as_is",
+        barcode_mode="constructed",
+        option_axes=[
+            OptionAxis(source="color", label="Couleur"),
+            OptionAxis(source="size", label="Tour de dos"),
+            OptionAxis(source="extra", label="Bonnet"),
+        ],
+    )
+    product = ImportedProduct(
+        supplier_ref="SG100",
+        variants=[
+            ImportedVariant(
+                color="Noir", size="90", extra="C", retail_price=Decimal(45)
+            ),
+            # Variante sans 3e dimension : libellé option3 vide, barcode sans
+            # segment supplémentaire.
+            ImportedVariant(color="Noir", size="95", retail_price=Decimal(45)),
+        ],
+    )
+
+    rows, _ = render_rows([product], config)
+
+    assert _col(rows[0], "option2_name") == "Tour de dos"
+    assert _col(rows[0], "option3_name") == "Bonnet"
+    assert _col(rows[0], "option3_value") == "C"
+    # Le code construit reste canonique (réf-couleur-taille-extra), quel que
+    # soit l'ordre d'affichage des axes.
+    assert _col(rows[0], "variant_barcode") == "SG100-Noir-90-C"
+    assert _col(rows[1], "option3_name") == ""
+    assert _col(rows[1], "variant_barcode") == "SG100-Noir-95"
+
+
+def test_option_axes_legacy_config_keys_converted() -> None:
+    # Configs stockées avant option_axes : les libellés historiques sont
+    # convertis en deux axes couleur/taille dans l'ordre d'origine.
+    config = ImportProfileConfig.model_validate(
+        {"price_mode": "retail_as_is", "size_option_name": "Pointure"}
+    )
+
+    assert [(a.source, a.label) for a in config.option_axes] == [
+        ("color", "Couleur"),
+        ("size", "Pointure"),
+    ]
+
+
+def test_option_axes_duplicate_sources_rejected() -> None:
+    with pytest.raises(ValueError):
+        ImportProfileConfig(
+            option_axes=[
+                OptionAxis(source="color", label="Couleur"),
+                OptionAxis(source="color", label="Coloris"),
+            ]
+        )

@@ -2836,17 +2836,14 @@ export const ImportProfileConfig_InputSchema = {
             title: 'Split By Color',
             default: false
         },
-        color_option_name: {
-            type: 'string',
-            maxLength: 40,
-            title: 'Color Option Name',
-            default: 'Couleur'
-        },
-        size_option_name: {
-            type: 'string',
-            maxLength: 40,
-            title: 'Size Option Name',
-            default: 'Taille'
+        option_axes: {
+            items: {
+                $ref: '#/components/schemas/OptionAxis'
+            },
+            type: 'array',
+            maxItems: 3,
+            minItems: 1,
+            title: 'Option Axes'
         },
         size_conversion: {
             type: 'string',
@@ -2957,17 +2954,14 @@ export const ImportProfileConfig_OutputSchema = {
             title: 'Split By Color',
             default: false
         },
-        color_option_name: {
-            type: 'string',
-            maxLength: 40,
-            title: 'Color Option Name',
-            default: 'Couleur'
-        },
-        size_option_name: {
-            type: 'string',
-            maxLength: 40,
-            title: 'Size Option Name',
-            default: 'Taille'
+        option_axes: {
+            items: {
+                $ref: '#/components/schemas/OptionAxis'
+            },
+            type: 'array',
+            maxItems: 3,
+            minItems: 1,
+            title: 'Option Axes'
         },
         size_conversion: {
             type: 'string',
@@ -3573,6 +3567,17 @@ export const ImportedVariant_InputSchema = {
             ],
             title: 'Size'
         },
+        extra: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Extra'
+        },
         quantity: {
             anyOf: [
                 {
@@ -3687,6 +3692,17 @@ export const ImportedVariant_OutputSchema = {
                 }
             ],
             title: 'Size'
+        },
+        extra: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Extra'
         },
         quantity: {
             anyOf: [
@@ -4685,6 +4701,33 @@ export const OperatorSettingsSchema = {
     type: 'object',
     title: 'OperatorSettings',
     description: 'Operator-owned settings managed GLOBALLY (admin console, one form).\n\nWritten to every account so per-account values never diverge — the app is\nsingle-tenant today, and the pricing/consumption policy is the operator\'s,\nnot the client\'s. The legacy billing_coefficient is deliberately absent\n(superseded by the credit model; it stays at its stored value).'
+} as const;
+
+export const OptionAxisSchema = {
+    properties: {
+        source: {
+            type: 'string',
+            enum: [
+                'color',
+                'size',
+                'extra'
+            ],
+            title: 'Source'
+        },
+        label: {
+            type: 'string',
+            maxLength: 40,
+            minLength: 1,
+            title: 'Label'
+        }
+    },
+    type: 'object',
+    required: [
+        'source',
+        'label'
+    ],
+    title: 'OptionAxis',
+    description: 'Un axe d\'option du CSV Tillin : champ source + libellé affiché.'
 } as const;
 
 export const PagePreviewSchema = {

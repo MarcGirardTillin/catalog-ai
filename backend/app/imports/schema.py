@@ -38,6 +38,9 @@ class ImportedVariant(BaseModel):
     ean: str | None = None  # barcode as printed in the source (digits kept raw)
     color: str | None = None  # Tillin option « Couleur »
     size: str | None = None  # Tillin option « Taille »
+    # Troisième dimension de variante quand le document en porte une (bonnet,
+    # longueur de jambe, largeur…) — rendue via l'axe « extra » du profil.
+    extra: str | None = None
     quantity: int | None = None  # ordered quantity
     wholesale_price: Decimal | None = None  # per-unit purchase price
     retail_price: Decimal | None = None  # supplier public/suggested price

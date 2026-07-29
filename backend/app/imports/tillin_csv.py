@@ -95,10 +95,17 @@ def depipe(value: str) -> str:
 def compute_barcode(
     product: ImportedProduct, variant: ImportedVariant, config: ImportProfileConfig
 ) -> str:
-    """CSV `variant_barcode`: extracted EAN, or constructed REF-COLOR-SIZE."""
+    """CSV `variant_barcode`: extracted EAN, or constructed REF-COLOR-SIZE.
+
+    L'ordre du code construit est CANONIQUE (réf, couleur, taille, puis la
+    3e dimension si le profil en rend une) : réordonner les options affichées
+    ne change pas l'identifiant — il sert de lien stable post-transfert.
+    """
     if config.barcode_mode == "ean":
         return variant.ean or ""
     parts = [product.supplier_ref, variant.color or "", variant.size or ""]
+    if any(axis.source == "extra" for axis in config.option_axes):
+        parts.append(variant.extra or "")
     return "-".join(depipe(part.strip()) for part in parts if part.strip())
 
 
@@ -224,23 +231,19 @@ def render_rows(
                 warnings.append(
                     f"Réf {product.supplier_ref} : variante sans code-barres"
                 )
+            # Colonnes option1..option3 dans l'ordre des axes du profil ;
+            # le libellé n'est posé que si la variante porte une valeur.
+            options: dict[str, str] = {}
+            for index, axis in enumerate(config.option_axes, start=1):
+                value = (getattr(variant, axis.source, None) or "").strip()
+                options[f"option{index}_name"] = axis.label if value else ""
+                options[f"option{index}_value"] = depipe(value)
             rows.append(
                 _row(
                     {
                         "title": depipe(title),
                         "reference_code": depipe(product.supplier_ref),
-                        "option1_name": (
-                            (config.color_option_name or "Couleur")
-                            if variant.color
-                            else ""
-                        ),
-                        "option1_value": depipe(variant.color or ""),
-                        "option2_name": (
-                            (config.size_option_name or "Taille")
-                            if variant.size
-                            else ""
-                        ),
-                        "option2_value": depipe(variant.size or ""),
+                        **options,
                         "variant_barcode": barcode,
                         "weight": f"{default_weight:g}" if default_weight else "",
                         "weight_unit": "kg" if default_weight else "",

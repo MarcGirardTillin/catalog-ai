@@ -1570,13 +1570,9 @@ export type ImportProfileConfigInput = {
      */
     split_by_color?: boolean;
     /**
-     * Color Option Name
+     * Option Axes
      */
-    color_option_name?: string;
-    /**
-     * Size Option Name
-     */
-    size_option_name?: string;
+    option_axes?: Array<OptionAxis>;
     /**
      * Size Conversion
      */
@@ -1646,13 +1642,9 @@ export type ImportProfileConfigOutput = {
      */
     split_by_color?: boolean;
     /**
-     * Color Option Name
+     * Option Axes
      */
-    color_option_name?: string;
-    /**
-     * Size Option Name
-     */
-    size_option_name?: string;
+    option_axes?: Array<OptionAxis>;
     /**
      * Size Conversion
      */
@@ -1978,6 +1970,10 @@ export type ImportedVariantInput = {
      */
     size?: string | null;
     /**
+     * Extra
+     */
+    extra?: string | null;
+    /**
      * Quantity
      */
     quantity?: number | null;
@@ -2023,6 +2019,10 @@ export type ImportedVariantOutput = {
      * Size
      */
     size?: string | null;
+    /**
+     * Extra
+     */
+    extra?: string | null;
     /**
      * Quantity
      */
@@ -2599,6 +2599,22 @@ export type OperatorSettings = {
      * Credit Packs
      */
     credit_packs?: Array<CreditPack>;
+};
+
+/**
+ * OptionAxis
+ *
+ * Un axe d'option du CSV Tillin : champ source + libellé affiché.
+ */
+export type OptionAxis = {
+    /**
+     * Source
+     */
+    source: 'color' | 'size' | 'extra';
+    /**
+     * Label
+     */
+    label: string;
 };
 
 /**

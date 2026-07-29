@@ -11,9 +11,9 @@ Real-world references (everyday-tasks fixtures):
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # How the CSV `price` column is computed:
 # - "retail_as_is": the extracted retail_price, unchanged (Bambinoh).
@@ -36,6 +36,25 @@ BrandMode = Literal["as_extracted", "fixed"]
 # ⚠ approximation assumée — les grilles varient selon les marques ; la
 # conversion est visible dans l'aperçu CSV avant transfert.
 SizeConversion = Literal["none", "uk_to_eu", "us_to_eu"]
+
+# Champ de variante extrait alimentant un axe d'option Tillin :
+# color/size = les deux axes classiques, extra = la troisième dimension
+# (bonnet, longueur de jambe, largeur…) extraite quand le document la porte.
+OptionSource = Literal["color", "size", "extra"]
+
+
+class OptionAxis(BaseModel):
+    """Un axe d'option du CSV Tillin : champ source + libellé affiché."""
+
+    source: OptionSource
+    label: str = Field(min_length=1, max_length=40)
+
+
+def _default_option_axes() -> list[OptionAxis]:
+    return [
+        OptionAxis(source="color", label="Couleur"),
+        OptionAxis(source="size", label="Taille"),
+    ]
 
 
 class ImportProfileConfig(BaseModel):
@@ -67,12 +86,15 @@ class ImportProfileConfig(BaseModel):
     # Applied when the products are staged — attaching the profile after the
     # extraction does not re-split already staged items.
     split_by_color: bool = False
-    # Noms des axes de variantes dans le CSV Tillin (option1/option2) —
-    # « Pointure » pour les chaussures, « Tour de dos »/« Bonnet » pour la
-    # lingerie… (décision Marc 2026-07-18). Les valeurs extraites restent
-    # color/size ; seuls les LIBELLÉS Tillin changent.
-    color_option_name: str = Field(default="Couleur", max_length=40)
-    size_option_name: str = Field(default="Taille", max_length=40)
+    # Axes de variantes du CSV Tillin (option1..option3), dans l'ORDRE du
+    # rendu (demande Marc 2026-07-29 : ordre modifiable, 3e option possible,
+    # 2 par défaut). La plupart des boutiques : Couleur puis Taille ; la
+    # lingerie peut en vouloir 3 (Couleur, Tour de dos, Bonnet). Les valeurs
+    # extraites restent color/size/extra ; seuls l'ordre et les LIBELLÉS
+    # Tillin sont pilotés ici.
+    option_axes: list[OptionAxis] = Field(
+        default_factory=_default_option_axes, min_length=1, max_length=3
+    )
     # Pointures UK/US converties en EU au rendu (chaussures) — "none" défaut.
     size_conversion: SizeConversion = "none"
     # Genre appliqué quand le document n'en porte pas ("" = aucun repli).
@@ -82,6 +104,32 @@ class ImportProfileConfig(BaseModel):
     # NOTE: the category default stays removed (2026-07-09): that one is a
     # per-product review-grid edit, not a supplier convention.
     # Stored configs may still carry the old keys — pydantic ignores them.
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_option_names(cls, data: Any) -> Any:
+        """Configs stockées avant `option_axes` : color/size_option_name."""
+        if isinstance(data, dict) and "option_axes" not in data:
+            legacy_color = data.get("color_option_name")
+            legacy_size = data.get("size_option_name")
+            if legacy_color or legacy_size:
+                data = {
+                    **data,
+                    "option_axes": [
+                        {"source": "color", "label": legacy_color or "Couleur"},
+                        {"source": "size", "label": legacy_size or "Taille"},
+                    ],
+                }
+        return data
+
+    @model_validator(mode="after")
+    def _unique_axis_sources(self) -> "ImportProfileConfig":
+        sources = [axis.source for axis in self.option_axes]
+        if len(sources) != len(set(sources)):
+            raise ValueError(
+                "chaque champ source d'option ne peut être utilisé qu'une fois"
+            )
+        return self
 
 
 class ImportProfilePublic(BaseModel):
