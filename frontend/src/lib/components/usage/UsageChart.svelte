@@ -294,7 +294,7 @@
   <!-- Infobulle : toutes les séries du jour + total (valeur en premier) -->
   {#if hoverInfo}
     <div
-      class="border-border bg-popover text-popover-foreground pointer-events-none absolute z-10 min-w-36 rounded-md border px-2.5 py-2 text-xs shadow-md"
+      class="border-border bg-popover text-popover-foreground pointer-events-none absolute z-10 min-w-48 rounded-md border px-2.5 py-2 text-xs shadow-md"
       style="left:{hoverInfo.leftPct}%; top:{hoverInfo.topPct}%; transform:translate(-50%, {hoverInfo.below
         ? '10px'
         : 'calc(-100% - 8px)'})"
@@ -315,7 +315,8 @@
                 ></span>
                 <span class="truncate">{segment.key}</span>
               </span>
-              <span class="font-medium tabular-nums">
+              <!-- Valeur jamais coupée ni repliée sur deux lignes. -->
+              <span class="shrink-0 font-medium whitespace-nowrap tabular-nums">
                 {formatAmount(segment.amount)}
               </span>
             </div>
@@ -324,7 +325,7 @@
             class="border-border mt-1 flex items-center justify-between gap-3 border-t pt-1"
           >
             <span class="text-muted-foreground">Total</span>
-            <span class="font-semibold tabular-nums">
+            <span class="shrink-0 font-semibold whitespace-nowrap tabular-nums">
               {formatAmount(hoverInfo.total)}
             </span>
           </div>

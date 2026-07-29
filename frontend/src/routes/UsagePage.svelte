@@ -227,32 +227,35 @@
 
           <!-- Solde + crédits consommés + consommation du mois par action -->
           <div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            <!-- Libellé sur une hauteur réservée (2 lignes) + valeur calée
+                 en bas : les chiffres restent alignés d'une carte à l'autre
+                 même quand un libellé passe sur deux lignes. -->
             <Card size="sm">
-              <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground flex items-center gap-1.5 text-xs">
-                  <Coins size={13} aria-hidden="true" />
+              <CardContent class="flex h-full flex-col gap-1 py-4">
+                <span class="text-muted-foreground flex min-h-8 items-start gap-1.5 text-xs">
+                  <Coins size={13} class="mt-0.5 shrink-0" aria-hidden="true" />
                   Solde de crédits
                 </span>
-                <span class="text-2xl font-semibold tabular-nums sm:text-3xl {balanceTone}">
+                <span class="mt-auto text-2xl font-semibold tabular-nums sm:text-3xl {balanceTone}">
                   {formatInt(credits.balance)}
                 </span>
               </CardContent>
             </Card>
             <Card size="sm">
-              <CardContent class="flex flex-col gap-1 py-4">
-                <span class="text-muted-foreground text-xs">
-                  Crédits consommés (mois)
+              <CardContent class="flex h-full flex-col gap-1 py-4">
+                <span class="text-muted-foreground min-h-8 text-xs">
+                  Crédits consommés
                 </span>
-                <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
+                <span class="text-foreground mt-auto text-2xl font-semibold tabular-nums sm:text-3xl">
                   {formatInt(credits.month.consumed_total ?? 0)}
                 </span>
               </CardContent>
             </Card>
             {#each ACTION_TILES as tile (tile.key)}
               <Card size="sm">
-                <CardContent class="flex flex-col gap-1 py-4">
-                  <span class="text-muted-foreground text-xs">{tile.label}</span>
-                  <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
+                <CardContent class="flex h-full flex-col gap-1 py-4">
+                  <span class="text-muted-foreground min-h-8 text-xs">{tile.label}</span>
+                  <span class="text-foreground mt-auto text-2xl font-semibold tabular-nums sm:text-3xl">
                     {formatInt(credits.month.by_action?.[tile.key] ?? 0)}
                   </span>
                 </CardContent>
