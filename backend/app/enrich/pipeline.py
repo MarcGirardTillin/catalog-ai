@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session, object_session
@@ -140,6 +141,37 @@ def _split_product_url(url: str) -> tuple[str, str]:
     """Split a resolved `{site}/products/{handle}` URL back into its parts."""
     site, _, handle = url.rpartition("/products/")
     return site, handle
+
+
+# Hôtes qui ne servent JAMAIS de visuel produit (miniatures vidéo…) et motifs
+# de chemins « placeholder » des thèmes à chargement paresseux — l'extraction
+# les ramasse parfois (vécu eu.patagonia.com : un `1x1.png` Demandware et une
+# miniature YouTube stagés comme visuels produit).
+_JUNK_IMAGE_HOSTS = (
+    "ytimg.com",
+    "youtube.com",
+    "youtu.be",
+    "vimeo.com",
+    "vimeocdn.com",
+)
+_JUNK_IMAGE_PATH_MARKERS = (
+    "1x1",
+    "pixel.",
+    "placeholder",
+    "spacer",
+    "sprite",
+    "blank.",
+)
+
+
+def _is_junk_image_url(url: str) -> bool:
+    """True pour une URL qui n'est manifestement pas un visuel produit."""
+    lowered = url.lower()
+    host = urlparse(lowered).netloc
+    if any(host == h or host.endswith("." + h) for h in _JUNK_IMAGE_HOSTS):
+        return True
+    path = urlparse(lowered).path
+    return any(marker in path for marker in _JUNK_IMAGE_PATH_MARKERS)
 
 
 def _fallback_site_handle(url: str) -> tuple[str, str]:
@@ -641,7 +673,52 @@ class EnrichmentPipeline:
             staged = source_price(source_product)
             item.staged_price = str(staged) if staged is not None else None
         if transforms["images"]:
+            source_product = self._complete_sparse_images(db, item, source_product)
             self._stage_images(db, item, source_product, config)
+
+    def _complete_sparse_images(
+        self,
+        db: Session | None,
+        item: EnrichmentItem,
+        source_product: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Complète les images d'un JSON-LD pauvre par l'extraction web.
+
+        Le JSON-LD PrestaShop ne déclare souvent qu'UNE image alors que la
+        page en montre toute une galerie (vécu centrecommercial.cc : 1 seule
+        image stagée) — quand les images sont demandées et qu'il n'y en a pas
+        plus d'une, une extraction Firecrawl (payante, métérée) vient chercher
+        la galerie complète. Le JSON-LD reste l'autorité pour tout le reste ;
+        best-effort : l'échec d'extraction garde la source telle quelle.
+        """
+        if (
+            not source_product.get("_jsonld")
+            or len(source_product.get("images") or []) > 1
+            or self._firecrawl is None
+            or not item.source_url
+        ):
+            return source_product
+        try:
+            extracted = extract_source_product(self._firecrawl, item.source_url)
+        except ExternalServiceError as exc:
+            logger.warning(
+                "item %s: image-completion extract failed for %s (%s)",
+                item.id,
+                item.source_url,
+                exc,
+            )
+            return source_product
+        self._firecrawl_recorder(db, item)(EXTRACT_CREDITS)
+        if extracted is None:
+            return source_product
+        merged = dict(source_product)
+        if len(extracted.get("images") or []) > len(merged.get("images") or []):
+            merged["images"] = extracted["images"]
+        # Les champs texte/prix absents du JSON-LD profitent du même appel.
+        for key in ("_price", "_color", "_composition", "_features", "_care"):
+            if not merged.get(key) and extracted.get(key):
+                merged[key] = extracted[key]
+        return merged
 
     def _stage_images(
         self,
@@ -665,7 +742,7 @@ class EnrichmentPipeline:
         for image in source_product.get("images") or []:
             if isinstance(image, dict) and image.get("src"):
                 src = str(image["src"])
-                if src not in sources:
+                if src not in sources and not _is_junk_image_url(src):
                     sources.append(src)
         image_config = config.get("image")
         auto_normalize = bool(
