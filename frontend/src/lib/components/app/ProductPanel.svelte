@@ -32,6 +32,7 @@
   } from "@/lib/api/imaging"
   import {
     getProduct,
+    reorderProductImages,
     uploadProductImages,
     type ProductDetail,
   } from "@/lib/api/products"
@@ -304,6 +305,45 @@
     clearStaged()
     clearImaging()
   })
+
+  // --- Réordonnancement de la galerie Tillin (PUT positions, endpoint Xano).
+  // Mode dédié : copie locale de l'ordre, flèches ◀ ▶, écriture en un coup.
+  let reordering = $state(false)
+  let orderedImages = $state<ProductImage[]>([])
+  let savingOrder = $state(false)
+  const canReorder = $derived.by(() => {
+    const gallery = product?.images ?? []
+    return gallery.length >= 2 && gallery.every((image) => image.id != null)
+  })
+  function startReorder() {
+    orderedImages = [...(product?.images ?? [])]
+    reordering = true
+  }
+  function moveImage(index: number, delta: number) {
+    const target = index + delta
+    if (target < 0 || target >= orderedImages.length) return
+    const next = [...orderedImages]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    orderedImages = next
+  }
+  async function saveOrder() {
+    const id = productId
+    if (id == null || savingOrder) return
+    savingOrder = true
+    const { data, error } = await reorderProductImages(
+      id,
+      orderedImages.map((image) => image.id as number),
+    )
+    savingOrder = false
+    if (error || !data) {
+      toast.error("Réordonnancement impossible — rechargez le produit.")
+      return
+    }
+    product = data
+    reordering = false
+    toast.success("Ordre des images enregistré.")
+    onProductChanged?.()
+  }
 
   function onFilesPicked(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -601,10 +641,70 @@
         {/if}
         <!-- Galerie + ajout d'images (upload / capture) -->
         <div class="flex flex-col gap-2">
-          <h3 class="text-sm font-medium">
-            Images ({(product.images ?? []).length + stagedImages.length})
-          </h3>
-          {#if (product.images ?? []).length > 0 || stagedImages.length > 0}
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-medium">
+              Images ({(product.images ?? []).length + stagedImages.length})
+            </h3>
+            {#if canReorder && !reordering}
+              <Button variant="ghost" size="sm" onclick={startReorder}>
+                Réordonner
+              </Button>
+            {/if}
+          </div>
+          {#if reordering}
+            <!-- Mode réordonnancement : flèches ◀ ▶, écriture en un coup via
+                 PUT /products/{"{id}"}/images/positions (positions Tillin). -->
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {#each orderedImages as image, index (image.id)}
+                <div class="relative">
+                  <img
+                    src={image.url}
+                    alt=""
+                    loading="lazy"
+                    class="bg-muted aspect-4/5 w-full rounded-md object-cover"
+                  />
+                  <span
+                    class="bg-card/80 text-foreground absolute top-1 left-1 rounded px-1.5 text-[11px] font-medium tabular-nums"
+                  >
+                    {index + 1}
+                  </span>
+                  <div class="absolute right-1 bottom-1 flex gap-1">
+                    <button
+                      type="button"
+                      class="bg-card/90 hover:bg-card text-foreground rounded-full px-2 py-1 text-xs shadow-sm disabled:opacity-40"
+                      aria-label="Avancer cette image"
+                      disabled={index === 0 || savingOrder}
+                      onclick={() => moveImage(index, -1)}
+                    >
+                      ◀
+                    </button>
+                    <button
+                      type="button"
+                      class="bg-card/90 hover:bg-card text-foreground rounded-full px-2 py-1 text-xs shadow-sm disabled:opacity-40"
+                      aria-label="Reculer cette image"
+                      disabled={index === orderedImages.length - 1 || savingOrder}
+                      onclick={() => moveImage(index, 1)}
+                    >
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            <div class="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={savingOrder}
+                onclick={() => (reordering = false)}
+              >
+                Annuler
+              </Button>
+              <Button size="sm" disabled={savingOrder} onclick={saveOrder}>
+                {savingOrder ? "Enregistrement…" : "Enregistrer l'ordre"}
+              </Button>
+            </div>
+          {:else if (product.images ?? []).length > 0 || stagedImages.length > 0}
             <p class="text-muted-foreground text-xs">
               Cliquez une image pour la sélectionner et lui appliquer un
               traitement.

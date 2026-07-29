@@ -292,3 +292,79 @@ def test_returns_503_when_xano_not_configured(
 
     assert response.status_code == 503
     assert response.json()["code"] == "xano_not_configured"
+
+
+def test_reorder_product_images_writes_positions(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    """La liste ordonnee d'ids devient les positions 1..n via l'endpoint Xano."""
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/product_image/positions"):
+            captured["positions"] = request
+            return httpx.Response(200, json={"ok": True})
+        if request.url.path.endswith("/product/101"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 101,
+                    "product_images": [
+                        {"id": 501, "src": "https://x/1.jpg", "position": 1},
+                        {"id": 502, "src": "https://x/2.jpg", "position": 2},
+                        {"id": 503, "src": "https://x/3.jpg", "position": 3},
+                    ],
+                },
+            )
+        return httpx.Response(404)
+
+    override_xano(handler)
+
+    response = auth_client.put(
+        "/products/101/images/positions",
+        json={"product_image_ids": [503, 501, 502]},
+    )
+
+    assert response.status_code == 200, response.text
+    request = captured["positions"]
+    assert request.method == "PUT"
+    import json as jsonlib
+
+    assert jsonlib.loads(request.content) == {
+        "positions": [
+            {"product_image_id": 503, "position": 1},
+            {"product_image_id": 501, "position": 2},
+            {"product_image_id": 502, "position": 3},
+        ]
+    }
+
+
+def test_reorder_product_images_rejects_unknown_ids(
+    auth_client: TestClient, override_xano: InstallXano
+) -> None:
+    """Galerie changee entre-temps (id inconnu) : 422, aucune ecriture."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/product_image/positions"):
+            raise AssertionError("no write expected for unknown ids")
+        if request.url.path.endswith("/product/101"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 101,
+                    "product_images": [
+                        {"id": 501, "src": "https://x/1.jpg", "position": 1},
+                    ],
+                },
+            )
+        return httpx.Response(404)
+
+    override_xano(handler)
+
+    response = auth_client.put(
+        "/products/101/images/positions",
+        json={"product_image_ids": [501, 999]},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "unknown_image"

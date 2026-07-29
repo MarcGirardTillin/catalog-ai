@@ -12,6 +12,16 @@ export function getProduct(id: number) {
   return productsReadProduct({ path: { product_id: id } })
 }
 
+/** Réordonne la galerie Tillin : la liste ordonnée d'ids devient les
+ * positions 1..n. Renvoie le produit relu. */
+export function reorderProductImages(id: number, imageIds: number[]) {
+  return client.put<{ 200: Product }, unknown>({
+    responseType: "json",
+    url: `/products/${id}/images/positions`,
+    body: { product_image_ids: imageIds },
+  })
+}
+
 /** Upload multipart : chaque fichier part sous le champ répété `files`. */
 export function uploadProductImages(id: number, files: File[]) {
   const body = new FormData()

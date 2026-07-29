@@ -180,6 +180,34 @@
       .join(",")
   }
 
+  // --- Réordonnancement des images proposées : l'ordre stagé devient l'ordre
+  // d'envoi à l'apply, donc l'ordre de la galerie Tillin. PATCH immédiat de
+  // staged_images_json (positions renumérotées), sans toucher aux brouillons
+  // texte locaux (title/description restent non écrasés).
+  let reorderingStaged = $state(false)
+  async function moveStagedImage(index: number, delta: number) {
+    if (!item || reorderingStaged) return
+    const target = index + delta
+    const entries = [...((item.staged_images_json ?? []) as unknown[])]
+    if (target < 0 || target >= entries.length) return
+    ;[entries[index], entries[target]] = [entries[target], entries[index]]
+    const renumbered = entries.map((entry, i) => ({
+      ...(entry as Record<string, unknown>),
+      position: i + 1,
+    }))
+    reorderingStaged = true
+    const { data, error } = await itemsPatchItem({
+      path: { item_id: item.id },
+      body: { staged_images_json: renumbered },
+    })
+    reorderingStaged = false
+    if (error || !data) {
+      toast.error("Réordonnancement impossible.")
+      return
+    }
+    item = { ...item, staged_images_json: data.staged_images_json }
+  }
+
   function toggleImage(url: string) {
     selectedImageUrls = selectedImageUrls.includes(url)
       ? selectedImageUrls.filter((u) => u !== url)
@@ -547,6 +575,17 @@
   // Variant count from the current Tillin product, for a quick sanity check.
   const variantCount = $derived((product?.variants ?? []).length)
 
+  // Couleur(s) du produit, dédupliquées depuis les variantes (convention
+  // boutique : une couleur par produit — affichée dans l'encart d'entête).
+  const productColor = $derived.by(() => {
+    const colors: string[] = []
+    for (const variant of product?.variants ?? []) {
+      const color = (variant.color ?? "").trim()
+      if (color && !colors.includes(color)) colors.push(color)
+    }
+    return colors.join(" / ")
+  })
+
   // Human-friendly resolution method (avoid raw enum values in the UI —
   // white-label : jamais de nom de prestataire).
   const METHOD_LABELS: Record<string, string> = {
@@ -868,6 +907,13 @@
                 {/if}
                 {#if product?.brand?.name}
                   <span>{product.brand.name}</span>
+                {/if}
+                {#if productColor}
+                  <!-- Couleur du produit (variantes) — repère immédiat pour
+                       contrôler le coloris de la page source proposée. -->
+                  <span class="bg-muted text-foreground rounded-full px-2 py-0.5 font-medium">
+                    {productColor}
+                  </span>
                 {/if}
                 {#if product?.category}
                   <span
@@ -1401,6 +1447,31 @@
                             Normaliser
                           {/if}
                         </button>
+                      {/if}
+                      {#if reviewable && isApplied("images") && images.length > 1}
+                        {@const index = images.indexOf(image)}
+                        <!-- Réordonner : l'ordre stagé = l'ordre d'envoi à
+                             Tillin à l'apply (donc l'ordre de la galerie). -->
+                        <div class="absolute bottom-1.5 left-1.5 flex gap-1">
+                          <button
+                            type="button"
+                            class="bg-card/90 border-input text-foreground hover:bg-card cursor-pointer rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-40"
+                            aria-label="Avancer cette image"
+                            disabled={index === 0 || reorderingStaged}
+                            onclick={() => moveStagedImage(index, -1)}
+                          >
+                            ◀
+                          </button>
+                          <button
+                            type="button"
+                            class="bg-card/90 border-input text-foreground hover:bg-card cursor-pointer rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-40"
+                            aria-label="Reculer cette image"
+                            disabled={index === images.length - 1 || reorderingStaged}
+                            onclick={() => moveStagedImage(index, 1)}
+                          >
+                            ▶
+                          </button>
+                        </div>
                       {/if}
                     </div>
                   {/each}

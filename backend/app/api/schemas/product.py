@@ -74,6 +74,13 @@ class Product(BaseModel):
     origins: list[str] = Field(default_factory=list)
 
 
+class ProductImagePositionsRequest(BaseModel):
+    """Réordonnancement de la galerie : la liste ORDONNÉE d'ids d'images
+    devient les positions 1..n (`PUT /product_image/positions` côté Xano)."""
+
+    product_image_ids: list[int] = Field(min_length=1)
+
+
 class ProductImagesUploadResult(BaseModel):
     """Outcome of uploading images to a product: the newly created images."""
 

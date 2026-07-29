@@ -25,6 +25,7 @@ from app.api.schemas.product import (
     Brand,
     Product,
     ProductImage,
+    ProductImagePositionsRequest,
     ProductImagesUploadResult,
     ProductVariant,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "PendingImagingProducts",
     "Product",
     "ProductImage",
+    "ProductImagePositionsRequest",
     "ProductImagesUploadResult",
     "ProductVariant",
     "RenderRequest",

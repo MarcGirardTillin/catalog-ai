@@ -31,6 +31,7 @@ from app.api.schemas import (
     NormalizeRequest,
     PaginatedResponse,
     Product,
+    ProductImagePositionsRequest,
     ProductImagesUploadResult,
 )
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
@@ -123,6 +124,40 @@ def read_product(product_id: int, xano: XanoDep) -> Product:
             status_code=404, code="not_found", message="Product not found"
         )
     return product
+
+
+@router.put("/{product_id}/images/positions", response_model=Product)
+def reorder_product_images(
+    product_id: int, xano: XanoDep, payload: ProductImagePositionsRequest
+) -> Product:
+    """Réordonne la galerie Tillin du produit.
+
+    La liste ORDONNÉE d'ids d'images devient les positions 1..n (endpoint
+    Xano `PUT /product_image/positions`). Les ids sont vérifiés contre la
+    galerie actuelle — un id inconnu (image supprimée entre-temps) est un
+    422 plutôt qu'une écriture partielle. Renvoie le produit relu.
+    """
+    product = xano.get_product(product_id)
+    if product is None:
+        raise AppException(
+            status_code=404, code="not_found", message="Product not found"
+        )
+    known = {image.id for image in product.images if image.id is not None}
+    unknown = [i for i in payload.product_image_ids if i not in known]
+    if unknown:
+        raise AppException(
+            status_code=422,
+            code="unknown_image",
+            message="La galerie a changé — rechargez le produit avant de réordonner",
+        )
+    xano.set_product_image_positions(
+        [
+            (image_id, position)
+            for position, image_id in enumerate(payload.product_image_ids, start=1)
+        ]
+    )
+    updated = xano.get_product(product_id)
+    return updated if updated is not None else product
 
 
 @router.post("/{product_id}/images", response_model=ProductImagesUploadResult)
