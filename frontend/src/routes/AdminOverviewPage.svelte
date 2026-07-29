@@ -141,6 +141,7 @@
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Facturable</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Marge</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Coeff.</th>
+                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Crédits</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Enrichissements</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Imports</th>
                     <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Échecs</th>
@@ -175,6 +176,13 @@
                       </td>
                       <td class="text-muted-foreground px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         ×{line.coefficient.toLocaleString("fr-FR")}
+                      </td>
+                      <td
+                        class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums {(line.credit_balance ?? 0) <= 0
+                          ? 'text-destructive font-medium'
+                          : ''}"
+                      >
+                        {(line.credit_balance ?? 0).toLocaleString("fr-FR")}
                       </td>
                       <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {line.jobs_count}

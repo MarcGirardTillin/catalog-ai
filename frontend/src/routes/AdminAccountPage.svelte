@@ -68,6 +68,13 @@
       return data
     },
   }))
+  // Pagination locale des tableaux : les données restent bornées côté
+  // serveur (mois / limites), l'affichage se fait par tranches de 10.
+  const TABLE_PAGE = 10
+  let jobsShown = $state(TABLE_PAGE)
+  let activityShown = $state(TABLE_PAGE)
+  let creditsShown = $state(TABLE_PAGE)
+
   const byJobQuery = createQuery(() => ({
     queryKey: ["admin", "account", id, "by-job", month],
     queryFn: async () => {
@@ -387,6 +394,139 @@
           </div>
         </div>
 
+        <!-- Crédits prépayés : solde, octroi manuel, derniers mouvements -->
+        <Card size="sm" class="mt-1">
+          <CardHeader>
+            <CardTitle class="font-title text-sm">Crédits</CardTitle>
+            <CardDescription class="text-muted-foreground text-xs">
+              Solde prépayé du compte. Les achats de packs sont enregistrés
+              ici manuellement (pas de paiement en ligne).
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-4">
+            {#if creditsQuery.isError}
+              <p class="text-destructive text-xs" role="alert">
+                Impossible de charger les crédits du client.
+              </p>
+            {:else if credits === null}
+              <Skeleton class="h-16 w-full" />
+            {:else}
+              <div class="flex items-baseline gap-2">
+                <span
+                  class="text-2xl font-semibold tabular-nums {credits.balance <= 0
+                    ? 'text-destructive'
+                    : 'text-foreground'}"
+                >
+                  {formatInt(credits.balance)}
+                </span>
+                <span class="text-muted-foreground text-xs">crédits restants</span>
+              </div>
+
+              <!-- Octroi / achat / ajustement -->
+              <div class="grid gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-credits">Crédits (signé)</Label>
+                  <Input
+                    id="grant-credits"
+                    type="number"
+                    step="1"
+                    inputmode="numeric"
+                    placeholder="500 ou -50"
+                    bind:value={grantCredits}
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-kind">Type</Label>
+                  <Select id="grant-kind" bind:value={grantKind}>
+                    <option value="grant">Offert</option>
+                    <option value="purchase">Achat de pack</option>
+                    <option value="adjustment">Ajustement</option>
+                  </Select>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-label">Libellé</Label>
+                  <Input
+                    id="grant-label"
+                    placeholder="Pack 500, geste commercial…"
+                    bind:value={grantLabel}
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="grant-price">Prix € (achat)</Label>
+                  <Input
+                    id="grant-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={grantKind !== "purchase"}
+                    bind:value={grantPrice}
+                  />
+                </div>
+                <div class="flex items-end">
+                  <Button size="sm" disabled={granting} onclick={submitGrant}>
+                    {granting ? "Enregistrement…" : "Enregistrer"}
+                  </Button>
+                </div>
+              </div>
+
+              <!-- Derniers mouvements -->
+              {#if credits.entries.length === 0}
+                <p class="text-muted-foreground text-xs">
+                  Aucun mouvement pour l'instant.
+                </p>
+              {:else}
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-xl text-sm">
+                    <thead>
+                      <tr class="border-border border-b">
+                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Date</th>
+                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Type</th>
+                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Libellé</th>
+                        <th class="text-muted-foreground px-2 py-2 text-right text-xs font-medium">Prix €</th>
+                        <th class="text-muted-foreground px-2 py-2 text-right text-xs font-medium">Crédits</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each credits.entries.slice(0, creditsShown) as entry (entry.id)}
+                        <tr class="border-border border-b last:border-b-0">
+                          <td class="text-muted-foreground px-2 {cellPad} text-xs whitespace-nowrap tabular-nums">
+                            {formatRelativeDate(entry.created_at)}
+                          </td>
+                          <td class="px-2 {cellPad} text-xs whitespace-nowrap">
+                            {creditKindLabel(entry.kind)}
+                          </td>
+                          <td class="text-muted-foreground max-w-60 truncate px-2 {cellPad} text-xs">
+                            {creditEntryLabel(entry)}
+                          </td>
+                          <td class="text-muted-foreground px-2 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
+                            {entry.price_eur != null
+                              ? entry.price_eur.toLocaleString("fr-FR", {
+                                  style: "currency",
+                                  currency: "EUR",
+                                })
+                              : "—"}
+                          </td>
+                          <td class="px-2 {cellPad} text-right font-medium whitespace-nowrap tabular-nums {entry.credits < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}">
+                            {entry.credits > 0 ? `+${formatInt(entry.credits)}` : formatInt(entry.credits)}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                  {#if credits.entries.length > creditsShown}
+                    <div class="flex justify-center py-2">
+                      <Button variant="ghost" size="sm" onclick={() => (creditsShown += 20)}>
+                        Voir plus ({credits.entries.length - creditsShown} de plus)
+                      </Button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            {/if}
+          </CardContent>
+        </Card>
+
+
         {#if loadFailed}
           <p class="text-destructive text-xs" role="alert">
             Impossible de charger la consommation du client.
@@ -608,7 +748,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    {#each byJob.jobs as job, index (index)}
+                    {#each byJob.jobs.slice(0, jobsShown) as job, index (index)}
                       {@const href = jobHref(job.job_type, job.job_id)}
                       <tr class="border-border border-b last:border-b-0">
                         <td class="max-w-60 px-4 {cellPad}">
@@ -652,6 +792,13 @@
                     {/each}
                   </tbody>
                 </table>
+                {#if byJob.jobs.length > jobsShown}
+                  <div class="flex justify-center py-2">
+                    <Button variant="ghost" size="sm" onclick={() => (jobsShown += 20)}>
+                      Voir plus ({byJob.jobs.length - jobsShown} de plus)
+                    </Button>
+                  </div>
+                {/if}
               </CardContent>
             </Card>
           {/if}
@@ -682,7 +829,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  {#each activity.entries as entry (entry.job_id)}
+                  {#each activity.entries.slice(0, activityShown) as entry (entry.job_id)}
                     {@const href = jobHref(entry.job_type, entry.job_id)}
                     <tr class="border-border border-b last:border-b-0">
                       <td class="max-w-60 px-4 {cellPad}">
@@ -721,134 +868,16 @@
                   {/each}
                 </tbody>
               </table>
+              {#if activity.entries.length > activityShown}
+                <div class="flex justify-center py-2">
+                  <Button variant="ghost" size="sm" onclick={() => (activityShown += 20)}>
+                    Voir plus ({activity.entries.length - activityShown} de plus)
+                  </Button>
+                </div>
+              {/if}
             </CardContent>
           </Card>
         {/if}
-
-        <!-- Crédits prépayés : solde, octroi manuel, derniers mouvements -->
-        <Card size="sm" class="mt-1">
-          <CardHeader>
-            <CardTitle class="font-title text-sm">Crédits</CardTitle>
-            <CardDescription class="text-muted-foreground text-xs">
-              Solde prépayé du compte. Les achats de packs sont enregistrés
-              ici manuellement (pas de paiement en ligne).
-            </CardDescription>
-          </CardHeader>
-          <CardContent class="flex flex-col gap-4">
-            {#if creditsQuery.isError}
-              <p class="text-destructive text-xs" role="alert">
-                Impossible de charger les crédits du client.
-              </p>
-            {:else if credits === null}
-              <Skeleton class="h-16 w-full" />
-            {:else}
-              <div class="flex items-baseline gap-2">
-                <span
-                  class="text-2xl font-semibold tabular-nums {credits.balance <= 0
-                    ? 'text-destructive'
-                    : 'text-foreground'}"
-                >
-                  {formatInt(credits.balance)}
-                </span>
-                <span class="text-muted-foreground text-xs">crédits restants</span>
-              </div>
-
-              <!-- Octroi / achat / ajustement -->
-              <div class="grid gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
-                <div class="flex flex-col gap-1.5">
-                  <Label for="grant-credits">Crédits (signé)</Label>
-                  <Input
-                    id="grant-credits"
-                    type="number"
-                    step="1"
-                    inputmode="numeric"
-                    placeholder="500 ou -50"
-                    bind:value={grantCredits}
-                  />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="grant-kind">Type</Label>
-                  <Select id="grant-kind" bind:value={grantKind}>
-                    <option value="grant">Offert</option>
-                    <option value="purchase">Achat de pack</option>
-                    <option value="adjustment">Ajustement</option>
-                  </Select>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="grant-label">Libellé</Label>
-                  <Input
-                    id="grant-label"
-                    placeholder="Pack 500, geste commercial…"
-                    bind:value={grantLabel}
-                  />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label for="grant-price">Prix € (achat)</Label>
-                  <Input
-                    id="grant-price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    disabled={grantKind !== "purchase"}
-                    bind:value={grantPrice}
-                  />
-                </div>
-                <div class="flex items-end">
-                  <Button size="sm" disabled={granting} onclick={submitGrant}>
-                    {granting ? "Enregistrement…" : "Enregistrer"}
-                  </Button>
-                </div>
-              </div>
-
-              <!-- Derniers mouvements -->
-              {#if credits.entries.length === 0}
-                <p class="text-muted-foreground text-xs">
-                  Aucun mouvement pour l'instant.
-                </p>
-              {:else}
-                <div class="overflow-x-auto">
-                  <table class="w-full min-w-xl text-sm">
-                    <thead>
-                      <tr class="border-border border-b">
-                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Date</th>
-                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Type</th>
-                        <th class="text-muted-foreground px-2 py-2 text-left text-xs font-medium">Libellé</th>
-                        <th class="text-muted-foreground px-2 py-2 text-right text-xs font-medium">Prix €</th>
-                        <th class="text-muted-foreground px-2 py-2 text-right text-xs font-medium">Crédits</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each credits.entries as entry (entry.id)}
-                        <tr class="border-border border-b last:border-b-0">
-                          <td class="text-muted-foreground px-2 {cellPad} text-xs whitespace-nowrap tabular-nums">
-                            {formatRelativeDate(entry.created_at)}
-                          </td>
-                          <td class="px-2 {cellPad} text-xs whitespace-nowrap">
-                            {creditKindLabel(entry.kind)}
-                          </td>
-                          <td class="text-muted-foreground max-w-60 truncate px-2 {cellPad} text-xs">
-                            {creditEntryLabel(entry)}
-                          </td>
-                          <td class="text-muted-foreground px-2 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
-                            {entry.price_eur != null
-                              ? entry.price_eur.toLocaleString("fr-FR", {
-                                  style: "currency",
-                                  currency: "EUR",
-                                })
-                              : "—"}
-                          </td>
-                          <td class="px-2 {cellPad} text-right font-medium whitespace-nowrap tabular-nums {entry.credits < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}">
-                            {entry.credits > 0 ? `+${formatInt(entry.credits)}` : formatInt(entry.credits)}
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {/if}
-            {/if}
-          </CardContent>
-        </Card>
 
         <!-- Modules souscrits : l'offre vendue à CE client. Un module coupé
              disparaît de sa navigation et ses routes répondent 403. -->

@@ -56,7 +56,8 @@ from app.models import (
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-_ACTIVITY_LIMIT = 20
+# 50 entrées : la page cliente pagine localement par tranches de 10.
+_ACTIVITY_LIMIT = 50
 
 
 def _get_account(db: Session, account_id: int) -> Account:
@@ -159,6 +160,7 @@ def read_overview(
                 jobs_count=counts_by_type.get("enrichment", 0),
                 imports_count=counts_by_type.get("import", 0),
                 failed_items=int(failed_enrich or 0) + int(failed_import or 0),
+                credit_balance=credit_balance(db, account.id),
             )
         )
     return AdminOverview(month=label, currency="EUR", lines=lines)

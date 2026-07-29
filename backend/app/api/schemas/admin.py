@@ -32,6 +32,9 @@ class AdminOverviewLine(BaseModel):
     jobs_count: int  # enrichment jobs created this month
     imports_count: int  # import jobs created this month
     failed_items: int  # failed items (both types) on this month's jobs
+    # Solde de crédits ACTUEL du compte (pas une valeur mensuelle) — colonne
+    # « Crédits » de la vue d'ensemble (demande Marc 2026-07-29).
+    credit_balance: int = 0
 
 
 class AdminOverview(BaseModel):

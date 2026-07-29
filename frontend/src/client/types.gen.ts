@@ -318,6 +318,10 @@ export type AdminOverviewLine = {
      * Failed Items
      */
     failed_items: number;
+    /**
+     * Credit Balance
+     */
+    credit_balance?: number;
 };
 
 /**
@@ -2859,6 +2863,19 @@ export type ProductImage = {
 };
 
 /**
+ * ProductImagePositionsRequest
+ *
+ * Réordonnancement de la galerie : la liste ORDONNÉE d'ids d'images
+ * devient les positions 1..n (`PUT /product_image/positions` côté Xano).
+ */
+export type ProductImagePositionsRequest = {
+    /**
+     * Product Image Ids
+     */
+    product_image_ids: Array<number>;
+};
+
+/**
  * ProductImagesUploadResult
  *
  * Outcome of uploading images to a product: the newly created images.
@@ -3673,6 +3690,36 @@ export type ProductsReadProductResponses = {
 };
 
 export type ProductsReadProductResponse = ProductsReadProductResponses[keyof ProductsReadProductResponses];
+
+export type ProductsReorderProductImagesData = {
+    body: ProductImagePositionsRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/positions';
+};
+
+export type ProductsReorderProductImagesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsReorderProductImagesError = ProductsReorderProductImagesErrors[keyof ProductsReorderProductImagesErrors];
+
+export type ProductsReorderProductImagesResponses = {
+    /**
+     * Successful Response
+     */
+    200: Product;
+};
+
+export type ProductsReorderProductImagesResponse = ProductsReorderProductImagesResponses[keyof ProductsReorderProductImagesResponses];
 
 export type ProductsUploadProductImagesData = {
     body: BodyProductsUploadProductImages;

@@ -558,6 +558,11 @@ export const AdminOverviewLineSchema = {
         failed_items: {
             type: 'integer',
             title: 'Failed Items'
+        },
+        credit_balance: {
+            type: 'integer',
+            title: 'Credit Balance',
+            default: 0
         }
     },
     type: 'object',
@@ -5129,6 +5134,25 @@ export const ProductImageSchema = {
     ],
     title: 'ProductImage',
     description: 'An image associated with a product.'
+} as const;
+
+export const ProductImagePositionsRequestSchema = {
+    properties: {
+        product_image_ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Product Image Ids'
+        }
+    },
+    type: 'object',
+    required: [
+        'product_image_ids'
+    ],
+    title: 'ProductImagePositionsRequest',
+    description: 'Réordonnancement de la galerie : la liste ORDONNÉE d\'ids d\'images\ndevient les positions 1..n (`PUT /product_image/positions` côté Xano).'
 } as const;
 
 export const ProductImagesUploadResultSchema = {
