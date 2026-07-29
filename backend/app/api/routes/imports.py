@@ -975,14 +975,28 @@ def link_import_products(
     return result
 
 
+# Rattrapage de vignettes par affichage de la vue « Par import » : borné pour
+# que la page reste rapide même sur un gros import jamais rafraîchi.
+_IMAGE_BACKFILL_LIMIT = 20
+
+
 @router.get("/{import_id}/products", response_model=ImportProducts)
 def list_import_products(
-    import_id: int, db: SessionDep, current_user: CurrentUserDep
+    import_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    xano: OptionalXanoDep,
 ) -> ImportProducts:
-    """Per-import products view, built from the staged payloads (local only).
+    """Per-import products view, built from the staged payloads.
 
     Rejected/failed items are excluded. The linked/unlinked counters cover the
     `applied` items only — they are the ones expected to exist in Tillin.
+
+    Les vignettes : au transfert les produits Tillin naissent SANS image (les
+    fichiers fournisseurs n'en portent pas) — la capture faite au lien est
+    donc souvent vide, et les images n'arrivent qu'après enrichissement. On
+    rattrape ici, en best-effort borné : les items liés sans vignette relisent
+    leur produit Tillin et mémorisent la première image trouvée.
     """
     account_id = resolve_account_id(db, current_user)
     job = _get_import_job(db, account_id=account_id, job_id=import_id)
@@ -994,6 +1008,22 @@ def list_import_products(
         )
         .order_by(ImportItem.id)
     ).all()
+    backfilled = 0
+    for item in items:
+        if xano is None or backfilled >= _IMAGE_BACKFILL_LIMIT:
+            break
+        payload = item.payload_json or {}
+        if item.tillin_product_id is None or payload.get("tillin_image_url"):
+            continue
+        try:
+            product = xano.get_product(item.tillin_product_id)
+        except XanoError:  # vue best-effort : jamais bloquée par Xano
+            break
+        backfilled += 1
+        if product is not None:
+            _remember_tillin_image(item, product)
+    if backfilled:
+        db.commit()
     lines: list[ImportProductLine] = []
     linked_count = 0
     unlinked_count = 0

@@ -424,3 +424,34 @@ def test_run_import_job_ignores_non_import_jobs(runner_db: Session) -> None:
     fresh = runner_db.get(EnrichmentJob, job.id)
     assert fresh is not None
     assert fresh.status == "pending"
+
+
+def test_known_category_paths_skip_hidden_categories(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """isVisible=false : jamais proposée au matching, traversable en parent."""
+    from app.api import deps
+    from app.jobs import import_runner
+
+    class _FakeClient:
+        def get_classification(self) -> dict[str, list[dict[str, object]]]:
+            return {
+                "categories": [
+                    {"id": 1, "title": "Femme", "parent_id": 0, "visible": True},
+                    {"id": 2, "title": "Robes", "parent_id": 1, "visible": True},
+                    {"id": 3, "title": "Archives", "parent_id": 1, "visible": False},
+                    # Parent masqué : son enfant visible reste proposé (chemin
+                    # complet), lui-même non.
+                    {"id": 4, "title": "Ancien", "parent_id": 0, "visible": False},
+                    {"id": 5, "title": "Soldes", "parent_id": 4, "visible": True},
+                ]
+            }
+
+    monkeypatch.setattr(
+        deps, "xano_client_for_account", lambda _db, _account_id: _FakeClient()
+    )
+
+    paths = import_runner._known_category_paths(account_id=1)
+
+    assert paths is not None
+    assert sorted(paths) == ["Ancien > Soldes", "Femme", "Femme > Robes"]

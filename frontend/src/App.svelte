@@ -17,6 +17,7 @@
   import HomePage from "./routes/HomePage.svelte"
   import ImportDetailPage from "./routes/ImportDetailPage.svelte"
   import ImportNewPage from "./routes/ImportNewPage.svelte"
+  import BoutiquePage from "./routes/BoutiquePage.svelte"
   import ImportsListPage from "./routes/ImportsListPage.svelte"
   import ItemReviewPage from "./routes/ItemReviewPage.svelte"
   import JobDetailPage from "./routes/JobDetailPage.svelte"
@@ -73,6 +74,7 @@
         <Route path="/imports" component={ImportsListPage} {appName} />
         <Route path="/profiles" component={ProfilesPage} {appName} />
         <Route path="/enrichment" component={EnrichmentPage} {appName} />
+        <Route path="/boutique" component={BoutiquePage} {appName} />
         <Route path="/usage" component={UsagePage} {appName} />
         <!-- Console admin (opérateur) : routes spécifiques avant /admin. -->
         <Route path="/admin/billing" component={AdminBillingPage} {appName} />

@@ -23,7 +23,6 @@
   import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
-  import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
   import type { AccountSettingsExtended } from "@/lib/accountSettings.svelte"
   import { saveAccountSettingsPartial } from "@/lib/accountSettings.svelte"
   import { prefs, savePreferences } from "@/lib/preferences.svelte"
@@ -34,9 +33,11 @@
   // les saisies en cours quand on change d'onglet). ---
   // L'enrichissement (instructions, contexte boutique, modèle de titre)
   // a sa propre page : /enrichment.
+  // NOTE : l'onglet « Marques » (sites web des marques) a déménagé dans les
+  // Réglages boutique (/boutique) — c'est un référentiel boutique, pas un
+  // paramètre personnel (demande Marc 2026-07-29).
   const TABS = [
     { key: "preferences", label: "Préférences" },
-    { key: "brands", label: "Marques" },
     { key: "account", label: "Compte" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
@@ -45,11 +46,6 @@
   // L'onglet Marques charge des listes : montage paresseux à la première
   // ouverture (puis le composant reste monté).
   // Les profils d'import ont leur propre page (/profiles).
-  let brandsOpened = $state(false)
-  $effect(() => {
-    if (tab === "brands") brandsOpened = true
-  })
-
   // --- Connexion Tillin (lecture seule) ---
   let connection = $state<ConnectionStatus | null>(null)
 
@@ -181,13 +177,6 @@
               </div>
             </CardContent>
           </Card>
-        </div>
-
-        <!-- Onglet Marques (sites web de référence par marque) -->
-        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "brands"}>
-          {#if brandsOpened}
-            <BrandWebsites />
-          {/if}
         </div>
 
         <!-- Onglet Compte (Tillin + notifications + mot de passe) -->

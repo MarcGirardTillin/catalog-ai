@@ -194,6 +194,8 @@ def test_get_classification_normalizes_groups() -> None:
         "title": "Shoes",
         "parent_id": 0,
         "default_weight_kg": 0.0,
+        # isVisible absent du payload = visible (tolérance anciens payloads).
+        "visible": True,
     }
     assert filters["suppliers"][0]["title"] == "ACME"
     # The season with title=None is dropped.

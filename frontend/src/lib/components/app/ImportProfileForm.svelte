@@ -64,10 +64,12 @@
   // --- Axes d'options Tillin (option1..option3) : ordre + libellés ---
   type OptionSource = "color" | "size" | "extra"
   type OptionAxisDraft = { source: OptionSource; label: string }
+  // Libellés courts demandés par Marc (2026-07-29) : les sources restent les
+  // champs extraits couleur/taille/3e dimension, présentés Option 1/2/3.
   const SOURCE_LABELS: Record<OptionSource, string> = {
-    color: "Couleur extraite",
-    size: "Taille extraite",
-    extra: "3e dimension extraite",
+    color: "Option 1",
+    size: "Option 2",
+    extra: "Option 3",
   }
   const DEFAULT_AXIS_LABELS: Record<OptionSource, string> = {
     color: "Couleur",
@@ -467,7 +469,7 @@
     <label class="flex items-start gap-2 text-sm">
       <input
         type="checkbox"
-        class="mt-0.5 size-4"
+        class="mt-0.5 size-4 shrink-0"
         bind:checked={form.apply_title_template}
       />
       <span>
@@ -484,7 +486,7 @@
     <label class="flex items-start gap-2 text-sm">
       <input
         type="checkbox"
-        class="mt-0.5 size-4"
+        class="mt-0.5 size-4 shrink-0"
         bind:checked={form.split_by_color}
       />
       <span>

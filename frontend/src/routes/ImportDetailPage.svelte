@@ -147,12 +147,21 @@
   // Saison imposée par le profil : valeur effective affichée dans la grille.
   const profileSeason = $derived((selectedProfile?.config.season_label ?? "").trim())
 
-  // Libellé du 3e axe d'options du profil (null = profil à 2 axes) : la
-  // review affiche alors la colonne « extra » des variantes.
-  const extraOptionLabel = $derived(
-    selectedProfile?.config.option_axes?.find((a) => a.source === "extra")?.label ??
-      null,
-  )
+  // Axes d'options du profil : la review ordonne/étiquette ses colonnes de
+  // variantes dessus (null = pas de profil → Couleur puis Taille).
+  const optionAxes = $derived(selectedProfile?.config.option_axes ?? null)
+
+  // Valeurs effectives du transfert imposées/repliées par le profil —
+  // affichées « (profil) » dans les infos produit de la review.
+  const profileDefaults = $derived.by(() => {
+    const c = selectedProfile?.config
+    if (!c) return null
+    return {
+      gender: (c.default_gender ?? "").trim() || null,
+      brand: c.brand_mode === "fixed" ? c.brand_value.trim() || null : null,
+      supplier: (c.supplier_label ?? "").trim() || null,
+    }
+  })
 
   // Prix de vente calculé par le profil (mode coefficient uniquement) —
   // aperçu local dans la grille, le calcul réel est appliqué au CSV.
@@ -336,7 +345,8 @@
               {coefficientConfig}
               {catalogFilters}
               {renderedByRef}
-              {extraOptionLabel}
+              {optionAxes}
+              {profileDefaults}
               onChanged={onItemsChanged}
             />
           {/if}

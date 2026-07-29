@@ -619,10 +619,11 @@
 
         {#if filters}
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <!-- Fournisseur avant Marque (demande Marc 2026-07-29). -->
+            <FilterSelect label="Fournisseur" options={filters.suppliers ?? []} bind:value={supplier} onchange={onFilterChange} />
             <FilterSelect label="Marque" options={filters.brands ?? []} bind:value={brand} onchange={onFilterChange} />
             <FilterSelect label="Catégorie" options={filters.categories ?? []} bind:value={category} onchange={onFilterChange} />
             <FilterSelect label="Saison" options={filters.seasons ?? []} bind:value={season} onchange={onFilterChange} />
-            <FilterSelect label="Fournisseur" options={filters.suppliers ?? []} bind:value={supplier} onchange={onFilterChange} />
             <FilterSelect label="Tag" options={filters.tags ?? []} bind:value={tag} onchange={onFilterChange} />
             <label class="flex min-w-0 flex-1 flex-col gap-1">
               <span class="text-foreground text-xs font-medium">Statut</span>

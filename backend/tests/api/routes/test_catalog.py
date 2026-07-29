@@ -75,3 +75,24 @@ def test_filters_returns_classification(
     assert body["compositions"] == [
         {"id": 11, "title": "Coton", "parent_id": None, "default_weight_kg": None}
     ]
+
+
+def test_filters_drop_hidden_categories(
+    auth_client: TestClient, override_xano: Callable[[Handler], None]
+) -> None:
+    """isVisible=false : la catégorie est écartée des filtres/datalists."""
+    company = {
+        **COMPANY,
+        "categories": [
+            {"id": 5, "title": "Shoes", "parent_id": 0, "isVisible": True},
+            {"id": 6, "title": "Archives", "parent_id": 0, "isVisible": False},
+        ],
+    }
+    override_xano(
+        lambda _: httpx.Response(200, json={"company_all_informations": company})
+    )
+
+    response = auth_client.get("/catalog/filters")
+
+    assert response.status_code == 200
+    assert [c["title"] for c in response.json()["categories"]] == ["Shoes"]

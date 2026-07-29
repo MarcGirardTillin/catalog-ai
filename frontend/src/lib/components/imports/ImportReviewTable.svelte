@@ -44,7 +44,8 @@
     coefficientConfig,
     catalogFilters,
     renderedByRef = null,
-    extraOptionLabel = null,
+    optionAxes = null,
+    profileDefaults = null,
     onChanged,
   }: {
     importId: number
@@ -62,19 +63,37 @@
     /** Rendu Tillin par référence (titre/saison après profil), null = pas
      *  de profil sélectionné. Aperçu en lecture seule sous le titre extrait. */
     renderedByRef?: Record<string, { title: string; season: string }> | null
-    /** Libellé du 3e axe d'options du profil (null = pas de 3e axe) —
-     *  la colonne « extra » s'affiche si le profil en a un OU si une
-     *  variante extraite en porte une valeur. */
-    extraOptionLabel?: string | null
+    /** Axes d'options du profil sélectionné (ordre + libellés Tillin),
+     *  null = pas de profil → colonnes par défaut Couleur puis Taille. */
+    optionAxes?: { source: "color" | "size" | "extra"; label: string }[] | null
+    /** Valeurs effectives imposées/repliées par le profil au transfert
+     *  (affichées « (profil) » dans les infos produit). */
+    profileDefaults?: {
+      gender: string | null
+      brand: string | null
+      supplier: string | null
+    } | null
     /** Items/statuts modifiés : la page rafraîchit le job + l'aperçu CSV. */
     onChanged: () => void
   } = $props()
 
-  const extraHeader = $derived(extraOptionLabel ?? "Option 3")
-  const showExtra = $derived(
-    extraOptionLabel !== null ||
-      items.some((item) => item.payload.variants?.some((v) => v.extra)),
-  )
+  // Colonnes de variantes : l'ordre et les libellés suivent le profil ; la
+  // colonne « extra » apparaît aussi sans profil dès qu'une valeur existe.
+  type AxisSource = "color" | "size" | "extra"
+  const DEFAULT_AXES: { source: AxisSource; label: string }[] = [
+    { source: "color", label: "Couleur" },
+    { source: "size", label: "Taille" },
+  ]
+  const variantColumns = $derived.by(() => {
+    const axes = optionAxes?.length ? optionAxes : DEFAULT_AXES
+    const hasExtraValues = items.some((item) =>
+      item.payload.variants?.some((v) => v.extra),
+    )
+    if (!axes.some((a) => a.source === "extra") && hasExtraValues) {
+      return [...axes, { source: "extra" as AxisSource, label: "Option 3" }]
+    }
+    return axes
+  })
 
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
@@ -199,6 +218,11 @@
     }
     items = items.map((i) => (i.id === data.id ? data : i))
     drafts[item.id] = makeDraft(data.payload)
+    // Enregistrer referme la ligne (demande Marc 2026-07-29) : le geste
+    // clôt la relecture du produit, on passe au suivant.
+    const next = new Set(expanded)
+    next.delete(item.id)
+    expanded = next
     toast.success("Produit enregistré")
     onChanged()
   }
@@ -615,11 +639,9 @@
                   <table class="w-full min-w-2xl text-xs">
                     <thead>
                       <tr class="border-border border-b">
-                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
-                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
-                        {#if showExtra}
-                          <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">{extraHeader}</th>
-                        {/if}
+                        {#each variantColumns as column (column.source)}
+                          <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">{column.label}</th>
+                        {/each}
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
@@ -635,62 +657,26 @@
                     <tbody>
                       {#each drafts[item.id].variants as _draftVariant, vIndex (vIndex)}
                         <tr class="border-border/50 border-b last:border-b-0">
-                          <td class="px-1 py-1">
-                            <div class="flex items-center gap-0.5">
-                            <Input
-                              class="h-8 min-w-24 text-xs"
-                              aria-label="Couleur de la variante {vIndex + 1}"
-                              bind:value={drafts[item.id].variants[vIndex].color}
-                            />
-                              <button
-                                type="button"
-                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
-                                title="Appliquer cette valeur aux variantes suivantes"
-                                aria-label="Appliquer cette valeur aux variantes suivantes"
-                                onclick={() => fillDown(item.id, "color", vIndex)}
-                              >
-                                ↓
-                              </button>
-                            </div>
-                          </td>
-                          <td class="px-1 py-1">
-                            <div class="flex items-center gap-0.5">
-                            <Input
-                              class="h-8 min-w-16 text-xs"
-                              aria-label="Taille de la variante {vIndex + 1}"
-                              bind:value={drafts[item.id].variants[vIndex].size}
-                            />
-                              <button
-                                type="button"
-                                class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
-                                title="Appliquer cette valeur aux variantes suivantes"
-                                aria-label="Appliquer cette valeur aux variantes suivantes"
-                                onclick={() => fillDown(item.id, "size", vIndex)}
-                              >
-                                ↓
-                              </button>
-                            </div>
-                          </td>
-                          {#if showExtra}
+                          {#each variantColumns as column (column.source)}
                             <td class="px-1 py-1">
                               <div class="flex items-center gap-0.5">
                                 <Input
                                   class="h-8 min-w-16 text-xs"
-                                  aria-label="{extraHeader} de la variante {vIndex + 1}"
-                                  bind:value={drafts[item.id].variants[vIndex].extra}
+                                  aria-label="{column.label} de la variante {vIndex + 1}"
+                                  bind:value={drafts[item.id].variants[vIndex][column.source]}
                                 />
                                 <button
                                   type="button"
                                   class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer rounded px-0.5 text-xs opacity-50 hover:opacity-100"
                                   title="Appliquer cette valeur aux variantes suivantes"
                                   aria-label="Appliquer cette valeur aux variantes suivantes"
-                                  onclick={() => fillDown(item.id, "extra", vIndex)}
+                                  onclick={() => fillDown(item.id, column.source, vIndex)}
                                 >
                                   ↓
                                 </button>
                               </div>
                             </td>
-                          {/if}
+                          {/each}
                           <td class="px-1 py-1">
                             <div class="flex items-center gap-0.5">
                             <Input
@@ -838,7 +824,11 @@
                   </div>
                 </div>
               {:else}
-                {#if PRODUCT_FIELDS.some(({ key }) => product[key]) || profileSeason}
+                {#if PRODUCT_FIELDS.some(({ key }) => product[key]) || profileSeason || profileDefaults}
+                  <!-- Valeurs EFFECTIVES du transfert : quand le profil impose
+                       ou replie une valeur (saison, genre, marque fixe,
+                       fournisseur), c'est elle qui est montrée, marquée
+                       « (profil) » — pas la valeur extraite du fichier. -->
                   <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs sm:grid-cols-3">
                     {#each PRODUCT_FIELDS as { key, label } (key)}
                       {#if key === "season" && profileSeason}
@@ -848,6 +838,15 @@
                           <dt class="text-muted-foreground">{label}</dt>
                           <dd>
                             {profileSeason}
+                            <span class="text-muted-foreground">(profil)</span>
+                          </dd>
+                        </div>
+                      {:else if key === "gender" && !product.gender && profileDefaults?.gender}
+                        <!-- Genre par défaut du profil : repli seulement. -->
+                        <div>
+                          <dt class="text-muted-foreground">{label}</dt>
+                          <dd>
+                            {profileDefaults.gender}
                             <span class="text-muted-foreground">(profil)</span>
                           </dd>
                         </div>
@@ -864,6 +863,26 @@
                         </div>
                       {/if}
                     {/each}
+                    {#if profileDefaults?.brand}
+                      <!-- Marque fixe du profil : elle remplace toujours la
+                           marque extraite dans le CSV. -->
+                      <div>
+                        <dt class="text-muted-foreground">Marque</dt>
+                        <dd>
+                          {profileDefaults.brand}
+                          <span class="text-muted-foreground">(profil)</span>
+                        </dd>
+                      </div>
+                    {/if}
+                    {#if profileDefaults?.supplier}
+                      <div>
+                        <dt class="text-muted-foreground">Fournisseur</dt>
+                        <dd>
+                          {profileDefaults.supplier}
+                          <span class="text-muted-foreground">(profil)</span>
+                        </dd>
+                      </div>
+                    {/if}
                   </dl>
                 {/if}
 
@@ -871,11 +890,9 @@
                   <table class="w-full min-w-lg text-xs">
                     <thead>
                       <tr class="border-border border-b">
-                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Couleur</th>
-                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Taille</th>
-                        {#if showExtra}
-                          <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">{extraHeader}</th>
-                        {/if}
+                        {#each variantColumns as column (column.source)}
+                          <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">{column.label}</th>
+                        {/each}
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
@@ -891,29 +908,15 @@
                     <tbody>
                       {#each product.variants as variant, index (index)}
                         <tr class="border-border/50 border-b last:border-b-0">
-                          <td
-                            class="px-2 py-1.5 {lowConfidence(variant.confidence, 'color')
-                              ? 'text-warning-foreground'
-                              : ''}"
-                          >
-                            {variant.color ?? "—"}
-                          </td>
-                          <td
-                            class="px-2 py-1.5 {lowConfidence(variant.confidence, 'size')
-                              ? 'text-warning-foreground'
-                              : ''}"
-                          >
-                            {variant.size ?? "—"}
-                          </td>
-                          {#if showExtra}
+                          {#each variantColumns as column (column.source)}
                             <td
-                              class="px-2 py-1.5 {lowConfidence(variant.confidence, 'extra')
+                              class="px-2 py-1.5 {lowConfidence(variant.confidence, column.source)
                                 ? 'text-warning-foreground'
                                 : ''}"
                             >
-                              {variant.extra ?? "—"}
+                              {variant[column.source] ?? "—"}
                             </td>
-                          {/if}
+                          {/each}
                           <td
                             class="px-2 py-1.5 font-mono whitespace-nowrap {lowConfidence(variant.confidence, 'ean')
                               ? 'text-warning-foreground'

@@ -30,6 +30,7 @@
   import { Separator } from "@/lib/components/ui/separator"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import ShowMore from "@/lib/components/app/ShowMore.svelte"
   import ImportProfileForm from "@/lib/components/app/ImportProfileForm.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
@@ -327,8 +328,10 @@
                 </div>
               {/if}
 
+              <ShowMore items={filtered} initial={10} step={20}>
+                {#snippet children(visibleProfiles)}
               <ul class="flex flex-col">
-                {#each filtered as profile, index (profile.id)}
+                {#each visibleProfiles as profile, index (profile.id)}
                   {#if index > 0}
                     <Separator />
                   {/if}
@@ -377,6 +380,8 @@
                   </li>
                 {/each}
               </ul>
+                {/snippet}
+              </ShowMore>
             {/if}
           </CardContent>
         </Card>

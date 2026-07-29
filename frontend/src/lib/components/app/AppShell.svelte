@@ -12,7 +12,6 @@
   import Settings from "@lucide/svelte/icons/settings"
   import ShieldCheck from "@lucide/svelte/icons/shield-check"
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal"
-  import WandSparkles from "@lucide/svelte/icons/wand-sparkles"
   import X from "@lucide/svelte/icons/x"
   import { createQuery } from "@tanstack/svelte-query"
   import { listen, navigate } from "svelte5-router"
@@ -55,6 +54,12 @@
     }),
   )
 
+  type NavChild = {
+    label: string
+    href: string
+    isActive: (path: string) => boolean
+  }
+
   type NavItem = {
     label: string
     href: string
@@ -62,11 +67,14 @@
     isActive: (path: string) => boolean
     /** Module requis (clé DashboardStats) : entrée masquée s'il est coupé. */
     feature?: "feature_import" | "feature_enrich" | "feature_studio"
+    /** Sous-menu façon Shopify : cliquer le parent ouvre sa liste, les
+     *  autres facettes s'affichent en dessous quand la section est active. */
+    children?: NavChild[]
   }
 
-  // Navigation en deux sections : le flux quotidien (Pipeline) et les
-  // réglages durables (Configuration). Un groupe « Admin » s'ajoute pour
-  // l'opérateur uniquement (user.is_admin).
+  // Navigation façon Shopify (demande Marc 2026-07-29) : chaque section du
+  // pipeline porte ses facettes de configuration en sous-menu (visible quand
+  // la section est active) ; les réglages transverses ont leur entrée.
   const BASE_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     {
       title: "Pipeline",
@@ -83,6 +91,13 @@
           icon: FileUp,
           isActive: (path) => path.startsWith("/imports"),
           feature: "feature_import",
+          children: [
+            {
+              label: "Profils d'import",
+              href: "/profiles",
+              isActive: (path) => path.startsWith("/profiles"),
+            },
+          ],
         },
         {
           label: "Produits",
@@ -97,6 +112,13 @@
           // /jobs, /jobs/:id et /items/:id relèvent tous des enrichissements.
           isActive: (path) => path.startsWith("/jobs") || path.startsWith("/items"),
           feature: "feature_enrich",
+          children: [
+            {
+              label: "Réglages d'enrichissement",
+              href: "/enrichment",
+              isActive: (path) => path.startsWith("/enrichment"),
+            },
+          ],
         },
       ],
     },
@@ -104,28 +126,26 @@
       title: "Configuration",
       items: [
         {
-          label: "Profils d'import",
-          href: "/profiles",
-          icon: SlidersHorizontal,
-          isActive: (path) => path.startsWith("/profiles"),
-          feature: "feature_import",
-        },
-        {
-          label: "Réglages d'enrichissement",
-          href: "/enrichment",
-          icon: WandSparkles,
-          isActive: (path) => path.startsWith("/enrichment"),
-          feature: "feature_enrich",
-        },
-        {
           label: "Consommation",
           href: "/usage",
           icon: ChartColumn,
           isActive: (path) => path.startsWith("/usage"),
         },
+        {
+          label: "Réglages",
+          href: "/boutique",
+          icon: SlidersHorizontal,
+          isActive: (path) => path.startsWith("/boutique"),
+        },
       ],
     },
   ]
+
+  /** Sous-menu ouvert : la section (parent ou une facette) est active. */
+  function navOpen(item: NavItem, path: string): boolean {
+    if (!item.children?.length) return false
+    return item.isActive(path) || item.children.some((c) => c.isActive(path))
+  }
 
   // --- Pastilles d'état + modules : polling léger des compteurs du
   // dashboard ; le cache est partagé avec la page d'accueil (même queryKey).
@@ -155,7 +175,7 @@
   })
 
   // Groupe Admin (console opérateur), visible seulement pour l'admin.
-  const NAV_GROUPS = $derived(
+  const NAV_GROUPS = $derived<{ title: string; items: NavItem[] }[]>(
     user.is_admin
       ? [
           ...visibleBaseGroups,
@@ -314,6 +334,22 @@
               {/if}
             {/if}
           </button>
+          {#if navOpen(item, pathname)}
+            <!-- Facettes de la section active (sous-menu façon Shopify). -->
+            {#each item.children ?? [] as child (child.href)}
+              {@const childActive = child.isActive(pathname)}
+              <button
+                type="button"
+                class="flex h-8 cursor-pointer items-center rounded-md py-1 pr-2.5 pl-9 text-sm transition-colors {childActive
+                  ? 'bg-accent text-accent-foreground font-medium'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                aria-current={childActive ? "page" : undefined}
+                onclick={() => go(child.href)}
+              >
+                {child.label}
+              </button>
+            {/each}
+          {/if}
         {/each}
       </div>
     {/each}

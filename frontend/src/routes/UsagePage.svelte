@@ -19,6 +19,7 @@
   import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import ShowMore from "@/lib/components/app/ShowMore.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import AssetThumb from "@/lib/components/imaging/AssetThumb.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
@@ -353,6 +354,8 @@
                   Aucun visuel généré ce mois-ci.
                 </p>
               {:else}
+                <ShowMore items={generations} initial={10} step={20}>
+                  {#snippet children(visibleGenerations)}
                 <div class="overflow-x-auto">
                   <table class="w-full min-w-lg text-sm">
                     <thead>
@@ -366,7 +369,7 @@
                       </tr>
                     </thead>
                     <tbody>
-                      {#each generations as asset (asset.id)}
+                      {#each visibleGenerations as asset (asset.id)}
                         {@const status = generationStatus(asset)}
                         <tr
                           class="border-border hover:bg-muted/50 cursor-pointer border-b transition-colors last:border-b-0"
@@ -411,6 +414,8 @@
                     </tbody>
                   </table>
                 </div>
+                  {/snippet}
+                </ShowMore>
               {/if}
             </CardContent>
           </Card>

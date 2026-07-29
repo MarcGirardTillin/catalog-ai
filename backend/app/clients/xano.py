@@ -855,6 +855,11 @@ class XanoClient:
                     option["default_weight_kg"] = (
                         float(weight) if isinstance(weight, int | float) else 0.0
                     )
+                    # Visibilité boutique (isVisible Tillin) : une catégorie
+                    # masquée reste résolue id→titre (produits existants) mais
+                    # est écartée du matching d'extraction et des datalists.
+                    # Champ absent = visible (tolérance aux anciens payloads).
+                    option["visible"] = raw.get("isVisible") is not False
                 options.append(option)
             options.sort(key=lambda o: o["title"].lower())
             result[group] = options

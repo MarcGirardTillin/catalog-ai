@@ -73,6 +73,9 @@ def _known_category_paths(account_id: int) -> list[str] | None:
         return None
 
     by_id = {int(o["id"]): o for o in options if o.get("id") is not None}
+    # Catégories masquées dans Tillin (isVisible=false) : jamais proposées au
+    # matching — elles restent traversables comme parents d'un chemin.
+    visible_ids = {cid for cid, o in by_id.items() if o.get("visible", True)}
 
     def path_of(cid: int, depth: int = 0) -> str:
         option = by_id.get(cid)
@@ -83,7 +86,7 @@ def _known_category_paths(account_id: int) -> list[str] | None:
         prefix = path_of(int(parent), depth + 1) if parent else ""
         return f"{prefix} > {title}" if prefix else title
 
-    paths = [p for cid in by_id if (p := path_of(cid))]
+    paths = [p for cid in visible_ids if (p := path_of(cid))]
     return paths or None
 
 
