@@ -395,10 +395,6 @@
     return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`
   }
 
-  function missingEanCount(variants: ImportedVariant[]): number {
-    return variants.filter((v) => !v.ean).length
-  }
-
   // Champs produit secondaires affichés dans la ligne dépliée.
   const PRODUCT_FIELDS: { key: "category" | "season" | "gender" | "composition" | "hs_code" | "manufacturing_country"; label: string }[] = [
     { key: "category", label: "Catégorie" },
@@ -462,7 +458,6 @@
     {#each items as item (item.id)}
       {@const product = item.payload}
       {@const isOpen = expanded.has(item.id)}
-      {@const noEan = missingEanCount(product.variants)}
       {@const isRejected = item.status === "rejected"}
       {@const isApplied = item.status === "applied"}
       {@const rendered = renderedByRef?.[product.supplier_ref] ?? null}
@@ -545,17 +540,12 @@
               · {sizeSummary(product.variants)}
               · {wholesaleRange(product.variants)}
             </p>
-            {#if isRejected || isApplied || noEan > 0 || item.warnings.length > 0}
+            {#if isRejected || isApplied || item.warnings.length > 0}
               <div class="mt-1 flex flex-wrap items-center gap-1.5">
                 {#if isRejected || isApplied}
                   <!-- Même rendu de statut que partout ailleurs
                        (« Transféré » côté imports via context). -->
                   <StatusBadge status={item.status} context="import" />
-                {/if}
-                {#if noEan > 0}
-                  <span class="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[11px]">
-                    {noEan} sans EAN
-                  </span>
                 {/if}
                 {#if item.warnings.length > 0}
                   <span

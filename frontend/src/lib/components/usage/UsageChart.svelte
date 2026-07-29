@@ -173,10 +173,13 @@
       total,
       x,
       yTop,
-      // Position % dans le conteneur (le SVG occupe 100% de sa largeur) ;
-      // bornée pour que l'infobulle ne sorte ni des côtés ni du haut.
+      // Position % dans le conteneur (le SVG occupe 100% de sa largeur),
+      // bornée pour ne pas sortir des côtés. Barre haute : l'infobulle
+      // bascule SOUS le sommet de la barre au lieu d'être coupée en haut
+      // (le contenu varie avec le nombre de séries — jamais tronqué).
       leftPct: Math.min(82, Math.max(18, (x / CW) * 100)),
-      topPct: Math.max(35, (yTop / CH) * 100),
+      topPct: (yTop / CH) * 100,
+      below: yTop / CH < 0.45,
     }
   })
 
@@ -292,7 +295,9 @@
   {#if hoverInfo}
     <div
       class="border-border bg-popover text-popover-foreground pointer-events-none absolute z-10 min-w-36 rounded-md border px-2.5 py-2 text-xs shadow-md"
-      style="left:{hoverInfo.leftPct}%; top:{hoverInfo.topPct}%; transform:translate(-50%, calc(-100% - 8px))"
+      style="left:{hoverInfo.leftPct}%; top:{hoverInfo.topPct}%; transform:translate(-50%, {hoverInfo.below
+        ? '10px'
+        : 'calc(-100% - 8px)'})"
       role="status"
     >
       <p class="text-muted-foreground mb-1 font-medium">

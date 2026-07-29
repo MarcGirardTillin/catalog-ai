@@ -225,8 +225,8 @@
             </div>
           {/if}
 
-          <!-- Solde + consommation du mois par action -->
-          <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <!-- Solde + crédits consommés + consommation du mois par action -->
+          <div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
             <Card size="sm">
               <CardContent class="flex flex-col gap-1 py-4">
                 <span class="text-muted-foreground flex items-center gap-1.5 text-xs">
@@ -235,6 +235,16 @@
                 </span>
                 <span class="text-2xl font-semibold tabular-nums sm:text-3xl {balanceTone}">
                   {formatInt(credits.balance)}
+                </span>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent class="flex flex-col gap-1 py-4">
+                <span class="text-muted-foreground text-xs">
+                  Crédits consommés (mois)
+                </span>
+                <span class="text-foreground text-2xl font-semibold tabular-nums sm:text-3xl">
+                  {formatInt(credits.month.consumed_total ?? 0)}
                 </span>
               </CardContent>
             </Card>

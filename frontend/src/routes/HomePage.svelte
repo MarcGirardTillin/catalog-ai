@@ -16,6 +16,7 @@
   import type { Component } from "svelte"
   import type { JobPublic } from "@/client"
   import { listImports, type ImportJobPublic } from "@/lib/api/imports"
+  import { getCredits } from "@/lib/api/credits"
   import { getUsageSummary } from "@/lib/api/usage"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
@@ -142,6 +143,21 @@
       return data
     },
   }))
+  // Crédits consommés sur le mois courant (même tuile que le facturable €).
+  const creditsQuery = createQuery(() => ({
+    queryKey: ["credits", month],
+    queryFn: async () => {
+      const { data, error } = await getCredits(month)
+      if (error || !data) throw new Error("credits_load_failed")
+      return data
+    },
+  }))
+  const usageCredits = $derived.by(() => {
+    const consumed = creditsQuery.data?.month.consumed_total
+    if (consumed == null) return null
+    return `${consumed.toLocaleString("fr-FR")} crédit${consumed >= 2 ? "s" : ""} consommé${consumed >= 2 ? "s" : ""}`
+  })
+
   // Facturable du mois courant, déjà formaté en EUR ("—" tant que non chargé).
   const usageBillable = $derived.by(() => {
     const data = usageQuery.data
@@ -226,6 +242,7 @@
         key: "saved",
         label: "Temps gagné ce mois-ci",
         value: `≈ ${formatMinutes(stats.minutes_saved_this_month ?? 0)}`,
+        sub: null as string | null,
         href: null as string | null,
         highlight: true,
       },
@@ -235,6 +252,7 @@
               key: "enriched",
               label: "Fiches enrichies",
               value: String(stats.applied_this_month ?? 0),
+              sub: null,
               href: null,
               highlight: false,
             },
@@ -246,6 +264,7 @@
               key: "imported",
               label: "Fiches importées",
               value: String(stats.imported_this_month ?? 0),
+              sub: null,
               href: null,
               highlight: false,
             },
@@ -255,6 +274,8 @@
         key: "usage",
         label: "Consommation du mois",
         value: usageBillable,
+        // Crédits consommés sur le même mois (demande Marc 2026-07-30).
+        sub: usageCredits,
         href: "/usage",
         highlight: false,
       },
@@ -267,6 +288,7 @@
                 stats.avg_item_seconds != null
                   ? formatDuration(stats.avg_item_seconds)
                   : "—",
+              sub: null,
               href: null,
               highlight: false,
             },
@@ -277,6 +299,7 @@
                 stats.auto_resolve_rate != null
                   ? `${Math.round(stats.auto_resolve_rate * 100)} %`
                   : "—",
+              sub: null,
               href: null,
               highlight: false,
             },
@@ -370,6 +393,11 @@
                       <span class="text-foreground text-2xl font-semibold tabular-nums">
                         {tile.value}
                       </span>
+                      {#if tile.sub}
+                        <span class="text-muted-foreground text-xs tabular-nums">
+                          {tile.sub}
+                        </span>
+                      {/if}
                     </CardContent>
                   </Card>
                 </button>
@@ -387,6 +415,11 @@
                     >
                       {tile.value}
                     </span>
+                    {#if tile.sub}
+                      <span class="text-muted-foreground text-xs tabular-nums">
+                        {tile.sub}
+                      </span>
+                    {/if}
                   </CardContent>
                 </Card>
               {/if}
