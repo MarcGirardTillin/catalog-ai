@@ -23,6 +23,7 @@ from app.api.services.usage import record_usage
 from app.clients.base import ExternalServiceError
 from app.clients.fashn import FashnClient
 from app.clients.photoroom import PhotoroomClient
+from app.core.config import settings
 from app.imaging.compose import compose, probe
 
 FASHN_PRODUCT_TO_MODEL = "product-to-model"
@@ -310,13 +311,19 @@ def fashn_credits(resolution: str, generation_mode: str, num_images: int) -> int
 
 
 def _download_source(url: str) -> bytes:
-    """Fetch the source image (30 s timeout, 30 MB cap, redirects followed)."""
+    """Fetch the source image (30 s timeout, 30 MB cap, redirects followed).
+
+    Passe par le proxy résidentiel `SOURCE_PROXY_URL` quand il est configuré :
+    certains WAF (Jacquemus/Farfetch) filtrent par réputation d'IP et
+    rejettent le datacenter même avec l'empreinte navigateur complète.
+    """
     try:
         response = httpx.get(
             url,
             timeout=SOURCE_TIMEOUT,
             follow_redirects=True,
             headers=_source_headers_for(url),
+            proxy=settings.SOURCE_PROXY_URL or None,
         )
     except httpx.HTTPError as exc:
         raise ExternalServiceError(

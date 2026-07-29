@@ -120,6 +120,35 @@ def test_normalize_without_remove_bg_is_fully_local(
     assert _usage_events(db) == []  # no provider call, nothing metered
 
 
+def test_download_source_uses_the_residential_proxy_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SOURCE_PROXY_URL route le téléchargement des images sources (WAF à
+    réputation d'IP : Jacquemus/Farfetch) ; vide = accès direct."""
+    captured: dict[str, object] = {}
+
+    def fake_get(url: str, **kwargs: object) -> httpx.Response:
+        captured.update(kwargs, url=url)
+        return httpx.Response(200, content=b"img")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "SOURCE_PROXY_URL", "")
+    assert imaging_service.download_source_image("https://brand.example/a.jpg")
+    assert captured["proxy"] is None
+
+    monkeypatch.setattr(
+        settings, "SOURCE_PROXY_URL", "http://user:pass@fr.proxy.test:40000"
+    )
+    assert imaging_service.download_source_image("https://brand.example/a.jpg")
+    assert captured["proxy"] == "http://user:pass@fr.proxy.test:40000"
+    # L'empreinte navigateur reste envoyée avec le proxy (les deux sont requis).
+    headers = captured["headers"]
+    assert isinstance(headers, dict) and "sec-ch-ua" in headers
+
+
 def test_normalize_downloads_url_sources(
     db: Session, account_id: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:

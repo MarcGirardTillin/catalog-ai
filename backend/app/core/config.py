@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # PHOTOROOM_API_KEY. À retirer du .env une fois le compte passé au plan
     # Plus : la clé principale sert alors pour segment ET edit.
     PHOTOROOM_EDIT_API_KEY: str = ""
+    # Proxy résidentiel (Decodo) pour le TÉLÉCHARGEMENT des images sources
+    # uniquement : Jacquemus/Farfetch filtrent par réputation d'IP — le
+    # datacenter est 403 même avec l'empreinte navigateur complète (vérifié
+    # live 2026-07-28 : prod 403, via proxy résidentiel FR 200). Jamais
+    # utilisé pour Xano ni les API payantes ; vide = accès direct.
+    SOURCE_PROXY_URL: str = ""
     FASHN_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
     BREVO_API_KEY: str = ""
