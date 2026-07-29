@@ -18,16 +18,19 @@
   // Densité des tables : padding vertical des cellules selon la préférence.
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
-  // TanStack Query : cache partagé (retour liste ↔ détail instantané).
+  // Pagination serveur (des milliers d'imports à terme) : la page est dans
+  // la clé de query, changer de page refetch automatiquement.
+  let page = $state(1)
   const importsQuery = createQuery(() => ({
-    queryKey: ["imports", "list"],
+    queryKey: ["imports", "list", page],
     queryFn: async () => {
-      const { data, error } = await listImports({ page_size: 50 })
+      const { data, error } = await listImports({ page, page_size: 25 })
       if (error || !data) throw new Error("imports_load_failed")
       return data
     },
   }))
   const imports = $derived(importsQuery.data?.items ?? null)
+  const totalPages = $derived(importsQuery.data?.total_pages ?? 0)
   const errorMessage = $derived(
     importsQuery.isError ? "Impossible de charger les imports." : null,
   )
@@ -76,7 +79,9 @@
 <RequireAuth>
   {#snippet children(user)}
     <AppShell {appName} {user} breadcrumbs={[{ label: "Imports" }]}>
-      <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
+      <!-- max-w-6xl : la table porte 7 colonnes, elles doivent tenir sans
+           scroll horizontal (demande Marc 2026-07-30). -->
+      <div class="mx-auto flex max-w-6xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Imports fournisseurs</h1>
           <Button size="sm" onclick={() => navigate("/imports/new")}>Importer un fichier</Button>
@@ -114,13 +119,13 @@
               <table class="w-full min-w-xl text-sm">
                 <thead>
                   <tr class="border-border border-b">
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Fichier</th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Fournisseur</th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Statut</th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Produits extraits</th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Suivi produits</th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Durée</th>
-                    <th class="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">Créé</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Fichier</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Fournisseur</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Statut</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">Produits</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-left text-xs font-medium">Suivi produits</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">Durée</th>
+                    <th class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">Créé</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -134,7 +139,7 @@
                       onclick={() => openImport(job.id)}
                       onkeydown={(e) => onRowKeydown(e, job.id)}
                     >
-                      <td class="max-w-60 px-4 {cellPad} font-medium" title={job.file_names.join("\n")}>
+                      <td class="max-w-72 px-3 {cellPad} font-medium" title={job.file_names.join("\n")}>
                         <span class="flex items-center gap-1.5">
                           <span class="truncate">{job.file_name}</span>
                           {#if job.file_names.length > 1}
@@ -147,18 +152,18 @@
                           {/if}
                         </span>
                       </td>
-                      <td class="max-w-40 px-4 {cellPad}">
+                      <td class="max-w-40 px-3 {cellPad}">
                         {#if job.supplier}
                           <span class="block truncate" title={job.supplier}>{job.supplier}</span>
                         {:else}
                           <span class="text-muted-foreground text-xs">—</span>
                         {/if}
                       </td>
-                      <td class="px-4 {cellPad}"><StatusBadge status={job.status} /></td>
-                      <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                      <td class="px-3 {cellPad}"><StatusBadge status={job.status} /></td>
+                      <td class="px-3 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {job.counts.total}
                       </td>
-                      <td class="px-4 {cellPad}">
+                      <td class="px-3 {cellPad}">
                         {#if chips.length > 0}
                           <div class="flex flex-wrap gap-1">
                             {#each chips as chip (chip.label)}
@@ -173,10 +178,10 @@
                           <span class="text-muted-foreground text-xs">—</span>
                         {/if}
                       </td>
-                      <td class="px-4 {cellPad} text-right whitespace-nowrap tabular-nums">
+                      <td class="px-3 {cellPad} text-right whitespace-nowrap tabular-nums">
                         {job.duration_seconds != null ? formatDuration(job.duration_seconds) : "—"}
                       </td>
-                      <td class="text-muted-foreground px-4 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
+                      <td class="text-muted-foreground px-3 {cellPad} text-right text-xs whitespace-nowrap tabular-nums">
                         {formatRelativeDate(job.created_at)}
                       </td>
                     </tr>
@@ -185,6 +190,29 @@
               </table>
             </CardContent>
           </Card>
+          {#if totalPages > 1}
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onclick={() => (page -= 1)}
+              >
+                Précédent
+              </Button>
+              <span class="text-muted-foreground font-mono text-xs">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onclick={() => (page += 1)}
+              >
+                Suivant
+              </Button>
+            </div>
+          {/if}
         {/if}
       </div>
     </AppShell>

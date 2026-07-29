@@ -265,7 +265,7 @@
       {/if}
       {#if job.totals.wholesale_amount != null}
         <div>
-          <dt class="text-muted-foreground">Total prix de gros</dt>
+          <dt class="text-muted-foreground">Total prix d'achat HT</dt>
           <dd class="font-mono font-medium">
             {formatPrice(job.totals.wholesale_amount)}
           </dd>

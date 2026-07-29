@@ -19,6 +19,7 @@
   import { Label } from "@/lib/components/ui/label"
   import { Separator } from "@/lib/components/ui/separator"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import LocalPagination from "@/lib/components/app/LocalPagination.svelte"
 
   let brands = $state<BrandPublic[] | null>(null)
   let loadFailed = $state(false)
@@ -114,8 +115,10 @@
       {#if filtered.length === 0}
         <p class="text-muted-foreground text-sm">Aucune marque ne correspond.</p>
       {:else}
+        <LocalPagination items={filtered} pageSize={10}>
+          {#snippet children(visibleBrands)}
         <ul class="flex flex-col">
-          {#each filtered as brand, index (brand.id)}
+          {#each visibleBrands as brand, index (brand.id)}
             {#if index > 0}
               <Separator />
             {/if}
@@ -176,6 +179,8 @@
             </li>
           {/each}
         </ul>
+          {/snippet}
+        </LocalPagination>
       {/if}
     {/if}
   </CardContent>

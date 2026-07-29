@@ -17,6 +17,7 @@
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { ConfirmButton } from "@/lib/components/ui/confirm-button"
+  import { Dialog } from "@/lib/components/ui/dialog"
   import {
     Card,
     CardContent,
@@ -30,7 +31,7 @@
   import { Separator } from "@/lib/components/ui/separator"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
-  import ShowMore from "@/lib/components/app/ShowMore.svelte"
+  import LocalPagination from "@/lib/components/app/LocalPagination.svelte"
   import ImportProfileForm from "@/lib/components/app/ImportProfileForm.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
 
@@ -93,9 +94,12 @@
   }
 
   // --- Édition groupée (harmonisation catalogue) ---
-  // Sélection par cases à cocher ; trois conventions qui, en pratique, sont
-  // les mêmes pour toute la boutique : saison, modèle de titre, séparation
-  // par couleur. « Ne pas modifier » laisse le champ intact profil par profil.
+  // Mode explicite (demande Marc 2026-07-30) : le bouton « Édition groupée »
+  // active la sélection ; « Modifier la sélection » ouvre un popup avec les
+  // trois conventions boutique (saison, modèle de titre, séparation par
+  // couleur). « Ne pas modifier » laisse le champ intact profil par profil.
+  let bulkMode = $state(false)
+  let bulkDialogOpen = $state(false)
   let selected = $state<Set<number>>(new Set())
   let bulkSeason = $state("")
   let bulkSeasonEnabled = $state(false)
@@ -148,13 +152,21 @@
     bulkSeason = ""
     bulkTitleTemplate = "keep"
     bulkSplit = "keep"
+    bulkDialogOpen = false
+    bulkMode = false
     queryClient.invalidateQueries({ queryKey: ["profiles", "list"] })
+  }
+
+  function exitBulkMode() {
+    bulkMode = false
+    bulkDialogOpen = false
+    selected = new Set()
   }
 
   /** Résumé lisible de la règle de prix d'un profil. */
   function priceSummary(config: ImportProfileConfig): string {
     if (config.price_mode === "coefficient") {
-      return `Prix de gros × ${config.coefficient ?? "?"}, arrondi au multiple de ${config.round_up_to}`
+      return `Prix d'achat HT × ${config.coefficient ?? "?"}, arrondi au multiple de ${config.round_up_to}`
     }
     return "Prix conseillé repris tel quel"
   }
@@ -253,82 +265,39 @@
                 Aucun profil ne correspond à « {search.trim()} ».
               </p>
             {:else}
-              <!-- Sélection groupée : harmoniser saison / titre / séparation -->
-              <div class="flex items-center gap-2">
-                <label class="text-muted-foreground flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    class="size-4"
-                    checked={allFilteredSelected}
-                    onchange={toggleAllFiltered}
-                  />
-                  Tout sélectionner ({filtered.length})
-                </label>
-                {#if selected.size > 0}
-                  <span class="text-muted-foreground text-xs">
-                    · {selected.size} sélectionné{selected.size > 1 ? "s" : ""}
-                  </span>
-                {/if}
-              </div>
-
-              {#if selected.size > 0}
-                <div
-                  class="border-border bg-muted/40 flex flex-col gap-3 rounded-md border p-3"
-                >
-                  <span class="text-sm font-medium">
-                    Modifier les {selected.size} profil{selected.size > 1 ? "s" : ""} sélectionné{selected.size > 1 ? "s" : ""}
-                  </span>
-                  <div class="grid gap-3 sm:grid-cols-3">
-                    <div class="flex flex-col gap-1.5">
-                      <Label for="bulk-season">Saison</Label>
-                      <div class="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          class="size-4 shrink-0"
-                          aria-label="Modifier la saison"
-                          bind:checked={bulkSeasonEnabled}
-                        />
-                        <Input
-                          id="bulk-season"
-                          placeholder="Ex. FW26 (vide = saison extraite)"
-                          disabled={!bulkSeasonEnabled}
-                          bind:value={bulkSeason}
-                        />
-                      </div>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <Label for="bulk-title">Modèle de titre à l'import</Label>
-                      <Select id="bulk-title" bind:value={bulkTitleTemplate}>
-                        <option value="keep">Ne pas modifier</option>
-                        <option value="on">Activer</option>
-                        <option value="off">Désactiver</option>
-                      </Select>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <Label for="bulk-split">Une fiche par couleur</Label>
-                      <Select id="bulk-split" bind:value={bulkSplit}>
-                        <option value="keep">Ne pas modifier</option>
-                        <option value="on">Activer</option>
-                        <option value="off">Désactiver</option>
-                      </Select>
-                    </div>
-                  </div>
-                  <div class="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onclick={() => (selected = new Set())}
-                    >
-                      Annuler
-                    </Button>
-                    <Button size="sm" disabled={bulkSaving} onclick={applyBulk}>
-                      {bulkSaving ? "Application…" : "Appliquer à la sélection"}
-                    </Button>
-                  </div>
+              <!-- Édition groupée : mode explicite — le bouton active la
+                   sélection, « Modifier la sélection » ouvre le popup. -->
+              {#if !bulkMode}
+                <div>
+                  <Button variant="outline" size="sm" onclick={() => (bulkMode = true)}>
+                    Édition groupée
+                  </Button>
+                </div>
+              {:else}
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="text-muted-foreground flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      class="size-4"
+                      checked={allFilteredSelected}
+                      onchange={toggleAllFiltered}
+                    />
+                    Tout sélectionner ({filtered.length})
+                  </label>
+                  <Button
+                    size="sm"
+                    disabled={selected.size === 0}
+                    onclick={() => (bulkDialogOpen = true)}
+                  >
+                    Modifier la sélection ({selected.size})
+                  </Button>
+                  <Button variant="ghost" size="sm" onclick={exitBulkMode}>
+                    Terminer
+                  </Button>
                 </div>
               {/if}
 
-              <ShowMore items={filtered} initial={10} step={20}>
+              <LocalPagination items={filtered} pageSize={10}>
                 {#snippet children(visibleProfiles)}
               <ul class="flex flex-col">
                 {#each visibleProfiles as profile, index (profile.id)}
@@ -336,13 +305,15 @@
                     <Separator />
                   {/if}
                   <li class="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                    <input
-                      type="checkbox"
-                      class="size-4 shrink-0"
-                      aria-label={`Sélectionner ${profile.name}`}
-                      checked={selected.has(profile.id)}
-                      onchange={() => toggleSelected(profile.id)}
-                    />
+                    {#if bulkMode}
+                      <input
+                        type="checkbox"
+                        class="size-4 shrink-0"
+                        aria-label={`Sélectionner ${profile.name}`}
+                        checked={selected.has(profile.id)}
+                        onchange={() => toggleSelected(profile.id)}
+                      />
+                    {/if}
                     <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span class="text-sm font-medium">{profile.name}</span>
                       <span class="text-muted-foreground text-xs">
@@ -381,11 +352,71 @@
                 {/each}
               </ul>
                 {/snippet}
-              </ShowMore>
+              </LocalPagination>
             {/if}
           </CardContent>
         </Card>
       </div>
+
+      {#if bulkDialogOpen}
+        <Dialog
+          title={`Modifier ${selected.size} profil${selected.size > 1 ? "s" : ""}`}
+          dismissable={!bulkSaving}
+          onClose={() => (bulkDialogOpen = false)}
+        >
+          <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-1.5">
+              <Label for="bulk-season">Saison</Label>
+              <div class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="size-4 shrink-0"
+                  aria-label="Modifier la saison"
+                  bind:checked={bulkSeasonEnabled}
+                />
+                <Input
+                  id="bulk-season"
+                  placeholder="Ex. FW26 (vide = saison extraite)"
+                  disabled={!bulkSeasonEnabled}
+                  bind:value={bulkSeason}
+                />
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label for="bulk-title">Modèle de titre à l'import</Label>
+              <Select id="bulk-title" bind:value={bulkTitleTemplate}>
+                <option value="keep">Ne pas modifier</option>
+                <option value="on">Activer</option>
+                <option value="off">Désactiver</option>
+              </Select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label for="bulk-split">Une fiche par couleur</Label>
+              <Select id="bulk-split" bind:value={bulkSplit}>
+                <option value="keep">Ne pas modifier</option>
+                <option value="on">Activer</option>
+                <option value="off">Désactiver</option>
+              </Select>
+            </div>
+            <p class="text-muted-foreground text-xs">
+              « Ne pas modifier » laisse le réglage intact profil par profil.
+            </p>
+            <div class="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={bulkSaving}
+                onclick={() => (bulkDialogOpen = false)}
+              >
+                Annuler
+              </Button>
+              <Button size="sm" disabled={bulkSaving} onclick={applyBulk}>
+                {bulkSaving ? "Application…" : "Appliquer à la sélection"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      {/if}
     </AppShell>
   {/snippet}
 </RequireAuth>

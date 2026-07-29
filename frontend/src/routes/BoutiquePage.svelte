@@ -19,6 +19,7 @@
     CardTitle,
   } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
+  import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
@@ -28,6 +29,16 @@
   import { saveAccountSettingsPartial } from "@/lib/accountSettings.svelte"
 
   let { appName }: { appName: string } = $props()
+
+  // Onglets (état local ; les panneaux restent montés pour conserver les
+  // saisies en cours — même pattern que les autres pages de réglages).
+  const TABS = [
+    { key: "title", label: "Modèle de titre" },
+    { key: "brands", label: "Sites des marques" },
+    { key: "weights", label: "Poids par défaut" },
+  ] as const
+  type TabKey = (typeof TABS)[number]["key"]
+  let tab = $state<TabKey>("title")
 
   // --- Modèle de titre du compte (utilisé par l'enrichissement ET par les
   // imports quand le profil active « appliquer le modèle de titre »). ---
@@ -158,6 +169,9 @@
           enrichissements.
         </p>
 
+        <TabBar tabs={TABS} bind:value={tab} label="Sections des réglages" />
+
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "title"}>
         <Card size="sm">
           <CardHeader>
             <CardTitle class="font-title text-sm">Modèle de titre</CardTitle>
@@ -184,9 +198,13 @@
             {/if}
           </CardContent>
         </Card>
+        </div>
 
-        <BrandWebsites />
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "brands"}>
+          <BrandWebsites />
+        </div>
 
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "weights"}>
         <Card size="sm">
           <CardHeader>
             <CardTitle class="font-title text-sm">
@@ -233,6 +251,7 @@
             {/if}
           </CardContent>
         </Card>
+        </div>
       </div>
     </AppShell>
   {/snippet}

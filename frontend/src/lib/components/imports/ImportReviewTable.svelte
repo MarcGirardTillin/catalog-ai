@@ -338,7 +338,7 @@
     return optionTitles(catalogFilters[list])
   }
 
-  /** Prix de gros × coefficient, arrondi au multiple supérieur de round_up_to. */
+  /** Prix d'achat HT × coefficient, arrondi au multiple supérieur de round_up_to. */
   function profilePrice(wholesale: string | null): string {
     if (!coefficientConfig || wholesale == null) return "—"
     const w = Number(wholesale.trim().replace(",", "."))
@@ -383,7 +383,7 @@
     return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })
   }
 
-  /** Fourchette de prix de gros sur les variantes (ex. « 12,50 € – 18,00 € »). */
+  /** Fourchette de prix d'achat HT sur les variantes (ex. « 12,50 € – 18,00 € »). */
   function wholesaleRange(variants: ImportedVariant[]): string {
     const prices = variants
       .map((v) => (v.wholesale_price == null ? NaN : Number.parseFloat(v.wholesale_price)))
@@ -409,17 +409,18 @@
     { key: "manufacturing_country", label: "Pays de fabrication" },
   ]
 
-  // Colonnes de la ligne de synthèse : case, chevron, produit (réf + titre +
-  // méta), puis marque et prix de gros sur écran large uniquement.
+  // Colonnes de la ligne de synthèse : case, chevron, produit (titre rendu +
+  // titre extrait + réf), puis variantes et prix d'achat sur écran large
+  // (redesign Marc 2026-07-30 : la marque sort de la synthèse).
   const ROW_GRID =
-    "grid grid-cols-[2.25rem_2rem_minmax(0,1fr)] sm:grid-cols-[2.25rem_2rem_minmax(0,1fr)_8rem_7.5rem]"
+    "grid grid-cols-[2.25rem_2rem_minmax(0,1fr)] sm:grid-cols-[2.25rem_2rem_minmax(0,1fr)_11rem_7.5rem]"
 </script>
 
 <Card class="py-0">
   <CardContent class="px-0">
     <!-- En-tête (sm+) : mêmes colonnes que les lignes. -->
     <div
-      class="border-border hidden items-center border-b sm:grid sm:grid-cols-[2.25rem_2rem_minmax(0,1fr)_8rem_7.5rem]"
+      class="border-border hidden items-center border-b sm:grid sm:grid-cols-[2.25rem_2rem_minmax(0,1fr)_11rem_7.5rem]"
     >
       <div class="flex justify-center px-2 py-2.5">
         <input
@@ -438,9 +439,9 @@
       </div>
       <div></div>
       <div class="text-muted-foreground px-3 py-2.5 text-xs font-medium">Produit</div>
-      <div class="text-muted-foreground px-3 py-2.5 text-xs font-medium">Marque</div>
+      <div class="text-muted-foreground px-3 py-2.5 text-xs font-medium">Variantes</div>
       <div class="text-muted-foreground px-3 py-2.5 text-right text-xs font-medium">
-        Prix de gros
+        Prix d'achat HT
       </div>
     </div>
     <!-- Sélection globale (mobile) -->
@@ -510,6 +511,28 @@
             </span>
           </div>
           <div class="min-w-0 px-3 {cellPad}">
+            <!-- Titre principal = celui qui sera ÉCRIT dans Tillin au
+                 transfert (rendu par le profil quand il y en a un) ; le
+                 titre extrait passe en dessous, petit et gris. -->
+            <p
+              class="truncate text-sm font-medium {!rendered?.title &&
+              lowConfidence(product.confidence, 'title')
+                ? 'text-warning-foreground'
+                : ''}"
+              title={rendered?.title || (product.title ?? undefined)}
+            >
+              {rendered?.title || (product.title ?? "—")}
+            </p>
+            {#if rendered?.title && rendered.title !== (product.title ?? "")}
+              <p
+                class="truncate text-[11px] {lowConfidence(product.confidence, 'title')
+                  ? 'text-warning-foreground'
+                  : 'text-muted-foreground'}"
+                title={product.title ?? undefined}
+              >
+                {product.title ?? "—"}
+              </p>
+            {/if}
             <p
               class="font-mono text-xs {lowConfidence(product.confidence, 'supplier_ref')
                 ? 'text-warning-foreground'
@@ -517,24 +540,10 @@
             >
               {product.supplier_ref}
             </p>
-            <p
-              class="truncate text-sm font-medium {lowConfidence(product.confidence, 'title')
-                ? 'text-warning-foreground'
-                : ''}"
-              title={product.title ?? undefined}
-            >
-              {product.title ?? "—"}
-            </p>
-            {#if rendered?.title && rendered.title !== (product.title ?? "")}
-              <p class="text-muted-foreground truncate text-[11px]" title={rendered.title}>
-                → {rendered.title}
-              </p>
-            {/if}
-            <p class="text-muted-foreground text-xs">
+            <p class="text-muted-foreground text-xs sm:hidden">
               {product.variants.length} variante{product.variants.length > 1 ? "s" : ""}
-              · {sizeSummary(product.variants)}<span class="sm:hidden">
-                · {wholesaleRange(product.variants)}</span
-              >{#if product.brand}<span class="sm:hidden"> · {product.brand}</span>{/if}
+              · {sizeSummary(product.variants)}
+              · {wholesaleRange(product.variants)}
             </p>
             {#if isRejected || isApplied || noEan > 0 || item.warnings.length > 0}
               <div class="mt-1 flex flex-wrap items-center gap-1.5">
@@ -560,13 +569,12 @@
               </div>
             {/if}
           </div>
-          <div
-            class="hidden min-w-0 px-3 text-sm sm:block {cellPad} {lowConfidence(product.confidence, 'brand')
-              ? 'text-warning-foreground'
-              : ''}"
-          >
-            <span class="block truncate" title={product.brand ?? undefined}>
-              {product.brand ?? "—"}
+          <div class="hidden min-w-0 px-3 text-sm sm:block {cellPad}">
+            <span class="block whitespace-nowrap">
+              {product.variants.length} variante{product.variants.length > 1 ? "s" : ""}
+            </span>
+            <span class="text-muted-foreground block truncate text-xs">
+              {sizeSummary(product.variants)}
             </span>
           </div>
           <div class="hidden px-3 text-right text-sm whitespace-nowrap tabular-nums sm:block {cellPad}">
@@ -644,7 +652,7 @@
                         {/each}
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Qté</th>
-                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix de gros</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix d'achat HT</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Remise %</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">Prix conseillé</th>
                         {#if coefficientConfig}
@@ -719,7 +727,7 @@
                             <Input
                               class="h-8 min-w-20 text-xs"
                               inputmode="decimal"
-                              aria-label="Prix de gros de la variante {vIndex + 1}"
+                              aria-label="Prix d'achat HT de la variante {vIndex + 1}"
                               bind:value={drafts[item.id].variants[vIndex].wholesale_price}
                             />
                               <button
@@ -895,7 +903,7 @@
                         {/each}
                         <th class="text-muted-foreground px-2 py-1.5 text-left font-medium">EAN</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Qté</th>
-                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix de gros</th>
+                        <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix d'achat HT</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Remise %</th>
                         <th class="text-muted-foreground px-2 py-1.5 text-right font-medium">Prix conseillé</th>
                         {#if coefficientConfig}

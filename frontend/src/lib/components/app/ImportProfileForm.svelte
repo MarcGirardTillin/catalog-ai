@@ -414,10 +414,10 @@
       <Label for="{uid}-price-mode">Mode de prix (vente)</Label>
       <Select id="{uid}-price-mode" bind:value={form.price_mode}>
         <option value="retail_as_is">Prix conseillé tel quel</option>
-        <option value="coefficient">Coefficient sur le prix de gros</option>
+        <option value="coefficient">Coefficient sur le prix d'achat HT</option>
       </Select>
       <p class="text-muted-foreground text-xs">
-        Coefficient : prix de vente = prix de gros × coefficient, arrondi au
+        Coefficient : prix de vente = prix d'achat HT × coefficient, arrondi au
         multiple supérieur.
       </p>
     </div>

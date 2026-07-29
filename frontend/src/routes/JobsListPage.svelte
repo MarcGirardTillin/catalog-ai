@@ -19,16 +19,19 @@
   // Densité des tables : padding vertical des cellules selon la préférence.
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
 
-  // TanStack Query : cache partagé (retour liste ↔ détail instantané).
+  // Pagination serveur (des milliers d'enrichissements à terme) : la page
+  // est dans la clé de query, changer de page refetch automatiquement.
+  let page = $state(1)
   const jobsQuery = createQuery(() => ({
-    queryKey: ["jobs", "list"],
+    queryKey: ["jobs", "list", page],
     queryFn: async () => {
-      const { data, error } = await jobsListJobs({ query: { page_size: 50 } })
+      const { data, error } = await jobsListJobs({ query: { page, page_size: 25 } })
       if (error || !data) throw new Error("jobs_load_failed")
       return data
     },
   }))
   const jobs = $derived(jobsQuery.data?.items ?? null)
+  const totalPages = $derived(jobsQuery.data?.total_pages ?? 0)
   const errorMessage = $derived(
     jobsQuery.isError ? "Impossible de charger les enrichissements." : null,
   )
@@ -187,6 +190,29 @@
               </table>
             </CardContent>
           </Card>
+          {#if totalPages > 1}
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onclick={() => (page -= 1)}
+              >
+                Précédent
+              </Button>
+              <span class="text-muted-foreground font-mono text-xs">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onclick={() => (page += 1)}
+              >
+                Suivant
+              </Button>
+            </div>
+          {/if}
         {/if}
       </div>
     </AppShell>

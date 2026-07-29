@@ -335,20 +335,24 @@
             {/if}
           </button>
           {#if navOpen(item, pathname)}
-            <!-- Facettes de la section active (sous-menu façon Shopify). -->
-            {#each item.children ?? [] as child (child.href)}
-              {@const childActive = child.isActive(pathname)}
-              <button
-                type="button"
-                class="flex h-8 cursor-pointer items-center rounded-md py-1 pr-2.5 pl-9 text-sm transition-colors {childActive
-                  ? 'bg-accent text-accent-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                aria-current={childActive ? "page" : undefined}
-                onclick={() => go(child.href)}
-              >
-                {child.label}
-              </button>
-            {/each}
+            <!-- Facettes de la section active (sous-menu façon Shopify) :
+                 guide vertical + texte plus petit pour les distinguer
+                 clairement des entrées principales. -->
+            <div class="border-border/80 my-0.5 ml-[1.45rem] flex flex-col gap-0.5 border-l pl-2">
+              {#each item.children ?? [] as child (child.href)}
+                {@const childActive = child.isActive(pathname)}
+                <button
+                  type="button"
+                  class="flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors {childActive
+                    ? 'bg-accent text-accent-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                  aria-current={childActive ? "page" : undefined}
+                  onclick={() => go(child.href)}
+                >
+                  {child.label}
+                </button>
+              {/each}
+            </div>
           {/if}
         {/each}
       </div>

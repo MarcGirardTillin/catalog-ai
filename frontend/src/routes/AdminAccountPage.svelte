@@ -39,6 +39,7 @@
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import LocalPagination from "@/lib/components/app/LocalPagination.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
@@ -70,10 +71,6 @@
   }))
   // Pagination locale des tableaux : les données restent bornées côté
   // serveur (mois / limites), l'affichage se fait par tranches de 10.
-  const TABLE_PAGE = 10
-  let jobsShown = $state(TABLE_PAGE)
-  let activityShown = $state(TABLE_PAGE)
-  let creditsShown = $state(TABLE_PAGE)
 
   const byJobQuery = createQuery(() => ({
     queryKey: ["admin", "account", id, "by-job", month],
@@ -476,6 +473,8 @@
                 </p>
               {:else}
                 <div class="overflow-x-auto">
+                  <LocalPagination items={credits.entries} pageSize={10}>
+                    {#snippet children(creditEntriesPage)}
                   <table class="w-full min-w-xl text-sm">
                     <thead>
                       <tr class="border-border border-b">
@@ -487,7 +486,7 @@
                       </tr>
                     </thead>
                     <tbody>
-                      {#each credits.entries.slice(0, creditsShown) as entry (entry.id)}
+                      {#each creditEntriesPage as entry (entry.id)}
                         <tr class="border-border border-b last:border-b-0">
                           <td class="text-muted-foreground px-2 {cellPad} text-xs whitespace-nowrap tabular-nums">
                             {formatRelativeDate(entry.created_at)}
@@ -513,13 +512,8 @@
                       {/each}
                     </tbody>
                   </table>
-                  {#if credits.entries.length > creditsShown}
-                    <div class="flex justify-center py-2">
-                      <Button variant="ghost" size="sm" onclick={() => (creditsShown += 20)}>
-                        Voir plus ({credits.entries.length - creditsShown} de plus)
-                      </Button>
-                    </div>
-                  {/if}
+                    {/snippet}
+                  </LocalPagination>
                 </div>
               {/if}
             {/if}
@@ -735,6 +729,8 @@
           {:else}
             <Card class="py-0">
               <CardContent class="overflow-x-auto px-0">
+                <LocalPagination items={byJob.jobs} pageSize={10}>
+                  {#snippet children(jobsPage)}
                 <table class="w-full min-w-2xl text-sm">
                   <thead>
                     <tr class="border-border border-b">
@@ -748,7 +744,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    {#each byJob.jobs.slice(0, jobsShown) as job, index (index)}
+                    {#each jobsPage as job, index (index)}
                       {@const href = jobHref(job.job_type, job.job_id)}
                       <tr class="border-border border-b last:border-b-0">
                         <td class="max-w-60 px-4 {cellPad}">
@@ -792,13 +788,8 @@
                     {/each}
                   </tbody>
                 </table>
-                {#if byJob.jobs.length > jobsShown}
-                  <div class="flex justify-center py-2">
-                    <Button variant="ghost" size="sm" onclick={() => (jobsShown += 20)}>
-                      Voir plus ({byJob.jobs.length - jobsShown} de plus)
-                    </Button>
-                  </div>
-                {/if}
+                  {/snippet}
+                </LocalPagination>
               </CardContent>
             </Card>
           {/if}
@@ -817,6 +808,8 @@
         {:else}
           <Card class="py-0">
             <CardContent class="overflow-x-auto px-0">
+              <LocalPagination items={activity.entries} pageSize={10}>
+                {#snippet children(activityPage)}
               <table class="w-full min-w-xl text-sm">
                 <thead>
                   <tr class="border-border border-b">
@@ -829,7 +822,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  {#each activity.entries.slice(0, activityShown) as entry (entry.job_id)}
+                  {#each activityPage as entry (entry.job_id)}
                     {@const href = jobHref(entry.job_type, entry.job_id)}
                     <tr class="border-border border-b last:border-b-0">
                       <td class="max-w-60 px-4 {cellPad}">
@@ -868,13 +861,8 @@
                   {/each}
                 </tbody>
               </table>
-              {#if activity.entries.length > activityShown}
-                <div class="flex justify-center py-2">
-                  <Button variant="ghost" size="sm" onclick={() => (activityShown += 20)}>
-                    Voir plus ({activity.entries.length - activityShown} de plus)
-                  </Button>
-                </div>
-              {/if}
+                {/snippet}
+              </LocalPagination>
             </CardContent>
           </Card>
         {/if}
