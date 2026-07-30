@@ -148,16 +148,22 @@ def resolve_account_id(db: Session, user: User) -> int:
 def freshest_company_token(db: Session, account_id: int) -> str | None:
     """The most recently captured Xano token among the account's active users.
 
-    Any user of the account works: Xano scopes calls to the COMPANY carried by
-    the token, and all the account's users belong to that company. Taking the
-    freshest one maximizes remaining lifetime (72h TTL), and lets a colleague's
+    Réservé aux JOBS DE FOND (les requêtes interactives utilisent le token de
+    l'utilisateur connecté — décision Marc 2026-07-30). Taking the freshest
+    token maximizes remaining lifetime (72h TTL), and lets a colleague's
     recent login keep background jobs running after the launcher's expired.
+
+    Les admins plateforme sont EXCLUS du pool : leur utilisateur Tillin peut
+    changer d'entreprise (support multi-comptes) — leur token ne représente
+    pas l'entreprise du compte (incident Neiwa/Madel du 2026-07-30 : les
+    magasins de Madel servis au compte Neiwa via le token admin).
     """
     return db.scalar(
         select(User.xano_token)
         .where(
             User.account_id == account_id,
             User.is_active.is_(True),
+            User.is_admin.is_(False),
             User.xano_token.is_not(None),
         )
         .order_by(User.xano_token_at.desc())

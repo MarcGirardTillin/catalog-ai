@@ -19,7 +19,7 @@ def _xano_enabled_and_clean(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setattr(settings, "XANO_LOGIN_PASSWORD", "secret")
     # Les caches module sont partagés entre tests : repartir à zéro.
     monkeypatch.setattr(deps, "_service_xano_client", None)
-    monkeypatch.setattr(deps, "_company_clients", {})
+    monkeypatch.setattr(deps, "_token_clients", {})
     yield
 
 
@@ -100,3 +100,60 @@ def test_freshest_token_wins_across_the_account_users(db: Session) -> None:
     from app.api.services.accounts import freshest_company_token
 
     assert freshest_company_token(db, account.id) == "tok-new"
+
+
+def test_admin_tokens_are_excluded_from_the_account_pool(db: Session) -> None:
+    # Un admin plateforme peut changer d'entreprise dans Tillin : son token
+    # ne représente pas le compte (incident Neiwa/Madel du 2026-07-30).
+    from datetime import UTC, datetime, timedelta
+
+    account = _company_account(db, 51)
+    admin = create_user(db, email="ops@tillin.fr", password="x", is_admin=True)
+    client_user = create_user(db, email="clement@neiwa.fr", password="x")
+    admin.account_id = client_user.account_id = account.id
+    admin.xano_token, admin.xano_token_at = "tok-admin", datetime.now(UTC)
+    client_user.xano_token, client_user.xano_token_at = (
+        "tok-client",
+        datetime.now(UTC) - timedelta(hours=48),
+    )
+    db.commit()
+
+    from app.api.services.accounts import freshest_company_token
+
+    assert freshest_company_token(db, account.id) == "tok-client"
+
+
+def test_interactive_client_uses_the_signed_in_users_own_token(db: Session) -> None:
+    # Requêtes interactives : le token de l'utilisateur CONNECTÉ, jamais celui
+    # d'un collègue plus « frais » (décision Marc 2026-07-30).
+    from datetime import UTC, datetime, timedelta
+
+    account = _company_account(db, 51)
+    me = create_user(db, email="me@neiwa.fr", password="x")
+    colleague = create_user(db, email="fresh@neiwa.fr", password="x")
+    me.account_id = colleague.account_id = account.id
+    me.xano_token, me.xano_token_at = (
+        "tok-me",
+        datetime.now(UTC) - timedelta(hours=48),
+    )
+    colleague.xano_token, colleague.xano_token_at = "tok-fresh", datetime.now(UTC)
+    db.commit()
+
+    mine = deps.xano_client_for_user(db, me)
+    theirs = deps.xano_client_for_user(db, colleague)
+
+    assert mine is not theirs
+    assert deps.xano_client_for_user(db, me) is mine  # cache par token
+
+
+def test_user_without_token_on_company_account_is_401(db: Session) -> None:
+    account = _company_account(db, 51)
+    user = create_user(db, email="expired@neiwa.fr", password="x")
+    user.account_id = account.id
+    db.commit()
+
+    with pytest.raises(AppException) as excinfo:
+        deps.xano_client_for_user(db, user)
+
+    assert excinfo.value.status_code == 401
+    assert excinfo.value.code == "xano_token_expired"

@@ -35,14 +35,21 @@ SessionDep = Annotated[Session, Depends(get_db)]
 # --- Xano clients (multi-tenant) --------------------------------------------
 #
 # Catalog calls carry the USER'S Xano token: Xano scopes every response to the
-# token's company, so tenancy is enforced upstream, not by our filters. One
-# long-lived client per account (httpx pool + brand cache), rebuilt when a
-# fresh login rotates the account's token.
+# token's company, so tenancy is enforced upstream, not by our filters.
+# Les requêtes interactives utilisent le token de l'UTILISATEUR CONNECTÉ
+# (décision Marc 2026-07-30, incident Neiwa/Madel : le token « le plus
+# frais du compte » pouvait être celui d'un admin ayant changé d'entreprise
+# côté Tillin). Les jobs de fond, sans session, gardent la résolution par
+# compte — en excluant les admins plateforme du pool de tokens.
+#
+# Un client long-vécu par TOKEN (pool httpx + cache marques), partagé entre
+# requêtes ; les vieux clients ne sont pas fermés (un job peut encore les
+# utiliser) — fuite bornée par la rotation des tokens (TTL 72 h).
 #
 # The service-identity client (env credentials) survives ONLY as the fallback
 # for the legacy default account (app-local operator/dev users, no company).
 _service_xano_client: XanoClient | None = None
-_company_clients: dict[int, tuple[str, XanoClient]] = {}
+_token_clients: dict[str, XanoClient] = {}
 _company_clients_lock = threading.Lock()
 
 
@@ -70,10 +77,61 @@ def get_service_xano_client() -> XanoClient:
     return _service_xano_client
 
 
-def xano_client_for_account(db: Session, account_id: int) -> XanoClient:
-    """The Xano client acting on behalf of an account (company-scoped token).
+def _client_for_token(token: str) -> XanoClient:
+    """One shared client per token (httpx pool + brand cache)."""
+    cached = _token_clients.get(token)
+    if cached is not None:
+        return cached
+    with _company_clients_lock:
+        cached = _token_clients.get(token)
+        if cached is not None:
+            return cached
+        client = XanoClient(
+            settings.XANO_BASE_URL,
+            token=token,
+            data_source=settings.XANO_DATA_SOURCE,
+            timeout=settings.XANO_TIMEOUT_SECONDS,
+        )
+        # Les anciens clients ne sont PAS fermés : un job de fond peut être en
+        # train de les utiliser. La rotation suit les re-logins — fuite bornée.
+        _token_clients[token] = client
+        return client
 
-    Uses the freshest token among the account's users. No usable token:
+
+def _legacy_fallback_or_401(db: Session, account_id: int) -> XanoClient:
+    account = db.get(Account, account_id)
+    if account is not None and account.xano_company_id is None:
+        return get_service_xano_client()
+    raise AppException(
+        status_code=401,
+        code="xano_token_expired",
+        message="Session Tillin expirée — reconnectez-vous.",
+    )
+
+
+def xano_client_for_user(db: Session, user: User) -> XanoClient:
+    """The Xano client acting as THE SIGNED-IN USER (his own token).
+
+    Jamais le token d'un collègue : les réponses Xano sont scopées à
+    l'entreprise portée par le token, et l'entreprise d'un AUTRE utilisateur
+    peut changer côté Tillin (incident Neiwa/Madel du 2026-07-30). Sans token
+    utilisable : repli service pour le compte legacy (sans entreprise), sinon
+    401 xano_token_expired.
+    """
+    _require_xano_configured()
+    if user.xano_token:
+        return _client_for_token(user.xano_token)
+    # resolve_account_id rattache aussi les utilisateurs legacy sans compte.
+    return _legacy_fallback_or_401(db, resolve_account_id(db, user))
+
+
+def xano_client_for_account(db: Session, account_id: int) -> XanoClient:
+    """The Xano client acting on behalf of an account (background jobs only).
+
+    Sans session utilisateur, on prend le token le plus frais parmi les
+    utilisateurs NON ADMIN du compte (un admin plateforme peut changer
+    d'entreprise dans Tillin — son token ne représente pas le compte).
+    No usable token:
     - legacy default account (no company) -> service-identity fallback, so the
       operator and local dev keep working;
     - company account -> 401 `xano_token_expired`: serving another company's
@@ -82,31 +140,8 @@ def xano_client_for_account(db: Session, account_id: int) -> XanoClient:
     _require_xano_configured()
     token = freshest_company_token(db, account_id)
     if token is None:
-        account = db.get(Account, account_id)
-        if account is not None and account.xano_company_id is None:
-            return get_service_xano_client()
-        raise AppException(
-            status_code=401,
-            code="xano_token_expired",
-            message="Session Tillin expirée — reconnectez-vous.",
-        )
-    cached = _company_clients.get(account_id)
-    if cached is not None and cached[0] == token:
-        return cached[1]
-    with _company_clients_lock:
-        cached = _company_clients.get(account_id)
-        if cached is not None and cached[0] == token:
-            return cached[1]
-        client = XanoClient(
-            settings.XANO_BASE_URL,
-            token=token,
-            data_source=settings.XANO_DATA_SOURCE,
-            timeout=settings.XANO_TIMEOUT_SECONDS,
-        )
-        # L'ancien client n'est PAS fermé : un job de fond peut être en train
-        # de l'utiliser. La rotation suit les re-logins (rares) — fuite bornée.
-        _company_clients[account_id] = (token, client)
-        return client
+        return _legacy_fallback_or_401(db, account_id)
+    return _client_for_token(token)
 
 
 # Imaging provider clients (same process-wide pattern as Xano: one httpx pool
@@ -236,8 +271,8 @@ CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
 def get_xano_client(db: SessionDep, current_user: CurrentUserDep) -> XanoClient:
-    """Xano client for the request, acting as the signed-in user's company."""
-    return xano_client_for_account(db, resolve_account_id(db, current_user))
+    """Xano client for the request, acting as the signed-in user himself."""
+    return xano_client_for_user(db, current_user)
 
 
 XanoDep = Annotated[XanoClient, Depends(get_xano_client)]
