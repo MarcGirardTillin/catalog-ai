@@ -19,6 +19,7 @@ resolution chain (auto | shopify_json | firecrawl; default auto).
 """
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
@@ -172,6 +173,25 @@ def _is_junk_image_url(url: str) -> bool:
         return True
     path = urlparse(lowered).path
     return any(marker in path for marker in _JUNK_IMAGE_PATH_MARKERS)
+
+
+# Segment de transformation CDN type Cloudinary : ≥ 2 paires clé_valeur
+# séparées par des virgules dans un segment de chemin (« c_fill,f_auto,h_147 »).
+_CDN_TRANSFORM_SEGMENT = re.compile(r"/[a-z]_[a-z0-9.]+(?:,[a-z]_[a-z0-9.]+)+/")
+_CDN_TRANSFORM_SIZE = re.compile(r"(?<=[/,])([hw])_(\d{1,3})(?=[,/])")
+
+
+def _upgrade_image_url(url: str) -> str:
+    """Gonfle les MINIATURES CDN vers la pleine résolution.
+
+    Les pages listent souvent des vignettes (h_147 sur img1.g-star.com —
+    item 79, 2026-07-30) : dans un segment de transformation Cloudinary,
+    h_/w_ < 800 passe à 1600. Vérifié live : h_1600 → 173 Ko servis,
+    segment retiré → 401 (d'où la réécriture plutôt que la suppression).
+    """
+    if not _CDN_TRANSFORM_SEGMENT.search(url):
+        return url
+    return _CDN_TRANSFORM_SIZE.sub(lambda m: f"{m.group(1)}_1600", url)
 
 
 def _fallback_site_handle(url: str) -> tuple[str, str]:
@@ -741,7 +761,7 @@ class EnrichmentPipeline:
         sources: list[str] = []
         for image in source_product.get("images") or []:
             if isinstance(image, dict) and image.get("src"):
-                src = str(image["src"])
+                src = _upgrade_image_url(str(image["src"]))
                 if src not in sources and not _is_junk_image_url(src):
                     sources.append(src)
         image_config = config.get("image")

@@ -505,6 +505,7 @@ def _item_public(item: ImportItem) -> ImportItemPublic:
         ),
         warnings=[str(w) for w in item.warnings_json or []],
         error=item.error,
+        has_original=item.original_payload_json is not None,
         created_at=item.created_at,
     )
 
@@ -536,6 +537,44 @@ def update_import_item(
         item.payload_json = body.payload.model_dump(mode="json")
     if body.status is not None:
         item.status = body.status
+    db.commit()
+    db.refresh(item)
+    return _item_public(item)
+
+
+@router.post("/{import_id}/items/{item_id}/reset", response_model=ImportItemPublic)
+def reset_import_item(
+    import_id: int,
+    item_id: int,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ImportItemPublic:
+    """Restaure le payload EXTRAIT (avant toute édition de review).
+
+    L'original est capturé au staging (migration 0024) ; un item transféré
+    n'est plus réinitialisable, et un item d'avant la migration n'a pas
+    d'original (409 `no_original`).
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    item = db.get(ImportItem, item_id)
+    if item is None or item.job_id != job.id:
+        raise AppException(
+            status_code=404, code="not_found", message="Import item not found"
+        )
+    if item.status == "applied":
+        raise AppException(
+            status_code=409,
+            code="already_applied",
+            message="Un produit transféré n'est plus réinitialisable",
+        )
+    if item.original_payload_json is None:
+        raise AppException(
+            status_code=409,
+            code="no_original",
+            message="Aucun original disponible pour ce produit",
+        )
+    item.payload_json = dict(item.original_payload_json)
     db.commit()
     db.refresh(item)
     return _item_public(item)

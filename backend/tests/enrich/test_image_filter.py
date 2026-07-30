@@ -27,3 +27,20 @@ def test_real_product_images_pass_the_filter() -> None:
     ]
     for url in real:
         assert not _is_junk_image_url(url), url
+
+
+def test_upgrade_image_url_boosts_cdn_thumbnails() -> None:
+    """Miniatures Cloudinary h_147 → h_1600 (vérifié live img1.g-star.com)."""
+    from app.enrich.pipeline import _upgrade_image_url
+
+    thumb = (
+        "https://img1.g-star.com/product/c_fill,f_auto,h_147,q_80/"
+        "v177/D28627-E360-001-M01/jeans.jpg"
+    )
+    assert "h_1600" in _upgrade_image_url(thumb)
+    # Hors segment de transformation : URL intacte.
+    plain = "https://cdn.example.com/images/h_147/photo.jpg"
+    assert _upgrade_image_url(plain) == plain
+    # Déjà grande : intacte (h_2000 ne matche pas 1-3 chiffres).
+    big = "https://img1.g-star.com/product/c_fill,f_auto,h_2000,q_80/v1/x.jpg"
+    assert _upgrade_image_url(big) == big

@@ -86,6 +86,14 @@ class ImportProfileConfig(BaseModel):
     # Applied when the products are staged — attaching the profile after the
     # extraction does not re-split already staged items.
     split_by_color: bool = False
+    # Personnalisation du suffixe couleur ajouté à la référence lors de la
+    # séparation (validé Marc 2026-07-30) : forme (nom complet / initiale
+    # étendue jusqu'à unicité / aucun — les fiches partagent la référence et
+    # les titres différencient) et séparateur (« - » / espace / rien — sans
+    # séparateur, la recherche Xano qui découpe sur les tirets ne fait plus
+    # ressortir d'autres produits contenant la couleur).
+    split_suffix_mode: Literal["color", "initial", "none"] = "color"
+    split_suffix_separator: Literal["-", " ", ""] = "-"
     # Axes de variantes du CSV Tillin (option1..option3), dans l'ORDRE du
     # rendu (demande Marc 2026-07-29 : ordre modifiable, 3e option possible,
     # 2 par défaut). La plupart des boutiques : Couleur puis Taille ; la

@@ -2708,6 +2708,74 @@
         }
       }
     },
+    "/imports/{import_id}/items/{item_id}/reset": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Reset Import Item",
+        "description": "Restaure le payload EXTRAIT (avant toute édition de review).\n\nL'original est capturé au staging (migration 0024) ; un item transféré\nn'est plus réinitialisable, et un item d'avant la migration n'a pas\nd'original (409 `no_original`).",
+        "operationId": "imports-reset_import_item",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportItemPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/imports/{import_id}/profile": {
       "put": {
         "tags": [
@@ -8808,6 +8876,11 @@
             ],
             "title": "Error"
           },
+          "has_original": {
+            "type": "boolean",
+            "title": "Has Original",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -9348,6 +9421,26 @@
             "title": "Split By Color",
             "default": false
           },
+          "split_suffix_mode": {
+            "type": "string",
+            "enum": [
+              "color",
+              "initial",
+              "none"
+            ],
+            "title": "Split Suffix Mode",
+            "default": "color"
+          },
+          "split_suffix_separator": {
+            "type": "string",
+            "enum": [
+              "-",
+              " ",
+              ""
+            ],
+            "title": "Split Suffix Separator",
+            "default": "-"
+          },
           "option_axes": {
             "items": {
               "$ref": "#/components/schemas/OptionAxis"
@@ -9470,6 +9563,26 @@
             "type": "boolean",
             "title": "Split By Color",
             "default": false
+          },
+          "split_suffix_mode": {
+            "type": "string",
+            "enum": [
+              "color",
+              "initial",
+              "none"
+            ],
+            "title": "Split Suffix Mode",
+            "default": "color"
+          },
+          "split_suffix_separator": {
+            "type": "string",
+            "enum": [
+              "-",
+              " ",
+              ""
+            ],
+            "title": "Split Suffix Separator",
+            "default": "-"
           },
           "option_axes": {
             "items": {

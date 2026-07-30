@@ -30,6 +30,12 @@ class ImportItem(Base):
     tillin_product_id: Mapped[int | None] = mapped_column(default=None)
     # ImportedProduct.model_dump(mode="json") — the extracted product.
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Le payload extrait AVANT toute édition (capturé au staging) : support
+    # de « Réinitialiser le produit » en review. NULL sur les items d'avant
+    # la migration 0024 — le bouton n'apparaît pas pour eux.
+    original_payload_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, default=None
+    )
     # Product-level extraction warnings surfaced in the review UI.
     warnings_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
     error: Mapped[str | None] = mapped_column(Text, default=None)

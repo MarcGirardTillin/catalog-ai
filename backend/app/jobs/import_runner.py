@@ -256,7 +256,11 @@ def _process(
     if profile is not None:
         profile_config = ImportProfileConfig.model_validate(profile.config_json or {})
         if profile_config.split_by_color:
-            products = split_products_by_color(products)
+            products = split_products_by_color(
+                products,
+                suffix_mode=profile_config.split_suffix_mode,
+                separator=profile_config.split_suffix_separator,
+            )
 
     # Références déjà présentes dans Tillin (produits reconduits d'une saison
     # à l'autre) : vérification en masse, avertissement posé sur l'item —
@@ -275,12 +279,15 @@ def _process(
                 + (f" (« {title} »" if title else " (")
                 + f" produit #{existing.get('id')})"
             ]
+        payload = product.model_dump(mode="json")
         db.add(
             ImportItem(
                 job_id=job.id,
                 account_id=job.account_id,
                 status="ready_for_review",
-                payload_json=product.model_dump(mode="json"),
+                payload_json=payload,
+                # Copie de l'extrait AVANT édition : « Réinitialiser » en review.
+                original_payload_json=dict(payload),
                 warnings_json=warnings_json,
             )
         )

@@ -1254,6 +1254,10 @@ export type ImportItemPublic = {
      */
     error?: string | null;
     /**
+     * Has Original
+     */
+    has_original?: boolean;
+    /**
      * Created At
      */
     created_at: string;
@@ -1570,6 +1574,14 @@ export type ImportProfileConfigInput = {
      */
     split_by_color?: boolean;
     /**
+     * Split Suffix Mode
+     */
+    split_suffix_mode?: 'color' | 'initial' | 'none';
+    /**
+     * Split Suffix Separator
+     */
+    split_suffix_separator?: '-' | ' ' | '';
+    /**
      * Option Axes
      */
     option_axes?: Array<OptionAxis>;
@@ -1645,6 +1657,14 @@ export type ImportProfileConfigOutput = {
      * Split By Color
      */
     split_by_color?: boolean;
+    /**
+     * Split Suffix Mode
+     */
+    split_suffix_mode?: 'color' | 'initial' | 'none';
+    /**
+     * Split Suffix Separator
+     */
+    split_suffix_separator?: '-' | ' ' | '';
     /**
      * Option Axes
      */
@@ -4709,6 +4729,40 @@ export type ImportsUpdateImportItemResponses = {
 };
 
 export type ImportsUpdateImportItemResponse = ImportsUpdateImportItemResponses[keyof ImportsUpdateImportItemResponses];
+
+export type ImportsResetImportItemData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/imports/{import_id}/items/{item_id}/reset';
+};
+
+export type ImportsResetImportItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsResetImportItemError = ImportsResetImportItemErrors[keyof ImportsResetImportItemErrors];
+
+export type ImportsResetImportItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportItemPublic;
+};
+
+export type ImportsResetImportItemResponse = ImportsResetImportItemResponses[keyof ImportsResetImportItemResponses];
 
 export type ImportsSetImportProfileData = {
     body: ImportProfileSelection;

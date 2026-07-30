@@ -2285,6 +2285,11 @@ export const ImportItemPublicSchema = {
             ],
             title: 'Error'
         },
+        has_original: {
+            type: 'boolean',
+            title: 'Has Original',
+            default: false
+        },
         created_at: {
             type: 'string',
             format: 'date-time',
@@ -2836,6 +2841,26 @@ export const ImportProfileConfig_InputSchema = {
             title: 'Split By Color',
             default: false
         },
+        split_suffix_mode: {
+            type: 'string',
+            enum: [
+                'color',
+                'initial',
+                'none'
+            ],
+            title: 'Split Suffix Mode',
+            default: 'color'
+        },
+        split_suffix_separator: {
+            type: 'string',
+            enum: [
+                '-',
+                ' ',
+                ''
+            ],
+            title: 'Split Suffix Separator',
+            default: '-'
+        },
         option_axes: {
             items: {
                 $ref: '#/components/schemas/OptionAxis'
@@ -2959,6 +2984,26 @@ export const ImportProfileConfig_OutputSchema = {
             type: 'boolean',
             title: 'Split By Color',
             default: false
+        },
+        split_suffix_mode: {
+            type: 'string',
+            enum: [
+                'color',
+                'initial',
+                'none'
+            ],
+            title: 'Split Suffix Mode',
+            default: 'color'
+        },
+        split_suffix_separator: {
+            type: 'string',
+            enum: [
+                '-',
+                ' ',
+                ''
+            ],
+            title: 'Split Suffix Separator',
+            default: '-'
         },
         option_axes: {
             items: {

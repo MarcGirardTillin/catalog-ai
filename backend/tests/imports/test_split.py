@@ -44,3 +44,43 @@ def test_colorless_variants_keep_the_unsuffixed_reference() -> None:
     out = split_products_by_color([product])
     assert [p.supplier_ref for p in out] == ["R3-BLEU", "R3", "R3-ROUGE"]
     assert [len(p.variants) for p in out] == [1, 1, 1]
+
+
+def test_split_suffix_modes_and_separators() -> None:
+    """Personnalisation du suffixe (validé Marc 2026-07-30)."""
+    product = ImportedProduct(
+        supplier_ref="48814",
+        variants=[
+            ImportedVariant(color="Noir", size="S"),
+            ImportedVariant(color="Bleu Marine", size="S"),
+        ],
+    )
+
+    # Séparateur espace, nom de couleur.
+    out = split_products_by_color([product], suffix_mode="color", separator=" ")
+    assert [p.supplier_ref for p in out] == ["48814 NOIR", "48814 BLEU MARINE"]
+
+    # Sans séparateur : la recherche Xano (découpage sur tirets) n'est plus
+    # polluée par le nom de la couleur.
+    out = split_products_by_color([product], suffix_mode="color", separator="")
+    assert [p.supplier_ref for p in out] == ["48814NOIR", "48814BLEUMARINE"]
+
+    # Initiale étendue jusqu'à unicité.
+    out = split_products_by_color([product], suffix_mode="initial", separator="-")
+    assert [p.supplier_ref for p in out] == ["48814-N", "48814-B"]
+
+    # Initiales en collision : Bleu/Blanc -> extension.
+    collide = ImportedProduct(
+        supplier_ref="R1",
+        variants=[
+            ImportedVariant(color="Bleu", size="S"),
+            ImportedVariant(color="Blanc", size="S"),
+        ],
+    )
+    out = split_products_by_color([collide], suffix_mode="initial", separator="-")
+    assert [p.supplier_ref for p in out] == ["R1-BLE", "R1-BLA"]
+
+    # Aucun suffixe : même référence partagée, variantes bien séparées.
+    out = split_products_by_color([product], suffix_mode="none", separator="-")
+    assert [p.supplier_ref for p in out] == ["48814", "48814"]
+    assert [len(p.variants) for p in out] == [1, 1]

@@ -76,6 +76,10 @@ class ImportItemPublic(BaseModel):
     payload: ImportedProduct
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
+    # Un payload original (extrait, avant édition) est disponible : le bouton
+    # « Réinitialiser » de la review s'affiche (faux sur les items d'avant
+    # la migration 0024).
+    has_original: bool = False
     created_at: datetime
 
 

@@ -624,3 +624,15 @@ def test_extra_instructions_are_appended_to_user_prompt() -> None:
     text = body["messages"][0]["content"][0]["text"]
     assert "Les tailles sont en pouces." in text
     assert "Les tailles sont en pouces." not in body["system"]
+
+
+def test_strip_color_code_removes_codes_next_to_the_name() -> None:
+    """Filet déterministe (bon Lemaire 2026-07-30 : « BLACK BK999 »)."""
+    from app.imports.extract import _strip_color_code
+
+    assert _strip_color_code("BLACK BK999") == "BLACK"
+    assert _strip_color_code("410 Marine") == "Marine"
+    assert _strip_color_code("Bleu Marine") == "Bleu Marine"
+    # Une valeur faite uniquement de codes reste intacte (rien à préférer).
+    assert _strip_color_code("410") == "410"
+    assert _strip_color_code(None) is None

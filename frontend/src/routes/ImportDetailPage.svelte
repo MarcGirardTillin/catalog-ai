@@ -3,7 +3,7 @@
   // polling du job et des items, le référentiel et les magasins vivent ici,
   // les trois blocs métier sont des composants (lib/components/imports/) :
   // synthèse, grille de review, export Tillin.
-  import { createQuery, useQueryClient } from "@tanstack/svelte-query"
+  import { createQuery, keepPreviousData, useQueryClient } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
   import {
@@ -235,6 +235,11 @@
       renderVersion,
     ],
     enabled: selectedProfileId !== null && !jobRunning,
+    // L'ancien aperçu reste affiché pendant le refetch (renderVersion change
+    // à chaque enregistrement) : sans ça les titres rendus disparaissaient
+    // puis revenaient à chaque sauvegarde d'un produit (retour Marc
+    // 2026-07-30).
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const { data, error } = await getImportRows(
         importId,

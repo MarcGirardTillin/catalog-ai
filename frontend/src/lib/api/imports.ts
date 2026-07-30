@@ -26,6 +26,7 @@ import {
   importsReconcileImport,
   importsSetImportProfile,
   importsTransferImport,
+  importsResetImportItem,
   importsUpdateImportItem,
   locationsListLocations,
 } from "@/client"
@@ -243,6 +244,13 @@ export function patchImportItem(
   return importsUpdateImportItem({
     path: { import_id: jobId, item_id: itemId },
     body,
+  }) as Promise<{ data?: ImportItemPublic; error?: unknown }>
+}
+
+/** Restaure le payload extrait (avant toute édition de review). */
+export function resetImportItem(jobId: number, itemId: number) {
+  return importsResetImportItem({
+    path: { import_id: jobId, item_id: itemId },
   }) as Promise<{ data?: ImportItemPublic; error?: unknown }>
 }
 

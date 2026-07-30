@@ -15,6 +15,7 @@ cross-checked against the source to kill hallucinations:
 
 import base64
 import json
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -431,6 +432,31 @@ def _opt(value: str) -> str | None:
     return value.strip() or None
 
 
+# Jeton « code couleur » : lettres optionnelles + ≥2 chiffres (BK999, 410,
+# LF1700…). Un vrai nom de couleur ne ressemble jamais à ça.
+_COLOR_CODE_TOKEN = re.compile(r"^[A-Za-z]{0,4}\d{2,}[A-Za-z0-9]*$")
+
+
+def _strip_color_code(value: str | None) -> str | None:
+    """Retire les codes couleur accolés au nom (« BLACK BK999 » → « BLACK »).
+
+    Filet DÉTERMINISTE derrière le prompt (qui demande déjà le nom seul mais
+    en laisse passer — bon Lemaire 2026-07-30) : les jetons code en tête ou en
+    queue sont retirés tant qu'il reste au moins un jeton alphabétique. Une
+    valeur faite uniquement de codes (« 410 ») reste intacte.
+    """
+    if not value:
+        return value
+    tokens = [t for t in re.split(r"[\s ]+", value.strip()) if t]
+    if not any(not _COLOR_CODE_TOKEN.match(t) for t in tokens):
+        return value
+    while len(tokens) > 1 and _COLOR_CODE_TOKEN.match(tokens[-1]):
+        tokens.pop()
+    while len(tokens) > 1 and _COLOR_CODE_TOKEN.match(tokens[0]):
+        tokens.pop(0)
+    return " ".join(tokens)
+
+
 def _depipe(value: str | None) -> str | None:
     """Remplace « | » par « / » dans les valeurs destinées à Tillin.
 
@@ -745,7 +771,7 @@ class ClaudeExtractor:
             prices[field] = value
         fields = {
             "ean": _opt(raw.ean),
-            "color": _depipe(_opt(raw.color)),
+            "color": _strip_color_code(_depipe(_opt(raw.color))),
             "size": _depipe(_opt(raw.size)),
             "extra": _depipe(_opt(raw.extra)),
             "supplier_sku": _opt(raw.supplier_sku),

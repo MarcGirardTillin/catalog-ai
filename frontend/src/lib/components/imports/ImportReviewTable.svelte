@@ -7,6 +7,8 @@
   // formulaire + tableaux de variantes — vit dans un bloc pleine largeur avec
   // son propre défilement horizontal, sans élargir la liste ni couper les
   // colonnes de droite.
+  import { untrack } from "svelte"
+
   import ChevronDown from "@lucide/svelte/icons/chevron-down"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
@@ -19,11 +21,13 @@
   import {
     bulkUpdateImportItems,
     patchImportItem,
+    resetImportItem,
     type ImportItemPublic,
     type ImportedProduct,
     type ImportedVariant,
   } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
+  import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
@@ -197,6 +201,85 @@
     return completed && item.status !== "applied"
   }
 
+  // --- Sauvegarde automatique (retour Marc 2026-07-30) : toute modification
+  // d'un brouillon est enregistrée 1,5 s après la dernière frappe ; le
+  // bouton Enregistrer reste (il referme aussi la ligne). Une saisie
+  // invalide (quantité non numérique) attend simplement la frappe suivante.
+  const AUTOSAVE_DELAY_MS = 1500
+  const autosaveTimers = new Map<number, ReturnType<typeof setTimeout>>()
+  // JSON du dernier brouillon ENREGISTRÉ par item : la différence déclenche.
+  const savedSnapshots = new Map<number, string>()
+  let autosaveState = $state<Record<number, "saving" | "saved" | "error">>({})
+
+  $effect(() => {
+    // Dépend de `drafts` en profondeur : chaque frappe re-exécute l'effet.
+    for (const [idStr, draft] of Object.entries(drafts)) {
+      const id = Number(idStr)
+      const snapshot = JSON.stringify(draft)
+      const saved = savedSnapshots.get(id)
+      if (saved !== undefined && saved !== snapshot) {
+        untrack(() => scheduleAutosave(id))
+      }
+    }
+  })
+
+  function scheduleAutosave(itemId: number) {
+    clearTimeout(autosaveTimers.get(itemId))
+    autosaveTimers.set(
+      itemId,
+      setTimeout(() => void autoSave(itemId), AUTOSAVE_DELAY_MS),
+    )
+  }
+
+  async function autoSave(itemId: number) {
+    const item = items.find((i) => i.id === itemId)
+    const draft = drafts[itemId]
+    if (!item || !draft || !isEditable(item)) return
+    if (savingItemId !== null) {
+      // Une sauvegarde est en cours : on repassera.
+      scheduleAutosave(itemId)
+      return
+    }
+    const snapshot = JSON.stringify(draft)
+    if (savedSnapshots.get(itemId) === snapshot) return
+    for (const v of draft.variants) {
+      const quantity = v.quantity.trim()
+      if (quantity !== "" && !Number.isFinite(Number(quantity))) return
+    }
+    autosaveState[itemId] = "saving"
+    savingItemId = itemId
+    const { data, error } = await patchImportItem(importId, itemId, {
+      payload: draftToPayload(item.payload, draft),
+    })
+    savingItemId = null
+    if (error || !data) {
+      autosaveState[itemId] = "error"
+      return
+    }
+    // Le brouillon reste la vérité (l'utilisateur peut être en train de
+    // taper) : on mémorise seulement l'état envoyé.
+    items = items.map((i) => (i.id === data.id ? data : i))
+    savedSnapshots.set(itemId, snapshot)
+    autosaveState[itemId] = "saved"
+    onChanged()
+  }
+
+  /** Restaure le payload extrait (avant toute édition). */
+  async function resetItem(item: ImportItemPublic) {
+    clearTimeout(autosaveTimers.get(item.id))
+    const { data, error } = await resetImportItem(importId, item.id)
+    if (error || !data) {
+      toast.error("Réinitialisation impossible.")
+      return
+    }
+    items = items.map((i) => (i.id === data.id ? data : i))
+    drafts[item.id] = makeDraft(data.payload)
+    savedSnapshots.set(item.id, JSON.stringify(drafts[item.id]))
+    delete autosaveState[item.id]
+    toast.success("Produit réinitialisé (données extraites restaurées)")
+    onChanged()
+  }
+
   async function saveItem(item: ImportItemPublic) {
     const draft = drafts[item.id]
     if (!draft || savingItemId !== null) return
@@ -218,6 +301,9 @@
     }
     items = items.map((i) => (i.id === data.id ? data : i))
     drafts[item.id] = makeDraft(data.payload)
+    clearTimeout(autosaveTimers.get(item.id))
+    savedSnapshots.set(item.id, JSON.stringify(drafts[item.id]))
+    delete autosaveState[item.id]
     // Enregistrer referme la ligne (demande Marc 2026-07-29) : le geste
     // clôt la relecture du produit, on passe au suivant.
     const next = new Set(expanded)
@@ -228,7 +314,10 @@
   }
 
   function cancelItem(item: ImportItemPublic) {
+    clearTimeout(autosaveTimers.get(item.id))
     drafts[item.id] = makeDraft(item.payload)
+    savedSnapshots.set(item.id, JSON.stringify(drafts[item.id]))
+    delete autosaveState[item.id]
   }
 
   async function setItemStatus(item: ImportItemPublic, status: "ready_for_review" | "rejected") {
@@ -297,6 +386,7 @@
       // Prépare le brouillon d'édition au premier dépliage.
       if (isEditable(item) && !drafts[item.id]) {
         drafts[item.id] = makeDraft(item.payload)
+        savedSnapshots.set(item.id, JSON.stringify(drafts[item.id]))
       }
     }
     expanded = next
@@ -789,26 +879,45 @@
                 {/if}
 
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                  {#if isRejected}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={statusItemId === item.id}
-                      onclick={() => setItemStatus(item, "ready_for_review")}
-                    >
-                      {statusItemId === item.id ? "…" : "Réintégrer"}
-                    </Button>
-                  {:else}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={statusItemId === item.id}
-                      onclick={() => setItemStatus(item, "rejected")}
-                    >
-                      {statusItemId === item.id ? "…" : "Écarter"}
-                    </Button>
-                  {/if}
                   <div class="flex items-center gap-2">
+                    {#if isRejected}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={statusItemId === item.id}
+                        onclick={() => setItemStatus(item, "ready_for_review")}
+                      >
+                        {statusItemId === item.id ? "…" : "Réintégrer"}
+                      </Button>
+                    {:else}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={statusItemId === item.id}
+                        onclick={() => setItemStatus(item, "rejected")}
+                      >
+                        {statusItemId === item.id ? "…" : "Écarter"}
+                      </Button>
+                    {/if}
+                    {#if item.has_original}
+                      <!-- Restaure les données EXTRAITES (avant édition). -->
+                      <ConfirmButton
+                        label="Réinitialiser"
+                        confirmLabel="Restaurer l'extrait ?"
+                        onconfirm={() => resetItem(item)}
+                      />
+                    {/if}
+                  </div>
+                  <div class="flex items-center gap-2">
+                    {#if autosaveState[item.id] === "saving"}
+                      <span class="text-muted-foreground text-xs">Enregistrement…</span>
+                    {:else if autosaveState[item.id] === "saved"}
+                      <span class="text-muted-foreground text-xs">Enregistré ✓</span>
+                    {:else if autosaveState[item.id] === "error"}
+                      <span class="text-destructive text-xs">
+                        Enregistrement auto impossible
+                      </span>
+                    {/if}
                     <Button variant="ghost" size="sm" onclick={() => cancelItem(item)}>
                       Annuler
                     </Button>

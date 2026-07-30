@@ -129,6 +129,8 @@
         tax_rate: c.tax_rate,
         apply_title_template: c.apply_title_template ?? false,
         split_by_color: c.split_by_color ?? false,
+        split_suffix_mode: c.split_suffix_mode ?? "color",
+        split_suffix_separator: c.split_suffix_separator ?? "-",
         option_axes: (c.option_axes?.length
           ? c.option_axes.map((a) => ({ source: a.source, label: a.label }))
           : defaultAxes()) as OptionAxisDraft[],
@@ -152,6 +154,8 @@
       tax_rate: "20",
       apply_title_template: false,
       split_by_color: false,
+      split_suffix_mode: "color" as ImportProfileConfig["split_suffix_mode"],
+      split_suffix_separator: "-" as ImportProfileConfig["split_suffix_separator"],
       option_axes: defaultAxes(),
       extra_instructions: "",
       size_conversion: "none" as ImportProfileConfig["size_conversion"],
@@ -196,6 +200,8 @@
       status: "active",
       apply_title_template: form.apply_title_template,
       split_by_color: form.split_by_color,
+      split_suffix_mode: form.split_suffix_mode,
+      split_suffix_separator: form.split_suffix_separator,
       option_axes: form.option_axes.map((axis) => ({
         source: axis.source,
         label: axis.label.trim() || DEFAULT_AXIS_LABELS[axis.source],
@@ -521,6 +527,36 @@
         </span>
       </span>
     </label>
+    {#if form.split_by_color}
+      <!-- Personnalisation du suffixe couleur ajouté à la référence. -->
+      <div class="grid gap-3 pl-6 sm:max-w-lg sm:grid-cols-2">
+        <div class="flex flex-col gap-1.5">
+          <Label for="{uid}-split-suffix">Suffixe ajouté à la référence</Label>
+          <Select id="{uid}-split-suffix" bind:value={form.split_suffix_mode}>
+            <option value="color">Nom de la couleur (48814-NOIR)</option>
+            <option value="initial">Initiale de la couleur (48814-N)</option>
+            <option value="none">Aucun — même référence</option>
+          </Select>
+        </div>
+        {#if form.split_suffix_mode !== "none"}
+          <div class="flex flex-col gap-1.5">
+            <Label for="{uid}-split-separator">Séparateur</Label>
+            <Select id="{uid}-split-separator" bind:value={form.split_suffix_separator}>
+              <option value="-">Tiret (48814-NOIR)</option>
+              <option value=" ">Espace (48814 NOIR)</option>
+              <option value="">Aucun (48814NOIR)</option>
+            </Select>
+          </div>
+        {/if}
+        <p class="text-muted-foreground text-xs sm:col-span-2">
+          « Initiale » s'étend jusqu'à être unique (Bleu/Blanc → BL/BLA).
+          « Aucun suffixe » : les fiches partagent la référence — le lien
+          post-transfert devient ambigu, les titres différencient les
+          couleurs. Sans séparateur, la recherche Tillin ne fait plus
+          ressortir d'autres produits contenant le nom de la couleur.
+        </p>
+      </div>
+    {/if}
   </div>
 
   <div class="flex items-center justify-end gap-2">
