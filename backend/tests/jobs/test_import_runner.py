@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.jobs.import_runner as import_runner
@@ -455,3 +456,78 @@ def test_known_category_paths_skip_hidden_categories(
 
     assert paths is not None
     assert sorted(paths) == ["Ancien > Soldes", "Femme", "Femme > Robes"]
+
+
+def test_existing_references_flag_items_with_a_warning(
+    runner_db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Produits reconduits : la référence déjà en boutique est signalée."""
+    source = tmp_path / "stored.pdf"
+    source.write_bytes(b"%PDF-1.4 fake")
+    job = _seed_import_job(runner_db, source)
+    result = ExtractionResult(
+        products=[
+            ImportedProduct(supplier_ref="REF-EXISTS"),
+            ImportedProduct(supplier_ref="REF-NEW"),
+        ],
+        document=DocumentInfo(),
+    )
+    monkeypatch.setattr(
+        import_runner,
+        "_check_existing_references",
+        lambda _account_id, _refs: {
+            "REF-EXISTS": {"id": 219716, "title": "Orbit Multi Ring"}
+        },
+    )
+
+    import_runner.run_import_job(
+        job.id,
+        parse_file=_fake_parse,
+        build_extractor=_build_extractor_returning(result),
+    )
+
+    items = runner_db.scalars(
+        select(ImportItem).where(ImportItem.job_id == job.id).order_by(ImportItem.id)
+    ).all()
+    by_ref = {item.payload_json["supplier_ref"]: item for item in items}
+    warnings = by_ref["REF-EXISTS"].warnings_json or []
+    assert len(warnings) == 1
+    assert "déjà présente dans Tillin" in warnings[0]
+    assert "#219716" in warnings[0]
+    assert not (by_ref["REF-NEW"].warnings_json or [])
+
+
+def test_profile_instructions_are_combined_with_upload_instructions(
+    runner_db: Session, tmp_path: Path
+) -> None:
+    """Les instructions ENREGISTRÉES sur le profil choisi au dépôt s'ajoutent
+    à celles saisies pour l'import."""
+    source = tmp_path / "stored.pdf"
+    source.write_bytes(b"%PDF-1.4 fake")
+    job = _seed_import_job(runner_db, source)
+    profile = ImportProfile(
+        account_id=job.account_id,
+        name="AMI",
+        supplier_match="ami",
+        config_json={"extra_instructions": "La colonne Livraison est la saison."},
+    )
+    runner_db.add(profile)
+    runner_db.flush()
+    job.config_json = {
+        "profile_id": profile.id,
+        "instructions": "Ignorer les accessoires.",
+    }
+    runner_db.commit()
+
+    received: list[str | None] = []
+
+    def build(_account_id: int, instructions: str | None = None):  # type: ignore[no-untyped-def]
+        received.append(instructions)
+        inner = _build_extractor_returning(
+            ExtractionResult(products=[], document=DocumentInfo())
+        )
+        return inner(_account_id, None)
+
+    import_runner.run_import_job(job.id, parse_file=_fake_parse, build_extractor=build)
+
+    assert received == ["La colonne Livraison est la saison.\nIgnorer les accessoires."]

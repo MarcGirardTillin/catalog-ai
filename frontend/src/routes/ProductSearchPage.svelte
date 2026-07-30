@@ -263,6 +263,16 @@
       tab = "import"
       selectedImportId = importId
     }
+    // Lien direct vers un produit (`?product=ID`, depuis les vérifications
+    // d'enrichissement) : ouvre le panneau produit sur l'onglet Catalogue.
+    const productParam = params.get("product")
+    const productId = productParam ? Number(productParam) : NaN
+    if (Number.isFinite(productId)) {
+      panelProductId = productId
+      panelImportLabel = null
+      panelFallback = null
+      panelOpen = true
+    }
     // Filtres persistés dans l'URL : revenir du studio (ou recharger) ne
     // perd plus la recherche en cours.
     restoreFiltersFromUrl(params)

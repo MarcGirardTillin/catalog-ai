@@ -200,10 +200,10 @@ def test_get_classification_normalizes_groups() -> None:
     assert filters["suppliers"][0]["title"] == "ACME"
     # The season with title=None is dropped.
     assert [s["title"] for s in filters["seasons"]] == ["SS25"]
-    # Compositions: normalized to {id, title} options, sorted by title.
+    # Compositions: normalized to {id, title, visible} options, sorted by title.
     assert filters["compositions"] == [
-        {"id": 11, "title": "Coton"},
-        {"id": 12, "title": "Laine"},
+        {"id": 11, "title": "Coton", "visible": True},
+        {"id": 12, "title": "Laine", "visible": True},
     ]
 
 
@@ -872,3 +872,36 @@ def test_variant_weight_zero_maps_to_none() -> None:
     assert real.weight == 0.4
     assert absent.weight is None
     assert junk.weight is None
+
+
+def test_check_existing_references_uses_put_and_maps_by_reference() -> None:
+    """Le verbe est PUT (vérifié live 2026-07-30 : POST/GET → 404)."""
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(
+            200,
+            json={
+                "existing_references": [
+                    {
+                        "id": 219716,
+                        "product_reference_code": "F26-FG007-S",
+                        "title": "Orbit Multi Ring",
+                    }
+                ]
+            },
+        )
+
+    with _client(httpx.MockTransport(handler)) as client:
+        existing = client.check_existing_references(["F26-FG007-S", "REF-BIDON"])
+
+    assert seen["method"] == "PUT"
+    assert str(seen["path"]).endswith("/product/check_existing_reference/bulk")
+    assert set(existing) == {"F26-FG007-S"}
+    assert existing["F26-FG007-S"]["id"] == 219716
+    with _client(httpx.MockTransport(handler)) as client:
+        assert client.check_existing_references([]) == {}

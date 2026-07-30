@@ -2855,6 +2855,12 @@ export const ImportProfileConfig_InputSchema = {
             title: 'Size Conversion',
             default: 'none'
         },
+        extra_instructions: {
+            type: 'string',
+            maxLength: 4000,
+            title: 'Extra Instructions',
+            default: ''
+        },
         default_gender: {
             type: 'string',
             maxLength: 40,
@@ -2972,6 +2978,12 @@ export const ImportProfileConfig_OutputSchema = {
             ],
             title: 'Size Conversion',
             default: 'none'
+        },
+        extra_instructions: {
+            type: 'string',
+            maxLength: 4000,
+            title: 'Extra Instructions',
+            default: ''
         },
         default_gender: {
             type: 'string',

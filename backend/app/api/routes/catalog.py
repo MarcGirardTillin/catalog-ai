@@ -17,14 +17,15 @@ router = APIRouter(
 def get_filters(xano: XanoDep) -> CatalogFilters:
     """Brands, categories, seasons, suppliers and tags for the search filters.
 
-    Les catégories masquées dans Tillin (isVisible=false) sont écartées des
-    filtres et datalists — on ne propose jamais d'assigner une catégorie que
-    la boutique cache (les produits existants restent résolus id→titre).
+    Les entrées masquées dans Tillin (isVisible=false, tous les groupes) sont
+    écartées des filtres et datalists — on ne propose jamais d'assigner une
+    valeur que la boutique cache (les produits existants restent résolus
+    id→titre par les maps de classification, qui gardent tout).
     """
-    classification = dict(xano.get_classification())
-    classification["categories"] = [
-        c for c in classification.get("categories", []) if c.get("visible", True)
-    ]
+    classification = {
+        group: [c for c in options if c.get("visible", True)]
+        for group, options in xano.get_classification().items()
+    }
     return CatalogFilters.model_validate(classification)
 
 

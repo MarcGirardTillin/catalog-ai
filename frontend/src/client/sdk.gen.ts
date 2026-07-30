@@ -396,6 +396,11 @@ export const brandsUpdateBrandWebsiteUrls = <ThrowOnError extends boolean = fals
  * Get Filters
  *
  * Brands, categories, seasons, suppliers and tags for the search filters.
+ *
+ * Les entrées masquées dans Tillin (isVisible=false, tous les groupes) sont
+ * écartées des filtres et datalists — on ne propose jamais d'assigner une
+ * valeur que la boutique cache (les produits existants restent résolus
+ * id→titre par les maps de classification, qui gardent tout).
  */
 export const catalogGetFilters = <ThrowOnError extends boolean = false>(options?: Options<CatalogGetFiltersData, ThrowOnError>): RequestResult<CatalogGetFiltersResponses, CatalogGetFiltersErrors, ThrowOnError> => (options?.client ?? client).get<CatalogGetFiltersResponses, CatalogGetFiltersErrors, ThrowOnError>({
     responseType: 'json',
@@ -708,10 +713,16 @@ export const importsLinkImportProducts = <ThrowOnError extends boolean = false>(
 /**
  * List Import Products
  *
- * Per-import products view, built from the staged payloads (local only).
+ * Per-import products view, built from the staged payloads.
  *
  * Rejected/failed items are excluded. The linked/unlinked counters cover the
  * `applied` items only — they are the ones expected to exist in Tillin.
+ *
+ * Les vignettes : au transfert les produits Tillin naissent SANS image (les
+ * fichiers fournisseurs n'en portent pas) — la capture faite au lien est
+ * donc souvent vide, et les images n'arrivent qu'après enrichissement. On
+ * rattrape ici, en best-effort borné : les items liés sans vignette relisent
+ * leur produit Tillin et mémorisent la première image trouvée.
  */
 export const importsListImportProducts = <ThrowOnError extends boolean = false>(options: Options<ImportsListImportProductsData, ThrowOnError>): RequestResult<ImportsListImportProductsResponses, ImportsListImportProductsErrors, ThrowOnError> => (options.client ?? client).get<ImportsListImportProductsResponses, ImportsListImportProductsErrors, ThrowOnError>({
     responseType: 'json',

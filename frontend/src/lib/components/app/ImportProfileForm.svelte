@@ -132,6 +132,7 @@
         option_axes: (c.option_axes?.length
           ? c.option_axes.map((a) => ({ source: a.source, label: a.label }))
           : defaultAxes()) as OptionAxisDraft[],
+        extra_instructions: c.extra_instructions ?? "",
         size_conversion: c.size_conversion ?? "none",
         default_gender: c.default_gender ?? "",
       }
@@ -152,6 +153,7 @@
       apply_title_template: false,
       split_by_color: false,
       option_axes: defaultAxes(),
+      extra_instructions: "",
       size_conversion: "none" as ImportProfileConfig["size_conversion"],
       default_gender: "",
     }
@@ -198,6 +200,7 @@
         source: axis.source,
         label: axis.label.trim() || DEFAULT_AXIS_LABELS[axis.source],
       })),
+      extra_instructions: form.extra_instructions.trim(),
       size_conversion: form.size_conversion,
       default_gender: form.default_gender.trim(),
     }
@@ -464,6 +467,26 @@
   </div>
 
   <Separator />
+
+  <!-- Instructions d'analyse enregistrées sur le profil : injectées dans le
+       prompt d'extraction quand le profil est choisi au dépôt, cumulées avec
+       les consignes saisies pour l'import. -->
+  <div class="flex flex-col gap-1.5">
+    <Label for="{uid}-instructions">Instructions d'analyse</Label>
+    <textarea
+      id="{uid}-instructions"
+      rows="2"
+      maxlength="4000"
+      class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-60 w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+      placeholder="Ex. La colonne « Livraison » est la saison ; ignorer les lignes d'accessoires…"
+      bind:value={form.extra_instructions}
+    ></textarea>
+    <p class="text-muted-foreground text-xs">
+      Ajoutées au prompt d'analyse à chaque import déposé avec ce profil (le
+      profil doit être sélectionné au dépôt) — cumulées avec les consignes
+      saisies pour un import donné.
+    </p>
+  </div>
 
   <div class="flex flex-col gap-1.5">
     <label class="flex items-start gap-2 text-sm">

@@ -102,6 +102,31 @@ def _default_build_extractor(
     )
 
 
+def _check_existing_references(
+    account_id: int, references: list[str]
+) -> dict[str, dict[str, object]]:
+    """Références déjà en boutique (`check_existing_reference/bulk` Xano).
+
+    Best-effort : Xano indisponible/non configuré → dict vide, l'analyse
+    continue sans le contrôle (jamais bloquant).
+    """
+    refs = [r.strip() for r in references if r and r.strip()]
+    if not refs:
+        return {}
+    try:
+        from app.api.deps import xano_client_for_account
+
+        db = SessionLocal()
+        try:
+            client = xano_client_for_account(db, account_id)
+        finally:
+            db.close()
+        return client.check_existing_references(refs)
+    except Exception:  # noqa: BLE001 — contrôle bonus, jamais bloquant
+        logger.warning("could not check existing references in Tillin")
+        return {}
+
+
 def run_import_job(
     job_id: int,
     *,
@@ -199,7 +224,28 @@ def _process(
         data = Path(file_path).read_bytes()
         documents.append(parse(data, file_name))
 
-    instructions = str((job.config_json or {}).get("instructions") or "") or None
+    # Instructions d'extraction : celles ENREGISTRÉES sur le profil choisi au
+    # dépôt, puis celles saisies pour CE dépôt (les deux se cumulent). Un
+    # profil auto-rattaché APRÈS extraction ne peut pas influencer le prompt —
+    # limitation assumée (le fournisseur n'est connu qu'à l'extraction).
+    config = job.config_json or {}
+    instruction_parts: list[str] = []
+    explicit_profile_id = config.get("profile_id")
+    if explicit_profile_id:
+        explicit_profile = db.get(ImportProfile, int(explicit_profile_id))
+        if (
+            explicit_profile is not None
+            and explicit_profile.account_id == job.account_id
+        ):
+            profile_instructions = ImportProfileConfig.model_validate(
+                explicit_profile.config_json or {}
+            ).extra_instructions.strip()
+            if profile_instructions:
+                instruction_parts.append(profile_instructions)
+    adhoc = str(config.get("instructions") or "").strip()
+    if adhoc:
+        instruction_parts.append(adhoc)
+    instructions = "\n".join(instruction_parts) or None
     extractor = build(job.account_id, instructions)
     result = extractor(documents)
 
@@ -212,13 +258,30 @@ def _process(
         if profile_config.split_by_color:
             products = split_products_by_color(products)
 
+    # Références déjà présentes dans Tillin (produits reconduits d'une saison
+    # à l'autre) : vérification en masse, avertissement posé sur l'item —
+    # best-effort, l'import n'échoue jamais sur ce contrôle.
+    existing_refs = _check_existing_references(
+        job.account_id, [p.supplier_ref for p in products]
+    )
+
     for product in products:
+        warnings_json: list[str] | None = None
+        existing = existing_refs.get(product.supplier_ref.strip())
+        if existing is not None:
+            title = str(existing.get("title") or "").strip()
+            warnings_json = [
+                "Référence déjà présente dans Tillin"
+                + (f" (« {title} »" if title else " (")
+                + f" produit #{existing.get('id')})"
+            ]
         db.add(
             ImportItem(
                 job_id=job.id,
                 account_id=job.account_id,
                 status="ready_for_review",
                 payload_json=product.model_dump(mode="json"),
+                warnings_json=warnings_json,
             )
         )
     for usage in result.usage:

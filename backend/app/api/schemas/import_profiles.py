@@ -97,6 +97,11 @@ class ImportProfileConfig(BaseModel):
     )
     # Pointures UK/US converties en EU au rendu (chaussures) — "none" défaut.
     size_conversion: SizeConversion = "none"
+    # Instructions d'extraction ENREGISTRÉES sur le profil (demande Marc
+    # 2026-07-30) : injectées dans le prompt d'analyse quand le profil est
+    # choisi au dépôt, cumulées avec les consignes saisies pour l'import.
+    # Un profil auto-rattaché APRÈS extraction n'influence pas le prompt.
+    extra_instructions: str = Field(default="", max_length=4000)
     # Genre appliqué quand le document n'en porte pas ("" = aucun repli).
     # Réintroduit sur demande Marc 2026-07-28 (retiré 2026-07-09) : REPLI
     # seulement — un genre extrait ou édité en review garde toujours la main.

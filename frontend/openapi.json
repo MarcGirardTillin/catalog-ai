@@ -1634,7 +1634,7 @@
           "catalog"
         ],
         "summary": "Get Filters",
-        "description": "Brands, categories, seasons, suppliers and tags for the search filters.",
+        "description": "Brands, categories, seasons, suppliers and tags for the search filters.\n\nLes entrées masquées dans Tillin (isVisible=false, tous les groupes) sont\nécartées des filtres et datalists — on ne propose jamais d'assigner une\nvaleur que la boutique cache (les produits existants restent résolus\nid→titre par les maps de classification, qui gardent tout).",
         "operationId": "catalog-get_filters",
         "parameters": [
           {
@@ -3187,7 +3187,7 @@
           "imports"
         ],
         "summary": "List Import Products",
-        "description": "Per-import products view, built from the staged payloads (local only).\n\nRejected/failed items are excluded. The linked/unlinked counters cover the\n`applied` items only — they are the ones expected to exist in Tillin.",
+        "description": "Per-import products view, built from the staged payloads.\n\nRejected/failed items are excluded. The linked/unlinked counters cover the\n`applied` items only — they are the ones expected to exist in Tillin.\n\nLes vignettes : au transfert les produits Tillin naissent SANS image (les\nfichiers fournisseurs n'en portent pas) — la capture faite au lien est\ndonc souvent vide, et les images n'arrivent qu'après enrichissement. On\nrattrape ici, en best-effort borné : les items liés sans vignette relisent\nleur produit Tillin et mémorisent la première image trouvée.",
         "operationId": "imports-list_import_products",
         "parameters": [
           {
@@ -9367,6 +9367,12 @@
             "title": "Size Conversion",
             "default": "none"
           },
+          "extra_instructions": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Extra Instructions",
+            "default": ""
+          },
           "default_gender": {
             "type": "string",
             "maxLength": 40,
@@ -9483,6 +9489,12 @@
             ],
             "title": "Size Conversion",
             "default": "none"
+          },
+          "extra_instructions": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Extra Instructions",
+            "default": ""
           },
           "default_gender": {
             "type": "string",

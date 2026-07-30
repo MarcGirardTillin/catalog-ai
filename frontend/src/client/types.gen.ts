@@ -1578,6 +1578,10 @@ export type ImportProfileConfigInput = {
      */
     size_conversion?: 'none' | 'uk_to_eu' | 'us_to_eu';
     /**
+     * Extra Instructions
+     */
+    extra_instructions?: string;
+    /**
      * Default Gender
      */
     default_gender?: string;
@@ -1649,6 +1653,10 @@ export type ImportProfileConfigOutput = {
      * Size Conversion
      */
     size_conversion?: 'none' | 'uk_to_eu' | 'us_to_eu';
+    /**
+     * Extra Instructions
+     */
+    extra_instructions?: string;
     /**
      * Default Gender
      */

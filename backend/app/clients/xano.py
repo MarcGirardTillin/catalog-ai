@@ -848,6 +848,11 @@ class XanoClient:
                 option: dict[str, Any] = {"id": int(raw["id"]), "title": str(title)}
                 if "parent_id" in raw:
                     option["parent_id"] = raw.get("parent_id")
+                # Visibilité boutique (isVisible Tillin, TOUS les groupes —
+                # demande Marc 2026-07-30) : une entrée masquée reste résolue
+                # id→titre (produits existants) mais est écartée du matching
+                # d'extraction et des datalists. Champ absent = visible.
+                option["visible"] = raw.get("isVisible") is not False
                 if group == "categories":
                     # Poids par défaut de la catégorie (champ ajouté par Marc
                     # le 2026-07-25) : 0 = non renseigné.
@@ -855,15 +860,35 @@ class XanoClient:
                     option["default_weight_kg"] = (
                         float(weight) if isinstance(weight, int | float) else 0.0
                     )
-                    # Visibilité boutique (isVisible Tillin) : une catégorie
-                    # masquée reste résolue id→titre (produits existants) mais
-                    # est écartée du matching d'extraction et des datalists.
-                    # Champ absent = visible (tolérance aux anciens payloads).
-                    option["visible"] = raw.get("isVisible") is not False
                 options.append(option)
             options.sort(key=lambda o: o["title"].lower())
             result[group] = options
         return result
+
+    def check_existing_references(
+        self, references: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Références déjà présentes en boutique (produits reconduits).
+
+        `PUT /product/check_existing_reference/bulk` (vérifié live 2026-07-30 :
+        POST/GET → 404, le verbe est PUT) renvoie `{"existing_references":
+        [{id, product_reference_code, title, …}]}` — seules les références
+        trouvées sont renvoyées. Résultat : `{reference: produit brut}`.
+        """
+        if not references:
+            return {}
+        payload = self._put(
+            "/product/check_existing_reference/bulk", {"references": references}
+        )
+        existing: dict[str, dict[str, Any]] = {}
+        if isinstance(payload, Mapping):
+            for raw in _as_list(payload.get("existing_references")):
+                if not isinstance(raw, Mapping):
+                    continue
+                reference = str(raw.get("product_reference_code") or "").strip()
+                if reference:
+                    existing[reference] = dict(raw)
+        return existing
 
     def list_locations(self) -> list[dict[str, Any]]:
         """Tillin-owned locations `{id, title}`, sorted by title.

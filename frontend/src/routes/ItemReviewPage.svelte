@@ -901,7 +901,18 @@
             </CardHeader>
             <CardContent class="flex flex-col gap-3 text-xs">
               <div class="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-                <span class="font-mono">#{item.tillin_product_id}</span>
+                <!-- Lien vers le produit dans le catalogue (panneau). -->
+                <a
+                  href={`/products?product=${item.tillin_product_id}`}
+                  class="text-primary font-mono underline-offset-2 hover:underline"
+                  title="Voir le produit"
+                  onclick={(e) => {
+                    e.preventDefault()
+                    if (item) navigate(`/products?product=${item.tillin_product_id}`)
+                  }}
+                >
+                  #{item.tillin_product_id}
+                </a>
                 {#if product?.reference_code}
                   <span>réf. {product.reference_code}</span>
                 {/if}

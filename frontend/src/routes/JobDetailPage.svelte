@@ -250,7 +250,27 @@
                       <StatusBadge status={item.status} />
                     </div>
                     <div class="text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                      <span class="font-mono">#{item.tillin_product_id}</span>
+                      <!-- Lien vers le produit (panneau catalogue) sans
+                           déclencher l'ouverture de la review. -->
+                      <span
+                        role="link"
+                        tabindex="0"
+                        class="text-primary cursor-pointer font-mono underline-offset-2 hover:underline"
+                        title="Voir le produit"
+                        onclick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/products?product=${item.tillin_product_id}`)
+                        }}
+                        onkeydown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            navigate(`/products?product=${item.tillin_product_id}`)
+                          }
+                        }}
+                      >
+                        #{item.tillin_product_id}
+                      </span>
                       {#if item.source_method}
                         <span>
                           source : {SOURCE_LABELS[item.source_method] ??

@@ -159,6 +159,17 @@ def _job_totals(db: Session, job_id: int) -> ImportJobTotals:
 def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
     config = job.config_json or {}
     document = config.get("document") or {}
+    # Fournisseur affiché : celui du PROFIL rattaché quand il y en a un —
+    # l'extraction confond parfois le fournisseur avec le client facturé
+    # (demande Marc 2026-07-30). Repli : le fournisseur extrait du document.
+    supplier = document.get("supplier")
+    if config.get("profile_id"):
+        profile = db.get(ImportProfile, int(config["profile_id"]))
+        if profile is not None and profile.account_id == job.account_id:
+            profile_supplier = str(
+                (profile.config_json or {}).get("supplier_label") or ""
+            ).strip()
+            supplier = profile_supplier or profile.name or supplier
     duration: float | None = None
     if job.started_at is not None and job.finished_at is not None:
         duration = (job.finished_at - job.started_at).total_seconds()
@@ -172,7 +183,7 @@ def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
         counts=_job_counts(db, job.id),
         totals=_job_totals(db, job.id),
         po_number=document.get("po_number"),
-        supplier=document.get("supplier"),
+        supplier=supplier,
         profile_id=config.get("profile_id"),
         location_id=config.get("location_id"),
         warnings=[str(w) for w in config.get("warnings") or []],
