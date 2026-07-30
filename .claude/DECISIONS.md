@@ -1025,3 +1025,18 @@ E structurel). Décisions notables de la phase E :
 5. **Pastilles menu** : compteurs de DOSSIERS (imports/tâches ayant ≥ 1
    élément à vérifier — `imports_to_review`/`enrich_jobs_to_review`), pas
    de produits.
+
+## 2026-07-30 — Tenancy Xano : token de l'utilisateur connecté, admins hors pool
+
+Décision Marc après l'incident Neiwa/Madel. Les requêtes interactives
+utilisent le token Xano de l'UTILISATEUR CONNECTÉ (`xano_client_for_user`),
+jamais « le token le plus frais du compte » : les réponses Xano sont scopées
+à l'entreprise portée par le token, et l'entreprise d'un autre utilisateur
+peut changer côté Tillin. Les jobs de fond (sans session) gardent la
+résolution par compte (`xano_client_for_account`) mais les admins plateforme
+sont exclus du pool (`freshest_company_token` filtre `is_admin`) — le
+colleague-token fallback reste pour la survie des jobs (TTL 72 h). Cache des
+clients par TOKEN (dict token→client, non fermés — fuite bornée par la
+rotation). Conséquence assumée : un utilisateur au token expiré voit un 401
+xano_token_expired au lieu d'être silencieusement servi par le token d'un
+collègue — c'est le comportement correct.

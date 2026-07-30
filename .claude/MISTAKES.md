@@ -214,3 +214,20 @@ inputs aux champs non fournis — title=""). Restauré aussitôt.
 texte existants avec la modification (le client `set_category_default_weight`
 exige `title`), et sonder les écritures Xano sur une donnée réversible en
 vérifiant TOUT l'objet retourné, pas seulement le champ modifié.
+
+## 2026-07-30 — Fuite inter-entreprises via le pool de tokens du compte
+
+**Symptôme** : clement@neiwa.fr (compte Neiwa) a vu les magasins de Madel
+dans le choix des magasins d'import ; retour à la normale après re-login.
+**Cause racine** : `xano_client_for_account` prenait le token le plus
+récent parmi TOUS les utilisateurs du compte. marc.girard@tillin.fr (admin
+plateforme) est membre du compte Neiwa et portait le token le plus frais ;
+quand son utilisateur Tillin est passé de JCD à Madel, toutes les requêtes
+du compte Neiwa ont servi les données de Madel. L'hypothèse « tous les
+utilisateurs du compte appartiennent à la même entreprise » est fausse pour
+un admin (il change d'entreprise pour le support).
+**Fix** : requêtes interactives = token de l'utilisateur connecté ; jobs de
+fond = pool du compte SANS les admins (commit 8d1a504).
+**Prévention** : toute résolution d'identité « par compte » doit exclure les
+identités capables de changer de tenant ; en review d'accès, se demander
+« qui d'autre peut porter ce token et que voit-il ? ».
