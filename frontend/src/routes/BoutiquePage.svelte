@@ -23,6 +23,7 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import BrandWebsites from "@/lib/components/settings/BrandWebsites.svelte"
+  import FaceLibrary from "@/lib/components/settings/FaceLibrary.svelte"
   import TitleTemplateBuilder, {
     parseTemplate,
   } from "@/lib/components/enrichment/TitleTemplateBuilder.svelte"
@@ -36,6 +37,7 @@
     { key: "title", label: "Modèle de titre" },
     { key: "brands", label: "Sites des marques" },
     { key: "weights", label: "Poids par défaut" },
+    { key: "faces", label: "Visages mannequins" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("title")
@@ -202,6 +204,10 @@
 
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "brands"}>
           <BrandWebsites />
+        </div>
+
+        <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "faces"}>
+          <FaceLibrary />
         </div>
 
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "weights"}>

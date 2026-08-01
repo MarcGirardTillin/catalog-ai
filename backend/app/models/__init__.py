@@ -2,6 +2,7 @@ from app.models.account import Account
 from app.models.base import Base
 from app.models.credit import CreditEntry
 from app.models.enrichment import EnrichmentItem, EnrichmentJob
+from app.models.face_reference import FaceReference
 from app.models.image_asset import ImageAsset
 from app.models.import_item import ImportItem
 from app.models.import_profile import ImportProfile
@@ -19,6 +20,7 @@ __all__ = [
     "EnrichmentJob",
     "ImageAsset",
     "ImportItem",
+    "FaceReference",
     "ImportProfile",
     "InstructionTemplate",
     "UsageBillingSnapshot",

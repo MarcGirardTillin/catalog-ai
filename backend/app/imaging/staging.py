@@ -64,6 +64,10 @@ def sweep_older_than(days: int = RETENTION_DAYS) -> int:
     for directory in base.iterdir():
         if not directory.is_dir():
             continue
+        # Les visages mannequins (face swap) sont des RÉFÉRENTIELS durables,
+        # pas du staging : jamais purgés.
+        if directory.name == "faces":
+            continue
         try:
             newest = max(
                 (child.stat().st_mtime for child in directory.iterdir()),

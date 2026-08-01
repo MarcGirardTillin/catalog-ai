@@ -33,6 +33,7 @@ from app.api.schemas import (
     Product,
     ProductImagePositionsRequest,
     ProductImagesUploadResult,
+    SwapModelRequest,
 )
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.services.accounts import resolve_account_id
@@ -45,6 +46,7 @@ from app.api.services.imaging import (
     run_generate_model,
     run_generate_virtual_model,
     run_normalize,
+    run_swap_model,
     to_flat_service_options,
     to_public,
     to_virtual_model_service_options,
@@ -356,6 +358,91 @@ def generate_model_image(
     db.commit()
     db.refresh(asset)
     background.add_task(run_generate_model, asset.id, body.image_url, options, fashn)
+    return to_public(asset)
+
+
+@router.post(
+    "/{product_id}/images/swap-model",
+    response_model=ImageAssetPublic,
+    status_code=202,
+)
+def swap_model_image(
+    product_id: int,
+    body: SwapModelRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    fashn: OptionalFashnDep,
+    background: BackgroundTasks,
+) -> ImageAssetPublic:
+    """« Remplacer le mannequin » (FASHN model-swap, validé Marc 2026-07-31).
+
+    Change l'identité du mannequin (visage, carnation, cheveux) en conservant
+    la tenue. Visage de la bibliothèque du compte envoyé en data URI (jamais
+    d'URL publique). Un appel = une image = un débit image_generate.
+    """
+    import base64 as _base64
+
+    from app.imaging import staging as _staging
+    from app.models import FaceReference
+
+    account_id = resolve_account_id(db, current_user)
+    if fashn is None:
+        raise NotConfiguredError("fashn")
+    require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
+    face_data_uri: str | None = None
+    face_name: str | None = None
+    if body.face_id is not None:
+        face = db.get(FaceReference, body.face_id)
+        if face is None or face.account_id != account_id:
+            raise AppException(
+                status_code=404, code="not_found", message="Visage introuvable"
+            )
+        try:
+            data = _staging.load(face.file_path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise AppException(
+                status_code=409,
+                code="file_missing",
+                message="Fichier du visage introuvable — re-téléversez-le",
+            ) from exc
+        extension = face.file_path.rsplit(".", 1)[-1]
+        media = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(
+            extension, "image/jpeg"
+        )
+        face_data_uri = f"data:{media};base64," + _base64.standard_b64encode(
+            data
+        ).decode("ascii")
+        face_name = face.name
+    asset = ImageAsset(
+        account_id=account_id,
+        product_id=product_id,
+        verb="swap_model",
+        provider="fashn",
+        model=imaging_service.FASHN_MODEL_SWAP,
+        status="pending",
+        source_image=body.image_url,
+        source_product_image_id=body.product_image_id,
+        params_json={
+            "options": {
+                "face_id": body.face_id,
+                "face_name": face_name,
+                "face_reference_mode": body.face_reference_mode,
+                "prompt": body.prompt,
+            }
+        },
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    background.add_task(
+        run_swap_model,
+        asset.id,
+        body.image_url,
+        face_data_uri,
+        body.face_reference_mode,
+        body.prompt,
+        fashn,
+    )
     return to_public(asset)
 
 

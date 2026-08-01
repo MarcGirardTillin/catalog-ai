@@ -392,6 +392,20 @@ export type AssetSaveResult = {
 };
 
 /**
+ * Body_faces-upload_face
+ */
+export type BodyFacesUploadFace = {
+    /**
+     * File
+     */
+    file: Blob | File;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
  * Body_imports-create_import
  */
 export type BodyImportsCreateImport = {
@@ -876,6 +890,24 @@ export type ExampleResponse = {
      * Sample Id
      */
     sample_id: number;
+};
+
+/**
+ * FaceReferencePublic
+ */
+export type FaceReferencePublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Created At
+     */
+    created_at: string;
 };
 
 /**
@@ -3072,6 +3104,34 @@ export type StagedFilePublic = {
 };
 
 /**
+ * SwapModelRequest
+ *
+ * « Remplacer le mannequin » : image portée + visage de la bibliothèque.
+ */
+export type SwapModelRequest = {
+    /**
+     * Image Url
+     */
+    image_url: string;
+    /**
+     * Product Image Id
+     */
+    product_image_id?: number | null;
+    /**
+     * Face Id
+     */
+    face_id?: number | null;
+    /**
+     * Face Reference Mode
+     */
+    face_reference_mode?: 'match_base' | 'match_reference';
+    /**
+     * Prompt
+     */
+    prompt?: string | null;
+};
+
+/**
  * UsageByJob
  */
 export type UsageByJob = {
@@ -3870,6 +3930,36 @@ export type ProductsGenerateModelImageResponses = {
 };
 
 export type ProductsGenerateModelImageResponse = ProductsGenerateModelImageResponses[keyof ProductsGenerateModelImageResponses];
+
+export type ProductsSwapModelImageData = {
+    body: SwapModelRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/swap-model';
+};
+
+export type ProductsSwapModelImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsSwapModelImageError = ProductsSwapModelImageErrors[keyof ProductsSwapModelImageErrors];
+
+export type ProductsSwapModelImageResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImageAssetPublic;
+};
+
+export type ProductsSwapModelImageResponse = ProductsSwapModelImageResponses[keyof ProductsSwapModelImageResponses];
 
 export type ProductsGenerateFlatImageData = {
     body: GenerateFlatRequest;
@@ -5743,6 +5833,116 @@ export type SettingsReadConnectionStatusResponses = {
 };
 
 export type SettingsReadConnectionStatusResponse = SettingsReadConnectionStatusResponses[keyof SettingsReadConnectionStatusResponses];
+
+export type FacesListFacesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/faces';
+};
+
+export type FacesListFacesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FacesListFacesError = FacesListFacesErrors[keyof FacesListFacesErrors];
+
+export type FacesListFacesResponses = {
+    /**
+     * Response Faces-List Faces
+     *
+     * Successful Response
+     */
+    200: Array<FaceReferencePublic>;
+};
+
+export type FacesListFacesResponse = FacesListFacesResponses[keyof FacesListFacesResponses];
+
+export type FacesUploadFaceData = {
+    body: BodyFacesUploadFace;
+    path?: never;
+    query?: never;
+    url: '/faces';
+};
+
+export type FacesUploadFaceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FacesUploadFaceError = FacesUploadFaceErrors[keyof FacesUploadFaceErrors];
+
+export type FacesUploadFaceResponses = {
+    /**
+     * Successful Response
+     */
+    201: FaceReferencePublic;
+};
+
+export type FacesUploadFaceResponse = FacesUploadFaceResponses[keyof FacesUploadFaceResponses];
+
+export type FacesReadFaceFileData = {
+    body?: never;
+    path: {
+        /**
+         * Face Id
+         */
+        face_id: number;
+    };
+    query?: never;
+    url: '/faces/{face_id}/file';
+};
+
+export type FacesReadFaceFileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FacesReadFaceFileError = FacesReadFaceFileErrors[keyof FacesReadFaceFileErrors];
+
+export type FacesReadFaceFileResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type FacesDeleteFaceData = {
+    body?: never;
+    path: {
+        /**
+         * Face Id
+         */
+        face_id: number;
+    };
+    query?: never;
+    url: '/faces/{face_id}';
+};
+
+export type FacesDeleteFaceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FacesDeleteFaceError = FacesDeleteFaceErrors[keyof FacesDeleteFaceErrors];
+
+export type FacesDeleteFaceResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type FacesDeleteFaceResponse = FacesDeleteFaceResponses[keyof FacesDeleteFaceResponses];
 
 export type InstructionsListInstructionsData = {
     body?: never;

@@ -33,6 +33,7 @@ from app.imaging.service import (
     generate_model_photo,
     generate_virtual_model_photo,
     normalize_product_image,
+    swap_model_photo,
 )
 from app.models import Account, ImageAsset
 
@@ -564,6 +565,30 @@ def _run_generation(
                 db.commit()
     finally:
         db.close()
+
+
+def run_swap_model(
+    asset_id: int,
+    image_url: str,
+    face_data_uri: str | None,
+    face_reference_mode: str,
+    prompt: str | None,
+    fashn: FashnClient,
+) -> None:
+    """BackgroundTask : « Remplacer le mannequin » (FASHN model-swap)."""
+    _run_generation(
+        asset_id,
+        "swap-model",
+        lambda db, account_id: swap_model_photo(
+            image_url,
+            face_reference=face_data_uri,
+            face_reference_mode=face_reference_mode,
+            prompt=prompt,
+            fashn=fashn,
+            db=db,
+            account_id=account_id,
+        ),
+    )
 
 
 def run_generate_flat(

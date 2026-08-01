@@ -27,6 +27,8 @@ from app.core.config import settings
 from app.imaging.compose import compose, probe
 
 FASHN_PRODUCT_TO_MODEL = "product-to-model"
+# Remplacement du mannequin (identité) en conservant la tenue — face swap.
+FASHN_MODEL_SWAP = "model-swap"
 PHOTOROOM_MODEL = "photoroom-v2"  # legacy /v2/edit (kept for old traces)
 PHOTOROOM_SEGMENT_MODEL = "photoroom-segment-v1"
 # Nouveaux appels /v2/edit (flat lay, ghost mannequin, virtual model,
@@ -481,6 +483,66 @@ def generate_model_photo(
             options.resolution, options.generation_mode, options.num_images
         ),
         model=FASHN_PRODUCT_TO_MODEL,
+    )
+    return results
+
+
+def swap_model_photo(
+    model_image: str,
+    *,
+    face_reference: str | None,
+    face_reference_mode: str = "match_base",
+    prompt: str | None = None,
+    fashn: "FashnClient",
+    db: "Session",
+    account_id: int,
+) -> list[ImagingResult]:
+    """« Remplacer le mannequin » (FASHN model-swap, validé Marc 2026-07-31).
+
+    Change l'IDENTITÉ du mannequin (visage, carnation, cheveux) en conservant
+    la tenue exactement. `face_reference` = data URI du visage de la
+    bibliothèque du compte (jamais d'URL publique) ; coût FASHN : balanced 1k
+    = 2 crédits, +3 avec visage de référence.
+    """
+    inputs: dict[str, Any] = {
+        "model_image": model_image,
+        "resolution": "1k",
+        "generation_mode": "balanced",
+        "num_images": 1,
+        "output_format": "png",
+    }
+    if face_reference:
+        inputs["face_reference"] = face_reference
+        inputs["face_reference_mode"] = face_reference_mode
+    if prompt:
+        inputs["prompt"] = prompt
+    params = {
+        k: v for k, v in inputs.items() if k not in ("model_image", "face_reference")
+    }
+    prediction_id = fashn.run(FASHN_MODEL_SWAP, inputs)
+    urls = fashn.wait(prediction_id)
+    results = [
+        ImagingResult(
+            data=fashn.download(url),
+            width=None,
+            height=None,
+            format="png",
+            trace={
+                "provider": "fashn",
+                "model": FASHN_MODEL_SWAP,
+                "params": params,
+            },
+        )
+        for url in urls
+    ]
+    record_usage(
+        db,
+        account_id=account_id,
+        source="imaging",
+        provider="fashn",
+        metric="credits",
+        quantity=2 + (3 if face_reference else 0),
+        model=FASHN_MODEL_SWAP,
     )
     return results
 

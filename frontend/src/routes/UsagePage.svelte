@@ -118,6 +118,7 @@
     generate_model: "Porté mannequin",
     generate_flat: "Mise à plat",
     generate_ghost: "Mannequin invisible",
+    swap_model: "Mannequin remplacé",
   }
 
   const GENERATION_STATUS: Record<string, { label: string; tone: string }> = {

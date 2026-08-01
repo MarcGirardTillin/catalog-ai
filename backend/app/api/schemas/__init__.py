@@ -15,6 +15,7 @@ from app.api.schemas.imaging import (
     PendingImagingProducts,
     RenderRequest,
     StagedFilePublic,
+    SwapModelRequest,
 )
 from app.api.schemas.pagination import (
     PaginatedResponse,
@@ -41,6 +42,7 @@ __all__ = [
     "GenerateFlatRequest",
     "GenerateModelOptions",
     "GenerateModelRequest",
+    "SwapModelRequest",
     "ImageAssetPublic",
     "LoginRequest",
     "NormalizeOptions",

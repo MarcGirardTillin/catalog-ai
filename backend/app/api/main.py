@@ -9,6 +9,7 @@ from app.api.routes import (
     catalog,
     credits,
     example,
+    faces,
     imaging,
     import_profiles,
     imports,
@@ -38,6 +39,7 @@ api_router.include_router(locations.router)
 api_router.include_router(items.router)
 api_router.include_router(stats.router)
 api_router.include_router(settings.router)
+api_router.include_router(faces.router)
 api_router.include_router(instructions.router)
 api_router.include_router(usage.router)
 api_router.include_router(credits.router)

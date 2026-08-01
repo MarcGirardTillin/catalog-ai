@@ -684,6 +684,28 @@ export const AssetSaveResultSchema = {
     description: 'Outcome of pushing a completed asset to Tillin (Xano bulk upload).'
 } as const;
 
+export const Body_faces_upload_faceSchema = {
+    properties: {
+        file: {
+            type: 'string',
+            contentMediaType: 'application/octet-stream',
+            title: 'File'
+        },
+        name: {
+            type: 'string',
+            maxLength: 80,
+            minLength: 1,
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: [
+        'file',
+        'name'
+    ],
+    title: 'Body_faces-upload_face'
+} as const;
+
 export const Body_imports_create_importSchema = {
     properties: {
         files: {
@@ -1487,6 +1509,31 @@ export const ExampleResponseSchema = {
     ],
     title: 'ExampleResponse',
     description: 'Response payload returned by the example endpoint.'
+} as const;
+
+export const FaceReferencePublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'name',
+        'created_at'
+    ],
+    title: 'FaceReferencePublic'
 } as const;
 
 export const FilterOptionSchema = {
@@ -5595,6 +5642,63 @@ export const StagedFilePublicSchema = {
     ],
     title: 'StagedFilePublic',
     description: 'Metadata of one staged OUTPUT file (weight/dimensions display).'
+} as const;
+
+export const SwapModelRequestSchema = {
+    properties: {
+        image_url: {
+            type: 'string',
+            title: 'Image Url'
+        },
+        product_image_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Image Id'
+        },
+        face_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Face Id'
+        },
+        face_reference_mode: {
+            type: 'string',
+            enum: [
+                'match_base',
+                'match_reference'
+            ],
+            title: 'Face Reference Mode',
+            default: 'match_base'
+        },
+        prompt: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Prompt'
+        }
+    },
+    type: 'object',
+    required: [
+        'image_url'
+    ],
+    title: 'SwapModelRequest',
+    description: '« Remplacer le mannequin » : image portée + visage de la bibliothèque.'
 } as const;
 
 export const UsageByJobSchema = {

@@ -139,6 +139,20 @@ class GenerateModelOptions(BaseModel):
     photoroom_pose: PhotoroomPoseOption | None = None
 
 
+class SwapModelRequest(BaseModel):
+    """« Remplacer le mannequin » : image portée + visage de la bibliothèque."""
+
+    image_url: str
+    product_image_id: int | None = None
+    # Visage de la bibliothèque du compte (None = nouvelle identité libre,
+    # pilotée par le prompt).
+    face_id: int | None = None
+    # match_base = garde l'angle/regard de la photo d'origine ;
+    # match_reference = privilégie la pose/expression du visage de référence.
+    face_reference_mode: Literal["match_base", "match_reference"] = "match_base"
+    prompt: str | None = None
+
+
 class GenerateModelRequest(BaseModel):
     image_url: str
     product_image_id: int | None = None

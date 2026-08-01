@@ -21,6 +21,7 @@ import {
   itemsNormalizeItemImageRoute,
   productsGenerateFlatImage,
   productsGenerateGhostImage,
+  productsSwapModelImage,
   productsGenerateModelImage,
   productsNormalizeImage,
 } from "@/client"
@@ -90,6 +91,29 @@ export function generateGhostImage(
   return productsGenerateGhostImage({
     path: { product_id: productId },
     body: { image_url: imageUrl, product_image_id: productImageId, options },
+  })
+}
+
+/** « Remplacer le mannequin » (face swap FASHN) : identité changée, tenue
+ * conservée. face_id = visage de la bibliothèque du compte (null = identité
+ * libre pilotée par le prompt). */
+export function swapModelImage(
+  productId: number,
+  imageUrl: string,
+  productImageId: number | null,
+  options: {
+    face_id: number | null
+    face_reference_mode: "match_base" | "match_reference"
+    prompt: string | null
+  },
+) {
+  return productsSwapModelImage({
+    path: { product_id: productId },
+    body: {
+      image_url: imageUrl,
+      product_image_id: productImageId,
+      ...options,
+    },
   })
 }
 

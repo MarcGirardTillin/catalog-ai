@@ -23,9 +23,15 @@
     listAssets,
     normalizeImage,
     saveAsset,
+    swapModelImage,
     waitForAsset,
     type ImageAssetPublic,
   } from "@/lib/api/imaging"
+  import {
+    fetchFacePreview,
+    listFaces,
+    type FaceReferencePublic,
+  } from "@/lib/api/faces"
   import { insufficientCreditsMessage } from "@/lib/api/credits"
   import { getProduct } from "@/lib/api/products"
   import { Button } from "@/lib/components/ui/button"
@@ -36,6 +42,8 @@
     CardHeader,
     CardTitle,
   } from "@/lib/components/ui/card"
+  import { Input } from "@/lib/components/ui/input"
+  import { Label } from "@/lib/components/ui/label"
   import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { TabBar } from "@/lib/components/ui/tabs"
@@ -146,6 +154,7 @@
     { key: "generate", label: "Porté mannequin" },
     { key: "flat", label: "Mise à plat" },
     { key: "ghost", label: "Mannequin invisible" },
+    { key: "swap", label: "Remplacer le mannequin" },
   ] as const
   let mode = $state<(typeof MODE_TABS)[number]["key"]>("process")
 
@@ -229,11 +238,13 @@
   const GEN_SUFFIX = "::gen"
   const FLAT_SUFFIX = "::flat"
   const GHOST_SUFFIX = "::ghost"
-  const KEY_SUFFIXES = [GEN_SUFFIX, FLAT_SUFFIX, GHOST_SUFFIX] as const
+  const SWAP_SUFFIX = "::swap"
+  const KEY_SUFFIXES = [GEN_SUFFIX, FLAT_SUFFIX, GHOST_SUFFIX, SWAP_SUFFIX] as const
   const VERB_SUFFIX: Record<string, string> = {
     generate_model: GEN_SUFFIX,
     generate_flat: FLAT_SUFFIX,
     generate_ghost: GHOST_SUFFIX,
+    swap_model: SWAP_SUFFIX,
   }
 
   /** URL source d'une clé de travail (suffixe de génération retiré). */
@@ -497,6 +508,41 @@
     )
   }
 
+  // --- « Remplacer le mannequin » (face swap FASHN) : visage choisi dans
+  // la bibliothèque du compte (Réglages → Visages mannequins). ---
+  
+  let swapFaces = $state<FaceReferencePublic[] | null>(null)
+  let swapFacePreviews = $state<Record<number, string>>({})
+  let swapFaceId = $state<number | null>(null)
+  let swapMode = $state<"match_base" | "match_reference">("match_base")
+  let swapPrompt = $state("")
+
+  $effect(() => {
+    if (mode !== "swap" || swapFaces !== null) return
+    void listFaces().then(({ data }) => {
+      swapFaces = data ?? []
+      if (swapFaceId === null && (data?.length ?? 0) > 0) swapFaceId = data![0].id
+      for (const face of data ?? []) {
+        void fetchFacePreview(face.id).then((url) => {
+          if (url) swapFacePreviews[face.id] = url
+        })
+      }
+    })
+  })
+
+  function runSwap(image: ProductImage) {
+    return runWork(
+      image.url + SWAP_SUFFIX,
+      () =>
+        swapModelImage(productId, image.url, image.id ?? null, {
+          face_id: swapFaceId,
+          face_reference_mode: swapMode,
+          prompt: swapPrompt.trim() || null,
+        }),
+      "Lancement impossible (service de visuels indisponible ?).",
+    )
+  }
+
   /** Lanceur de l'onglet courant (bouton unique de la grille). */
   const runByMode = $derived(
     mode === "generate"
@@ -505,7 +551,9 @@
         ? runFlat
         : mode === "ghost"
           ? runGhost
-          : runOne,
+          : mode === "swap"
+            ? runSwap
+            : runOne,
   )
 
   async function runSelectedByMode() {
@@ -788,6 +836,70 @@
                 />
               </CardContent>
             </Card>
+          {:else if mode === "swap"}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">
+                  Remplacer le mannequin (génération)
+                </CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  Change l'identité du mannequin d'une photo portée (visage,
+                  carnation, cheveux) en conservant la tenue. Les visages se
+                  gèrent dans Réglages → Visages mannequins. Chaque visuel
+                  consomme des crédits de génération.
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-3">
+                {#if swapFaces === null}
+                  <Skeleton class="h-16 w-full" />
+                {:else if swapFaces.length === 0}
+                  <p class="text-muted-foreground text-sm">
+                    Aucun visage dans la bibliothèque — ajoutez-en un dans
+                    Réglages → Visages mannequins, ou laissez l'IA choisir une
+                    nouvelle identité via l'instruction ci-dessous.
+                  </p>
+                {:else}
+                  <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Visage de référence">
+                    {#each swapFaces as face (face.id)}
+                      <button
+                        type="button"
+                        class="flex w-20 cursor-pointer flex-col items-center gap-1 rounded-md border p-1.5 transition-colors {swapFaceId === face.id
+                          ? 'border-primary ring-primary/40 ring-1'
+                          : 'border-border hover:bg-muted'}"
+                        aria-pressed={swapFaceId === face.id}
+                        onclick={() => (swapFaceId = swapFaceId === face.id ? null : face.id)}
+                      >
+                        {#if swapFacePreviews[face.id]}
+                          <img
+                            src={swapFacePreviews[face.id]}
+                            alt={face.name}
+                            class="bg-muted aspect-square w-full rounded object-cover"
+                          />
+                        {:else}
+                          <Skeleton class="aspect-square w-full rounded" />
+                        {/if}
+                        <span class="w-full truncate text-center text-[11px]">{face.name}</span>
+                      </button>
+                    {/each}
+                  </div>
+                  <div class="flex flex-col gap-1.5 sm:max-w-72">
+                    <Label for="swap-mode">Fidélité au visage</Label>
+                    <Select id="swap-mode" bind:value={swapMode}>
+                      <option value="match_base">Garder l'angle/expression de la photo</option>
+                      <option value="match_reference">Ressemblance maximale au visage</option>
+                    </Select>
+                  </div>
+                {/if}
+                <div class="flex flex-col gap-1.5">
+                  <Label for="swap-prompt">Instruction (optionnelle)</Label>
+                  <Input
+                    id="swap-prompt"
+                    placeholder="Ex. cheveux attachés, teint hâlé…"
+                    bind:value={swapPrompt}
+                  />
+                </div>
+              </CardContent>
+            </Card>
           {:else}
             <Card size="sm">
               <CardHeader>
@@ -836,7 +948,9 @@
                       ? `Mettre à plat (${selected.length})`
                       : mode === "ghost"
                         ? `Générer sans mannequin (${selected.length})`
-                        : `Normaliser la sélection (${selected.length})`}
+                        : mode === "swap"
+                          ? `Remplacer le mannequin (${selected.length})`
+                          : `Normaliser la sélection (${selected.length})`}
               </Button>
             </div>
           </div>
@@ -875,7 +989,9 @@
                   ? runFlat
                   : pair.key.endsWith(GHOST_SUFFIX)
                     ? runGhost
-                    : runOne}
+                    : pair.key.endsWith(SWAP_SUFFIX)
+                      ? runSwap
+                      : runOne}
               {#if pair.work.status === "running"}
                 <Card size="sm">
                   <CardContent class="text-muted-foreground py-6 text-center text-sm">
