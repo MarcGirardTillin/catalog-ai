@@ -12,6 +12,7 @@
     createInstruction,
     deleteInstruction,
     listInstructions,
+    reorderInstructions,
     updateInstruction,
   } from "@/lib/api/instructions"
   import type { InstructionPublic } from "@/lib/api/instructions"
@@ -61,6 +62,27 @@
     }
     instructions = data
   })
+
+  // --- Réordonnancement (demande Marc 2026-07-31) : ↑↓ réécrit l'ordre
+  // complet côté serveur (PUT /instructions/order). ---
+  let reordering = $state(false)
+
+  async function moveInstruction(index: number, delta: number) {
+    if (instructions === null || reordering) return
+    const target = index + delta
+    if (target < 0 || target >= instructions.length) return
+    const next = [...instructions]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    instructions = next
+    reordering = true
+    const { data, error } = await reorderInstructions(next.map((i) => i.id))
+    reordering = false
+    if (error || data === undefined) {
+      toast.error("Réordonnancement impossible.")
+      return
+    }
+    instructions = data
+  }
 
   function openCreate() {
     editingId = null
@@ -201,6 +223,30 @@
                 {/if}
               </div>
               <div class="flex shrink-0 items-center gap-1">
+                {#if search.trim() === ""}
+                  <!-- Réordonnancement (désactivé pendant une recherche :
+                       l'ordre ne se voit que sur la liste complète). -->
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="px-2"
+                    disabled={index === 0 || reordering}
+                    aria-label={`Monter ${instruction.name}`}
+                    onclick={() => moveInstruction(index, -1)}
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="px-2"
+                    disabled={index === filteredInstructions.length - 1 || reordering}
+                    aria-label={`Descendre ${instruction.name}`}
+                    onclick={() => moveInstruction(index, 1)}
+                  >
+                    ↓
+                  </Button>
+                {/if}
                 <Button variant="ghost" size="sm" onclick={() => openEdit(instruction)}>
                   Modifier
                 </Button>

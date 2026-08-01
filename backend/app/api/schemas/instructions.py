@@ -25,3 +25,9 @@ class InstructionPublic(BaseModel):
     categories: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+class InstructionOrder(BaseModel):
+    """Ordre d'affichage de la bibliothèque : ids du premier au dernier."""
+
+    ids: list[int] = Field(min_length=1)

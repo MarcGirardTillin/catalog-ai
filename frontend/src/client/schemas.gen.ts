@@ -3861,6 +3861,25 @@ export const InstructionCreateSchema = {
     title: 'InstructionCreate'
 } as const;
 
+export const InstructionOrderSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Ids'
+        }
+    },
+    type: 'object',
+    required: [
+        'ids'
+    ],
+    title: 'InstructionOrder',
+    description: 'Ordre d\'affichage de la bibliothèque : ids du premier au dernier.'
+} as const;
+
 export const InstructionPublicSchema = {
     properties: {
         id: {
@@ -5355,6 +5374,17 @@ export const ProductVariantSchema = {
                 }
             ],
             title: 'Weight Unit'
+        },
+        stock_quantity: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Stock Quantity'
         },
         price: {
             anyOf: [

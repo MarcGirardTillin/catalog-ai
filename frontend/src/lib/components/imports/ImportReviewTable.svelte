@@ -447,6 +447,11 @@
     return value !== undefined && value < 0.7
   }
 
+  /** Quantité totale commandée (variante sans quantité = 1, comme le CSV). */
+  function quantityTotal(variants: ImportedVariant[]): number {
+    return variants.reduce((acc, v) => acc + (v.quantity ?? 1), 0)
+  }
+
   /** Tailles agrégées : liste courte, ou « min–max » quand il y en a beaucoup. */
   function sizeSummary(variants: ImportedVariant[]): string {
     const sizes = [...new Set(variants.map((v) => v.size).filter((s): s is string => !!s))]
@@ -627,6 +632,7 @@
             </p>
             <p class="text-muted-foreground text-xs sm:hidden">
               {product.variants.length} variante{product.variants.length > 1 ? "s" : ""}
+              · {quantityTotal(product.variants)} pièce{quantityTotal(product.variants) > 1 ? "s" : ""}
               · {sizeSummary(product.variants)}
               · {wholesaleRange(product.variants)}
             </p>
@@ -652,6 +658,9 @@
           <div class="hidden min-w-0 px-3 text-sm sm:block {cellPad}">
             <span class="block whitespace-nowrap">
               {product.variants.length} variante{product.variants.length > 1 ? "s" : ""}
+              <span class="text-muted-foreground">
+                · {quantityTotal(product.variants)} pce{quantityTotal(product.variants) > 1 ? "s" : ""}
+              </span>
             </span>
             <span class="text-muted-foreground block truncate text-xs">
               {sizeSummary(product.variants)}

@@ -13,6 +13,7 @@ from app.api.deps import CurrentUserDep, SessionDep
 from app.api.exceptions import AppException
 from app.api.schemas.instructions import (
     InstructionCreate,
+    InstructionOrder,
     InstructionPublic,
     InstructionUpdate,
 )
@@ -48,18 +49,41 @@ def _to_public(instruction: InstructionTemplate) -> InstructionPublic:
 def list_instructions(
     db: SessionDep, current_user: CurrentUserDep
 ) -> list[InstructionPublic]:
-    """The account's instruction library, sorted by name."""
+    """The account's instruction library, user order first then by name."""
     account_id = resolve_account_id(db, current_user)
     rows = (
         db.execute(
             select(InstructionTemplate)
             .where(InstructionTemplate.account_id == account_id)
-            .order_by(InstructionTemplate.name)
+            .order_by(
+                InstructionTemplate.position.is_(None),
+                InstructionTemplate.position,
+                InstructionTemplate.name,
+            )
         )
         .scalars()
         .all()
     )
     return [_to_public(row) for row in rows]
+
+
+@router.put("/order", response_model=list[InstructionPublic])
+def reorder_instructions(
+    payload: InstructionOrder, db: SessionDep, current_user: CurrentUserDep
+) -> list[InstructionPublic]:
+    """Fixe l'ordre d'affichage (liste d'ids, du premier au dernier).
+
+    Les instructions du compte absentes de la liste passent après (position
+    NULL → tri par nom).
+    """
+    account_id = resolve_account_id(db, current_user)
+    for index, instruction_id in enumerate(payload.ids):
+        instruction = _get_owned(
+            db, account_id=account_id, instruction_id=instruction_id
+        )
+        instruction.position = index
+    db.commit()
+    return list_instructions(db, current_user)
 
 
 @router.post("", response_model=InstructionPublic, status_code=201)

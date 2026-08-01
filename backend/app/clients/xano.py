@@ -276,6 +276,23 @@ def _positive_or_none(value: Any) -> float | None:
     return number if number > 0 else None
 
 
+def _stock_quantity(raw: Mapping[str, Any]) -> int | None:
+    """Somme des quantités par magasin (`variant_per_location`, entrées actives)."""
+    locations = raw.get("variant_per_location")
+    if not isinstance(locations, list):
+        return None
+    total = 0
+    seen = False
+    for entry in locations:
+        if not isinstance(entry, Mapping) or entry.get("active") is False:
+            continue
+        quantity = entry.get("quantity")
+        if isinstance(quantity, int | float):
+            total += int(quantity)
+            seen = True
+    return total if seen else None
+
+
 def _map_variant(raw: Mapping[str, Any], axes: Mapping[str, int]) -> ProductVariant:
     return ProductVariant(
         id=_first(raw, "id", "variant_id"),
@@ -287,6 +304,7 @@ def _map_variant(raw: Mapping[str, Any], axes: Mapping[str, int]) -> ProductVari
         weight_unit=_first(raw, "weight_unit"),
         price=_amount(raw, "price"),
         wholesale_price=_amount(raw, "wholesale_price"),
+        stock_quantity=_stock_quantity(raw),
     )
 
 

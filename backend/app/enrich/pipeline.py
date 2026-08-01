@@ -38,6 +38,7 @@ from app.clients.base import ExternalServiceError
 from app.clients.claude import ClaudeClient
 from app.clients.firecrawl import EXTRACT_CREDITS, FirecrawlClient
 from app.clients.photoroom import PhotoroomClient
+from app.core.config import settings
 from app.enrich.price import source_price
 from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
@@ -192,6 +193,93 @@ def _upgrade_image_url(url: str) -> str:
     if not _CDN_TRANSFORM_SEGMENT.search(url):
         return url
     return _CDN_TRANSFORM_SIZE.sub(lambda m: f"{m.group(1)}_1600", url)
+
+
+def _sibling_candidates(src: str, *, limit: int = 8) -> list[str]:
+    """URLs sœurs d'une image de galerie NUMÉROTÉE (…M01W… → M02W…M08W).
+
+    Beaucoup de CDN nomment la galerie avec un compteur à deux chiffres dans
+    le chemin (img1.g-star.com : D28627-E360-001-M01W). On fait varier le
+    DERNIER compteur du chemin ; l'appelant sonde chaque candidate en HEAD.
+    """
+    parsed = urlparse(src)
+    segments = parsed.path.split("/")
+    # Le compteur vit dans l'IDENTIFIANT d'asset (« …-M01W »), pas dans le nom
+    # de fichier (slug ignoré par le CDN — vérifié live img1.g-star.com) ni
+    # dans les segments de version/transformation : on cherche, du dernier
+    # répertoire vers la racine, un « lettreNNlettres » en fin de segment.
+    for index in range(len(segments) - 2, -1, -1):
+        segment = segments[index]
+        matches = list(re.finditer(r"(?<=[A-Za-z])\d{2}(?=[A-Za-z]*$)", segment))
+        if not matches:
+            continue
+        counter = matches[-1]
+        candidates: list[str] = []
+        for n in range(1, limit + 1):
+            new_segment = (
+                segment[: counter.start()] + f"{n:02d}" + segment[counter.end() :]
+            )
+            if new_segment == segment:
+                continue
+            new_segments = list(segments)
+            new_segments[index] = new_segment
+            candidates.append(src.replace(parsed.path, "/".join(new_segments), 1))
+        return candidates
+    return []
+
+
+def _probe_sibling_images(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Complète une galerie à image UNIQUE en sondant les URLs sœurs.
+
+    Cas G-Star (item 88, 2026-07-31) : la galerie est rendue en JS, le
+    JSON-LD n'a aucune image et l'extraction web n'en voit qu'une — alors que
+    les sœurs M02..M06 existent sur le CDN. HEAD best-effort (empreinte
+    navigateur + proxy source) ; ne garde que les vraies images (> 10 Ko).
+    """
+    if len(images) != 1:
+        return images
+    src = str(images[0].get("src") or "")
+    candidates = _sibling_candidates(src)
+    if not candidates:
+        return images
+    from app.imaging.service import _source_headers_for
+
+    found = {src}
+    misses = 0
+    try:
+        with httpx.Client(
+            timeout=10,
+            follow_redirects=True,
+            proxy=settings.SOURCE_PROXY_URL or None,
+        ) as client:
+            for candidate in candidates:
+                try:
+                    response = client.head(
+                        candidate, headers=_source_headers_for(candidate)
+                    )
+                except httpx.HTTPError:
+                    misses += 1
+                    continue
+                content_type = response.headers.get("content-type", "")
+                length = int(response.headers.get("content-length") or 0)
+                if (
+                    response.status_code == 200
+                    and content_type.startswith("image/")
+                    and length > 10_000
+                ):
+                    found.add(candidate)
+                    misses = 0
+                else:
+                    misses += 1
+                if misses >= 3:
+                    break
+    except Exception:  # noqa: BLE001 — sonde bonus, jamais bloquante
+        return images
+    if len(found) <= 1:
+        return images
+    # Ordre de galerie = ordre du compteur (l'originale s'y replace).
+    ordered = sorted(found)
+    return [{"src": url} for url in ordered]
 
 
 def _fallback_site_handle(url: str) -> tuple[str, str]:
@@ -738,6 +826,10 @@ class EnrichmentPipeline:
         for key in ("_price", "_color", "_composition", "_features", "_care"):
             if not merged.get(key) and extracted.get(key):
                 merged[key] = extracted[key]
+        # Toujours une seule image (galerie JS, cas G-Star) : sonde des URLs
+        # sœurs numérotées sur le CDN.
+        if len(merged.get("images") or []) == 1:
+            merged["images"] = _probe_sibling_images(list(merged["images"]))
         return merged
 
     def _stage_images(

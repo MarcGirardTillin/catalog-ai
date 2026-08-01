@@ -4,6 +4,7 @@ import {
   instructionsCreateInstruction,
   instructionsDeleteInstruction,
   instructionsListInstructions,
+  instructionsReorderInstructions,
   instructionsUpdateInstruction,
 } from "@/client"
 import type {
@@ -18,6 +19,14 @@ export type InstructionUpsert = InstructionCreate
 
 export function listInstructions() {
   return instructionsListInstructions() as Promise<{
+    data?: InstructionPublic[]
+    error?: unknown
+  }>
+}
+
+/** Fixe l'ordre d'affichage de la bibliothèque (ids du premier au dernier). */
+export function reorderInstructions(ids: number[]) {
+  return instructionsReorderInstructions({ body: { ids } }) as Promise<{
     data?: InstructionPublic[]
     error?: unknown
   }>

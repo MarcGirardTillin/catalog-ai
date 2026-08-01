@@ -381,6 +381,16 @@
     return product.title?.trim() || product.reference_code || `Produit ${product.id}`
   }
 
+  /** Stock total du produit (somme des variantes) — « — » si Tillin ne
+   * fournit pas le détail par magasin. */
+  function stockOf(product: Product): string {
+    const quantities = (product.variants ?? [])
+      .map((v) => v.stock_quantity)
+      .filter((q): q is number => q != null)
+    if (quantities.length === 0) return "—"
+    return String(quantities.reduce((acc, q) => acc + q, 0))
+  }
+
   // Tillin categories come in mixed casing ("ACCESSOIRES", "Chaussures") —
   // normalize for display only.
   function displayCategory(value: string): string {
@@ -759,6 +769,9 @@
                     <th class="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell">
                       Variantes
                     </th>
+                    <th class="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell">
+                      Stock
+                    </th>
                     <th class="px-2 py-2.5">
                       <span class="sr-only">Actions</span>
                     </th>
@@ -852,6 +865,9 @@
                       </td>
                       <td class="hidden px-4 {cellPad} text-right whitespace-nowrap tabular-nums sm:table-cell">
                         {product.variants?.length ?? 0}
+                      </td>
+                      <td class="hidden px-4 {cellPad} text-right whitespace-nowrap tabular-nums sm:table-cell">
+                        {stockOf(product)}
                       </td>
                       <td class="px-2 {cellPad} text-right whitespace-nowrap">
                         <!-- Accès direct au studio images, sans ouvrir le panneau.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ExternalLink from "@lucide/svelte/icons/external-link"
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
@@ -249,14 +250,14 @@
                       </span>
                       <StatusBadge status={item.status} />
                     </div>
-                    <div class="text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                      <!-- Lien vers le produit (panneau catalogue) sans
+                    <div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                      <!-- Bouton explicite (UX Marc 2026-07-31) : « Voir le
+                           produit » plutôt qu'un id cliquable opaque ; sans
                            déclencher l'ouverture de la review. -->
                       <span
                         role="link"
                         tabindex="0"
-                        class="text-primary cursor-pointer font-mono underline-offset-2 hover:underline"
-                        title="Voir le produit"
+                        class="text-primary flex cursor-pointer items-center gap-1 underline-offset-2 hover:underline"
                         onclick={(e) => {
                           e.stopPropagation()
                           navigate(`/products?product=${item.tillin_product_id}`)
@@ -269,7 +270,8 @@
                           }
                         }}
                       >
-                        #{item.tillin_product_id}
+                        <ExternalLink size={12} aria-hidden="true" />
+                        Voir le produit
                       </span>
                       {#if item.source_method}
                         <span>

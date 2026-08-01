@@ -23,6 +23,9 @@ class ProductVariant(BaseModel):
     size: str | None = None
     weight: float | None = None
     weight_unit: str | None = None
+    # Stock total de la variante (somme des `variant_per_location.quantity`
+    # actifs) — None quand Tillin n'envoie pas le détail par magasin.
+    stock_quantity: int | None = None
     # Retail price of the variant (destination-side, nested `price.amount`).
     price: Decimal | None = None
     # Purchase price of the variant (destination-side `wholesale_price.amount`).

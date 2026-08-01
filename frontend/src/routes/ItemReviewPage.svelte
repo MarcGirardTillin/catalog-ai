@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ExternalLink from "@lucide/svelte/icons/external-link"
   import Check from "@lucide/svelte/icons/check"
   import ChevronLeft from "@lucide/svelte/icons/chevron-left"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
@@ -900,18 +901,18 @@
               <CardTitle class="font-title text-sm">Produit actuel (Tillin)</CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-3 text-xs">
-              <div class="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-                <!-- Lien vers le produit dans le catalogue (panneau). -->
+              <div class="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+                <!-- Bouton explicite vers le produit (panneau catalogue). -->
                 <a
                   href={`/products?product=${item.tillin_product_id}`}
-                  class="text-primary font-mono underline-offset-2 hover:underline"
-                  title="Voir le produit"
+                  class="text-primary flex items-center gap-1 underline-offset-2 hover:underline"
                   onclick={(e) => {
                     e.preventDefault()
                     if (item) navigate(`/products?product=${item.tillin_product_id}`)
                   }}
                 >
-                  #{item.tillin_product_id}
+                  <ExternalLink size={12} aria-hidden="true" />
+                  Voir le produit
                 </a>
                 {#if product?.reference_code}
                   <span>réf. {product.reference_code}</span>

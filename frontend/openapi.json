@@ -4735,7 +4735,7 @@
           "instructions"
         ],
         "summary": "List Instructions",
-        "description": "The account's instruction library, sorted by name.",
+        "description": "The account's instruction library, user order first then by name.",
         "operationId": "instructions-list_instructions",
         "parameters": [
           {
@@ -4823,6 +4823,70 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InstructionPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/instructions/order": {
+      "put": {
+        "tags": [
+          "instructions"
+        ],
+        "summary": "Reorder Instructions",
+        "description": "Fixe l'ordre d'affichage (liste d'ids, du premier au dernier).\n\nLes instructions du compte absentes de la liste passent après (position\nNULL → tri par nom).",
+        "operationId": "instructions-reorder_instructions",
+        "parameters": [
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstructionOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InstructionPublic"
+                  },
+                  "title": "Response Instructions-Reorder Instructions"
                 }
               }
             }
@@ -10425,6 +10489,24 @@
         ],
         "title": "InstructionCreate"
       },
+      "InstructionOrder": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "InstructionOrder",
+        "description": "Ordre d'affichage de la bibliothèque : ids du premier au dernier."
+      },
       "InstructionPublic": {
         "properties": {
           "id": {
@@ -11889,6 +11971,17 @@
               }
             ],
             "title": "Weight Unit"
+          },
+          "stock_quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Quantity"
           },
           "price": {
             "anyOf": [

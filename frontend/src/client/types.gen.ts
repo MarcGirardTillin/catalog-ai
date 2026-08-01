@@ -2098,6 +2098,18 @@ export type InstructionCreate = {
 };
 
 /**
+ * InstructionOrder
+ *
+ * Ordre d'affichage de la bibliothèque : ids du premier au dernier.
+ */
+export type InstructionOrder = {
+    /**
+     * Ids
+     */
+    ids: Array<number>;
+};
+
+/**
  * InstructionPublic
  */
 export type InstructionPublic = {
@@ -2969,6 +2981,10 @@ export type ProductVariant = {
      * Weight Unit
      */
     weight_unit?: string | null;
+    /**
+     * Stock Quantity
+     */
+    stock_quantity?: number | null;
     /**
      * Price
      */
@@ -5749,6 +5765,33 @@ export type InstructionsCreateInstructionResponses = {
 };
 
 export type InstructionsCreateInstructionResponse = InstructionsCreateInstructionResponses[keyof InstructionsCreateInstructionResponses];
+
+export type InstructionsReorderInstructionsData = {
+    body: InstructionOrder;
+    path?: never;
+    query?: never;
+    url: '/instructions/order';
+};
+
+export type InstructionsReorderInstructionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type InstructionsReorderInstructionsError = InstructionsReorderInstructionsErrors[keyof InstructionsReorderInstructionsErrors];
+
+export type InstructionsReorderInstructionsResponses = {
+    /**
+     * Response Instructions-Reorder Instructions
+     *
+     * Successful Response
+     */
+    200: Array<InstructionPublic>;
+};
+
+export type InstructionsReorderInstructionsResponse = InstructionsReorderInstructionsResponses[keyof InstructionsReorderInstructionsResponses];
 
 export type InstructionsDeleteInstructionData = {
     body?: never;

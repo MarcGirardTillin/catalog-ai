@@ -24,6 +24,9 @@ class InstructionTemplate(Base):
     content: Mapped[str] = mapped_column(Text)
     # Tillin category names this instruction is the default for; None/[] = none.
     categories_json: Mapped[list[Any] | None] = mapped_column(JSON, default=None)
+    # Ordre d'affichage choisi par l'utilisateur (↑↓ dans la bibliothèque) ;
+    # NULL = jamais ordonnée (triée par nom, après les positionnées).
+    position: Mapped[int | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
