@@ -107,8 +107,15 @@ def get_pipeline() -> EnrichmentPipeline:
     if _pipeline is None:
         # follow_redirects: some brand stores (e.g. salomon.com) 301/308 their
         # suggest.json/product JSON endpoints — the chain must survive that.
+        # Proxy source : les PAGES produit passent aussi par le proxy
+        # résidentiel (échecs transitoires anti-bot vus sur amiparis.com et
+        # panconesi — décision Marc 2026-07-31). Jamais Xano ni les API
+        # payantes : ce client ne sert qu'aux sites des marques.
         http_client = httpx.Client(
-            timeout=20.0, headers={"User-Agent": _USER_AGENT}, follow_redirects=True
+            timeout=20.0,
+            headers={"User-Agent": _USER_AGENT},
+            follow_redirects=True,
+            proxy=settings.SOURCE_PROXY_URL or None,
         )
         _pipeline = build_pipeline(http_client)
     return _pipeline

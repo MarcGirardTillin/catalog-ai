@@ -125,8 +125,15 @@ def fetch_jsonld_product(
 ) -> dict[str, Any] | None:
     """Best-effort: the page's schema.org Product, Shopify-shaped, or None."""
     own_client = client is None
+    # Proxy source (jamais Xano ni les API payantes) : mêmes échecs
+    # transitoires anti-bot que les pages produit (amiparis/panconesi).
+    from app.core.config import settings
+
     active = client or httpx.Client(
-        timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True
+        timeout=_TIMEOUT,
+        headers=_HEADERS,
+        follow_redirects=True,
+        proxy=settings.SOURCE_PROXY_URL or None,
     )
     try:
         response = active.get(url, headers=_HEADERS)
