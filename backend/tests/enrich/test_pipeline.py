@@ -1282,3 +1282,31 @@ def test_llm_selection_abstains_keeps_manual_review(
     assert item.staged_description is None
     assert claude.calls == []  # pas de copie générée
     db.close()
+
+
+def test_online_search_disabled_skips_resolution(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """`scrape.online: false` (Marc 2026-07-31) : zéro résolution/scraping,
+    l'item arrive en review en « non recherchée »."""
+    db = db_session_factory()
+    item = _seed_item(db, 999, config={"scrape": {"online": False}})
+    bare = Product(id=999, title="Produit 999")
+
+    def _explode(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"aucun appel réseau attendu, reçu {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(_explode)) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: bare, http_client=http_client
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    assert item.source_method == "skipped"
+    assert item.source_url is None
+    assert (item.resolution_json or {}).get("reason") == (
+        "recherche en ligne désactivée"
+    )
+    db.close()

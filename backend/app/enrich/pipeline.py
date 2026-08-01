@@ -436,6 +436,17 @@ class EnrichmentPipeline:
             )
             return
 
+        # 2 pré. Recherche en ligne désactivée au lancement (Marc 2026-07-31,
+        # tâches « description seulement ») : aucune résolution ni scraping,
+        # copie générée sur les données catalogue.
+        scrape_config = config.get("scrape")
+        if isinstance(scrape_config, dict) and scrape_config.get("online") is False:
+            item.source_method = "skipped"
+            item.resolution_json = {"reason": "recherche en ligne désactivée"}
+            self._stage_source(db, item, product, None, config)
+            self._stage_copy(db, item, product, None, config)
+            return
+
         # 2. Resolve the product's page on the brand site(s) + job extras.
         websites = _candidate_websites(product, config)
         method = _scrape_method(config)

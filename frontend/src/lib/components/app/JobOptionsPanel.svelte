@@ -29,6 +29,9 @@
   let tTitle = $state(true)
   let tWeights = $state(true)
   let tImages = $state(true)
+  // Recherche de la page produit en ligne (décochée = zéro résolution ni
+  // scraping — utile pour les tâches « description seulement »).
+  let onlineSearch = $state(true)
 
   onMount(async () => {
     const { data, error } = await listInstructions()
@@ -62,6 +65,7 @@
         images: tImages,
       }
     }
+    if (!onlineSearch) config.scrape = { online: false }
     return config
   }
 </script>
@@ -70,6 +74,10 @@
   <fieldset class="flex flex-col gap-1.5">
     <legend class="text-sm font-medium">Transformations</legend>
     <div class="flex flex-wrap gap-x-4 gap-y-1.5 pt-1.5">
+      <label class="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" bind:checked={onlineSearch} />
+        Recherche de la page produit en ligne
+      </label>
       <label class="flex items-center gap-1.5 text-xs">
         <input type="checkbox" bind:checked={tCopy} />
         Description & méta
