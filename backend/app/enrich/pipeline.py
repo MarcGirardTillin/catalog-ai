@@ -906,13 +906,28 @@ class EnrichmentPipeline:
         if self._claude is None:
             logger.info("item %s: copy skipped (no AI client configured)", item.id)
             return False
+        # Sans page source, les PHOTOS de la fiche nourrissent la description
+        # (vision : matière apparente, coupe, détails) — jamais quand une
+        # source textuelle existe, elle est plus fiable et moins coûteuse.
+        product_image_urls: list[str] | None = None
+        if source_product is None:
+            product_image_urls = [
+                image.url for image in (product.images or []) if image.url
+            ] or None
+        copy_kwargs: dict[str, Any] = {
+            "editorial_instructions": _effective_instructions(product, config),
+            "model": config.get("ai_model"),
+            "meta_max_length": int(config.get("meta_max_length") or 160),
+        }
+        # Kwarg passé seulement quand il y a des photos : les doubles de test
+        # historiques (fakes) ne connaissent pas ce paramètre.
+        if product_image_urls:
+            copy_kwargs["image_urls"] = product_image_urls
         copy = self._claude.generate_copy(
             _copy_context(
                 product, source_product, seo_keywords=config.get("seo_keywords")
             ),
-            editorial_instructions=_effective_instructions(product, config),
-            model=config.get("ai_model"),
-            meta_max_length=int(config.get("meta_max_length") or 160),
+            **copy_kwargs,
         )
         item.staged_description = copy.description_fr
         item.staged_description_html = copy.description_html_fr

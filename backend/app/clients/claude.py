@@ -124,13 +124,38 @@ class ClaudeClient:
         editorial_instructions: str = "",
         model: str | None = None,
         meta_max_length: int = DEFAULT_META_MAX_LENGTH,
+        image_urls: list[str] | None = None,
     ) -> CopyResult:
-        """Generate FR description + meta description for one product."""
+        """Generate FR description + meta description for one product.
+
+        ``image_urls`` : photos de la fiche produit fournies à Claude (vision)
+        quand aucune page source n'alimente le texte — matière apparente,
+        coupe, détails visibles (demande Marc 2026-07-31). Max 4 images.
+        """
         user_content = "Contexte produit (JSON) :\n" + json.dumps(
             product_ctx, ensure_ascii=False, sort_keys=True
         )
         if editorial_instructions:
             user_content += f"\n\nConsignes éditoriales :\n{editorial_instructions}"
+        content: Any = user_content
+        if image_urls:
+            content = [
+                *(
+                    {
+                        "type": "image",
+                        "source": {"type": "url", "url": url},
+                    }
+                    for url in image_urls[:4]
+                ),
+                {
+                    "type": "text",
+                    "text": user_content
+                    + "\n\nLes photos ci-dessus sont celles de la fiche "
+                    "produit : appuie-toi sur ce qui est VISIBLE (matière, "
+                    "coupe, détails, finitions) sans jamais inventer ce qui "
+                    "ne se voit pas.",
+                },
+            ]
 
         try:
             response = self._client.messages.create(
@@ -140,7 +165,7 @@ class ClaudeClient:
                 output_config={
                     "format": {"type": "json_schema", "schema": COPY_SCHEMA}
                 },
-                messages=[{"role": "user", "content": user_content}],
+                messages=[{"role": "user", "content": content}],
             )
         except anthropic.APIConnectionError as exc:
             raise ExternalServiceError("claude", "Claude is unreachable") from exc
