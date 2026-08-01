@@ -4,7 +4,13 @@
   import { toast } from "svelte-sonner"
   import { navigate } from "svelte5-router"
 
-  import { jobsListJobItems, jobsReadJob, jobsRetryJobFailures } from "@/client"
+  import {
+    jobsCancelJob,
+    jobsListJobItems,
+    jobsReadJob,
+    jobsRetryJobFailures,
+  } from "@/client"
+  import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import type { ItemPublic, JobPublic } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
@@ -105,6 +111,23 @@
     if (first) navigate(`/items/${first.id}`)
   }
 
+  // Arrêt d'un traitement en cours : les items en attente passent écartés
+  // (aucun crédit débité) ; l'item en cours se termine normalement.
+  let cancelling = $state(false)
+  async function cancelJob() {
+    if (!job || cancelling) return
+    cancelling = true
+    const { data, error } = await jobsCancelJob({ path: { job_id: job.id } })
+    cancelling = false
+    if (error || !data) {
+      toast.error("Arrêt impossible.")
+      return
+    }
+    toast.success("Traitement arrêté — les produits non traités sont écartés")
+    queryClient.setQueryData(["jobs", jobId], data)
+    queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] })
+  }
+
   async function retryFailures() {
     if (!job) return
     const count = retryableCount
@@ -197,8 +220,18 @@
                   {/if}
                 {/each}
               </dl>
-              {#if counts.ready_for_review > 0 || retryableCount > 0}
+              {#if running || counts.ready_for_review > 0 || retryableCount > 0}
                 <div class="flex flex-wrap items-center gap-2">
+                  {#if running}
+                    <!-- Arrêt : les items en attente sont écartés (0 crédit),
+                         l'item en cours de traitement se termine. -->
+                    <ConfirmButton
+                      label={cancelling ? "Arrêt…" : "Arrêter"}
+                      confirmLabel="Écarter les produits restants ?"
+                      disabled={cancelling}
+                      onconfirm={cancelJob}
+                    />
+                  {/if}
                   {#if counts.ready_for_review > 0}
                     <!-- Entrée de la review sérielle : premier item à vérifier
                          (les suivants s'enchaînent via l'auto-advance). -->

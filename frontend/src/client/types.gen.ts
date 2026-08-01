@@ -4383,6 +4383,36 @@ export type JobsRetryJobFailuresResponses = {
 
 export type JobsRetryJobFailuresResponse = JobsRetryJobFailuresResponses[keyof JobsRetryJobFailuresResponses];
 
+export type JobsCancelJobData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/jobs/{job_id}/cancel';
+};
+
+export type JobsCancelJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsCancelJobError = JobsCancelJobErrors[keyof JobsCancelJobErrors];
+
+export type JobsCancelJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobPublic;
+};
+
+export type JobsCancelJobResponse = JobsCancelJobResponses[keyof JobsCancelJobResponses];
+
 export type JobsReadJobData = {
     body?: never;
     path: {

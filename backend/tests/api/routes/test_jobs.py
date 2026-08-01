@@ -748,3 +748,23 @@ def test_item_history_by_product(auth_client: TestClient) -> None:
     assert {"id", "job_id", "status", "updated_at"} <= set(entries[0])
 
     assert auth_client.get("/items", params={"product_id": 999_999}).json() == []
+
+
+def test_cancel_job_rejects_pending_items_without_credits(
+    auth_client: TestClient,
+) -> None:
+    """« Arrêter » : les items en attente passent écartés, le job se clôt."""
+    job = _create_job(auth_client, [201, 202, 203])
+
+    response = auth_client.post(f"/jobs/{job['id']}/cancel")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["counts"]["pending"] == 0
+    assert body["counts"]["rejected"] == 3
+    assert body["status"] not in ("pending", "processing")
+
+    # Un job déjà arrêté ne s'arrête pas deux fois.
+    again = auth_client.post(f"/jobs/{job['id']}/cancel")
+    assert again.status_code == 409
+    assert again.json()["code"] == "not_running"

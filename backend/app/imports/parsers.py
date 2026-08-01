@@ -14,7 +14,7 @@ from pathlib import PurePath
 
 import openpyxl  # type: ignore[import-untyped]
 
-from app.imports.schema import RawDocument, RawTable
+from app.imports.schema import RawDocument, RawLink, RawTable
 
 _CSV_DELIMITERS = ",;\t"
 
@@ -72,6 +72,39 @@ def _parse_csv(data: bytes) -> RawTable:
     return RawTable(rows=[list(row) for row in reader], sheet=None)
 
 
+def _pdf_links(data: bytes) -> list[RawLink]:
+    """Liens cliquables (annotations URI) du PDF, avec leur page.
+
+    Les bons de commande JOOR portent l'URL de la photo produit en bonne
+    qualité derrière la vignette — invisible au rendu que lit Claude. Lecture
+    best-effort : un PDF illisible par pypdf donne simplement zéro lien.
+    """
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(data))
+        links: list[RawLink] = []
+        seen: set[tuple[int, str]] = set()
+        for page_number, page in enumerate(reader.pages, start=1):
+            for annotation in page.get("/Annots") or []:
+                obj = annotation.get_object()
+                action = obj.get("/A")
+                uri = action.get("/URI") if action else None
+                if not uri:
+                    continue
+                url = str(uri).strip()
+                if not url.startswith(("http://", "https://")):
+                    continue
+                key = (page_number, url)
+                if key in seen:
+                    continue
+                seen.add(key)
+                links.append(RawLink(page=page_number, url=url))
+        return links
+    except Exception:  # noqa: BLE001 — bonus, jamais bloquant pour l'analyse
+        return []
+
+
 def parse_file(data: bytes, filename: str) -> RawDocument:
     """Parse a supplier file into a :class:`RawDocument`.
 
@@ -81,7 +114,9 @@ def parse_file(data: bytes, filename: str) -> RawDocument:
     """
     suffix = PurePath(filename).suffix.lower()
     if suffix == ".pdf":
-        return RawDocument(kind="pdf", filename=filename, pdf_bytes=data)
+        return RawDocument(
+            kind="pdf", filename=filename, pdf_bytes=data, pdf_links=_pdf_links(data)
+        )
     if suffix == ".xlsx":
         return RawDocument(kind="tabular", filename=filename, tables=_parse_xlsx(data))
     if suffix == ".csv":

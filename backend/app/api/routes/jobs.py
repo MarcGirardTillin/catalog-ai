@@ -3,10 +3,11 @@
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUserDep, JobRunnerDep, SessionDep, require_feature
+from app.api.exceptions import AppException
 from app.api.schemas import PaginatedResponse
 from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobPublic
 from app.api.services.accounts import resolve_account_id
@@ -17,6 +18,7 @@ from app.api.services.enrichment import (
     job_counts,
     retry_failed_items,
 )
+from app.jobs.queue import _rollup_job
 from app.models import EnrichmentItem, EnrichmentJob
 from app.models.enrichment import ITEM_STATUSES
 
@@ -138,6 +140,33 @@ def retry_job_failures(
     job = get_job(db, account_id=account_id, job_id=job_id)
     retry_failed_items(db, job)
     background.add_task(run_job, job.id)
+    return _to_public(db, job)
+
+
+@router.post("/{job_id}/cancel", response_model=JobPublic)
+def cancel_job(job_id: int, db: SessionDep, current_user: CurrentUserDep) -> JobPublic:
+    """Arrête un enrichissement en cours (demande Marc 2026-07-31).
+
+    Les items encore EN ATTENTE passent « écartés » (aucun crédit — le débit
+    se fait au traitement) ; l'item éventuellement en cours se termine
+    normalement. Réversible : « Relancer les échecs » réintègre les écartés.
+    """
+    account_id = resolve_account_id(db, current_user)
+    job = get_job(db, account_id=account_id, job_id=job_id)
+    if job.status not in ("pending", "processing"):
+        raise AppException(
+            status_code=409,
+            code="not_running",
+            message="Ce traitement n'est plus en cours",
+        )
+    db.execute(
+        update(EnrichmentItem)
+        .where(EnrichmentItem.job_id == job.id, EnrichmentItem.status == "pending")
+        .values(status="rejected", error="Arrêté par l'utilisateur")
+    )
+    db.commit()
+    _rollup_job(db, job.id)
+    db.refresh(job)
     return _to_public(db, job)
 
 

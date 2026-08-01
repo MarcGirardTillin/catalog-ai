@@ -114,6 +114,35 @@ def _normalize_label(value: str) -> str:
     return " ".join(value.split()).strip().casefold()
 
 
+# Bornage du listing de liens (bons volumineux : un lien par produit).
+_MAX_PDF_LINKS = 300
+
+
+def _pdf_links_prompt(document: "RawDocument") -> str:
+    """Listing des liens cliquables du PDF (invisibles au rendu lu par Claude).
+
+    Les bons JOOR portent l'URL de la photo produit en bonne qualité derrière
+    la vignette : le listing (page → URL) permet d'affecter à chaque produit
+    son ou ses liens d'IMAGE via `image_urls`. Aucun lien = pas d'images
+    (jamais construites) — décision Marc 2026-07-31.
+    """
+    if not document.pdf_links:
+        return ""
+    listing = "\n".join(
+        f"- page {link.page} : {link.url}"
+        for link in document.pdf_links[:_MAX_PDF_LINKS]
+    )
+    return (
+        "\n\nLiens cliquables présents dans ce PDF (invisibles au rendu), "
+        "par page :\n" + listing + "\n\nPour le champ image_urls de chaque "
+        "produit : affecte-lui le ou les liens d'IMAGE (jpg/png/webp ou CDN "
+        "d'images) qui correspondent à SA vignette (même page, même position "
+        "dans l'ordre de lecture). Ignore les liens qui ne sont pas des "
+        "images produit. N'invente ni ne modifie jamais une URL ; un produit "
+        "sans lien garde image_urls vide."
+    )
+
+
 def _category_prompt(known_categories: list[str]) -> str:
     """Extra instruction: map `category` onto the boutique's own tree.
 
@@ -620,6 +649,7 @@ class ClaudeExtractor:
         if document.kind == "pdf":
             if document.pdf_bytes is None:
                 raise ValueError("pdf document has no pdf_bytes")
+            user_prompt += _pdf_links_prompt(document)
             return [
                 {
                     "type": "document",
@@ -660,7 +690,11 @@ class ClaudeExtractor:
                 if document.pdf_bytes is None:
                     raise ValueError("pdf document has no pdf_bytes")
                 content.append(
-                    {"type": "text", "text": f"Fichier : {document.filename}"}
+                    {
+                        "type": "text",
+                        "text": f"Fichier : {document.filename}"
+                        + _pdf_links_prompt(document),
+                    }
                 )
                 content.append(
                     {

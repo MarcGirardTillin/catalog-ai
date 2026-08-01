@@ -96,3 +96,27 @@ def test_parse_unknown_extension_raises() -> None:
         parse_file(b"hello", "commande.docx")
     with pytest.raises(ValueError, match="Unsupported file type"):
         parse_file(b"hello", "noextension")
+
+
+def test_pdf_links_extracted_from_uri_annotations() -> None:
+    """Les annotations URI (bons JOOR) sont extraites avec leur page."""
+    import io as _io
+
+    from pypdf import PdfWriter
+    from pypdf.annotations import Link
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_annotation(
+        page_number=0,
+        annotation=Link(rect=(10, 10, 50, 50), url="https://cdn.joor.com/img/p1.jpg"),
+    )
+    buffer = _io.BytesIO()
+    writer.write(buffer)
+
+    document = parse_file(buffer.getvalue(), "order_joor.pdf")
+
+    assert document.kind == "pdf"
+    assert [(link.page, link.url) for link in document.pdf_links] == [
+        (1, "https://cdn.joor.com/img/p1.jpg")
+    ]

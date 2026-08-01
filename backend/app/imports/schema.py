@@ -75,6 +75,13 @@ class RawTable(BaseModel):
     sheet: str | None = None
 
 
+class RawLink(BaseModel):
+    """Un lien cliquable du PDF (annotation URI), avec sa page."""
+
+    page: int
+    url: str
+
+
 class RawDocument(BaseModel):
     """Parser output: the source document, structure-preserved, unparsed.
 
@@ -86,6 +93,10 @@ class RawDocument(BaseModel):
     kind: Literal["pdf", "tabular"]
     filename: str
     pdf_bytes: bytes | None = None  # kind == "pdf"
+    # Liens cliquables du PDF (annotations URI) : les bons JOOR portent l'URL
+    # de la photo produit en bonne qualité — invisibles au rendu, extraits
+    # déterministiquement et fournis au prompt (demande Marc 2026-07-31).
+    pdf_links: list[RawLink] = Field(default_factory=list)
     tables: list[RawTable] = Field(default_factory=list)  # kind == "tabular"
     text: str | None = None  # optional pdf text layer (cross-check aid)
 
