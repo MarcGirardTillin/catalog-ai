@@ -177,10 +177,25 @@ def render_rows(
     if config.price_mode == "coefficient" and config.coefficient is None:
         raise ValueError("price_mode 'coefficient' requires a coefficient")
 
+    axis_sources = {axis.source for axis in config.option_axes}
     for product in products:
         if not product.variants:
             warnings.append(f"Réf {product.supplier_ref} : aucune variante — ignorée")
             continue
+        if "extra" not in axis_sources:
+            # L'extraction peut poser un 3e axe (coupe, longueur…) que le
+            # profil ne rend pas : perte silencieuse interdite — on prévient.
+            lost = {
+                (variant.extra or "").strip()
+                for variant in product.variants
+                if (variant.extra or "").strip()
+            }
+            if lost:
+                warnings.append(
+                    f"Réf {product.supplier_ref} : valeurs d'option 3"
+                    f" ({', '.join(sorted(lost))}) perdues au transfert —"
+                    " ajouter un 3e axe au profil"
+                )
         brand = (
             config.brand_value if config.brand_mode == "fixed" else product.brand or ""
         )

@@ -755,8 +755,13 @@ class ClaudeExtractor:
             self._to_variant(raw.supplier_ref, raw_variant, warnings)
             for raw_variant in raw.variants
         ]
+        # Une référence commune obtenue en retirant un segment de variante
+        # (ex. PA-SEMB-DENIMB-STAN-29 → PA-SEMB-DENIMB-) garde un séparateur
+        # final : artefact, jamais une vraie référence.
+        supplier_ref = (_depipe(raw.supplier_ref) or raw.supplier_ref).strip()
+        supplier_ref = supplier_ref.rstrip("-_./ ") or supplier_ref
         fields = {
-            "supplier_ref": _depipe(raw.supplier_ref) or raw.supplier_ref,
+            "supplier_ref": supplier_ref,
             "title": _depipe(_opt(raw.title)),
             "brand": _depipe(_opt(raw.brand)),
             "category": _opt(raw.category),

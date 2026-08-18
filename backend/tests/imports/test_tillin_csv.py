@@ -192,6 +192,49 @@ def test_warnings_for_missing_price_barcode_and_variants() -> None:
     assert any("sans code-barres" in w for w in warnings)
 
 
+def test_warns_when_extra_values_lost_without_third_axis() -> None:
+    # Profil à 2 axes (défaut) + valeurs d'option 3 extraites : perte
+    # silencieuse interdite — un avertissement nomme les valeurs perdues.
+    config = ImportProfileConfig()
+    product = ImportedProduct(
+        supplier_ref="PA-SEMB-DENIMB",
+        variants=[
+            ImportedVariant(color="Denim bleu", size="31", extra="STANDARD", ean="1"),
+            ImportedVariant(color="Denim bleu", size="31", extra="LONG", ean="2"),
+        ],
+    )
+
+    rows, warnings = render_rows([product], config)
+
+    assert len(rows) == 2
+    assert any(
+        "PA-SEMB-DENIMB" in w and "option 3" in w and "LONG" in w and "STANDARD" in w
+        for w in warnings
+    )
+
+
+def test_no_extra_warning_when_profile_has_third_axis() -> None:
+    config = ImportProfileConfig(
+        option_axes=[
+            OptionAxis(source="color", label="Couleur"),
+            OptionAxis(source="size", label="Taille"),
+            OptionAxis(source="extra", label="Coupe"),
+        ]
+    )
+    product = ImportedProduct(
+        supplier_ref="PA-SEMB-DENIMB",
+        variants=[
+            ImportedVariant(color="Denim bleu", size="31", extra="LONG", ean="1")
+        ],
+    )
+
+    rows, warnings = render_rows([product], config)
+
+    assert _col(rows[0], "option3_name") == "Coupe"
+    assert _col(rows[0], "option3_value") == "LONG"
+    assert not any("option 3" in w for w in warnings)
+
+
 def test_coefficient_mode_requires_coefficient() -> None:
     config = ImportProfileConfig(price_mode="coefficient")
     with pytest.raises(ValueError, match="coefficient"):

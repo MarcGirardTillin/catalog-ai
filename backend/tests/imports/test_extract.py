@@ -163,6 +163,18 @@ def test_tabular_extraction_maps_and_verifies_values() -> None:
     assert VALID_EAN in text
 
 
+def test_supplier_ref_trailing_separator_is_stripped() -> None:
+    # Référence commune obtenue en retirant le segment de variante
+    # (PA-SEMB-DENIMB-STAN-29 → « PA-SEMB-DENIMB- ») : artefact nettoyé.
+    def handler(_: httpx.Request) -> httpx.Response:
+        payload = _payload()
+        payload["products"][0]["supplier_ref"] = "PA-SEMB-DENIMB-"
+        return httpx.Response(200, json=_api_response(payload))
+
+    result = _extractor(handler)(_tabular_document())
+    assert result.products[0].supplier_ref == "PA-SEMB-DENIMB"
+
+
 def test_document_info_empty_strings_map_to_none() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         payload = _payload(po_number="", supplier="  ")
