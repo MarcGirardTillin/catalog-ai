@@ -698,13 +698,40 @@
                       <Label for="item-{item.id}-{field.key}" class="text-xs">
                         {field.label}
                       </Label>
-                      {#if field.kind === "gender"}
+                      {#if field.key === "brand" && profileDefaults?.brand}
+                        <!-- Marque fixe du profil : le CSV l'impose toujours —
+                             un input ici serait mensonger. -->
+                        <div class="bg-muted/50 border-input flex h-8 items-center rounded-md border px-2.5 text-xs">
+                          <span class="truncate">{profileDefaults.brand}</span>
+                          <span class="text-muted-foreground ml-1 shrink-0">(profil)</span>
+                        </div>
+                        {#if drafts[item.id].brand && drafts[item.id].brand !== profileDefaults.brand}
+                          <span class="text-muted-foreground text-[10px]">
+                            extrait : {drafts[item.id].brand}
+                          </span>
+                        {/if}
+                      {:else if field.key === "season" && profileSeason}
+                        <!-- Saison imposée par le profil : idem, valeur finale. -->
+                        <div class="bg-muted/50 border-input flex h-8 items-center rounded-md border px-2.5 text-xs">
+                          <span class="truncate">{profileSeason}</span>
+                          <span class="text-muted-foreground ml-1 shrink-0">(profil)</span>
+                        </div>
+                        {#if drafts[item.id].season && drafts[item.id].season !== profileSeason}
+                          <span class="text-muted-foreground text-[10px]">
+                            extrait : {drafts[item.id].season}
+                          </span>
+                        {/if}
+                      {:else if field.kind === "gender"}
                         <Select
                           id="item-{item.id}-{field.key}"
                           class="h-8 text-xs"
                           bind:value={drafts[item.id][field.key]}
                         >
-                          <option value="">—</option>
+                          <option value="">
+                            {profileDefaults?.gender
+                              ? `— (${profileDefaults.gender} au transfert)`
+                              : "—"}
+                          </option>
                           {#if drafts[item.id][field.key] !== "" && !GENDER_OPTIONS.includes(drafts[item.id][field.key])}
                             <option value={drafts[item.id][field.key]}>
                               {drafts[item.id][field.key]} (extrait)
@@ -731,6 +758,13 @@
                     </div>
                   {/each}
                 </div>
+
+                {#if profileDefaults?.supplier}
+                  <p class="text-muted-foreground text-xs">
+                    Fournisseur au transfert : {profileDefaults.supplier}
+                    <span class="opacity-75">(profil)</span>
+                  </p>
+                {/if}
 
                 <div class="overflow-x-auto">
                   <table class="w-full min-w-2xl text-xs">

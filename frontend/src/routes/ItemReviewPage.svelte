@@ -587,6 +587,28 @@
     return colors.join(" / ")
   })
 
+  // Prix catalogue actuel (Xano renvoie un décimal texte ; 0 = « non
+  // renseigné » côté Tillin). known=false quand le produit n'a pas pu être
+  // chargé — la colonne « Actuel » ne doit alors rien affirmer.
+  const currentPrice = $derived.by(() => {
+    if (!product) return { known: false as const, value: null as number | null }
+    const parsed = Number(product.price)
+    return {
+      known: true as const,
+      value: product.price != null && Number.isFinite(parsed) ? parsed : null,
+    }
+  })
+
+  // Variantes du produit courant par id, pour montrer le poids « avant » en
+  // face de chaque proposition.
+  const variantById = $derived(
+    new Map(
+      (product?.variants ?? [])
+        .filter((variant) => variant.id != null)
+        .map((variant) => [variant.id as number, variant]),
+    ),
+  )
+
   // Human-friendly resolution method (avoid raw enum values in the UI —
   // white-label : jamais de nom de prestataire).
   const METHOD_LABELS: Record<string, string> = {
@@ -1319,13 +1341,24 @@
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center gap-3">
                     <Label>Prix de vente</Label>
+                    <span
+                      class="border-primary/40 text-primary rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                    >
+                      Récupéré — le prix était à 0 €
+                    </span>
                     {@render applyCheckbox("price")}
                   </div>
                   <div class="grid gap-2 sm:grid-cols-2">
                     <div class="flex flex-col gap-1">
                       <span class="text-muted-foreground text-xs">Actuel</span>
                       <div class="text-muted-foreground bg-muted/50 rounded-md p-2.5 text-sm">
-                        <span class="italic">Non renseigné (0 €)</span>
+                        {#if !currentPrice.known}
+                          <span class="italic">— (produit Tillin indisponible)</span>
+                        {:else if currentPrice.value == null || currentPrice.value <= 0}
+                          <span class="italic">Non renseigné (0 €)</span>
+                        {:else}
+                          <span class="tabular-nums">{currentPrice.value} €</span>
+                        {/if}
                       </div>
                     </div>
                     <div class="flex flex-col gap-1" class:opacity-60={!isApplied("price")}>
@@ -1495,17 +1528,10 @@
           {#if weights.length > 0}
             <Card>
               <CardHeader>
-                <CardTitle class="font-title flex items-center gap-2 text-sm">
-                  Poids proposés
-                  <span
-                    class="text-muted-foreground rounded-full border px-2 py-0.5 text-[10px] font-normal"
-                  >
-                    Bientôt actif
-                  </span>
-                </CardTitle>
+                <CardTitle class="font-title text-sm">Poids proposés</CardTitle>
                 <CardDescription class="text-muted-foreground text-xs">
-                  La sélection est enregistrée ; l'écriture des poids vers Tillin arrive
-                  bientôt.
+                  Poids lus sur la page source ; les variantes cochées seront écrites
+                  dans Tillin à l'application.
                 </CardDescription>
                 <CardAction>{@render applyCheckbox("weights")}</CardAction>
               </CardHeader>
@@ -1515,6 +1541,7 @@
                   : 'opacity-60'}"
               >
                 {#each weights as row (row.variant_id)}
+                  {@const current = variantById.get(row.variant_id)}
                   <label class="flex cursor-pointer items-center justify-between gap-2">
                     <span class="flex items-center gap-2">
                       <input
@@ -1525,10 +1552,21 @@
                         onchange={() => toggleWeight(row.variant_id)}
                       />
                       <span class="text-muted-foreground font-mono">
-                        variante {row.variant_id}
+                        {current?.sku || `variante ${row.variant_id}`}
                       </span>
                     </span>
-                    <span class="font-mono font-medium">{row.weight} {row.weight_unit}</span>
+                    <span class="flex flex-col items-end">
+                      <span class="font-mono font-medium">{row.weight} {row.weight_unit}</span>
+                      {#if current}
+                        {#if current.weight == null || Number(current.weight) <= 0}
+                          <span class="text-primary text-[10px]">était à 0 — récupéré</span>
+                        {:else}
+                          <span class="text-muted-foreground text-[10px]">
+                            actuel : {current.weight} {current.weight_unit || "kg"}
+                          </span>
+                        {/if}
+                      {/if}
+                    </span>
                   </label>
                 {/each}
               </CardContent>

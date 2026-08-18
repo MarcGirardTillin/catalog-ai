@@ -324,8 +324,8 @@
                   · modèle de titre (aperçu « → » sous chaque titre){/if}
               </p>
               <p class="text-muted-foreground">
-                Appliqué au transfert — la liste montre les données extraites,
-                modifiables.
+                Appliqué au transfert — les champs imposés par le profil (marque,
+                saison…) affichent leur valeur finale, marqués « (profil) ».
               </p>
             </div>
           {/if}
