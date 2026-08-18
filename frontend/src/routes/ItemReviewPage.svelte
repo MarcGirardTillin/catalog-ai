@@ -544,7 +544,16 @@
       candidates?: Candidate[]
     } | null,
   )
-  const candidates = $derived(resolution?.candidates ?? [])
+  // Dédupliqué par URL : la recherche peut renvoyer deux fois la même page
+  // (requêtes différentes) et la boucle d'affichage est à clé sur l'URL.
+  const candidates = $derived.by(() => {
+    const seen = new Set<string>()
+    return (resolution?.candidates ?? []).filter((candidate) => {
+      if (seen.has(candidate.url)) return false
+      seen.add(candidate.url)
+      return true
+    })
+  })
   const hasSource = $derived(item?.source_url != null && item.source_url !== "")
 
   // Human-friendly explanation of why no source was auto-resolved.

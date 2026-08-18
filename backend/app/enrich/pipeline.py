@@ -462,9 +462,18 @@ class EnrichmentPipeline:
         item.source_method = resolved.method_used or resolved.status
         item.match_score = resolved.score
         # Keep the diagnostic (why) + candidate matches for the review UI.
+        # Dedupe by URL (search queries can surface the same page twice) —
+        # the review keys its candidate list on the URL.
+        seen_urls: set[str] = set()
+        unique_candidates = []
+        for candidate in resolved.candidates:
+            if candidate.url in seen_urls:
+                continue
+            seen_urls.add(candidate.url)
+            unique_candidates.append(candidate)
         item.resolution_json = {
             "reason": resolved.reason,
-            "candidates": [c.model_dump() for c in resolved.candidates],
+            "candidates": [c.model_dump() for c in unique_candidates],
         }
 
         # 3. Source-dependent transforms (weights, raw source images).
