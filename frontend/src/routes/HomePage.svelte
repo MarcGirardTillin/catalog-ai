@@ -466,17 +466,33 @@
                   <Sparkles size={20} class="text-muted-foreground" aria-hidden="true" />
                 </span>
                 <p class="text-muted-foreground max-w-md text-sm">
-                  Aucune activité pour l'instant — importez un bon de commande
-                  fournisseur ou enrichissez vos premiers produits.
+                  {#if canImport && canEnrich}
+                    Aucune activité pour l'instant — importez un bon de commande
+                    fournisseur ou enrichissez vos premiers produits.
+                  {:else if canImport}
+                    Aucune activité pour l'instant — importez un bon de commande
+                    fournisseur.
+                  {:else if canEnrich}
+                    Aucune activité pour l'instant — enrichissez vos premiers
+                    produits.
+                  {:else}
+                    Aucune activité pour l'instant.
+                  {/if}
                 </p>
-                <div class="flex flex-wrap justify-center gap-2">
-                  <Button variant="outline" size="sm" onclick={() => navigate("/imports/new")}>
-                    Importer un fichier
-                  </Button>
-                  <Button size="sm" onclick={() => navigate("/products?intent=enrich")}>
-                    Enrichir des produits
-                  </Button>
-                </div>
+                {#if canImport || canEnrich}
+                  <div class="flex flex-wrap justify-center gap-2">
+                    {#if canImport}
+                      <Button variant="outline" size="sm" onclick={() => navigate("/imports/new")}>
+                        Importer un fichier
+                      </Button>
+                    {/if}
+                    {#if canEnrich}
+                      <Button size="sm" onclick={() => navigate("/products?intent=enrich")}>
+                        Enrichir des produits
+                      </Button>
+                    {/if}
+                  </div>
+                {/if}
               </CardContent>
             </Card>
           {:else}

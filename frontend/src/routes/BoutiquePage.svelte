@@ -9,6 +9,7 @@
     catalogGetFilters,
     catalogSetCategoryDefaultWeight,
     settingsReadAccountSettings,
+    statsDashboardStats,
   } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import {
@@ -33,6 +34,10 @@
 
   // Onglets (état local ; les panneaux restent montés pour conserver les
   // saisies en cours — même pattern que les autres pages de réglages).
+  // Chaque onglet n'a de sens que si son module est souscrit : modèle de
+  // titre et poids servent l'import ET l'enrichissement, les sites des
+  // marques l'enrichissement (résolution de la page source), les visages le
+  // studio (l'API /faces est d'ailleurs gardée côté serveur).
   const TABS = [
     { key: "title", label: "Modèle de titre" },
     { key: "brands", label: "Sites des marques" },
@@ -41,6 +46,35 @@
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("title")
+
+  const featureStatsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
+  const visibleTabs = $derived.by(() => {
+    const stats = featureStatsQuery.data
+    const canImport = stats?.feature_import !== false
+    const canEnrich = stats?.feature_enrich !== false
+    const canStudio = stats?.feature_studio !== false
+    const allowed: Record<TabKey, boolean> = {
+      title: canImport || canEnrich,
+      brands: canEnrich,
+      weights: canImport || canEnrich,
+      faces: canStudio,
+    }
+    return TABS.filter((t) => allowed[t.key])
+  })
+  // Si l'onglet actif disparaît (flags chargés après le rendu initial),
+  // on retombe sur le premier onglet visible.
+  $effect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t) => t.key === tab)) {
+      tab = visibleTabs[0].key
+    }
+  })
 
   // --- Modèle de titre du compte (utilisé par l'enrichissement ET par les
   // imports quand le profil active « appliquer le modèle de titre »). ---
@@ -171,7 +205,7 @@
           enrichissements.
         </p>
 
-        <TabBar tabs={TABS} bind:value={tab} label="Sections des réglages" />
+        <TabBar tabs={visibleTabs} bind:value={tab} label="Sections des réglages" />
 
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "title"}>
         <Card size="sm">

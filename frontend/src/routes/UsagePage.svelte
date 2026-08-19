@@ -9,6 +9,7 @@
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { navigate } from "svelte5-router"
 
+  import { statsDashboardStats } from "@/client"
   import {
     getCredits,
     getCreditTimeseries,
@@ -73,6 +74,27 @@
   })
   const tsFailed = $derived(timeseriesQuery.isError)
 
+  // --- Modules souscrits : les tuiles et séries d'un module coupé sont
+  // masquées (cache partagé avec AppShell ; `!== false` = afficher tant que
+  // les flags ne sont pas chargés, convention du repo). ---
+  const featureStatsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
+  const featureByAction = $derived.by(() => {
+    const stats = featureStatsQuery.data
+    return {
+      import_product: stats?.feature_import !== false,
+      enrich_item: stats?.feature_enrich !== false,
+      image_process: stats?.feature_studio !== false,
+      image_generate: stats?.feature_studio !== false,
+    } as Record<string, boolean>
+  })
+
   // --- Tuiles de consommation par action ---
   const ACTION_TILES: { key: string; label: string }[] = [
     { key: "import_product", label: "Produits importés" },
@@ -80,6 +102,25 @@
     { key: "image_process", label: "Images traitées" },
     { key: "image_generate", label: "Visuels générés" },
   ]
+  const visibleActionTiles = $derived(
+    ACTION_TILES.filter((tile) => featureByAction[tile.key]),
+  )
+  // Les clés de série du timeseries sont les libellés fr du backend — on
+  // masque celles des modules coupés via le même mapping.
+  const hiddenSeriesLabels = $derived(
+    new Set(
+      ACTION_TILES.filter((tile) => !featureByAction[tile.key]).map(
+        (tile) => tile.label,
+      ),
+    ),
+  )
+  const visibleTimeseries = $derived.by<UsageTimeseries | null>(() => {
+    if (!timeseries) return null
+    return {
+      ...timeseries,
+      series: timeseries.series.filter((s) => !hiddenSeriesLabels.has(s.key)),
+    }
+  })
 
   // Alerte de solde : rouge à 0, ambre sous le seuil.
   const balanceTone = $derived.by(() => {
@@ -252,7 +293,7 @@
                 </span>
               </CardContent>
             </Card>
-            {#each ACTION_TILES as tile (tile.key)}
+            {#each visibleActionTiles as tile (tile.key)}
               <Card size="sm">
                 <CardContent class="flex h-full flex-col gap-1 py-4">
                   <span class="text-muted-foreground min-h-8 text-xs">{tile.label}</span>
@@ -275,7 +316,7 @@
               </div>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
-              <UsageChart {timeseries} failed={tsFailed} {month} unit="credits" />
+              <UsageChart timeseries={visibleTimeseries} failed={tsFailed} {month} unit="credits" />
             </CardContent>
           </Card>
 
