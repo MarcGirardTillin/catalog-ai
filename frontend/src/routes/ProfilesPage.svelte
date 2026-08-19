@@ -7,6 +7,9 @@
   import Search from "@lucide/svelte/icons/search"
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
   import { toast } from "svelte-sonner"
+  import { navigate } from "svelte5-router"
+
+  import { statsDashboardStats } from "@/client"
 
   import {
     bulkUpdateImportProfiles,
@@ -38,6 +41,17 @@
   let { appName }: { appName: string } = $props()
 
   const queryClient = useQueryClient()
+
+  // Module Import : la nav masque déjà la page, mais elle reste accessible
+  // par URL directe — écran « non souscrit » plutôt que des 403 en cascade.
+  const featureStatsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
 
   const profilesQuery = createQuery(() => ({
     queryKey: ["profiles", "list"],
@@ -175,6 +189,20 @@
 <RequireAuth>
   {#snippet children(user)}
     <AppShell {appName} {user} breadcrumbs={[{ label: "Profils d'import" }]}>
+      {#if featureStatsQuery.data?.feature_import === false}
+        <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
+          <Card>
+            <CardContent class="flex flex-col items-start gap-3 py-6">
+              <p class="text-sm">
+                Le module d'import n'est pas activé pour votre compte.
+              </p>
+              <Button variant="secondary" onclick={() => navigate("/")}>
+                Retour au tableau de bord
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      {:else}
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Profils d'import</h1>
@@ -416,6 +444,7 @@
             </div>
           </div>
         </Dialog>
+      {/if}
       {/if}
     </AppShell>
   {/snippet}

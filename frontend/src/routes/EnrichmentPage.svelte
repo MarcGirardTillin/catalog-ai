@@ -3,9 +3,10 @@
   // boutique et le modèle de titre sortent des Paramètres pour devenir une
   // section à part entière (comme les Profils d'import).
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
+  import { navigate } from "svelte5-router"
   import { toast } from "svelte-sonner"
 
-  import { settingsReadAccountSettings } from "@/client"
+  import { settingsReadAccountSettings, statsDashboardStats } from "@/client"
   import { Button } from "@/lib/components/ui/button"
   import {
     Card,
@@ -48,6 +49,34 @@
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("instructions")
+
+  // Modules souscrits : Instructions et Contexte relèvent de
+  // l'enrichissement, Imagerie du studio. La nav masque déjà la page quand
+  // l'enrichissement est coupé, mais elle reste accessible par URL directe.
+  const featureStatsQuery = createQuery(() => ({
+    queryKey: ["stats", "dashboard"],
+    queryFn: async () => {
+      const { data, error } = await statsDashboardStats()
+      if (error || !data) throw new Error("stats_load_failed")
+      return data
+    },
+  }))
+  const visibleTabs = $derived.by(() => {
+    const stats = featureStatsQuery.data
+    const canEnrich = stats?.feature_enrich !== false
+    const canStudio = stats?.feature_studio !== false
+    const allowed: Record<TabKey, boolean> = {
+      instructions: canEnrich,
+      context: canEnrich,
+      imaging: canStudio,
+    }
+    return TABS.filter((t) => allowed[t.key])
+  })
+  $effect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t) => t.key === tab)) {
+      tab = visibleTabs[0].key
+    }
+  })
 
   // --- Défauts d'enrichissement du compte (un seul objet AccountSettings ;
   // la sauvegarde préserve les champs gérés ailleurs : notifications,
@@ -206,10 +235,24 @@
 <RequireAuth>
   {#snippet children(user)}
     <AppShell {appName} {user} breadcrumbs={[{ label: "Réglages d'enrichissement" }]}>
+      {#if visibleTabs.length === 0}
+        <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
+          <Card>
+            <CardContent class="flex flex-col items-start gap-3 py-6">
+              <p class="text-sm">
+                Le module d'enrichissement n'est pas activé pour votre compte.
+              </p>
+              <Button variant="secondary" onclick={() => navigate("/")}>
+                Retour au tableau de bord
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      {:else}
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <h1 class="font-title text-lg font-bold">Réglages d'enrichissement</h1>
 
-        <TabBar tabs={TABS} bind:value={tab} label="Sections de l'enrichissement" />
+        <TabBar tabs={visibleTabs} bind:value={tab} label="Sections de l'enrichissement" />
 
         <!-- Onglet Instructions (bibliothèque + défaut du compte) -->
         <div class="flex flex-col gap-3" role="tabpanel" hidden={tab !== "instructions"}>
@@ -359,6 +402,7 @@
         </div>
 
       </div>
+      {/if}
     </AppShell>
   {/snippet}
 </RequireAuth>

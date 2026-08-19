@@ -151,6 +151,8 @@
       if (error || !data) throw new Error("generations_load_failed")
       return data
     },
+    // Section studio : ne pas interroger une API qui répondra 403.
+    enabled: featureStatsQuery.data?.feature_studio !== false,
   }))
   const generations = $derived(generationsQuery.data ?? null)
 
@@ -389,7 +391,9 @@
           {/if}
 
           <!-- Historique des visuels du mois (revenir sur un rendu, y
-               compris écarté — trace de ce qui a été payé). -->
+               compris écarté — trace de ce qui a été payé). Section studio :
+               masquée quand le module est coupé. -->
+          {#if featureStatsQuery.data?.feature_studio !== false}
           <Card size="sm" class="mt-1">
             <CardHeader>
               <CardTitle class="font-title text-sm">Visuels du mois</CardTitle>
@@ -474,6 +478,7 @@
               {/if}
             </CardContent>
           </Card>
+          {/if}
         {/if}
       </div>
     </AppShell>
