@@ -27,6 +27,7 @@
     CardTitle,
   } from "@/lib/components/ui/card"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import FeatureGate from "@/lib/components/app/FeatureGate.svelte"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import { parseCsvPreview, readTextWithFallback } from "@/lib/csv-preview"
@@ -173,6 +174,10 @@
       {user}
       breadcrumbs={[{ label: "Imports", href: "/imports" }, { label: "Nouvel import" }]}
     >
+      <FeatureGate
+        feature="feature_import"
+        message="Le module d'import n'est pas activé pour votre compte."
+      >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <h1 class="font-title text-lg font-bold">Nouvel import</h1>
         <Card>
@@ -352,6 +357,7 @@
           </CardContent>
         </Card>
       </div>
+      </FeatureGate>
     </AppShell>
   {/snippet}
 </RequireAuth>

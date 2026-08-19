@@ -10,6 +10,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import FeatureGate from "@/lib/components/app/FeatureGate.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import { formatDuration, formatRelativeDate } from "@/lib/format"
@@ -96,6 +97,10 @@
 <RequireAuth>
   {#snippet children(user)}
     <AppShell {appName} {user} breadcrumbs={[{ label: "Enrichissements" }]}>
+      <FeatureGate
+        feature="feature_enrich"
+        message="Le module d'enrichissement n'est pas activé pour votre compte."
+      >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <div class="flex items-center justify-between gap-2">
           <h1 class="font-title text-lg font-bold">Enrichissements</h1>
@@ -215,6 +220,7 @@
           {/if}
         {/if}
       </div>
+      </FeatureGate>
     </AppShell>
   {/snippet}
 </RequireAuth>

@@ -9,6 +9,7 @@
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import FeatureGate from "@/lib/components/app/FeatureGate.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import { formatDuration, formatRelativeDate } from "@/lib/format"
@@ -79,6 +80,10 @@
 <RequireAuth>
   {#snippet children(user)}
     <AppShell {appName} {user} breadcrumbs={[{ label: "Imports" }]}>
+      <FeatureGate
+        feature="feature_import"
+        message="Le module d'import n'est pas activé pour votre compte."
+      >
       <!-- max-w-6xl : la table porte 7 colonnes, elles doivent tenir sans
            scroll horizontal (demande Marc 2026-07-30). -->
       <div class="mx-auto flex max-w-6xl flex-col gap-3 p-4">
@@ -215,6 +220,7 @@
           {/if}
         {/if}
       </div>
+      </FeatureGate>
     </AppShell>
   {/snippet}
 </RequireAuth>

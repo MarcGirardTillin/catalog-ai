@@ -25,6 +25,7 @@
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import AppShell from "@/lib/components/app/AppShell.svelte"
+  import FeatureGate from "@/lib/components/app/FeatureGate.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
   import ImportExportSection from "@/lib/components/imports/ImportExportSection.svelte"
@@ -284,6 +285,10 @@
         { label: job?.file_name ?? `Import #${id}` },
       ]}
     >
+      <FeatureGate
+        feature="feature_import"
+        message="Le module d'import n'est pas activé pour votre compte."
+      >
       <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
@@ -374,6 +379,7 @@
           {/if}
         {/if}
       </div>
+      </FeatureGate>
     </AppShell>
   {/snippet}
 </RequireAuth>
