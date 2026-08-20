@@ -6,6 +6,8 @@
     ratio: "4:5" | "1:1" | "3:4" | "16:9"
     prompt: string
     resolution: "1k" | "2k" | "4k"
+    /** Moteur de la mise à plat (ignoré par le ghost mannequin). */
+    engine: "photoroom" | "gpt"
   }
 </script>
 
@@ -18,15 +20,27 @@
     disabled = false,
     idPrefix = "flat",
     promptPlaceholder = "Ex. fond lin clair, lumière naturelle, plié soigneusement…",
+    showEngine = false,
   }: {
     config: FlatGhostConfig
     disabled?: boolean
     idPrefix?: string
     promptPlaceholder?: string
+    /** Affiche le sélecteur de moteur (mise à plat uniquement). */
+    showEngine?: boolean
   } = $props()
 </script>
 
 <div class="flex flex-col gap-3">
+  {#if showEngine}
+    <div class="flex flex-col gap-1.5">
+      <Label for="{idPrefix}-engine">Moteur</Label>
+      <Select id="{idPrefix}-engine" {disabled} bind:value={config.engine}>
+        <option value="photoroom">Photoroom — flat lay</option>
+        <option value="gpt">GPT Image — composition guidée (multi-vues)</option>
+      </Select>
+    </div>
+  {/if}
   <div class="flex flex-col gap-1.5">
     <Label for="{idPrefix}-ratio">Format</Label>
     <Select id="{idPrefix}-ratio" {disabled} bind:value={config.ratio}>

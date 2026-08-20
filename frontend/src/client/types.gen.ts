@@ -996,6 +996,10 @@ export type GenerateFlatOptions = {
      * Resolution
      */
     resolution?: '1k' | '2k' | '4k';
+    /**
+     * Engine
+     */
+    engine?: 'photoroom' | 'gpt';
 };
 
 /**
@@ -1011,6 +1015,10 @@ export type GenerateFlatRequest = {
      */
     product_image_id?: number | null;
     options?: GenerateFlatOptions | null;
+    /**
+     * Additional Image Urls
+     */
+    additional_image_urls?: Array<string> | null;
 };
 
 /**

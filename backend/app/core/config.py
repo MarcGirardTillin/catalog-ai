@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     # utilisé pour Xano ni les API payantes ; vide = accès direct.
     SOURCE_PROXY_URL: str = ""
     FASHN_API_KEY: str = ""
+    # Moteur GPT Image (mise à plat) : API OpenAI facturée au token, séparée
+    # de tout abonnement ChatGPT. Vide = moteur indisponible (503 propre).
+    OPENAI_API_KEY: str = ""
+    OPENAI_IMAGE_MODEL: str = "gpt-image-1"
     FIRECRAWL_API_KEY: str = ""
     BREVO_API_KEY: str = ""
     BREVO_SENDER_EMAIL: str = ""

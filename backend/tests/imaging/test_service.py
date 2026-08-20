@@ -596,3 +596,51 @@ def test_recolor_photo_calls_edit_and_meters(db: Session, account_id: int) -> No
     events = _usage_events(db)
     # 2k balanced = 3 crédits FASHN (coût fournisseur, pas le débit client).
     assert [(e.provider, e.quantity, e.model) for e in events] == [("fashn", 3, "edit")]
+
+
+def test_generate_flat_photo_gpt_meters_tokens(
+    db: Session, account_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mise à plat GPT Image : multipart /images/edits, métering en tokens."""
+    import base64 as _b64
+
+    from app.clients.openai_images import OpenAiImagesClient
+    from app.imaging.service import generate_flat_photo_gpt
+
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"b64_json": _b64.b64encode(b"png-bytes").decode()}],
+                "usage": {"input_tokens": 1200, "output_tokens": 4160},
+            },
+        )
+
+    openai = OpenAiImagesClient("sk-test", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(
+        "app.imaging.service._download_source", lambda _url: b"source-bytes"
+    )
+    results = generate_flat_photo_gpt(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateFlatOptions(ratio="4:5", resolution="2k", garment="veste"),
+        additional_images=["https://cdn.tillin/vm01-2.jpg"],
+        openai=openai,
+        db=db,
+        account_id=account_id,
+    )
+    db.commit()
+
+    assert results[0].data == b"png-bytes"
+    assert results[0].trace["provider"] == "openai"
+    assert results[0].trace["params"]["images"] == 2
+    body = captured["request"].content
+    assert b"1024x1536" in body  # size mappe le ratio 4:5
+    assert b"high" in body  # 2k -> quality high
+    events = _usage_events(db)
+    assert [(e.provider, e.metric, e.quantity) for e in events] == [
+        ("openai", "input_tokens", 1200),
+        ("openai", "output_tokens", 4160),
+    ]

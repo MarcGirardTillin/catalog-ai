@@ -12,6 +12,7 @@ from app.api.services.accounts import freshest_company_token, resolve_account_id
 from app.api.services.users import get_user_by_id
 from app.clients.base import NotConfiguredError
 from app.clients.fashn import FashnClient
+from app.clients.openai_images import OpenAiImagesClient
 from app.clients.photoroom import PhotoroomClient
 from app.clients.xano import XanoClient
 from app.core.config import settings
@@ -193,10 +194,33 @@ def get_fashn_client_optional(request: Request) -> FashnClient | None:
         return None
 
 
+_openai_images_client: OpenAiImagesClient | None = None
+
+
+def get_openai_images_client() -> OpenAiImagesClient:
+    global _openai_images_client
+    if _openai_images_client is None:
+        _openai_images_client = OpenAiImagesClient.from_settings()
+    return _openai_images_client
+
+
+def get_openai_images_client_optional(request: Request) -> OpenAiImagesClient | None:
+    provider = request.app.dependency_overrides.get(
+        get_openai_images_client, get_openai_images_client
+    )
+    try:
+        return cast(OpenAiImagesClient, provider())
+    except NotConfiguredError:
+        return None
+
+
 OptionalPhotoroomDep = Annotated[
     PhotoroomClient | None, Depends(get_photoroom_client_optional)
 ]
 OptionalFashnDep = Annotated[FashnClient | None, Depends(get_fashn_client_optional)]
+OptionalOpenAiImagesDep = Annotated[
+    OpenAiImagesClient | None, Depends(get_openai_images_client_optional)
+]
 
 
 # Background job runner. Injected so the route can schedule enrichment after a

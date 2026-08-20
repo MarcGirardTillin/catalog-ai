@@ -1692,6 +1692,15 @@ export const GenerateFlatOptionsSchema = {
             ],
             title: 'Resolution',
             default: '1k'
+        },
+        engine: {
+            type: 'string',
+            enum: [
+                'photoroom',
+                'gpt'
+            ],
+            title: 'Engine',
+            default: 'photoroom'
         }
     },
     type: 'object',
@@ -1725,6 +1734,21 @@ export const GenerateFlatRequestSchema = {
                     type: 'null'
                 }
             ]
+        },
+        additional_image_urls: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string'
+                    },
+                    type: 'array',
+                    maxItems: 3
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Additional Image Urls'
         }
     },
     type: 'object',

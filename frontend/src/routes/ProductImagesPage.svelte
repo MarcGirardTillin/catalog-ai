@@ -152,12 +152,16 @@
     ratio: "4:5",
     prompt: "",
     resolution: "1k",
+    engine: "photoroom",
   })
   let ghostConfig = $state<FlatGhostConfig>({
     ratio: "4:5",
     prompt: "",
     resolution: "1k",
+    engine: "photoroom",
   })
+  // Moteur GPT : joindre d'autres vues du produit à la composition (max 3).
+  let flatUseOtherViews = $state(false)
   // « Changer la couleur » (FASHN edit) : couleur du picker OU image de
   // référence de la galerie, + ajustements libres.
   let recolorColor = $state("")
@@ -518,14 +522,28 @@
   }
 
   function runFlat(image: ProductImage) {
+    const otherViews =
+      flatConfig.engine === "gpt" && flatUseOtherViews
+        ? images
+            .map((i) => i.url)
+            .filter((url) => url !== image.url)
+            .slice(0, 3)
+        : null
     return runWork(
       image.url + FLAT_SUFFIX,
       () =>
-        generateFlatImage(productId, image.url, image.id ?? null, {
-          prompt: flatConfig.prompt.trim() || null,
-          ratio: flatConfig.ratio,
-          resolution: flatConfig.resolution,
-        }),
+        generateFlatImage(
+          productId,
+          image.url,
+          image.id ?? null,
+          {
+            prompt: flatConfig.prompt.trim() || null,
+            ratio: flatConfig.ratio,
+            resolution: flatConfig.resolution,
+            engine: flatConfig.engine,
+          },
+          otherViews,
+        ),
       "Lancement impossible (service de visuels indisponible ?).",
     )
   }
@@ -879,8 +897,9 @@
                 </CardTitle>
                 <CardDescription class="text-muted-foreground text-xs">
                   Génère une photo « posé à plat » stylisée à partir de l'image
-                  produit (Photoroom). Chaque visuel consomme des crédits de
-                  génération.
+                  produit. Deux moteurs au choix : Photoroom ou GPT Image
+                  (composition guidée, autres vues acceptées). Chaque visuel
+                  consomme des crédits de génération.
                 </CardDescription>
               </CardHeader>
               <CardContent class="flex flex-col gap-3">
@@ -888,7 +907,18 @@
                   bind:config={flatConfig}
                   disabled={runningCount > 0}
                   idPrefix="studio-flat"
+                  showEngine
                 />
+                {#if flatConfig.engine === "gpt"}
+                  <label class="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      bind:checked={flatUseOtherViews}
+                      disabled={runningCount > 0}
+                    />
+                    Joindre les autres vues du produit à la composition (max 3)
+                  </label>
+                {/if}
               </CardContent>
             </Card>
           {:else if mode === "swap"}

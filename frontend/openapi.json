@@ -952,7 +952,7 @@
           "products"
         ],
         "summary": "Generate Flat Image",
-        "description": "Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les\nautres générations. Débit image_generate × qualité choisie (1k/2k/4k).",
+        "description": "Mise à plat stylisée — 202 + polling, comme les autres générations.\n\nDeux moteurs au choix par appel : Photoroom flat lay (historique) ou GPT\nImage (OpenAI, accepte d'autres vues du produit en entrée). Débit\nimage_generate × qualité choisie (1k/2k/4k).",
         "operationId": "products-generate_flat_image",
         "parameters": [
           {
@@ -8769,6 +8769,15 @@
             ],
             "title": "Resolution",
             "default": "1k"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "photoroom",
+              "gpt"
+            ],
+            "title": "Engine",
+            "default": "photoroom"
           }
         },
         "type": "object",
@@ -8801,6 +8810,21 @@
                 "type": "null"
               }
             ]
+          },
+          "additional_image_urls": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Image Urls"
           }
         },
         "type": "object",

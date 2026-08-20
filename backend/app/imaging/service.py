@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.api.services.usage import record_usage
 from app.clients.base import ExternalServiceError
 from app.clients.fashn import FashnClient
+from app.clients.openai_images import OpenAiImagesClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.config import settings
 from app.imaging.compose import compose, probe
@@ -768,6 +769,95 @@ def generate_flat_photo(
         account_id=account_id,
         trace_params={"verb": "flat_lay", **asdict(options)},
     )
+
+
+def generate_flat_photo_gpt(
+    product_image: str,
+    *,
+    options: GenerateFlatOptions | None = None,
+    additional_images: list[str] | None = None,
+    openai: "OpenAiImagesClient",
+    db: Session,
+    account_id: int,
+) -> list[ImagingResult]:
+    """Mise à plat via GPT Image (OpenAI /images/edits, validé Marc 2026-08-22).
+
+    Alternative au flat lay Photoroom quand le rendu ne suffit pas :
+    plusieurs vues du produit peuvent être jointes (max 4 au total) pour
+    guider la composition. Les images sont téléchargées par NOS soins
+    (empreinte navigateur + proxy source) puis envoyées en multipart.
+    Métering : tokens OpenAI quand la réponse les porte, sinon 1 image.
+    """
+    from app.clients.openai_images import GPT_IMAGE_QUALITY, GPT_IMAGE_SIZES
+
+    options = options or GenerateFlatOptions()
+    prompt_parts = [_flat_prompt(options, verb="flat") or "flat lay of the garment"]
+    urls = [product_image, *(additional_images or [])][:4]
+    if len(urls) > 1:
+        prompt_parts.append(
+            "the additional images are other views of the same garment, "
+            "use them to render it accurately"
+        )
+    if options.background_color:
+        prompt_parts.append(
+            f"plain uniform background, exact color #{options.background_color.lstrip('#')}"
+        )
+    prompt = ", ".join(prompt_parts)
+
+    images = [_download_source(url) for url in urls]
+    result = openai.edit_image(
+        images,
+        prompt,
+        size=GPT_IMAGE_SIZES.get(options.ratio, "1024x1536"),
+        quality=GPT_IMAGE_QUALITY.get(options.resolution, "high"),
+    )
+    usage = result.usage
+    if usage.get("input_tokens") or usage.get("output_tokens"):
+        for metric in ("input_tokens", "output_tokens"):
+            quantity = int(usage.get(metric) or 0)
+            if quantity > 0:
+                record_usage(
+                    db,
+                    account_id=account_id,
+                    source="imaging",
+                    provider="openai",
+                    metric=metric,
+                    quantity=quantity,
+                    model=settings.OPENAI_IMAGE_MODEL,
+                )
+    else:
+        record_usage(
+            db,
+            account_id=account_id,
+            source="imaging",
+            provider="openai",
+            metric="images",
+            quantity=1,
+            model=settings.OPENAI_IMAGE_MODEL,
+        )
+    try:
+        width, height, fmt = probe(result.data)
+    except Exception:  # trace best effort — l'image est retournée telle quelle
+        width, height, fmt = None, None, "png"
+    return [
+        ImagingResult(
+            data=result.data,
+            width=width,
+            height=height,
+            format=fmt,
+            trace={
+                "provider": "openai",
+                "model": settings.OPENAI_IMAGE_MODEL,
+                "params": {
+                    "verb": "flat_lay",
+                    "engine": "gpt",
+                    "ratio": options.ratio,
+                    "resolution": options.resolution,
+                    "images": len(images),
+                },
+            },
+        )
+    ]
 
 
 def generate_ghost_photo(

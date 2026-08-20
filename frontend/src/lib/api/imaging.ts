@@ -69,16 +69,23 @@ export function generateModelImage(
   })
 }
 
-/** Mise à plat stylisée (Photoroom flat lay) — 202 + polling. */
+/** Mise à plat stylisée (Photoroom flat lay ou GPT Image) — 202 + polling.
+ * `additionalImageUrls` : autres vues du produit (moteur GPT, max 3). */
 export function generateFlatImage(
   productId: number,
   imageUrl: string,
   productImageId: number | null,
   options?: GenerateFlatOptions,
+  additionalImageUrls?: string[] | null,
 ) {
   return productsGenerateFlatImage({
     path: { product_id: productId },
-    body: { image_url: imageUrl, product_image_id: productImageId, options },
+    body: {
+      image_url: imageUrl,
+      product_image_id: productImageId,
+      options,
+      additional_image_urls: additionalImageUrls ?? null,
+    },
   })
 }
 

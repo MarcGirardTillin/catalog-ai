@@ -171,12 +171,17 @@ class GenerateFlatOptions(BaseModel):
     ratio: RatioOption = "4:5"
     # Qualité de sortie — le débit crédits est multiplié (1k ×1, 2k ×2, 4k ×4).
     resolution: Literal["1k", "2k", "4k"] = "1k"
+    # Moteur de la mise à plat : Photoroom (historique) ou GPT Image (OpenAI,
+    # accepte plusieurs vues du produit). Ignoré par le ghost mannequin.
+    engine: Literal["photoroom", "gpt"] = "photoroom"
 
 
 class GenerateFlatRequest(BaseModel):
     image_url: str
     product_image_id: int | None = None
     options: GenerateFlatOptions | None = None
+    # Autres vues du produit jointes à la composition (moteur GPT uniquement).
+    additional_image_urls: list[str] | None = Field(default=None, max_length=3)
 
 
 class RecolorRequest(BaseModel):

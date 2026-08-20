@@ -14,6 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 from app.api.deps import (
     CurrentUserDep,
     OptionalFashnDep,
+    OptionalOpenAiImagesDep,
     OptionalPhotoroomDep,
     OptionalXanoDep,
     PhotoroomDep,
@@ -43,6 +44,7 @@ from app.api.services.imaging import (
     account_settings,
     merged_normalize_options,
     run_generate_flat,
+    run_generate_flat_gpt,
     run_generate_ghost,
     run_generate_model,
     run_generate_virtual_model,
@@ -55,6 +57,7 @@ from app.api.services.imaging import (
 )
 from app.clients.base import NotConfiguredError
 from app.clients.xano import XanoClient
+from app.core.config import settings
 from app.imaging import service as imaging_service
 from app.imaging.uploads import prepare_upload
 from app.models import ImageAsset
@@ -572,19 +575,29 @@ def generate_flat_image(
     body: GenerateFlatRequest,
     db: SessionDep,
     current_user: CurrentUserDep,
-    photoroom: PhotoroomDep,
+    photoroom: OptionalPhotoroomDep,
+    openai: OptionalOpenAiImagesDep,
     xano: OptionalXanoDep,
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
-    """Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les
-    autres générations. Débit image_generate × qualité choisie (1k/2k/4k)."""
+    """Mise à plat stylisée — 202 + polling, comme les autres générations.
+
+    Deux moteurs au choix par appel : Photoroom flat lay (historique) ou GPT
+    Image (OpenAI, accepte d'autres vues du produit en entrée). Débit
+    image_generate × qualité choisie (1k/2k/4k)."""
     account_id = resolve_account_id(db, current_user)
-    resolution = (body.options or GenerateFlatOptionsSchema()).resolution
+    schema_options = body.options or GenerateFlatOptionsSchema()
+    engine = schema_options.engine
+    if engine == "gpt":
+        if openai is None:
+            raise NotConfiguredError("openai")
+    elif photoroom is None:
+        raise NotConfiguredError("photoroom")
     require_credits(
         db,
         account_id,
         credit_grid(db, account_id)["image_generate"]
-        * imaging_service.RESOLUTION_CREDIT_UNITS.get(resolution, 1),
+        * imaging_service.RESOLUTION_CREDIT_UNITS.get(schema_options.resolution, 1),
     )
     stored = account_settings(db, account_id)
     options = to_flat_service_options(
@@ -596,19 +609,33 @@ def generate_flat_image(
         account_id=account_id,
         product_id=product_id,
         verb="generate_flat",
-        provider="photoroom",
-        model=imaging_service.PHOTOROOM_EDIT_MODEL,
+        provider="openai" if engine == "gpt" else "photoroom",
+        model=settings.OPENAI_IMAGE_MODEL
+        if engine == "gpt"
+        else imaging_service.PHOTOROOM_EDIT_MODEL,
         status="pending",
         source_image=body.image_url,
         source_product_image_id=body.product_image_id,
-        params_json={
-            "options": (body.options or GenerateFlatOptionsSchema()).model_dump()
-        },
+        params_json={"options": schema_options.model_dump()},
     )
     db.add(asset)
     db.commit()
     db.refresh(asset)
-    background.add_task(run_generate_flat, asset.id, body.image_url, options, photoroom)
+    if engine == "gpt":
+        assert openai is not None
+        background.add_task(
+            run_generate_flat_gpt,
+            asset.id,
+            body.image_url,
+            options,
+            list(body.additional_image_urls or [])[:3],
+            openai,
+        )
+    else:
+        assert photoroom is not None
+        background.add_task(
+            run_generate_flat, asset.id, body.image_url, options, photoroom
+        )
     return to_public(asset)
 
 

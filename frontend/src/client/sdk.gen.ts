@@ -256,8 +256,11 @@ export const productsRecolorImage = <ThrowOnError extends boolean = false>(optio
 /**
  * Generate Flat Image
  *
- * Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les
- * autres générations. Débit image_generate × qualité choisie (1k/2k/4k).
+ * Mise à plat stylisée — 202 + polling, comme les autres générations.
+ *
+ * Deux moteurs au choix par appel : Photoroom flat lay (historique) ou GPT
+ * Image (OpenAI, accepte d'autres vues du produit en entrée). Débit
+ * image_generate × qualité choisie (1k/2k/4k).
  */
 export const productsGenerateFlatImage = <ThrowOnError extends boolean = false>(options: Options<ProductsGenerateFlatImageData, ThrowOnError>): RequestResult<ProductsGenerateFlatImageResponses, ProductsGenerateFlatImageErrors, ThrowOnError> => (options.client ?? client).post<ProductsGenerateFlatImageResponses, ProductsGenerateFlatImageErrors, ThrowOnError>({
     responseType: 'json',

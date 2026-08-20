@@ -16,6 +16,7 @@ from app.api.schemas import NormalizeOptions as NormalizeOptionsSchema
 from app.api.schemas.settings import AccountSettings
 from app.api.services.credits import consume as consume_credits
 from app.clients.fashn import FashnClient
+from app.clients.openai_images import OpenAiImagesClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.db import SessionLocal
 from app.imaging import staging
@@ -30,6 +31,7 @@ from app.imaging.service import (
     NormalizeOptions,
     NormalizeOutcome,
     generate_flat_photo,
+    generate_flat_photo_gpt,
     generate_ghost_photo,
     generate_model_photo,
     generate_virtual_model_photo,
@@ -620,6 +622,29 @@ def run_generate_flat(
             image_url,
             options=options,
             photoroom=photoroom,
+            db=db,
+            account_id=account_id,
+        ),
+        credit_units=RESOLUTION_CREDIT_UNITS.get(options.resolution, 1),
+    )
+
+
+def run_generate_flat_gpt(
+    asset_id: int,
+    image_url: str,
+    options: GenerateFlatOptions,
+    additional_images: list[str],
+    openai: OpenAiImagesClient,
+) -> None:
+    """BackgroundTask : mise à plat GPT Image (OpenAI)."""
+    _run_generation(
+        asset_id,
+        "generate-flat-gpt",
+        lambda db, account_id: generate_flat_photo_gpt(
+            image_url,
+            options=options,
+            additional_images=additional_images,
+            openai=openai,
             db=db,
             account_id=account_id,
         ),
