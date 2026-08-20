@@ -225,6 +225,26 @@ def _sibling_candidates(src: str, *, limit: int = 8) -> list[str]:
             new_segments[index] = new_segment
             candidates.append(src.replace(parsed.path, "/".join(new_segments), 1))
         return candidates
+
+    # Variante « compteur dans le NOM de fichier » (cdn-images.farfetch-contents
+    # .com : 35132276_71421656_1000.jpg — l'identifiant du milieu s'incrémente
+    # d'une unité par vue, item 205 2026-08-21). On fait varier le DERNIER
+    # groupe d'au moins 6 chiffres (écarte la taille _1000 et les petits
+    # compteurs déjà couverts par la branche répertoire).
+    filename = segments[-1]
+    matches = list(re.finditer(r"\d{6,}", filename))
+    if matches:
+        counter = matches[-1]
+        base = int(counter.group())
+        candidates = []
+        for n in range(1, limit + 1):
+            new_filename = (
+                filename[: counter.start()] + str(base + n) + filename[counter.end() :]
+            )
+            new_segments = list(segments)
+            new_segments[-1] = new_filename
+            candidates.append(src.replace(parsed.path, "/".join(new_segments), 1))
+        return candidates
     return []
 
 
@@ -446,6 +466,34 @@ class EnrichmentPipeline:
             self._stage_source(db, item, product, None, config)
             self._stage_copy(db, item, product, None, config)
             return
+
+        # 2 bis. URL de fiche produit fournie AU LANCEMENT (Marc 2026-08-21 :
+        # « j'ai donné l'url d'une fiche mais c'est comme s'il l'avait
+        # ignorée ») : court-circuite la résolution — même chemin que la
+        # résolution manuelle de la review. En cas d'échec (page morte,
+        # anti-bot), on retombe sur la résolution automatique.
+        override = str(config.get("source_url_override") or "").strip()
+        if override.startswith(("http://", "https://")):
+            url = _clean_page_url(override)
+            try:
+                override_source, score = self._fetch_source_from_url(
+                    db, item, product, config, url
+                )
+            except LookupError:
+                logger.warning(
+                    "item %s: launch-provided URL %s yielded no product — "
+                    "falling back to automatic resolution",
+                    item.id,
+                    url,
+                )
+            else:
+                item.source_url = url
+                item.source_method = "manual"
+                item.match_score = score
+                item.resolution_json = {"reason": "URL fournie au lancement"}
+                self._stage_source(db, item, product, override_source, config)
+                self._stage_copy(db, item, product, override_source, config)
+                return
 
         # 2. Resolve the product's page on the brand site(s) + job extras.
         websites = _candidate_websites(product, config)

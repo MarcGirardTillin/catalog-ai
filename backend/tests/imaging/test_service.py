@@ -523,3 +523,76 @@ def test_generation_prompt_includes_dimensions() -> None:
     )
     assert "30 x 22 x 10 cm" in prompt
     assert "realistic" in prompt
+
+
+def test_generation_prompt_includes_gender() -> None:
+    from app.imaging.service import build_generation_prompt
+
+    assert "the model is a woman" in build_generation_prompt(
+        "full_body", "studio", None, gender="female"
+    )
+    assert "the model is a man" in build_generation_prompt(
+        "full_body", "studio", None, gender="male"
+    )
+    # Unisex / inconnu : rien d'ajouté.
+    assert "model is" not in build_generation_prompt(
+        "full_body", "studio", None, gender=None
+    ).replace("the model fully visible", "")
+
+
+def test_flat_lay_resolution_sends_output_size_and_scales_credits(
+    db: Session, account_id: int
+) -> None:
+    """Qualité 2K (Marc 2026-08-21) : outputSize explicite en pixels — le
+    preset `size` des blocs génératifs plafonne en ~HD."""
+    captured: dict[str, httpx.Request] = {}
+    generate_flat_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        options=GenerateFlatOptions(ratio="4:5", resolution="2k"),
+        photoroom=_edit_photoroom(captured),
+        db=db,
+        account_id=account_id,
+    )
+    assert captured["request"].url.params["outputSize"] == "2048x2560"
+
+
+def test_recolor_prompt_targets_garment_and_color() -> None:
+    from app.imaging.service import build_recolor_prompt
+
+    prompt = build_recolor_prompt(
+        "#1F4E3D", "veste", "garde les boutons noirs", has_reference=False
+    )
+    assert prompt.startswith("change the color of the veste to #1F4E3D")
+    assert "exactly unchanged" in prompt
+    assert prompt.endswith("garde les boutons noirs")
+
+    by_reference = build_recolor_prompt(None, None, None, has_reference=True)
+    assert "match the color of the reference image" in by_reference
+    assert "garment" in by_reference
+
+
+def test_recolor_photo_calls_edit_and_meters(db: Session, account_id: int) -> None:
+    fashn = FashnClient(
+        "fx-key", transport=_fashn_transport(["https://cdn.fashn.ai/out.png"])
+    )
+    from app.imaging.service import recolor_photo
+
+    results = recolor_photo(
+        "https://cdn.tillin/vm01-1.jpg",
+        prompt="change the color of the veste to #1F4E3D",
+        reference_image="https://cdn.tillin/vm01-2.jpg",
+        resolution="2k",
+        fashn=fashn,
+        db=db,
+        account_id=account_id,
+    )
+    db.commit()
+
+    assert [r.data for r in results] == [b"img:/out.png"]
+    trace = results[0].trace
+    assert trace["model"] == "edit"
+    assert trace["params"]["resolution"] == "2k"
+    assert "image_context" not in trace["params"]
+    events = _usage_events(db)
+    # 2k balanced = 3 crédits FASHN (coût fournisseur, pas le débit client).
+    assert [(e.provider, e.quantity, e.model) for e in events] == [("fashn", 3, "edit")]

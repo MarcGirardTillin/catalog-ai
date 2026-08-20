@@ -12,6 +12,11 @@
 
   const uid = $props.id()
 
+  // `showSourceUrl` : sélection d'UN SEUL produit — propose l'URL exacte de
+  // la fiche (court-circuite la résolution, contrairement aux « sources
+  // supplémentaires » qui ne sont que des domaines à fouiller).
+  let { showSourceUrl = false }: { showSourceUrl?: boolean } = $props()
+
   let instructions = $state<InstructionPublic[]>([])
   // Bibliothèque indisponible (backend pas encore déployé, réseau…) : le
   // panneau reste utilisable avec « Automatique » et « Texte libre ».
@@ -22,6 +27,7 @@
   let customText = $state("")
   let keywords = $state<string[]>([])
   let urlsRaw = $state("")
+  let sourceUrl = $state("")
 
   // Transformations à exécuter (contrat config_json.transforms : clé absente
   // = activé côté backend — on n'envoie le bloc que si un choix a été fait).
@@ -57,6 +63,10 @@
       .map((line) => line.trim())
       .filter((line) => line !== "")
     if (urls.length > 0) config.extra_website_urls = urls
+    const pageUrl = sourceUrl.trim()
+    if (showSourceUrl && /^https?:\/\//.test(pageUrl)) {
+      config.source_url_override = pageUrl
+    }
     if (!tCopy || !tTitle || !tWeights || !tImages) {
       config.transforms = {
         copy: tCopy,
@@ -132,6 +142,23 @@
     />
   </div>
 
+  {#if showSourceUrl}
+    <div class="flex flex-col gap-1.5">
+      <Label for="{uid}-source-url">URL de la fiche produit</Label>
+      <input
+        id="{uid}-source-url"
+        type="url"
+        class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 font-mono text-xs transition-colors outline-none focus-visible:ring-1"
+        placeholder="https://www.marque.com/products/mon-produit"
+        bind:value={sourceUrl}
+      />
+      <p class="text-muted-foreground text-xs">
+        Page exacte du produit : utilisée telle quelle, sans recherche (prix,
+        poids, images et texte y seront lus).
+      </p>
+    </div>
+  {/if}
+
   <div class="flex flex-col gap-1.5">
     <Label for="{uid}-urls">Sources supplémentaires</Label>
     <textarea
@@ -142,7 +169,8 @@
       bind:value={urlsRaw}
     ></textarea>
     <p class="text-muted-foreground text-xs">
-      Pages web consultées en plus des sites de la marque pendant la génération.
+      Sites fouillés en plus de ceux de la marque pendant la recherche (le
+      domaine est utilisé, pas la page exacte).
     </p>
   </div>
 </div>

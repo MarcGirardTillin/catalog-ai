@@ -21,6 +21,7 @@ import {
   itemsNormalizeItemImageRoute,
   productsGenerateFlatImage,
   productsGenerateGhostImage,
+  productsRecolorImage,
   productsSwapModelImage,
   productsGenerateModelImage,
   productsNormalizeImage,
@@ -108,6 +109,29 @@ export function swapModelImage(
   },
 ) {
   return productsSwapModelImage({
+    path: { product_id: productId },
+    body: {
+      image_url: imageUrl,
+      product_image_id: productImageId,
+      ...options,
+    },
+  })
+}
+
+/** « Changer la couleur » (FASHN edit) : couleur du picker OU image de
+ * référence — au moins l'une des deux ; le débit suit la qualité choisie. */
+export function recolorImage(
+  productId: number,
+  imageUrl: string,
+  productImageId: number | null,
+  options: {
+    color: string | null
+    reference_image_url: string | null
+    instructions: string | null
+    resolution: "1k" | "2k" | "4k"
+  },
+) {
+  return productsRecolorImage({
     path: { product_id: productId },
     body: {
       image_url: imageUrl,

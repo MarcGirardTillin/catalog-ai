@@ -125,6 +125,9 @@ class GenerateModelOptions(BaseModel):
     # Dimensions réelles du produit (« 30 × 22 × 10 cm ») : proportions
     # réalistes pour les accessoires — partagé FASHN / Photoroom VM.
     product_dimensions: str | None = Field(default=None, max_length=100)
+    # Genre du mannequin : None/auto = department du produit Tillin
+    # (Homme/Femme ; Unisex = libre).
+    gender: Literal["auto", "female", "male"] | None = None
     aspect_ratio: str = "4:5"
     resolution: Literal["1k", "2k", "4k"] = "1k"
     generation_mode: Literal["fast", "balanced", "quality"] = "balanced"
@@ -166,12 +169,30 @@ class GenerateFlatOptions(BaseModel):
 
     prompt: str | None = Field(default=None, max_length=500)
     ratio: RatioOption = "4:5"
+    # Qualité de sortie — le débit crédits est multiplié (1k ×1, 2k ×2, 4k ×4).
+    resolution: Literal["1k", "2k", "4k"] = "1k"
 
 
 class GenerateFlatRequest(BaseModel):
     image_url: str
     product_image_id: int | None = None
     options: GenerateFlatOptions | None = None
+
+
+class RecolorRequest(BaseModel):
+    """« Changer la couleur » : FASHN edit sur une photo du produit.
+
+    La couleur cible vient du picker (`color`, hex ou nom) OU d'une image de
+    référence (`reference_image_url`, autre visuel dont on veut la teinte) —
+    au moins l'un des deux. `instructions` = ajustements libres.
+    """
+
+    image_url: str
+    product_image_id: int | None = None
+    color: str | None = Field(default=None, max_length=50)
+    reference_image_url: str | None = None
+    instructions: str | None = Field(default=None, max_length=500)
+    resolution: Literal["1k", "2k", "4k"] = "1k"
 
 
 class FinalizeRequest(BaseModel):

@@ -33,6 +33,7 @@ from app.api.schemas import (
     Product,
     ProductImagePositionsRequest,
     ProductImagesUploadResult,
+    RecolorRequest,
     SwapModelRequest,
 )
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
@@ -46,6 +47,7 @@ from app.api.services.imaging import (
     run_generate_model,
     run_generate_virtual_model,
     run_normalize,
+    run_recolor,
     run_swap_model,
     to_flat_service_options,
     to_public,
@@ -277,6 +279,7 @@ def generate_model_image(
     current_user: CurrentUserDep,
     fashn: OptionalFashnDep,
     photoroom: OptionalPhotoroomDep,
+    xano: OptionalXanoDep,
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
     """Generative pipeline, 202 + asset id (FASHN 10-55 s, Photoroom 5-60 s).
@@ -292,13 +295,23 @@ def generate_model_image(
     options = body.options or GenerateModelOptionsSchema()
     engine = options.engine or stored.imaging_generation_engine
 
+    # Genre du mannequin : choix explicite > défaut du compte > department du
+    # produit Tillin (Homme/Femme ; Unisex/inconnu = libre).
+    gender: str | None = (
+        options.gender
+        if options.gender and options.gender != "auto"
+        else stored.imaging_generation_gender
+    )
+    if gender == "auto":
+        gender = _product_gender(xano, product_id)
+
     if engine == "photoroom":
         if photoroom is None:
             raise NotConfiguredError("photoroom")
         # Photoroom rend UNE image par appel (pas de num_images/seed).
         require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
         vm_options = to_virtual_model_service_options(
-            options, stored, body.additional_image_urls
+            options, stored, body.additional_image_urls, gender=gender
         )
         asset = ImageAsset(
             account_id=account_id,
@@ -339,6 +352,7 @@ def generate_model_image(
                     else stored.imaging_generation_instructions,
                     pose=options.pose or stored.imaging_generation_pose,
                     dimensions=options.product_dimensions,
+                    gender=gender,
                 )
             }
         )
@@ -446,6 +460,81 @@ def swap_model_image(
     return to_public(asset)
 
 
+@router.post(
+    "/{product_id}/images/recolor",
+    response_model=ImageAssetPublic,
+    status_code=202,
+    dependencies=[Depends(require_feature("feature_studio"))],
+)
+def recolor_image(
+    product_id: int,
+    body: RecolorRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    fashn: OptionalFashnDep,
+    xano: OptionalXanoDep,
+    background: BackgroundTasks,
+) -> ImageAssetPublic:
+    """« Changer la couleur » (FASHN edit, validé Marc 2026-08-21).
+
+    Change la couleur du vêtement en préservant texture/coupe/lumière. La
+    cible vient du picker (`color`) ou d'une image de référence
+    (`reference_image_url`, envoyée en `image_context`). Débit image_generate
+    × qualité choisie (1k/2k/4k)."""
+    account_id = resolve_account_id(db, current_user)
+    if fashn is None:
+        raise NotConfiguredError("fashn")
+    if not (body.color or "").strip() and not body.reference_image_url:
+        raise AppException(
+            status_code=422,
+            code="missing_color",
+            message="Choisissez une couleur ou une image de référence",
+        )
+    require_credits(
+        db,
+        account_id,
+        credit_grid(db, account_id)["image_generate"]
+        * imaging_service.RESOLUTION_CREDIT_UNITS.get(body.resolution, 1),
+    )
+    prompt = imaging_service.build_recolor_prompt(
+        body.color,
+        _product_garment(xano, product_id),
+        body.instructions,
+        has_reference=body.reference_image_url is not None,
+    )
+    asset = ImageAsset(
+        account_id=account_id,
+        product_id=product_id,
+        verb="recolor",
+        provider="fashn",
+        model=imaging_service.FASHN_EDIT,
+        status="pending",
+        source_image=body.image_url,
+        source_product_image_id=body.product_image_id,
+        params_json={
+            "options": {
+                "color": body.color,
+                "reference_image_url": body.reference_image_url,
+                "instructions": body.instructions,
+                "resolution": body.resolution,
+            }
+        },
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    background.add_task(
+        run_recolor,
+        asset.id,
+        body.image_url,
+        prompt,
+        body.reference_image_url,
+        body.resolution,
+        fashn,
+    )
+    return to_public(asset)
+
+
 def _product_garment(xano: XanoClient | None, product_id: int) -> str | None:
     """Catégorie du produit (cible du flat lay/ghost) — best-effort."""
     if xano is None:
@@ -455,6 +544,21 @@ def _product_garment(xano: XanoClient | None, product_id: int) -> str | None:
     except Exception:  # noqa: BLE001 — enrichissement du prompt, jamais bloquant
         return None
     return product.category if product else None
+
+
+_DEPARTMENT_GENDERS = {"homme": "male", "femme": "female"}
+
+
+def _product_gender(xano: XanoClient | None, product_id: int) -> str | None:
+    """Genre du mannequin déduit du department Tillin — best-effort."""
+    if xano is None:
+        return None
+    try:
+        product = xano.get_product(product_id)
+    except Exception:  # noqa: BLE001 — enrichissement du prompt, jamais bloquant
+        return None
+    department = (product.department or "") if product else ""
+    return _DEPARTMENT_GENDERS.get(department.strip().lower())
 
 
 @router.post(
@@ -473,9 +577,15 @@ def generate_flat_image(
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
     """Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les
-    autres générations. Un appel = une image = un débit image_generate."""
+    autres générations. Débit image_generate × qualité choisie (1k/2k/4k)."""
     account_id = resolve_account_id(db, current_user)
-    require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
+    resolution = (body.options or GenerateFlatOptionsSchema()).resolution
+    require_credits(
+        db,
+        account_id,
+        credit_grid(db, account_id)["image_generate"]
+        * imaging_service.RESOLUTION_CREDIT_UNITS.get(resolution, 1),
+    )
     stored = account_settings(db, account_id)
     options = to_flat_service_options(
         body.options,
@@ -518,9 +628,15 @@ def generate_ghost_image(
     background: BackgroundTasks,
 ) -> ImageAssetPublic:
     """Mannequin invisible (Photoroom ghost mannequin) — efface le mannequin
-    d'une photo portée. Un appel = une image = un débit image_generate."""
+    d'une photo portée. Débit image_generate × qualité choisie (1k/2k/4k)."""
     account_id = resolve_account_id(db, current_user)
-    require_credits(db, account_id, credit_grid(db, account_id)["image_generate"])
+    resolution = (body.options or GenerateFlatOptionsSchema()).resolution
+    require_credits(
+        db,
+        account_id,
+        credit_grid(db, account_id)["image_generate"]
+        * imaging_service.RESOLUTION_CREDIT_UNITS.get(resolution, 1),
+    )
     stored = account_settings(db, account_id)
     options = to_flat_service_options(
         body.options,

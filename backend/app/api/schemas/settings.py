@@ -118,6 +118,12 @@ class AccountSettings(BaseModel):
     # Presets Photoroom par défaut (engine=photoroom) ; None = choix libre.
     imaging_generation_model_preset: ModelPresetOption | None = None
     imaging_generation_scene_preset: ScenePresetOption | None = None
+    # Genre du mannequin par défaut : auto = department du produit Tillin.
+    imaging_generation_gender: Literal["auto", "female", "male"] = "auto"
+    # Instructions de mise à plat par défaut (pré-remplies dans le studio,
+    # ajustables à chaque lancement — Marc 2026-08-21 : « enlève le cintre,
+    # chaussettes à l'endroit, enlève l'étiquette produit »).
+    imaging_flat_instructions: str = Field("", max_length=500)
 
 
 class OperatorSettings(BaseModel):

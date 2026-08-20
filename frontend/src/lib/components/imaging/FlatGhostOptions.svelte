@@ -5,6 +5,7 @@
   export type FlatGhostConfig = {
     ratio: "4:5" | "1:1" | "3:4" | "16:9"
     prompt: string
+    resolution: "1k" | "2k" | "4k"
   }
 </script>
 
@@ -33,6 +34,14 @@
       <option value="3:4">Portrait 3:4</option>
       <option value="1:1">Carré 1:1</option>
       <option value="16:9">Paysage 16:9</option>
+    </Select>
+  </div>
+  <div class="flex flex-col gap-1.5">
+    <Label for="{idPrefix}-resolution">Qualité</Label>
+    <Select id="{idPrefix}-resolution" {disabled} bind:value={config.resolution}>
+      <option value="1k">1K — coût normal</option>
+      <option value="2k">2K — coût ×2</option>
+      <option value="4k">4K — coût ×4</option>
     </Select>
   </div>
   <div class="flex flex-col gap-1.5">

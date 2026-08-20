@@ -19,6 +19,7 @@
     fetchAssetPreviews,
     generateFlatImage,
     generateGhostImage,
+    recolorImage,
     generateModelImage,
     listAssets,
     normalizeImage,
@@ -126,6 +127,7 @@
     photoroomPose: "",
     modelPreset: "",
     scenePreset: "",
+    gender: "auto",
     instructions: "",
   })
   let genCount = $state(1)
@@ -143,9 +145,25 @@
         ? [...refViews, url]
         : refViews
   }
-  // Options des générations Photoroom « une image -> une image ».
-  let flatConfig = $state<FlatGhostConfig>({ ratio: "4:5", prompt: "" })
-  let ghostConfig = $state<FlatGhostConfig>({ ratio: "4:5", prompt: "" })
+  // Options des générations Photoroom « une image -> une image ». Le style
+  // de la mise à plat est PRÉ-REMPLI des instructions par défaut du compte
+  // (imaging_flat_instructions) — visibles et ajustables à chaque lancement.
+  let flatConfig = $state<FlatGhostConfig>({
+    ratio: "4:5",
+    prompt: "",
+    resolution: "1k",
+  })
+  let ghostConfig = $state<FlatGhostConfig>({
+    ratio: "4:5",
+    prompt: "",
+    resolution: "1k",
+  })
+  // « Changer la couleur » (FASHN edit) : couleur du picker OU image de
+  // référence de la galerie, + ajustements libres.
+  let recolorColor = $state("")
+  let recolorReference = $state("")
+  let recolorInstructions = $state("")
+  let recolorResolution = $state<"1k" | "2k" | "4k">("1k")
 
   // Un seul encart à la fois (traiter OU générer) : afficher les deux prête
   // à confusion au moment de lancer une tâche.
@@ -155,6 +173,7 @@
     { key: "flat", label: "Mise à plat" },
     { key: "ghost", label: "Mannequin invisible" },
     { key: "swap", label: "Remplacer le mannequin" },
+    { key: "recolor", label: "Changer la couleur" },
   ] as const
   let mode = $state<(typeof MODE_TABS)[number]["key"]>("process")
 
@@ -181,7 +200,12 @@
         photoroomPose: "",
         modelPreset: data.imaging_generation_model_preset ?? "",
         scenePreset: data.imaging_generation_scene_preset ?? "",
+        gender: data.imaging_generation_gender ?? "auto",
         instructions: data.imaging_generation_instructions ?? "",
+      }
+      const flatDefaults = (data.imaging_flat_instructions ?? "").trim()
+      if (flatDefaults && !flatConfig.prompt) {
+        flatConfig = { ...flatConfig, prompt: flatDefaults }
       }
     })
   })
@@ -239,12 +263,20 @@
   const FLAT_SUFFIX = "::flat"
   const GHOST_SUFFIX = "::ghost"
   const SWAP_SUFFIX = "::swap"
-  const KEY_SUFFIXES = [GEN_SUFFIX, FLAT_SUFFIX, GHOST_SUFFIX, SWAP_SUFFIX] as const
+  const RECOLOR_SUFFIX = "::recolor"
+  const KEY_SUFFIXES = [
+    GEN_SUFFIX,
+    FLAT_SUFFIX,
+    GHOST_SUFFIX,
+    SWAP_SUFFIX,
+    RECOLOR_SUFFIX,
+  ] as const
   const VERB_SUFFIX: Record<string, string> = {
     generate_model: GEN_SUFFIX,
     generate_flat: FLAT_SUFFIX,
     generate_ghost: GHOST_SUFFIX,
     swap_model: SWAP_SUFFIX,
+    recolor: RECOLOR_SUFFIX,
   }
 
   /** URL source d'une clé de travail (suffixe de génération retiré). */
@@ -476,6 +508,7 @@
             scene_preset: photoroom ? genConfig.scenePreset || null : null,
             instructions: genConfig.instructions,
             product_dimensions: genDimensions.trim() || null,
+            gender: genConfig.gender,
             num_images: photoroom ? 1 : genCount,
           },
           otherViews,
@@ -491,6 +524,7 @@
         generateFlatImage(productId, image.url, image.id ?? null, {
           prompt: flatConfig.prompt.trim() || null,
           ratio: flatConfig.ratio,
+          resolution: flatConfig.resolution,
         }),
       "Lancement impossible (service de visuels indisponible ?).",
     )
@@ -503,6 +537,7 @@
         generateGhostImage(productId, image.url, image.id ?? null, {
           prompt: ghostConfig.prompt.trim() || null,
           ratio: ghostConfig.ratio,
+          resolution: ghostConfig.resolution,
         }),
       "Lancement impossible (service de visuels indisponible ?).",
     )
@@ -543,6 +578,24 @@
     )
   }
 
+  function runRecolor(image: ProductImage) {
+    if (!recolorColor.trim() && !recolorReference) {
+      toast.error("Choisissez une couleur ou une image de référence.")
+      return Promise.resolve()
+    }
+    return runWork(
+      image.url + RECOLOR_SUFFIX,
+      () =>
+        recolorImage(productId, image.url, image.id ?? null, {
+          color: recolorColor.trim() || null,
+          reference_image_url: recolorReference || null,
+          instructions: recolorInstructions.trim() || null,
+          resolution: recolorResolution,
+        }),
+      "Lancement impossible (service de visuels indisponible ?).",
+    )
+  }
+
   /** Lanceur de l'onglet courant (bouton unique de la grille). */
   const runByMode = $derived(
     mode === "generate"
@@ -553,7 +606,9 @@
           ? runGhost
           : mode === "swap"
             ? runSwap
-            : runOne,
+            : mode === "recolor"
+              ? runRecolor
+              : runOne,
   )
 
   async function runSelectedByMode() {
@@ -900,6 +955,88 @@
                 </div>
               </CardContent>
             </Card>
+          {:else if mode === "recolor"}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle class="font-title text-sm">
+                  Changer la couleur (génération)
+                </CardTitle>
+                <CardDescription class="text-muted-foreground text-xs">
+                  Change la couleur du vêtement en conservant texture, coupe et
+                  lumière. Choisissez une couleur, ou une image de la galerie
+                  dont la teinte servira de référence. Chaque visuel consomme
+                  des crédits de génération (×2 en 2K, ×4 en 4K).
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-3">
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="recolor-color">Couleur cible</Label>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="recolor-color"
+                        type="color"
+                        class="border-input bg-card h-9 w-12 cursor-pointer rounded-md border p-1"
+                        value={/^#[0-9a-fA-F]{6}$/.test(recolorColor)
+                          ? recolorColor
+                          : "#888888"}
+                        oninput={(e) => (recolorColor = e.currentTarget.value)}
+                      />
+                      <Input
+                        class="font-mono"
+                        placeholder="#1F4E3D ou « vert forêt »"
+                        bind:value={recolorColor}
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="recolor-resolution">Qualité</Label>
+                    <Select id="recolor-resolution" bind:value={recolorResolution}>
+                      <option value="1k">1K — coût normal</option>
+                      <option value="2k">2K — coût ×2</option>
+                      <option value="4k">4K — coût ×4</option>
+                    </Select>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <span class="text-sm font-medium">
+                    Image de référence (optionnelle)
+                  </span>
+                  <p class="text-muted-foreground text-xs">
+                    La teinte de cette image remplace la couleur choisie
+                    ci-dessus.
+                  </p>
+                  <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Image de référence de couleur">
+                    {#each images as image (image.url)}
+                      <button
+                        type="button"
+                        class="w-16 cursor-pointer rounded-md border p-1 transition-colors {recolorReference === image.url
+                          ? 'border-primary ring-primary/40 ring-1'
+                          : 'border-border hover:bg-muted'}"
+                        aria-pressed={recolorReference === image.url}
+                        onclick={() =>
+                          (recolorReference =
+                            recolorReference === image.url ? "" : image.url)}
+                      >
+                        <img
+                          src={image.url}
+                          alt="Référence de couleur"
+                          class="bg-muted aspect-square w-full rounded object-cover"
+                        />
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label for="recolor-instructions">Ajustements (optionnel)</Label>
+                  <Input
+                    id="recolor-instructions"
+                    placeholder="Ex. garde les boutons noirs, teinte légèrement délavée…"
+                    bind:value={recolorInstructions}
+                  />
+                </div>
+              </CardContent>
+            </Card>
           {:else}
             <Card size="sm">
               <CardHeader>
@@ -950,7 +1087,9 @@
                         ? `Générer sans mannequin (${selected.length})`
                         : mode === "swap"
                           ? `Remplacer le mannequin (${selected.length})`
-                          : `Normaliser la sélection (${selected.length})`}
+                          : mode === "recolor"
+                            ? `Changer la couleur (${selected.length})`
+                            : `Normaliser la sélection (${selected.length})`}
               </Button>
             </div>
           </div>
@@ -991,7 +1130,9 @@
                     ? runGhost
                     : pair.key.endsWith(SWAP_SUFFIX)
                       ? runSwap
-                      : runOne}
+                      : pair.key.endsWith(RECOLOR_SUFFIX)
+                        ? runRecolor
+                        : runOne}
               {#if pair.work.status === "running"}
                 <Card size="sm">
                   <CardContent class="text-muted-foreground py-6 text-center text-sm">

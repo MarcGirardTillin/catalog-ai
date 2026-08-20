@@ -42,6 +42,8 @@
     modelPreset: ModelPreset | ""
     /** Preset décor Photoroom ; "" = selon l'ambiance ci-dessus. */
     scenePreset: ScenePreset | ""
+    /** Genre du mannequin ; "auto" = department du produit Tillin. */
+    gender: "auto" | "female" | "male"
     instructions: string
   }
 
@@ -150,6 +152,14 @@
       <Select id="{idPrefix}-scene" {disabled} bind:value={config.scene}>
         <option value="studio">Photo studio (fond neutre)</option>
         <option value="lifestyle">Mise en scène (lifestyle)</option>
+      </Select>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="{idPrefix}-gender">Genre du mannequin</Label>
+      <Select id="{idPrefix}-gender" {disabled} bind:value={config.gender}>
+        <option value="auto">Automatique (genre du produit)</option>
+        <option value="female">Femme</option>
+        <option value="male">Homme</option>
       </Select>
     </div>
     {#if isPhotoroom}

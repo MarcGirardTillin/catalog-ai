@@ -22,6 +22,7 @@ from app.imaging import staging
 from app.imaging.service import (
     PHOTOROOM_POSE_MAP,
     PHOTOROOM_SCENE_MAP,
+    RESOLUTION_CREDIT_UNITS,
     GenerateFlatOptions,
     GenerateModelOptions,
     GenerateVirtualModelOptions,
@@ -33,6 +34,7 @@ from app.imaging.service import (
     generate_model_photo,
     generate_virtual_model_photo,
     normalize_product_image,
+    recolor_photo,
     swap_model_photo,
 )
 from app.models import Account, ImageAsset
@@ -232,6 +234,7 @@ def to_flat_service_options(
     return GenerateFlatOptions(
         prompt=base.prompt,
         ratio=base.ratio,
+        resolution=base.resolution,
         background_color=background_color,
         garment=garment,
     )
@@ -241,6 +244,8 @@ def to_virtual_model_service_options(
     options: GenerateModelOptionsSchema,
     stored: AccountSettings,
     additional_image_urls: list[str] | None,
+    *,
+    gender: str | None = None,
 ) -> GenerateVirtualModelOptions:
     """Traduit la config « porté mannequin » en options Photoroom Virtual Model.
 
@@ -261,6 +266,12 @@ def to_virtual_model_service_options(
         scene_preset = PHOTOROOM_SCENE_MAP.get(scene)
 
     prompt_parts: list[str] = []
+    if gender in ("female", "male"):
+        # Pas de preset genre côté Photoroom : la consigne part au prompt
+        # (comme le cadrage tête coupée).
+        prompt_parts.append(
+            "the model is a woman" if gender == "female" else "the model is a man"
+        )
     framing = options.framing or stored.imaging_generation_framing
     if framing == "cropped_head":
         # Pas de preset cadrage chez Photoroom : la consigne part au prompt.
@@ -507,10 +518,14 @@ def _run_generation(
     asset_id: int,
     label: str,
     produce: "Callable[[Session, int], list[ImagingResult]]",
+    *,
+    credit_units: int = 1,
 ) -> None:
     """Squelette commun des générations en tâche de fond (session propre) :
     processing -> produce(db, account_id) -> staging -> débit image_generate ->
-    completed, ou failed + error. `produce` NE commit pas (métering inclus)."""
+    completed, ou failed + error. `produce` NE commit pas (métering inclus).
+    `credit_units` : unités image_generate débitées PAR image produite
+    (répercussion de la qualité 1k/2k/4k choisie — Marc 2026-08-21)."""
     db = SessionLocal()
     try:
         asset = db.get(ImageAsset, asset_id)
@@ -550,7 +565,7 @@ def _run_generation(
                     db,
                     account_id=asset.account_id,
                     action="image_generate",
-                    quantity=len(results),
+                    quantity=len(results) * max(1, credit_units),
                     asset_id=asset.id,
                 )
             db.commit()
@@ -608,6 +623,7 @@ def run_generate_flat(
             db=db,
             account_id=account_id,
         ),
+        credit_units=RESOLUTION_CREDIT_UNITS.get(options.resolution, 1),
     )
 
 
@@ -628,6 +644,32 @@ def run_generate_ghost(
             db=db,
             account_id=account_id,
         ),
+        credit_units=RESOLUTION_CREDIT_UNITS.get(options.resolution, 1),
+    )
+
+
+def run_recolor(
+    asset_id: int,
+    image_url: str,
+    prompt: str,
+    reference_image: str | None,
+    resolution: str,
+    fashn: FashnClient,
+) -> None:
+    """BackgroundTask : « Changer la couleur » (FASHN edit)."""
+    _run_generation(
+        asset_id,
+        "recolor",
+        lambda db, account_id: recolor_photo(
+            image_url,
+            prompt=prompt,
+            reference_image=reference_image,
+            resolution=resolution,
+            fashn=fashn,
+            db=db,
+            account_id=account_id,
+        ),
+        credit_units=RESOLUTION_CREDIT_UNITS.get(resolution, 1),
     )
 
 

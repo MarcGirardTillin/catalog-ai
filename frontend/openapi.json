@@ -877,13 +877,82 @@
         }
       }
     },
+    "/products/{product_id}/images/recolor": {
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Recolor Image",
+        "description": "« Changer la couleur » (FASHN edit, validé Marc 2026-08-21).\n\nChange la couleur du vêtement en préservant texture/coupe/lumière. La\ncible vient du picker (`color`) ou d'une image de référence\n(`reference_image_url`, envoyée en `image_context`). Débit image_generate\n× qualité choisie (1k/2k/4k).",
+        "operationId": "products-recolor_image",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecolorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAssetPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/products/{product_id}/images/generate-flat": {
       "post": {
         "tags": [
           "products"
         ],
         "summary": "Generate Flat Image",
-        "description": "Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les\nautres générations. Un appel = une image = un débit image_generate.",
+        "description": "Mise à plat stylisée (Photoroom flat lay) — 202 + polling, comme les\nautres générations. Débit image_generate × qualité choisie (1k/2k/4k).",
         "operationId": "products-generate_flat_image",
         "parameters": [
           {
@@ -952,7 +1021,7 @@
           "products"
         ],
         "summary": "Generate Ghost Image",
-        "description": "Mannequin invisible (Photoroom ghost mannequin) — efface le mannequin\nd'une photo portée. Un appel = une image = un débit image_generate.",
+        "description": "Mannequin invisible (Photoroom ghost mannequin) — efface le mannequin\nd'une photo portée. Débit image_generate × qualité choisie (1k/2k/4k).",
         "operationId": "products-generate_ghost_image",
         "parameters": [
           {
@@ -7393,6 +7462,22 @@
               }
             ],
             "title": "Imaging Generation Scene Preset"
+          },
+          "imaging_generation_gender": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "female",
+              "male"
+            ],
+            "title": "Imaging Generation Gender",
+            "default": "auto"
+          },
+          "imaging_flat_instructions": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Imaging Flat Instructions",
+            "default": ""
           }
         },
         "type": "object",
@@ -8674,6 +8759,16 @@
             ],
             "title": "Ratio",
             "default": "4:5"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "1k",
+              "2k",
+              "4k"
+            ],
+            "title": "Resolution",
+            "default": "1k"
           }
         },
         "type": "object",
@@ -8798,6 +8893,22 @@
               }
             ],
             "title": "Product Dimensions"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender"
           },
           "aspect_ratio": {
             "type": "string",
@@ -12402,6 +12513,76 @@
         "type": "object",
         "title": "ProductVariant",
         "description": "A single sellable variant (style x color x size) of a product."
+      },
+      "RecolorRequest": {
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "product_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Image Id"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "reference_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Image Url"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "1k",
+              "2k",
+              "4k"
+            ],
+            "title": "Resolution",
+            "default": "1k"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_url"
+        ],
+        "title": "RecolorRequest",
+        "description": "« Changer la couleur » : FASHN edit sur une photo du produit.\n\nLa couleur cible vient du picker (`color`, hex ou nom) OU d'une image de\nréférence (`reference_image_url`, autre visuel dont on veut la teinte) —\nau moins l'un des deux. `instructions` = ajustements libres."
       },
       "RenderRequest": {
         "properties": {

@@ -107,8 +107,11 @@
     photoroomPose: "",
     modelPreset: "",
     scenePreset: "",
+    gender: "auto",
     instructions: "",
   })
+  // Instructions de mise à plat par défaut (pré-remplies dans le studio).
+  let flatInstructions = $state("")
 
   const imageTitleTemplate = $derived(buildImageTemplate(imageTemplateParts))
 
@@ -158,8 +161,10 @@
       photoroomPose: "",
       modelPreset: data.imaging_generation_model_preset ?? "",
       scenePreset: data.imaging_generation_scene_preset ?? "",
+      gender: data.imaging_generation_gender ?? "auto",
       instructions: data.imaging_generation_instructions ?? "",
     }
+    flatInstructions = data.imaging_flat_instructions ?? ""
     accountLoaded = true
   })
 
@@ -211,6 +216,8 @@
       imaging_generation_engine: generationConfig.engine,
       imaging_generation_model_preset: generationConfig.modelPreset || null,
       imaging_generation_scene_preset: generationConfig.scenePreset || null,
+      imaging_generation_gender: generationConfig.gender,
+      imaging_flat_instructions: flatInstructions.trim(),
     })
     savingAccount = false
     if (!ok) {
@@ -376,6 +383,32 @@
                   idPrefix="settings-gen"
                   showEngine
                 />
+              {/if}
+            </CardContent>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle class="font-title text-sm">Mise à plat</CardTitle>
+              <CardDescription class="text-muted-foreground text-xs">
+                Instructions par défaut du verbe « Mise à plat » — pré-remplies
+                dans le studio à chaque lancement, ajustables au cas par cas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-4">
+              {#if !accountLoaded}
+                <Skeleton class="h-16 w-full" />
+              {:else}
+                <textarea
+                  id="settings-flat-instructions"
+                  rows="3"
+                  aria-label="Instructions de mise à plat par défaut"
+                  class="border-input bg-card text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content max-h-40 w-full resize-none rounded-md border p-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
+                  placeholder="Ex. enlève le cintre, mets les chaussettes à l'endroit, enlève l'étiquette produit…"
+                  maxlength="500"
+                  bind:value={flatInstructions}
+                ></textarea>
+                {@render saveAccountRow()}
               {/if}
             </CardContent>
           </Card>

@@ -29,6 +29,9 @@ from app.imaging.compose import compose, probe
 FASHN_PRODUCT_TO_MODEL = "product-to-model"
 # Remplacement du mannequin (identité) en conservant la tenue — face swap.
 FASHN_MODEL_SWAP = "model-swap"
+# Retouche libre en préservant le produit (changement de couleur du
+# vêtement) : image + instructions + image de référence optionnelle.
+FASHN_EDIT = "edit"
 PHOTOROOM_MODEL = "photoroom-v2"  # legacy /v2/edit (kept for old traces)
 PHOTOROOM_SEGMENT_MODEL = "photoroom-segment-v1"
 # Nouveaux appels /v2/edit (flat lay, ghost mannequin, virtual model,
@@ -44,6 +47,21 @@ PHOTOROOM_SIZE_PRESETS = {
     "1:1": "SQUARE_HD",
     "16:9": "LANDSCAPE_HD_16_9",
 }
+
+# Sortie explicite /v2/edit (`outputSize=WxH`, au niveau racine — les blocs
+# génératifs n'acceptent que des presets ~HD) : la qualité 1k/2k/4k choisie
+# par l'utilisateur (Marc 2026-08-21). Bornes : 25 MP maxi côté Photoroom.
+PHOTOROOM_OUTPUT_SIZES: dict[str, dict[str, str]] = {
+    "4:5": {"1k": "1024x1280", "2k": "2048x2560", "4k": "4096x5120"},
+    "3:4": {"1k": "960x1280", "2k": "1920x2560", "4k": "3840x5120"},
+    "1:1": {"1k": "1024x1024", "2k": "2048x2048", "4k": "4096x4096"},
+    "16:9": {"1k": "1280x720", "2k": "2560x1440", "4k": "5120x2880"},
+}
+
+# Crédits CLIENT par résolution (répercussion du coût, décision Marc
+# 2026-08-21) : multiplie le débit image_generate — partagé Photoroom
+# (flat/ghost) et FASHN (recolor).
+RESOLUTION_CREDIT_UNITS = {"1k": 1, "2k": 2, "4k": 4}
 
 # Source download guards — the verb fetches the image itself: segment wants
 # multipart bytes, and the source weight/dims are part of the outcome.
@@ -125,6 +143,12 @@ SCENE_PROMPTS = {
     "studio": "studio photo, plain light neutral background",
     "lifestyle": "lifestyle photo, natural in-context setting",
 }
+# Genre du mannequin (optionnel) : défaut = department du produit Tillin
+# (Homme/Femme), « Unisex »/inconnu = libre.
+GENDER_PROMPTS = {
+    "female": "the model is a woman",
+    "male": "the model is a man",
+}
 # Orientation du mannequin (optionnelle) : vide = FASHN choisit librement.
 POSE_PROMPTS = {
     "face": "the model facing the camera straight on",
@@ -144,6 +168,7 @@ def build_generation_prompt(
     instructions: str | None,
     pose: str | None = None,
     dimensions: str | None = None,
+    gender: str | None = None,
 ) -> str:
     """Compose the FASHN instruction from the structured config + free text.
 
@@ -156,6 +181,8 @@ def build_generation_prompt(
         SCENE_PROMPTS.get(scene, SCENE_PROMPTS["studio"]),
         FRAMING_PROMPTS.get(framing, FRAMING_PROMPTS["full_body"]),
     ]
+    if gender and gender in GENDER_PROMPTS:
+        parts.append(GENDER_PROMPTS[gender])
     if pose and pose in POSE_PROMPTS:
         parts.append(POSE_PROMPTS[pose])
     if dimensions and dimensions.strip():
@@ -223,6 +250,9 @@ class GenerateFlatOptions:
 
     prompt: str | None = None  # style libre (ex. « fond lin clair »)
     ratio: str = "4:5"
+    # Qualité de sortie (1k/2k/4k) — outputSize explicite envoyé à Photoroom,
+    # débit client multiplié (RESOLUTION_CREDIT_UNITS).
+    resolution: str = "1k"
     # Fond uni demandé à Photoroom (hex, défaut = couleur du compte) — sans
     # lui le fond vient du modèle génératif (vécu : « pas de background ? »).
     background_color: str | None = None
@@ -547,8 +577,102 @@ def swap_model_photo(
     return results
 
 
+def build_recolor_prompt(
+    color: str | None,
+    garment: str | None,
+    instructions: str | None,
+    *,
+    has_reference: bool,
+) -> str:
+    """Instruction FASHN `edit` du changement de couleur du vêtement.
+
+    La cible est la catégorie produit quand on la connaît (sinon « garment »),
+    la couleur vient du picker (hex) ou de l'image de référence
+    (`image_context`), le texte libre de l'utilisateur vient en dernier.
+    """
+    target = (garment or "").strip() or "garment"
+    parts: list[str] = []
+    if color and color.strip():
+        parts.append(f"change the color of the {target} to {color.strip()}")
+    elif has_reference:
+        parts.append(
+            f"change the color of the {target} to match the color of the "
+            "reference image"
+        )
+    else:
+        parts.append(f"change the color of the {target}")
+    parts.append(
+        "keep the fabric texture, seams, fit, lighting and everything else "
+        "exactly unchanged"
+    )
+    if instructions and instructions.strip():
+        parts.append(instructions.strip())
+    return ", ".join(parts)
+
+
+def recolor_photo(
+    image_url: str,
+    *,
+    prompt: str,
+    reference_image: str | None = None,
+    resolution: str = "1k",
+    fashn: "FashnClient",
+    db: "Session",
+    account_id: int,
+) -> list[ImagingResult]:
+    """« Changer la couleur » (FASHN edit, validé Marc 2026-08-21).
+
+    Retouche qui préserve le produit (texture, coupe, lumière) en exécutant
+    une instruction libre — ici la couleur cible, éventuellement guidée par
+    une image de référence (`image_context`). Crédits FASHN : matrice
+    résolution × mode (balanced), cf. FASHN_CREDITS.
+    """
+    inputs: dict[str, Any] = {
+        "image": image_url,
+        "prompt": prompt,
+        "resolution": resolution if resolution in FASHN_CREDITS else "1k",
+        "generation_mode": "balanced",
+        "num_images": 1,
+        "output_format": "png",
+    }
+    if reference_image:
+        inputs["image_context"] = reference_image
+    params = {k: v for k, v in inputs.items() if k not in ("image", "image_context")}
+    prediction_id = fashn.run(FASHN_EDIT, inputs)
+    urls = fashn.wait(prediction_id)
+    results = [
+        ImagingResult(
+            data=fashn.download(url),
+            width=None,
+            height=None,
+            format="png",
+            trace={
+                "provider": "fashn",
+                "model": FASHN_EDIT,
+                "params": params,
+            },
+        )
+        for url in urls
+    ]
+    record_usage(
+        db,
+        account_id=account_id,
+        source="imaging",
+        provider="fashn",
+        metric="credits",
+        quantity=fashn_credits(inputs["resolution"], "balanced", 1),
+        model=FASHN_EDIT,
+    )
+    return results
+
+
 def _photoroom_size(ratio: str) -> str | None:
     return PHOTOROOM_SIZE_PRESETS.get(ratio)
+
+
+def _photoroom_output_size(ratio: str, resolution: str) -> str | None:
+    """`outputSize` explicite (WxH) pour le couple ratio × qualité 1k/2k/4k."""
+    return PHOTOROOM_OUTPUT_SIZES.get(ratio, {}).get(resolution)
 
 
 def _run_photoroom_edit(
@@ -632,6 +756,8 @@ def generate_flat_photo(
         params["flatLay"]["prompt"] = prompt
     if size := _photoroom_size(options.ratio):
         params["flatLay"]["size"] = size
+    if output_size := _photoroom_output_size(options.ratio, options.resolution):
+        params["outputSize"] = output_size
     if options.background_color:
         params["background"] = {"color": options.background_color.lstrip("#")}
     return _run_photoroom_edit(
@@ -660,6 +786,8 @@ def generate_ghost_photo(
         params["ghostMannequin"]["prompt"] = prompt
     if size := _photoroom_size(options.ratio):
         params["ghostMannequin"]["size"] = size
+    if output_size := _photoroom_output_size(options.ratio, options.resolution):
+        params["outputSize"] = output_size
     if options.background_color:
         params["background"] = {"color": options.background_color.lstrip("#")}
     return _run_photoroom_edit(

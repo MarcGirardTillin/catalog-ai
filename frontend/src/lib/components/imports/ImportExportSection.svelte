@@ -29,7 +29,7 @@
   import { Dialog } from "@/lib/components/ui/dialog"
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
-  import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
+  import JobOptionsPanel from "@/lib/components/app/JobOptionsPanel.svelte"
   import FilePreviewTable from "@/lib/components/app/FilePreviewTable.svelte"
   import { Select } from "@/lib/components/ui/select"
 
@@ -223,10 +223,12 @@
     transferred || (job.counts.applied ?? 0) > 0,
   )
 
-  async function enrichCreatedProducts(
-    transforms: { copy: boolean; title: boolean; weights: boolean; images: boolean },
-    instructionId: number | null,
-  ) {
+  // Popup d'options (le même que la page produits) — plusieurs produits,
+  // donc pas d'URL de fiche unique.
+  let enrichOpen = $state(false)
+  let enrichPanel = $state<ReturnType<typeof JobOptionsPanel>>()
+
+  async function enrichCreatedProducts(config: Record<string, unknown>) {
     if (enriching) return
     enriching = true
     let { data, error } = await getImportProducts(importId)
@@ -263,10 +265,7 @@
     const { data: jobData, error: jobError } = await jobsCreateEnrichmentJob({
       body: {
         selection: { ids },
-        config: {
-          transforms,
-          ...(instructionId != null ? { instruction_id: instructionId } : {}),
-        },
+        config,
       },
     })
     enriching = false
@@ -383,13 +382,37 @@
           >
             Voir les produits créés
           </Button>
-          <EnrichChooser
-            label="Enrichir les produits créés"
-            busy={enriching}
-            onLaunch={enrichCreatedProducts}
-          />
+          <Button size="sm" disabled={enriching} onclick={() => (enrichOpen = true)}>
+            {enriching ? "Lancement…" : "Enrichir les produits créés"}
+          </Button>
         </div>
       </div>
+    {/if}
+
+    {#if enrichOpen}
+      <Dialog
+        title="Enrichir les produits créés"
+        onClose={() => (enrichOpen = false)}
+        dismissable={!enriching}
+      >
+        <div class="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
+          <JobOptionsPanel bind:this={enrichPanel} />
+        </div>
+        <div class="mt-3 flex justify-end gap-2">
+          <Button variant="outline" disabled={enriching} onclick={() => (enrichOpen = false)}>
+            Annuler
+          </Button>
+          <Button
+            disabled={enriching}
+            onclick={async () => {
+              await enrichCreatedProducts(enrichPanel?.collectConfig() ?? {})
+              enrichOpen = false
+            }}
+          >
+            {enriching ? "Lancement…" : "Lancer l'enrichissement"}
+          </Button>
+        </div>
+      </Dialog>
     {/if}
 
     {#if rowsOpen}

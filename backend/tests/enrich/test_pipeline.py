@@ -1310,3 +1310,94 @@ def test_online_search_disabled_skips_resolution(
         "recherche en ligne désactivée"
     )
     db.close()
+
+
+def test_launch_url_override_short_circuits_resolution(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """URL de fiche fournie AU LANCEMENT (Marc 2026-08-21) : utilisée telle
+    quelle (méthode `manual`), tracking nettoyé, aucune recherche."""
+    db = db_session_factory()
+    item = _seed_item(
+        db,
+        PRODUCT.id,
+        config={
+            "source_url_override": f"{SITE}/products/g-short-double-navy?srsltid=xyz",
+            "transforms": {"copy": False},
+        },
+    )
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.status == "ready_for_review"
+    assert item.source_method == "manual"
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    assert (item.resolution_json or {}).get("reason") == "URL fournie au lancement"
+    assert item.staged_images_json  # les visuels de la fiche sont bien lus
+    db.close()
+
+
+def test_launch_url_override_bad_page_falls_back_to_auto(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """URL fournie mais morte : repli sur la résolution automatique."""
+    db = db_session_factory()
+    item = _seed_item(
+        db,
+        PRODUCT.id,
+        config={
+            "source_url_override": f"{SITE}/products/handle-mort",
+            "transforms": {"copy": False},
+        },
+    )
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account: PRODUCT,
+            http_client=http_client,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    # La chaîne automatique retrouve la bonne fiche via la recherche du site.
+    assert item.source_method == "shopify_json"
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    db.close()
+
+
+def test_sibling_candidates_filename_counter() -> None:
+    """Compteur dans le NOM de fichier (Farfetch : le 2e identifiant
+    s'incrémente d'une unité par vue — item 205, 2026-08-21)."""
+    from app.enrich.pipeline import _sibling_candidates
+
+    src = (
+        "https://cdn-images.farfetch-contents.com/35/13/22/76/"
+        "35132276_71421656_1000.jpg"
+    )
+    candidates = _sibling_candidates(src, limit=3)
+    assert candidates == [
+        src.replace("71421656", "71421657"),
+        src.replace("71421656", "71421658"),
+        src.replace("71421656", "71421659"),
+    ]
+
+
+def test_sibling_candidates_directory_counter_still_wins() -> None:
+    """Le motif répertoire (G-Star) garde la priorité sur le nom de fichier."""
+    from app.enrich.pipeline import _sibling_candidates
+
+    src = "https://img1.g-star.com/image/x/D28627-E360-001-M02W/slug.jpg"
+    candidates = _sibling_candidates(src, limit=3)
+    assert candidates
+    assert all("M0" in c or "M1" in c for c in candidates)
+    assert not any("slug2" in c for c in candidates)

@@ -36,9 +36,10 @@
     uploadProductImages,
     type ProductDetail,
   } from "@/lib/api/products"
-  import EnrichChooser from "@/lib/components/app/EnrichChooser.svelte"
+  import JobOptionsPanel from "@/lib/components/app/JobOptionsPanel.svelte"
   import Lightbox from "@/lib/components/imaging/Lightbox.svelte"
   import { Button } from "@/lib/components/ui/button"
+  import { Dialog } from "@/lib/components/ui/dialog"
   import { Skeleton } from "@/lib/components/ui/skeleton"
 
   type Fallback = {
@@ -48,13 +49,6 @@
     image_url: string | null
   }
 
-  // Transformations à lancer (contrat config_json.transforms du backend).
-  type EnrichTransforms = {
-    copy: boolean
-    title: boolean
-    weights: boolean
-    images: boolean
-  }
 
   let {
     productId,
@@ -69,11 +63,9 @@
     importLabel?: string | null
     fallback?: Fallback | null
     onClose: () => void
-    onEnrich?: (
-      productId: number,
-      transforms: EnrichTransforms,
-      instructionId: number | null,
-    ) => void
+    // Ouvre le MÊME popup d'options que la barre de sélection (Marc
+    // 2026-08-21) : le parent reçoit la config complète (collectConfig).
+    onEnrich?: (productId: number, config: Record<string, unknown>) => void
     /** Module Studio du compte : masque les verbes de traitement d'images. */
     studioEnabled?: boolean
     /** Fiche modifiée dans Tillin (images ajoutées/traitées) : la liste qui a
@@ -84,6 +76,17 @@
 
   let product = $state<ProductDetail | null>(null)
   let loading = $state(false)
+
+  // Popup d'options d'enrichissement (le même que la barre de sélection) —
+  // un seul produit ici, donc l'URL exacte de la fiche est proposée.
+  let enrichOpen = $state(false)
+  let enrichPanel = $state<ReturnType<typeof JobOptionsPanel>>()
+
+  function launchEnrich() {
+    if (productId == null) return
+    onEnrich?.(productId, enrichPanel?.collectConfig() ?? {})
+    enrichOpen = false
+  }
   let errorMessage = $state<string | null>(null)
 
   // Modèle de titre du compte, chargé paresseusement pour l'indicateur
@@ -571,11 +574,7 @@
       </div>
       <div class="flex shrink-0 items-center gap-1.5">
         {#if onEnrich && productId != null && product}
-          <EnrichChooser
-            align="right"
-            onLaunch={(transforms, instructionId) =>
-              onEnrich?.(productId, transforms, instructionId)}
-          />
+          <Button size="sm" onclick={() => (enrichOpen = true)}>Enrichir</Button>
         {/if}
         <button
           type="button"
@@ -1081,4 +1080,18 @@
      panneau, il passe aussi au-dessus à z-index égal. -->
 {#if lightboxSrc}
   <Lightbox src={lightboxSrc} onClose={() => (lightboxSrc = null)} />
+{/if}
+
+<!-- Options d'enrichissement : même Dialog que la barre de sélection, monté
+     tant qu'il est ouvert (les saisies vivent dans JobOptionsPanel). -->
+{#if enrichOpen}
+  <Dialog title="Enrichir ce produit" onClose={() => (enrichOpen = false)}>
+    <div class="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
+      <JobOptionsPanel bind:this={enrichPanel} showSourceUrl />
+    </div>
+    <div class="mt-3 flex justify-end gap-2">
+      <Button variant="outline" onclick={() => (enrichOpen = false)}>Annuler</Button>
+      <Button onclick={launchEnrich}>Lancer l'enrichissement</Button>
+    </div>
+  </Dialog>
 {/if}

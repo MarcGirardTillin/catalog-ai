@@ -352,6 +352,22 @@ export const AccountSettingsSchema = {
                 }
             ],
             title: 'Imaging Generation Scene Preset'
+        },
+        imaging_generation_gender: {
+            type: 'string',
+            enum: [
+                'auto',
+                'female',
+                'male'
+            ],
+            title: 'Imaging Generation Gender',
+            default: 'auto'
+        },
+        imaging_flat_instructions: {
+            type: 'string',
+            maxLength: 500,
+            title: 'Imaging Flat Instructions',
+            default: ''
         }
     },
     type: 'object',
@@ -1666,6 +1682,16 @@ export const GenerateFlatOptionsSchema = {
             ],
             title: 'Ratio',
             default: '4:5'
+        },
+        resolution: {
+            type: 'string',
+            enum: [
+                '1k',
+                '2k',
+                '4k'
+            ],
+            title: 'Resolution',
+            default: '1k'
         }
     },
     type: 'object',
@@ -1792,6 +1818,22 @@ export const GenerateModelOptionsSchema = {
                 }
             ],
             title: 'Product Dimensions'
+        },
+        gender: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: [
+                        'auto',
+                        'female',
+                        'male'
+                    ]
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Gender'
         },
         aspect_ratio: {
             type: 'string',
@@ -5461,6 +5503,77 @@ export const ProductVariantSchema = {
     type: 'object',
     title: 'ProductVariant',
     description: 'A single sellable variant (style x color x size) of a product.'
+} as const;
+
+export const RecolorRequestSchema = {
+    properties: {
+        image_url: {
+            type: 'string',
+            title: 'Image Url'
+        },
+        product_image_id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Product Image Id'
+        },
+        color: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color'
+        },
+        reference_image_url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Reference Image Url'
+        },
+        instructions: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Instructions'
+        },
+        resolution: {
+            type: 'string',
+            enum: [
+                '1k',
+                '2k',
+                '4k'
+            ],
+            title: 'Resolution',
+            default: '1k'
+        }
+    },
+    type: 'object',
+    required: [
+        'image_url'
+    ],
+    title: 'RecolorRequest',
+    description: '« Changer la couleur » : FASHN edit sur une photo du produit.\n\nLa couleur cible vient du picker (`color`, hex ou nom) OU d\'une image de\nréférence (`reference_image_url`, autre visuel dont on veut la teinte) —\nau moins l\'un des deux. `instructions` = ajustements libres.'
 } as const;
 
 export const RenderRequestSchema = {

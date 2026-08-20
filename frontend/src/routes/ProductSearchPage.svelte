@@ -568,21 +568,13 @@
     queryClient.invalidateQueries({ queryKey: ["imaging", "pending-products"] })
   }
 
-  // Enrichissement direct depuis le panneau : job à un seul produit.
-  async function enrichSingle(
-    productId: number,
-    transforms: { copy: boolean; title: boolean; weights: boolean; images: boolean },
-    instructionId: number | null,
-  ) {
+  // Enrichissement depuis le panneau : job à un seul produit, avec la config
+  // complète du popup d'options (même contrat que la barre de sélection).
+  async function enrichSingle(productId: number, config: Record<string, unknown>) {
     const { data, error } = await jobsCreateEnrichmentJob({
-      // Le panneau laisse choisir transformations + instruction (contrat
-      // config_json.transforms : clé absente = activé côté backend).
       body: {
         selection: { ids: [productId] },
-        config: {
-          transforms,
-          ...(instructionId != null ? { instruction_id: instructionId } : {}),
-        },
+        config,
       },
     })
     if (error || !data) {
@@ -1169,7 +1161,7 @@
             dismissable={!submitting}
           >
             <div class="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
-              <JobOptionsPanel bind:this={optionsPanel} />
+              <JobOptionsPanel bind:this={optionsPanel} showSourceUrl={selected.size === 1} />
             </div>
             <div class="mt-3 flex justify-end gap-2">
               <Button

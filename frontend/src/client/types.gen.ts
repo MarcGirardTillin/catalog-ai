@@ -162,6 +162,14 @@ export type AccountSettings = {
      * Imaging Generation Scene Preset
      */
     imaging_generation_scene_preset?: 'random' | 'street' | 'bedroom' | 'sunset' | 'factory' | 'studio' | 'coloredstudio' | 'concretestudio' | 'beach' | 'tropical' | 'library' | 'forest' | 'businessdistrict' | 'countryside' | 'flowers' | 'goldenlight' | 'mountain' | 'pool' | 'latincity' | 'cafe' | 'asiancity' | 'nightlights' | 'desert' | null;
+    /**
+     * Imaging Generation Gender
+     */
+    imaging_generation_gender?: 'auto' | 'female' | 'male';
+    /**
+     * Imaging Flat Instructions
+     */
+    imaging_flat_instructions?: string;
 };
 
 /**
@@ -984,6 +992,10 @@ export type GenerateFlatOptions = {
      * Ratio
      */
     ratio?: '4:5' | '1:1' | '3:4' | '16:9' | 'original';
+    /**
+     * Resolution
+     */
+    resolution?: '1k' | '2k' | '4k';
 };
 
 /**
@@ -1036,6 +1048,10 @@ export type GenerateModelOptions = {
      * Product Dimensions
      */
     product_dimensions?: string | null;
+    /**
+     * Gender
+     */
+    gender?: 'auto' | 'female' | 'male' | null;
     /**
      * Aspect Ratio
      */
@@ -3028,6 +3044,42 @@ export type ProductVariant = {
 };
 
 /**
+ * RecolorRequest
+ *
+ * « Changer la couleur » : FASHN edit sur une photo du produit.
+ *
+ * La couleur cible vient du picker (`color`, hex ou nom) OU d'une image de
+ * référence (`reference_image_url`, autre visuel dont on veut la teinte) —
+ * au moins l'un des deux. `instructions` = ajustements libres.
+ */
+export type RecolorRequest = {
+    /**
+     * Image Url
+     */
+    image_url: string;
+    /**
+     * Product Image Id
+     */
+    product_image_id?: number | null;
+    /**
+     * Color
+     */
+    color?: string | null;
+    /**
+     * Reference Image Url
+     */
+    reference_image_url?: string | null;
+    /**
+     * Instructions
+     */
+    instructions?: string | null;
+    /**
+     * Resolution
+     */
+    resolution?: '1k' | '2k' | '4k';
+};
+
+/**
  * RenderRequest
  *
  * POST /imaging/assets/{id}/render body — local Pillow recompose.
@@ -3960,6 +4012,36 @@ export type ProductsSwapModelImageResponses = {
 };
 
 export type ProductsSwapModelImageResponse = ProductsSwapModelImageResponses[keyof ProductsSwapModelImageResponses];
+
+export type ProductsRecolorImageData = {
+    body: RecolorRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/recolor';
+};
+
+export type ProductsRecolorImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsRecolorImageError = ProductsRecolorImageErrors[keyof ProductsRecolorImageErrors];
+
+export type ProductsRecolorImageResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImageAssetPublic;
+};
+
+export type ProductsRecolorImageResponse = ProductsRecolorImageResponses[keyof ProductsRecolorImageResponses];
 
 export type ProductsGenerateFlatImageData = {
     body: GenerateFlatRequest;
