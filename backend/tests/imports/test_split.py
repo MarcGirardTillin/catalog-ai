@@ -84,3 +84,17 @@ def test_split_suffix_modes_and_separators() -> None:
     out = split_products_by_color([product], suffix_mode="none", separator="-")
     assert [p.supplier_ref for p in out] == ["48814", "48814"]
     assert [len(p.variants) for p in out] == [1, 1]
+
+
+def test_split_suffix_mode_code_uses_supplier_color_code() -> None:
+    from app.imports.schema import ImportedProduct, ImportedVariant
+
+    product = ImportedProduct(
+        supplier_ref="REF1",
+        variants=[
+            ImportedVariant(color="Marine", color_code="410", size="M"),
+            ImportedVariant(color="Noir", size="M"),  # pas de code -> repli nom
+        ],
+    )
+    out = split_products_by_color([product], suffix_mode="code", separator="-")
+    assert [p.supplier_ref for p in out] == ["REF1-410", "REF1-NOIR"]

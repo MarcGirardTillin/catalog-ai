@@ -9,11 +9,12 @@ Real-world references (everyday-tasks fixtures):
   deducible.
 """
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # How the CSV `price` column is computed:
 # - "retail_as_is": the extracted retail_price, unchanged (Bambinoh).
@@ -80,6 +81,13 @@ class ImportProfileConfig(BaseModel):
     # template (settings) instead of the raw extracted title. Off by default:
     # most imports keep the supplier's title and only template at enrichment.
     apply_title_template: bool = False
+    # Surcharge OPTIONNELLE du modèle de titre pour CE profil (Marc
+    # 2026-08-22 : modèles par boutique cliente) ; vides = modèle du compte.
+    title_template: str = Field(default="", max_length=300)
+    title_case: Literal["", "none", "upper", "capitalize", "title", "sentence"] = ""
+    # Tags Tillin appliqués à tous les produits de l'import (colonne `tags`
+    # du CSV, valeurs séparées par des virgules) — Marc 2026-08-22.
+    tags: list[str] = Field(default_factory=list, max_length=20)
     # When True, a document product carrying SEVERAL colors is split into one
     # sheet per color AT EXTRACTION TIME (reference suffixed by the color for
     # Tillin uniqueness). Off by default: colors stay variants of one product.
@@ -92,7 +100,9 @@ class ImportProfileConfig(BaseModel):
     # les titres différencient) et séparateur (« - » / espace / rien — sans
     # séparateur, la recherche Xano qui découpe sur les tirets ne fait plus
     # ressortir d'autres produits contenant la couleur).
-    split_suffix_mode: Literal["color", "initial", "none"] = "color"
+    # « code » = le code couleur fournisseur (BK999…) quand il a été extrait,
+    # repli sur le nom de couleur sinon (Marc 2026-08-22).
+    split_suffix_mode: Literal["color", "initial", "code", "none"] = "color"
     split_suffix_separator: Literal["-", " ", ""] = "-"
     # Axes de variantes du CSV Tillin (option1..option3), dans l'ORDRE du
     # rendu (demande Marc 2026-07-29 : ordre modifiable, 3e option possible,
@@ -117,6 +127,18 @@ class ImportProfileConfig(BaseModel):
     # NOTE: the category default stays removed (2026-07-09): that one is a
     # per-product review-grid edit, not a supplier convention.
     # Stored configs may still carry the old keys — pydantic ignores them.
+
+    @field_validator("title_template")
+    @classmethod
+    def _known_title_tokens(cls, value: str) -> str:
+        """Un token inconnu ferait échouer le rendu CSV — refusé à l'écriture."""
+        # Import local : title importe app.api.schemas (cycle sinon).
+        from app.enrich.title import TOKENS
+
+        for match in re.finditer(r"\{(\w+)\}", value):
+            if match.group(1) not in TOKENS:
+                raise ValueError(f"token de titre inconnu : {{{match.group(1)}}}")
+        return value
 
     @model_validator(mode="before")
     @classmethod

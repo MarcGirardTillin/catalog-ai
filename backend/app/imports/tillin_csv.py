@@ -208,7 +208,11 @@ def render_rows(
         # Poids par défaut de la catégorie (table catégorie Xano, décision
         # Marc 2026-07-25) : les fichiers fournisseurs ne portent jamais de
         # poids — repli automatique quand la catégorie en définit un.
-        default_weight = (category_weights or {}).get(category.strip().lower())
+        # Poids : celui lu dans le document fournisseur d'abord (Marc
+        # 2026-08-22), repli sur le défaut de la catégorie.
+        default_weight = product.weight_kg or (category_weights or {}).get(
+            category.strip().lower()
+        )
         title = product.title or product.supplier_ref
         if config.apply_title_template and title_template:
             values = {
@@ -283,6 +287,11 @@ def render_rows(
                         "category": category,
                         "season": season,
                         "composition": product.composition or "",
+                        # Tags du profil, appliqués à toutes les lignes
+                        # (Marc 2026-08-22) — valeurs séparées par des virgules.
+                        "tags": ",".join(
+                            tag.strip() for tag in config.tags if tag.strip()
+                        ),
                         "harmonized_system_code": product.hs_code or "",
                         "manufacturing_country": product.manufacturing_country or "",
                         "status": config.status,

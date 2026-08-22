@@ -41,3 +41,11 @@ def test_source_price_falls_back_to_the_page_price() -> None:
     assert source_price({"variants": [], "_price": "129,90 €"}) == Decimal("129.90")
     assert source_price({"variants": []}) is None
     assert source_price(None) is None
+
+
+def test_source_price_refuses_non_euro_currencies() -> None:
+    # Page /gb en livres (vécu dedicatedbrand 2026-08-22) : jamais proposé.
+    assert source_price({"_price": "39.95", "_currency": "GBP"}) is None
+    assert source_price({"_price": "39.95", "_currency": "EUR"}) is not None
+    # Devise inconnue : comportement historique (proposé).
+    assert source_price({"_price": "39.95"}) is not None

@@ -977,6 +977,14 @@ class EnrichmentPipeline:
             "model": config.get("ai_model"),
             "meta_max_length": int(config.get("meta_max_length") or 160),
         }
+        # Langue des contenus (réglage compte, Marc 2026-08-22) : kwargs
+        # passés seulement hors défauts — les fakes de test historiques ne
+        # connaissent pas ces paramètres.
+        language = str(config.get("content_language") or "fr")
+        if language != "fr":
+            copy_kwargs["language"] = language
+        if config.get("keep_product_names") is False:
+            copy_kwargs["keep_product_names"] = False
         # Kwarg passé seulement quand il y a des photos : les doubles de test
         # historiques (fakes) ne connaissent pas ce paramètre.
         if product_image_urls:

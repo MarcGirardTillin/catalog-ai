@@ -18,6 +18,10 @@
     type CatalogFiltersData,
   } from "@/lib/api/catalogFilters"
   import ReferenceSelect from "@/lib/components/app/ReferenceSelect.svelte"
+  import TagInput from "@/lib/components/app/TagInput.svelte"
+  import TitleTemplateBuilder, {
+    parseTemplate,
+  } from "@/lib/components/enrichment/TitleTemplateBuilder.svelte"
   import {
     createImportProfile,
     updateImportProfile,
@@ -85,6 +89,17 @@
 
   let form = $state(initialForm())
 
+  // Surcharge du modèle de titre par profil (Marc 2026-08-22) : le builder
+  // travaille en tokens/séparateur/casse, sérialisés à l'enregistrement.
+  let customTemplate = $state(form.title_template !== "" || form.title_case !== "")
+  let tplTokens = $state<string[]>(
+    parseTemplate(form.title_template)?.tokens ?? ["title"],
+  )
+  let tplSeparator = $state(parseTemplate(form.title_template)?.separator ?? " ")
+  let tplCase = $state<"none" | "upper" | "capitalize" | "title" | "sentence">(
+    form.title_case !== "" ? form.title_case : "none",
+  )
+
   function moveAxis(index: number, delta: number) {
     const target = index + delta
     if (target < 0 || target >= form.option_axes.length) return
@@ -137,6 +152,9 @@
         extra_instructions: c.extra_instructions ?? "",
         size_conversion: c.size_conversion ?? "none",
         default_gender: c.default_gender ?? "",
+        title_template: c.title_template ?? "",
+        title_case: c.title_case ?? "",
+        tags: [...(c.tags ?? [])],
       }
     }
     const supplier = prefill?.supplier_label ?? prefill?.supplier_match ?? ""
@@ -160,6 +178,9 @@
       extra_instructions: "",
       size_conversion: "none" as ImportProfileConfig["size_conversion"],
       default_gender: "",
+      title_template: "",
+      title_case: "" as NonNullable<ImportProfileConfig["title_case"]>,
+      tags: [] as string[],
     }
   }
 
@@ -209,6 +230,13 @@
       extra_instructions: form.extra_instructions.trim(),
       size_conversion: form.size_conversion,
       default_gender: form.default_gender.trim(),
+      title_template:
+        form.apply_title_template && customTemplate && tplTokens.length > 0
+          ? tplTokens.map((key) => `{${key}}`).join(tplSeparator)
+          : "",
+      title_case:
+        form.apply_title_template && customTemplate ? tplCase : "",
+      tags: form.tags.filter((tag) => tag.trim() !== ""),
     }
     // Le fournisseur sert aussi de clé d'auto-sélection (comparaison minuscule).
     const body = { name, supplier_match: supplier.toLowerCase(), config }
@@ -509,6 +537,43 @@
         </span>
       </span>
     </label>
+    {#if form.apply_title_template}
+      <div class="flex flex-col gap-2 pl-6">
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            class="mt-0.5 size-4 shrink-0"
+            bind:checked={customTemplate}
+          />
+          <span>
+            Personnaliser le modèle pour ce profil
+            <span class="text-muted-foreground block text-xs font-normal">
+              Décoché : le modèle du compte (Réglages) s'applique.
+            </span>
+          </span>
+        </label>
+        {#if customTemplate}
+          <TitleTemplateBuilder
+            bind:tokens={tplTokens}
+            bind:separator={tplSeparator}
+            bind:titleCase={tplCase}
+          />
+        {/if}
+      </div>
+    {/if}
+  </div>
+
+  <div class="flex flex-col gap-1.5">
+    <Label for="{uid}-tags">Tags Tillin</Label>
+    <TagInput
+      id="{uid}-tags"
+      bind:values={form.tags}
+      placeholder="Ex. nouveautés — Entrée pour ajouter"
+    />
+    <p class="text-muted-foreground text-xs">
+      Appliqués à tous les produits transférés avec ce profil (colonne
+      « tags » du CSV Tillin).
+    </p>
   </div>
 
   <div class="flex flex-col gap-1.5">
@@ -535,6 +600,7 @@
           <Select id="{uid}-split-suffix" bind:value={form.split_suffix_mode}>
             <option value="color">Nom de la couleur (48814-NOIR)</option>
             <option value="initial">Initiale de la couleur (48814-N)</option>
+            <option value="code">Code couleur fournisseur (48814-410)</option>
             <option value="none">Aucun — même référence</option>
           </Select>
         </div>

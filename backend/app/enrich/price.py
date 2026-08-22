@@ -59,6 +59,13 @@ def source_price(source_product: dict[str, Any] | None) -> Decimal | None:
     """
     if not source_product:
         return None
+    # Garde-fou devise (Marc 2026-08-22, page /gb en £ de dedicatedbrand) :
+    # un prix affiché dans une autre devise que l'euro n'est JAMAIS proposé —
+    # « 39,95 » £ écrit tel quel dans Tillin serait faux. Devise inconnue =
+    # on propose (comportement historique, sites FR majoritaires).
+    currency = str(source_product.get("_currency") or "").strip().upper()
+    if currency and currency != "EUR":
+        return None
     prices = {
         price
         for variant in source_product.get("variants") or []

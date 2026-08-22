@@ -22,6 +22,8 @@ _ACCOUNT_CONFIG_DEFAULTS = (
     "editorial_instructions",
     "client_context",
     "meta_max_length",
+    "content_language",
+    "keep_product_names",
 )
 
 # Review transitions allowed from each current status. `failed -> rejected`

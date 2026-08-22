@@ -46,6 +46,10 @@ PRODUCT_SCHEMA: dict[str, Any] = {
         "color": {"type": "string"},
         "material": {"type": "string"},
         "price": {"type": "string"},
+        "currency": {
+            "type": "string",
+            "description": "ISO currency of the displayed price (EUR, GBP, USD…)",
+        },
         "features": {
             "type": "array",
             "items": {"type": "string"},

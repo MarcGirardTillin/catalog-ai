@@ -163,6 +163,14 @@ export type AccountSettings = {
      */
     imaging_generation_scene_preset?: 'random' | 'street' | 'bedroom' | 'sunset' | 'factory' | 'studio' | 'coloredstudio' | 'concretestudio' | 'beach' | 'tropical' | 'library' | 'forest' | 'businessdistrict' | 'countryside' | 'flowers' | 'goldenlight' | 'mountain' | 'pool' | 'latincity' | 'cafe' | 'asiancity' | 'nightlights' | 'desert' | null;
     /**
+     * Content Language
+     */
+    content_language?: 'fr' | 'en';
+    /**
+     * Keep Product Names
+     */
+    keep_product_names?: boolean;
+    /**
      * Imaging Generation Gender
      */
     imaging_generation_gender?: 'auto' | 'female' | 'male';
@@ -1626,13 +1634,25 @@ export type ImportProfileConfigInput = {
      */
     apply_title_template?: boolean;
     /**
+     * Title Template
+     */
+    title_template?: string;
+    /**
+     * Title Case
+     */
+    title_case?: '' | 'none' | 'upper' | 'capitalize' | 'title' | 'sentence';
+    /**
+     * Tags
+     */
+    tags?: Array<string>;
+    /**
      * Split By Color
      */
     split_by_color?: boolean;
     /**
      * Split Suffix Mode
      */
-    split_suffix_mode?: 'color' | 'initial' | 'none';
+    split_suffix_mode?: 'color' | 'initial' | 'code' | 'none';
     /**
      * Split Suffix Separator
      */
@@ -1710,13 +1730,25 @@ export type ImportProfileConfigOutput = {
      */
     apply_title_template?: boolean;
     /**
+     * Title Template
+     */
+    title_template?: string;
+    /**
+     * Title Case
+     */
+    title_case?: '' | 'none' | 'upper' | 'capitalize' | 'title' | 'sentence';
+    /**
+     * Tags
+     */
+    tags?: Array<string>;
+    /**
      * Split By Color
      */
     split_by_color?: boolean;
     /**
      * Split Suffix Mode
      */
-    split_suffix_mode?: 'color' | 'initial' | 'none';
+    split_suffix_mode?: 'color' | 'initial' | 'code' | 'none';
     /**
      * Split Suffix Separator
      */
@@ -1962,6 +1994,10 @@ export type ImportedProductInput = {
      */
     manufacturing_country?: string | null;
     /**
+     * Weight Kg
+     */
+    weight_kg?: number | null;
+    /**
      * Image Urls
      */
     image_urls?: Array<string>;
@@ -2020,6 +2056,10 @@ export type ImportedProductOutput = {
      */
     manufacturing_country?: string | null;
     /**
+     * Weight Kg
+     */
+    weight_kg?: number | null;
+    /**
      * Image Urls
      */
     image_urls?: Array<string>;
@@ -2049,6 +2089,10 @@ export type ImportedVariantInput = {
      * Color
      */
     color?: string | null;
+    /**
+     * Color Code
+     */
+    color_code?: string | null;
     /**
      * Size
      */
@@ -2099,6 +2143,10 @@ export type ImportedVariantOutput = {
      * Color
      */
     color?: string | null;
+    /**
+     * Color Code
+     */
+    color_code?: string | null;
     /**
      * Size
      */

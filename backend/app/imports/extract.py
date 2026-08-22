@@ -74,6 +74,10 @@ SYSTEM_PROMPT = (
     "- color = le NOM de la couleur ; si le document porte à la fois un "
     "code et un nom (« 410 - Marine », « BLK Black »), renvoie uniquement "
     "le nom. Le code seul est gardé tel quel s'il n'y a pas de nom.\n"
+    "- color_code = le CODE couleur fournisseur quand le document en porte "
+    "un (« 410 », « BK999 ») ; chaîne vide sinon.\n"
+    "- weight = le poids unitaire du produit tel qu'imprimé, AVEC son unité "
+    "(« 0,32 kg », « 450 g ») ; chaîne vide si le document n'en porte pas.\n"
     "- size : si plusieurs grilles de tailles cohabitent (US, UK, EU…), "
     "renvoie la taille EU (européenne). Sinon la taille telle qu'imprimée.\n"
     "- extra = une éventuelle TROISIÈME dimension de variante, distincte de "
@@ -180,6 +184,7 @@ def _confidence_schema(fields: list[str]) -> dict[str, Any]:
 _VARIANT_FIELDS = [
     "ean",
     "color",
+    "color_code",
     "size",
     "extra",
     "quantity",
@@ -198,6 +203,7 @@ _PRODUCT_FIELDS = [
     "composition",
     "hs_code",
     "manufacturing_country",
+    "weight",
 ]
 
 # Every field is a required string; "" means absent (see note above).
@@ -244,6 +250,7 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
 class _RawVariant(BaseModel):
     ean: str = ""
     color: str = ""
+    color_code: str = ""
     size: str = ""
     extra: str = ""
     quantity: str = ""
@@ -264,6 +271,7 @@ class _RawProduct(BaseModel):
     composition: str = ""
     hs_code: str = ""
     manufacturing_country: str = ""
+    weight: str = ""
     image_urls: list[str] = Field(default_factory=list)
     variants: list[_RawVariant] = Field(default_factory=list)
     confidence: dict[str, float] = Field(default_factory=dict)
@@ -466,24 +474,59 @@ def _opt(value: str) -> str | None:
 _COLOR_CODE_TOKEN = re.compile(r"^[A-Za-z]{0,4}\d{2,}[A-Za-z0-9]*$")
 
 
-def _strip_color_code(value: str | None) -> str | None:
-    """Retire les codes couleur accolés au nom (« BLACK BK999 » → « BLACK »).
+def _split_color_code(value: str | None) -> tuple[str | None, str | None]:
+    """Sépare le nom de couleur du code accolé (« BLACK BK999 » → nom + code).
 
     Filet DÉTERMINISTE derrière le prompt (qui demande déjà le nom seul mais
     en laisse passer — bon Lemaire 2026-07-30) : les jetons code en tête ou en
-    queue sont retirés tant qu'il reste au moins un jeton alphabétique. Une
-    valeur faite uniquement de codes (« 410 ») reste intacte.
+    queue sont retirés tant qu'il reste au moins un jeton alphabétique — et
+    CONSERVÉS depuis 2026-08-22 (suffixe de référence mode « code »). Une
+    valeur faite uniquement de codes (« 410 ») reste intacte, sans code.
     """
     if not value:
-        return value
+        return value, None
     tokens = [t for t in re.split(r"[\s ]+", value.strip()) if t]
     if not any(not _COLOR_CODE_TOKEN.match(t) for t in tokens):
-        return value
+        return value, None
+    codes: list[str] = []
     while len(tokens) > 1 and _COLOR_CODE_TOKEN.match(tokens[-1]):
-        tokens.pop()
+        codes.append(tokens.pop())
     while len(tokens) > 1 and _COLOR_CODE_TOKEN.match(tokens[0]):
-        tokens.pop(0)
-    return " ".join(tokens)
+        codes.append(tokens.pop(0))
+    return " ".join(tokens), (codes[0] if codes else None)
+
+
+def _strip_color_code(value: str | None) -> str | None:
+    """Nom de couleur sans le code accolé (compat tests/appels historiques)."""
+    return _split_color_code(value)[0]
+
+
+# « 0,32 kg », « 450 g », « 1.2kg », « 320 » (grammes implicites > 20).
+_WEIGHT_PATTERN = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilos|g|gr|grammes?)?", re.IGNORECASE
+)
+
+
+def _parse_weight_kg(value: str | None) -> float | None:
+    """Poids du document normalisé en kg (best-effort, None si illisible).
+
+    Sans unité : > 20 est lu en grammes (aucun vêtement ne pèse 450 kg),
+    sinon en kg.
+    """
+    if not value:
+        return None
+    match = _WEIGHT_PATTERN.search(value)
+    if match is None:
+        return None
+    number = float(match.group(1).replace(",", "."))
+    if number <= 0:
+        return None
+    unit = (match.group(2) or "").lower()
+    if unit and not unit.startswith("k"):
+        return round(number / 1000, 3)
+    if not unit and number > 20:
+        return round(number / 1000, 3)
+    return round(number, 3)
 
 
 def _depipe(value: str | None) -> str | None:
@@ -774,8 +817,12 @@ class ClaudeExtractor:
             ),
         }
         present = {key for key, value in fields.items() if value is not None}
+        weight_kg = _parse_weight_kg(_opt(raw.weight))
+        if weight_kg is not None:
+            present.add("weight")
         return ImportedProduct(
             **fields,  # type: ignore[arg-type]
+            weight_kg=weight_kg,
             image_urls=raw.image_urls,
             variants=variants,
             confidence=_kept_confidence(raw.confidence, present),
@@ -808,9 +855,12 @@ class ClaudeExtractor:
                 )
                 unreadable.append(field)
             prices[field] = value
+        color_name, captured_code = _split_color_code(_depipe(_opt(raw.color)))
         fields = {
             "ean": _opt(raw.ean),
-            "color": _strip_color_code(_depipe(_opt(raw.color))),
+            "color": color_name,
+            # Code explicite du document d'abord, sinon celui retiré du nom.
+            "color_code": _opt(raw.color_code) or captured_code,
             "size": _depipe(_opt(raw.size)),
             "extra": _depipe(_opt(raw.extra)),
             "supplier_sku": _opt(raw.supplier_sku),

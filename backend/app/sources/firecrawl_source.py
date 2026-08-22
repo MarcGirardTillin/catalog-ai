@@ -72,6 +72,11 @@ def extract_source_product(
         # Prix affiché sur la page (texte libre) — proposé à l'apply quand le
         # catalogue n'a pas de prix.
         "_price": str(extracted["price"]) if extracted.get("price") else None,
+        "_currency": (
+            str(extracted["currency"]).strip().upper()
+            if extracted.get("currency")
+            else None
+        ),
         # Couleur de la fiche telle que lue sur la page : sert au contrôle de
         # coloris du resolver et à l'affichage des candidats en review.
         "_color": str(color) if color else None,

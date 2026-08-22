@@ -354,6 +354,20 @@ export const AccountSettingsSchema = {
             ],
             title: 'Imaging Generation Scene Preset'
         },
+        content_language: {
+            type: 'string',
+            enum: [
+                'fr',
+                'en'
+            ],
+            title: 'Content Language',
+            default: 'fr'
+        },
+        keep_product_names: {
+            type: 'boolean',
+            title: 'Keep Product Names',
+            default: true
+        },
         imaging_generation_gender: {
             type: 'string',
             enum: [
@@ -2950,6 +2964,33 @@ export const ImportProfileConfig_InputSchema = {
             title: 'Apply Title Template',
             default: false
         },
+        title_template: {
+            type: 'string',
+            maxLength: 300,
+            title: 'Title Template',
+            default: ''
+        },
+        title_case: {
+            type: 'string',
+            enum: [
+                '',
+                'none',
+                'upper',
+                'capitalize',
+                'title',
+                'sentence'
+            ],
+            title: 'Title Case',
+            default: ''
+        },
+        tags: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            maxItems: 20,
+            title: 'Tags'
+        },
         split_by_color: {
             type: 'boolean',
             title: 'Split By Color',
@@ -2960,6 +3001,7 @@ export const ImportProfileConfig_InputSchema = {
             enum: [
                 'color',
                 'initial',
+                'code',
                 'none'
             ],
             title: 'Split Suffix Mode',
@@ -3094,6 +3136,33 @@ export const ImportProfileConfig_OutputSchema = {
             title: 'Apply Title Template',
             default: false
         },
+        title_template: {
+            type: 'string',
+            maxLength: 300,
+            title: 'Title Template',
+            default: ''
+        },
+        title_case: {
+            type: 'string',
+            enum: [
+                '',
+                'none',
+                'upper',
+                'capitalize',
+                'title',
+                'sentence'
+            ],
+            title: 'Title Case',
+            default: ''
+        },
+        tags: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            maxItems: 20,
+            title: 'Tags'
+        },
         split_by_color: {
             type: 'boolean',
             title: 'Split By Color',
@@ -3104,6 +3173,7 @@ export const ImportProfileConfig_OutputSchema = {
             enum: [
                 'color',
                 'initial',
+                'code',
                 'none'
             ],
             title: 'Split Suffix Mode',
@@ -3549,6 +3619,17 @@ export const ImportedProduct_InputSchema = {
             ],
             title: 'Manufacturing Country'
         },
+        weight_kg: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Weight Kg'
+        },
         image_urls: {
             items: {
                 type: 'string'
@@ -3673,6 +3754,17 @@ export const ImportedProduct_OutputSchema = {
             ],
             title: 'Manufacturing Country'
         },
+        weight_kg: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Weight Kg'
+        },
         image_urls: {
             items: {
                 type: 'string'
@@ -3726,6 +3818,17 @@ export const ImportedVariant_InputSchema = {
                 }
             ],
             title: 'Color'
+        },
+        color_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color Code'
         },
         size: {
             anyOf: [
@@ -3852,6 +3955,17 @@ export const ImportedVariant_OutputSchema = {
                 }
             ],
             title: 'Color'
+        },
+        color_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color Code'
         },
         size: {
             anyOf: [

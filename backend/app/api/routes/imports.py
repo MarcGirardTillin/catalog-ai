@@ -58,7 +58,7 @@ from app.api.schemas.imports import (
     ImportTransferRequest,
     ImportTransferResult,
 )
-from app.api.schemas.settings import AccountSettings
+from app.api.schemas.settings import AccountSettings, TitleCase
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import require_credits
 from app.clients.xano import XanoClient, XanoError
@@ -706,12 +706,24 @@ def _resolve_render(
     try:
         config = ImportProfileConfig.model_validate(profile.config_json or {})
         products = products_from_payloads([item.payload_json or {} for item in items])
+        # Surcharge par profil (Marc 2026-08-22) : le modèle du profil gagne
+        # sur celui du compte quand il est renseigné.
+        title_template = (
+            config.title_template
+            or account_settings.title_template
+            or DEFAULT_TITLE_TEMPLATE
+        )
+        title_case: TitleCase = (
+            config.title_case
+            if config.title_case in ("none", "upper", "capitalize", "title", "sentence")
+            else account_settings.title_case
+        )
         return render_rows(
             products,
             config,
             fallback_supplier=fallback_supplier,
-            title_template=account_settings.title_template or DEFAULT_TITLE_TEMPLATE,
-            title_case=account_settings.title_case,
+            title_template=title_template,
+            title_case=title_case,
             category_weights=category_weights,
         )
     except ValueError as exc:  # includes pydantic.ValidationError

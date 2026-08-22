@@ -648,3 +648,21 @@ def test_strip_color_code_removes_codes_next_to_the_name() -> None:
     # Une valeur faite uniquement de codes reste intacte (rien à préférer).
     assert _strip_color_code("410") == "410"
     assert _strip_color_code(None) is None
+
+
+def test_split_color_code_captures_the_code() -> None:
+    from app.imports.extract import _parse_weight_kg, _split_color_code
+
+    assert _split_color_code("BLACK BK999") == ("BLACK", "BK999")
+    assert _split_color_code("410 - Marine".replace(" - ", " ")) == ("Marine", "410")
+    # Valeur faite uniquement de codes : intacte, sans code capturé.
+    assert _split_color_code("410") == ("410", None)
+    assert _split_color_code(None) == (None, None)
+
+    # Poids : unités normalisées en kg, grammes implicites au-delà de 20.
+    assert _parse_weight_kg("0,32 kg") == 0.32
+    assert _parse_weight_kg("450 g") == 0.45
+    assert _parse_weight_kg("320") == 0.32
+    assert _parse_weight_kg("1.2") == 1.2
+    assert _parse_weight_kg("") is None
+    assert _parse_weight_kg("n/a") is None

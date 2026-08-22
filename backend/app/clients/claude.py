@@ -52,22 +52,41 @@ SELECT_SCHEMA = {
 
 DEFAULT_META_MAX_LENGTH = 160
 
+# Libellés de langue injectés dans le prompt (réglage compte, Marc
+# 2026-08-22) — le nom complet guide mieux le modèle qu'un code ISO.
+_LANGUAGE_LABELS = {"fr": "français", "en": "anglais"}
 
-def _system_prompt(meta_max_length: int) -> str:
+
+def _system_prompt(
+    meta_max_length: int,
+    language: str = "fr",
+    keep_product_names: bool = True,
+) -> str:
+    label = _LANGUAGE_LABELS.get(language, language or "français")
+    names_rule = (
+        "Cite le NOM/TITRE du produit exactement tel qu'il apparaît dans le "
+        "contexte, sans le traduire (même s'il est dans une autre langue).\n"
+        if keep_product_names
+        else ""
+    )
     return (
         "Tu rédiges des fiches produit pour une boutique de mode multimarques. "
-        "À partir du contexte produit fourni, écris une description FR engageante "
-        "et fidèle (pas d'invention de caractéristiques) et une meta description "
-        f"FR de {meta_max_length} caractères maximum. Intègre naturellement les "
-        "détails techniques fournis quand ils existent — caractéristiques "
-        "(source_features), composition, pays de fabrication, entretien — sans "
-        "jamais compléter un détail absent du contexte.\n"
-        "Fournis DEUX versions de la description : description_fr en texte "
+        f"À partir du contexte produit fourni, écris en {label} une description "
+        "engageante et fidèle (pas d'invention de caractéristiques) et une meta "
+        f"description de {meta_max_length} caractères maximum, en {label} aussi. "
+        "Intègre naturellement les détails techniques fournis quand ils "
+        "existent — caractéristiques (source_features), composition, pays de "
+        "fabrication, entretien — sans jamais compléter un détail absent du "
+        "contexte.\n"
+        + names_rule
+        + "Fournis DEUX versions de la description : description_fr en texte "
         "brut (paragraphes séparés par une ligne vide), et description_html_fr "
         "en HTML léger STRICTEMENT limité aux balises <p>, <br>, <ul>, <li>, "
         "<strong> et <em> — même contenu, mis en forme (paragraphes, liste "
         "des caractéristiques), quelques emojis sobres autorisés si le ton "
-        "s'y prête. Jamais de <script>, de style inline ni d'attributs."
+        "s'y prête. Jamais de <script>, de style inline ni d'attributs. "
+        "(Les clés description_fr/meta_description_fr sont des noms "
+        "techniques : le CONTENU suit la langue demandée ci-dessus.)"
     )
 
 
@@ -125,6 +144,8 @@ class ClaudeClient:
         model: str | None = None,
         meta_max_length: int = DEFAULT_META_MAX_LENGTH,
         image_urls: list[str] | None = None,
+        language: str = "fr",
+        keep_product_names: bool = True,
     ) -> CopyResult:
         """Generate FR description + meta description for one product.
 
@@ -161,7 +182,7 @@ class ClaudeClient:
             response = self._client.messages.create(
                 model=model or self._model,
                 max_tokens=MAX_TOKENS,
-                system=_system_prompt(meta_max_length),
+                system=_system_prompt(meta_max_length, language, keep_product_names),
                 output_config={
                     "format": {"type": "json_schema", "schema": COPY_SCHEMA}
                 },

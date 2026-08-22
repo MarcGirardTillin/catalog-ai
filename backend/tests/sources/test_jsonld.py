@@ -75,3 +75,25 @@ def test_returns_none_on_error_or_non_html() -> None:
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         assert fetch_jsonld_product(URL, client=client) is None
+
+
+def test_embedded_price_fallback_when_jsonld_has_no_offer() -> None:
+    """State SPA (`"price":39.95` répété) quand le JSON-LD n'a pas d'offre."""
+    html = (
+        '<script type="application/ld+json">'
+        '{"@type": "Product", "name": "T-shirt Stockholm", '
+        '"image": "https://x/1.jpg"}'
+        "</script>"
+        '<script>{"product":{"price":39.95,"currency":"GBP"},'
+        '"alt":{"price":39.95}}</script>'
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=html)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        product = fetch_jsonld_product("https://brand.example/p", client=client)
+
+    assert product is not None
+    assert product["_price"] == "39.95"
+    assert product["_currency"] == "GBP"

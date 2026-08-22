@@ -118,6 +118,11 @@ class AccountSettings(BaseModel):
     # Presets Photoroom par défaut (engine=photoroom) ; None = choix libre.
     imaging_generation_model_preset: ModelPresetOption | None = None
     imaging_generation_scene_preset: ScenePresetOption | None = None
+    # Langue des contenus générés (descriptions/meta) — Marc 2026-08-22.
+    content_language: Literal["fr", "en"] = "fr"
+    # Conserver les noms/titres de produits dans leur langue d'origine quand
+    # ils sont cités en description (« Stockholm BBQ Emb » reste tel quel).
+    keep_product_names: bool = True
     # Genre du mannequin par défaut : auto = department du produit Tillin.
     imaging_generation_gender: Literal["auto", "female", "male"] = "auto"
     # Instructions de mise à plat par défaut (pré-remplies dans le studio,

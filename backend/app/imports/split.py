@@ -78,6 +78,19 @@ def split_products_by_color(
                 suffix = ""
             elif suffix_mode == "initial":
                 suffix = initials.get(color, "")
+            elif suffix_mode == "code":
+                # Code couleur fournisseur (Marc 2026-08-22) ; repli sur le
+                # nom quand le document n'en portait pas.
+                code = next(
+                    (
+                        (v.color_code or "").strip()
+                        for v in product.variants
+                        if (v.color or "").strip() == color
+                        and (v.color_code or "").strip()
+                    ),
+                    "",
+                )
+                suffix = code.upper() or _clean_color(color, separator or "")
             else:
                 # Le nom de couleur interne suit le même séparateur que la
                 # jonction réf-couleur (« REF DARK OLIVE », « REFDARKOLIVE »).

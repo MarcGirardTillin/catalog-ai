@@ -37,6 +37,9 @@ class ImportedVariant(BaseModel):
 
     ean: str | None = None  # barcode as printed in the source (digits kept raw)
     color: str | None = None  # Tillin option « Couleur »
+    # Code couleur fournisseur (« 410 », « BK999 ») quand le document en porte
+    # un — sert au suffixe de référence mode « code » (Marc 2026-08-22).
+    color_code: str | None = None
     size: str | None = None  # Tillin option « Taille »
     # Troisième dimension de variante quand le document en porte une (bonnet,
     # longueur de jambe, largeur…) — rendue via l'axe « extra » du profil.
@@ -63,6 +66,9 @@ class ImportedProduct(BaseModel):
     composition: str | None = None
     hs_code: str | None = None  # harmonized system code
     manufacturing_country: str | None = None
+    # Poids unitaire lu dans le document (normalisé en kg) — prioritaire sur
+    # le poids par défaut de la catégorie au rendu CSV (Marc 2026-08-22).
+    weight_kg: float | None = None
     image_urls: list[str] = Field(default_factory=list)
     variants: list[ImportedVariant] = Field(default_factory=list)
     confidence: Confidence = Field(default_factory=dict)

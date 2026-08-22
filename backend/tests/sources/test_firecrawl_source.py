@@ -53,6 +53,7 @@ def test_extract_source_product_adapts_to_shopify_shape() -> None:
         "_firecrawl": True,
         "_reference_codes": ["L41737900", "0193128691234"],
         "_price": None,
+        "_currency": None,
         "_color": "Black",
     }
 

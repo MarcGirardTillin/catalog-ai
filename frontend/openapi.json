@@ -7532,6 +7532,20 @@
             ],
             "title": "Imaging Generation Scene Preset"
           },
+          "content_language": {
+            "type": "string",
+            "enum": [
+              "fr",
+              "en"
+            ],
+            "title": "Content Language",
+            "default": "fr"
+          },
+          "keep_product_names": {
+            "type": "boolean",
+            "title": "Keep Product Names",
+            "default": true
+          },
           "imaging_generation_gender": {
             "type": "string",
             "enum": [
@@ -10075,6 +10089,33 @@
             "title": "Apply Title Template",
             "default": false
           },
+          "title_template": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title Template",
+            "default": ""
+          },
+          "title_case": {
+            "type": "string",
+            "enum": [
+              "",
+              "none",
+              "upper",
+              "capitalize",
+              "title",
+              "sentence"
+            ],
+            "title": "Title Case",
+            "default": ""
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Tags"
+          },
           "split_by_color": {
             "type": "boolean",
             "title": "Split By Color",
@@ -10085,6 +10126,7 @@
             "enum": [
               "color",
               "initial",
+              "code",
               "none"
             ],
             "title": "Split Suffix Mode",
@@ -10218,6 +10260,33 @@
             "title": "Apply Title Template",
             "default": false
           },
+          "title_template": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title Template",
+            "default": ""
+          },
+          "title_case": {
+            "type": "string",
+            "enum": [
+              "",
+              "none",
+              "upper",
+              "capitalize",
+              "title",
+              "sentence"
+            ],
+            "title": "Title Case",
+            "default": ""
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Tags"
+          },
           "split_by_color": {
             "type": "boolean",
             "title": "Split By Color",
@@ -10228,6 +10297,7 @@
             "enum": [
               "color",
               "initial",
+              "code",
               "none"
             ],
             "title": "Split Suffix Mode",
@@ -10663,6 +10733,17 @@
             ],
             "title": "Manufacturing Country"
           },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
           "image_urls": {
             "items": {
               "type": "string"
@@ -10786,6 +10867,17 @@
             ],
             "title": "Manufacturing Country"
           },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
           "image_urls": {
             "items": {
               "type": "string"
@@ -10838,6 +10930,17 @@
               }
             ],
             "title": "Color"
+          },
+          "color_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Code"
           },
           "size": {
             "anyOf": [
@@ -10963,6 +11066,17 @@
               }
             ],
             "title": "Color"
+          },
+          "color_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Code"
           },
           "size": {
             "anyOf": [

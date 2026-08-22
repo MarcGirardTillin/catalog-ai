@@ -16,6 +16,7 @@
     CardTitle,
   } from "@/lib/components/ui/card"
   import { Label } from "@/lib/components/ui/label"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -86,6 +87,10 @@
   let editorialInstructions = $state("")
   let clientContext = $state("")
   let metaMaxLength = $state(160)
+  // Langue des contenus générés + noms de produits gardés dans leur langue
+  // (Marc 2026-08-22).
+  let contentLanguage = $state<"fr" | "en">("fr")
+  let keepProductNames = $state(true)
 
   // --- Imagerie : défauts de normalisation + modèle de nom des images ---
   let imagingOptions = $state<StudioOptions>({
@@ -140,6 +145,8 @@
     editorialInstructions = data.editorial_instructions ?? ""
     clientContext = data.client_context ?? ""
     metaMaxLength = data.meta_max_length ?? 160
+    contentLanguage = data.content_language ?? "fr"
+    keepProductNames = data.keep_product_names ?? true
     imagingOptions = {
       remove_bg: data.imaging_remove_bg ?? true,
       bg_color: data.imaging_bg_color ?? "FFFFFF",
@@ -199,6 +206,8 @@
       editorial_instructions: editorialInstructions.trim() || null,
       client_context: clientContext.trim() || null,
       meta_max_length: metaMax,
+      content_language: contentLanguage,
+      keep_product_names: keepProductNames,
       imaging_remove_bg: imagingOptions.remove_bg,
       imaging_bg_color: imagingOptions.bg_color.replace(/^#/, "").toUpperCase(),
       imaging_ratio: imagingOptions.ratio,
@@ -239,6 +248,8 @@
       editorialInstructions,
       clientContext,
       metaMaxLength,
+      contentLanguage,
+      keepProductNames,
       imagingOptions,
       imageTemplateParts,
       generationConfig,
@@ -350,6 +361,27 @@
                     bind:value={metaMaxLength}
                   />
                 </div>
+                <div class="flex flex-col gap-1.5 sm:max-w-56">
+                  <Label for="content-language">Langue des contenus générés</Label>
+                  <Select id="content-language" bind:value={contentLanguage}>
+                    <option value="fr">Français</option>
+                    <option value="en">Anglais</option>
+                  </Select>
+                </div>
+                <label class="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    class="mt-0.5 size-4 shrink-0"
+                    bind:checked={keepProductNames}
+                  />
+                  <span>
+                    Conserver les noms de produits dans leur langue d'origine
+                    <span class="text-muted-foreground block text-xs font-normal">
+                      Un titre anglais cité dans une description reste en
+                      anglais (« Stockholm BBQ Emb » n'est pas traduit).
+                    </span>
+                  </span>
+                </label>
               {/if}
             </CardContent>
           </Card>
