@@ -128,6 +128,7 @@
       titleCase = loadedCase
     }
     accountLoaded = true
+    savedTitleSig = titleSignature()
   })
 
   async function saveTitleTemplate() {
@@ -143,6 +144,7 @@
       return
     }
     queryClient.invalidateQueries({ queryKey: ["settings", "account"] })
+    savedTitleSig = titleSignature()
     toast.success("Modèle de titre enregistré")
   }
 
@@ -168,6 +170,7 @@
       }))
       for (const row of categoryWeights) initialWeights.set(row.id, row.value)
       categoryWeightsLoaded = true
+      savedWeightsSig = weightsSignature()
     })
   })
 
@@ -193,10 +196,46 @@
       }
     }
     savingWeights = false
+    // La signature « enregistrée » reflète ce qui a RÉELLEMENT été écrit
+    // (échec partiel = la barre reste visible pour les lignes restantes).
+    savedWeightsSig = JSON.stringify(
+      categoryWeights.map((row) => [row.id, initialWeights.get(row.id) ?? ""]),
+    )
     if (failed > 0) toast.error(`${failed} catégorie(s) non enregistrée(s).`)
     else if (saved > 0) toast.success("Poids par défaut enregistrés")
   }
+
+  // --- Barre « modifications non enregistrées » (même pattern que les
+  // Réglages d'enrichissement, généralisé sur demande Marc 2026-08-22). ---
+  function titleSignature(): string {
+    return JSON.stringify({ templateTokens, templateSeparator, titleCase })
+  }
+  function weightsSignature(): string {
+    return JSON.stringify(categoryWeights.map((row) => [row.id, row.value]))
+  }
+  let savedTitleSig = $state("")
+  let savedWeightsSig = $state("")
+  const dirty = $derived(
+    (accountLoaded && titleSignature() !== savedTitleSig) ||
+      (categoryWeightsLoaded && weightsSignature() !== savedWeightsSig),
+  )
+  const savingAny = $derived(savingTitle || savingWeights)
+
+  async function saveDirty() {
+    if (accountLoaded && titleSignature() !== savedTitleSig) {
+      await saveTitleTemplate()
+    }
+    if (categoryWeightsLoaded && weightsSignature() !== savedWeightsSig) {
+      await saveCategoryWeights()
+    }
+  }
+
+  function onBeforeUnload(event: BeforeUnloadEvent) {
+    if (dirty) event.preventDefault()
+  }
 </script>
+
+<svelte:window onbeforeunload={onBeforeUnload} />
 
 <RequireAuth>
   {#snippet children(user)}
@@ -229,11 +268,6 @@
                 bind:separator={templateSeparator}
                 bind:titleCase
               />
-              <div class="flex justify-end">
-                <Button size="sm" disabled={savingTitle} onclick={saveTitleTemplate}>
-                  {savingTitle ? "Enregistrement…" : "Enregistrer"}
-                </Button>
-              </div>
             {/if}
           </CardContent>
         </Card>
@@ -286,16 +320,30 @@
                   </label>
                 {/each}
               </div>
-              <div class="flex justify-end">
-                <Button size="sm" disabled={savingWeights} onclick={saveCategoryWeights}>
-                  {savingWeights ? "Enregistrement…" : "Enregistrer les poids"}
-                </Button>
-              </div>
             {/if}
           </CardContent>
         </Card>
         </div>
+
+        {#if dirty}
+          <div class="h-14" aria-hidden="true"></div>
+        {/if}
       </div>
+
+      <!-- Barre collante « modifications non enregistrées » : enregistre ce
+           qui a changé (modèle de titre et/ou poids), quel que soit l'onglet. -->
+      {#if dirty}
+        <div class="border-border bg-card fixed inset-x-0 bottom-0 z-10 border-t p-3 sm:left-60">
+          <div class="mx-auto flex max-w-4xl items-center justify-between gap-3">
+            <p class="text-muted-foreground text-xs">
+              Modifications non enregistrées.
+            </p>
+            <Button size="sm" disabled={savingAny} onclick={saveDirty}>
+              {savingAny ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </div>
+        </div>
+      {/if}
     </AppShell>
   {/snippet}
 </RequireAuth>
