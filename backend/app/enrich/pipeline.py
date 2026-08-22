@@ -440,7 +440,8 @@ class EnrichmentPipeline:
             template = config.get("title_template") or DEFAULT_TITLE_TEMPLATE
             case: TitleCase = (
                 config["title_case"]
-                if config.get("title_case") in ("upper", "capitalize", "title")
+                if config.get("title_case")
+                in ("upper", "capitalize", "title", "sentence")
                 else "none"
             )
             item.staged_title = apply_title_template(product, template, case) or None

@@ -166,6 +166,7 @@
     }
     flatInstructions = data.imaging_flat_instructions ?? ""
     accountLoaded = true
+    savedSignature = settingsSignature()
   })
 
   async function saveAccount() {
@@ -225,19 +226,34 @@
       return
     }
     queryClient.invalidateQueries({ queryKey: ["settings", "account"] })
+    savedSignature = settingsSignature()
     toast.success("Réglages d'enrichissement enregistrés")
+  }
+
+  // --- État « modifications non enregistrées » (feedback Marc 2026-08-22 :
+  // le bouton en bas de page n'est pas visible et on peut quitter sans
+  // enregistrer). Signature = tous les champs éditables ; la barre collante
+  // n'apparaît que quand elle diverge de la dernière sauvegarde. ---
+  function settingsSignature(): string {
+    return JSON.stringify({
+      editorialInstructions,
+      clientContext,
+      metaMaxLength,
+      imagingOptions,
+      imageTemplateParts,
+      generationConfig,
+      flatInstructions,
+    })
+  }
+  let savedSignature = $state("")
+  const dirty = $derived(accountLoaded && settingsSignature() !== savedSignature)
+
+  function onBeforeUnload(event: BeforeUnloadEvent) {
+    if (dirty) event.preventDefault()
   }
 </script>
 
-<!-- Bouton Enregistrer commun aux trois onglets (le PUT envoie l'ensemble
-     des défauts d'enrichissement, quel que soit l'onglet actif). -->
-{#snippet saveAccountRow()}
-  <div class="flex justify-end">
-    <Button disabled={!accountLoaded || savingAccount} onclick={saveAccount}>
-      {savingAccount ? "Enregistrement…" : "Enregistrer"}
-    </Button>
-  </div>
-{/snippet}
+<svelte:window onbeforeunload={onBeforeUnload} />
 
 <RequireAuth>
   {#snippet children(user)}
@@ -294,7 +310,6 @@
             </CardContent>
           </Card>
 
-          {@render saveAccountRow()}
         </div>
 
         <!-- Onglet Contexte boutique (markdown injecté dans chaque génération) -->
@@ -339,7 +354,6 @@
             </CardContent>
           </Card>
 
-          {@render saveAccountRow()}
         </div>
 
         <!-- Onglet Imagerie (défauts de normalisation + nom des images) -->
@@ -408,7 +422,6 @@
                   maxlength="500"
                   bind:value={flatInstructions}
                 ></textarea>
-                {@render saveAccountRow()}
               {/if}
             </CardContent>
           </Card>
@@ -431,10 +444,29 @@
             </CardContent>
           </Card>
 
-          {@render saveAccountRow()}
         </div>
 
+        <!-- Réserve de place pour la barre collante quand elle est visible. -->
+        {#if dirty}
+          <div class="h-14" aria-hidden="true"></div>
+        {/if}
       </div>
+
+      <!-- Barre collante « modifications non enregistrées » : visible dès
+           qu'un champ diverge de la dernière sauvegarde, quel que soit
+           l'onglet ou la position de scroll (feedback Marc 2026-08-22). -->
+      {#if dirty}
+        <div class="border-border bg-card fixed inset-x-0 bottom-0 z-10 border-t p-3 sm:left-60">
+          <div class="mx-auto flex max-w-4xl items-center justify-between gap-3">
+            <p class="text-muted-foreground text-xs">
+              Modifications non enregistrées.
+            </p>
+            <Button size="sm" disabled={savingAccount} onclick={saveAccount}>
+              {savingAccount ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </div>
+        </div>
+      {/if}
       {/if}
     </AppShell>
   {/snippet}

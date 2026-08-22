@@ -32,6 +32,7 @@
   } from "@/lib/api/imaging"
   import {
     getProduct,
+    removeProductImage,
     reorderProductImages,
     uploadProductImages,
     type ProductDetail,
@@ -329,6 +330,45 @@
     ;[next[index], next[target]] = [next[target], next[index]]
     orderedImages = next
   }
+
+  // Drag & drop (natif HTML5) en complément des flèches : on déplace
+  // l'élément saisi à la position survolée.
+  let dragIndex = $state<number | null>(null)
+  function onDragStart(index: number, event: DragEvent) {
+    dragIndex = index
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"
+  }
+  function onDragOver(index: number, event: DragEvent) {
+    event.preventDefault()
+    if (dragIndex === null || dragIndex === index) return
+    const next = [...orderedImages]
+    const [moved] = next.splice(dragIndex, 1)
+    next.splice(index, 0, moved)
+    orderedImages = next
+    dragIndex = index
+  }
+  function onDragEnd() {
+    dragIndex = null
+  }
+
+  // « Suppression » d'une image (désactivation Xano : retirée de la
+  // boutique — pas d'endpoint de suppression réelle côté Tillin).
+  let deletingImageId = $state<number | null>(null)
+  async function deleteImage(imageId: number) {
+    const id = productId
+    if (id == null || deletingImageId != null) return
+    deletingImageId = imageId
+    const { data, error } = await removeProductImage(id, imageId)
+    deletingImageId = null
+    if (error || !data) {
+      toast.error("Suppression impossible — rechargez le produit.")
+      return
+    }
+    product = data
+    orderedImages = orderedImages.filter((image) => image.id !== imageId)
+    toast.success("Image retirée de la boutique.")
+    onProductChanged?.()
+  }
   async function saveOrder() {
     const id = productId
     if (id == null || savingOrder) return
@@ -423,7 +463,9 @@
       { label: "Titre renseigné", ok: hasText(p.title) },
       { label: "Référence renseignée", ok: hasText(p.reference_code) },
       { label: "Au moins une variante", ok: (p.variants ?? []).length > 0 },
-      { label: "Prix de vente", ok: p.price != null },
+      // Un décimal Xano vide remonte 0, pas null : 0 = NON renseigné (même
+      // règle que le poids, corrigée pour le prix le 2026-08-22).
+      { label: "Prix de vente", ok: p.price != null && Number(p.price) > 0 },
       { label: "Catégorie renseignée", ok: hasText(p.category) },
       { label: "Marque renseignée", ok: hasText(p.brand?.name) },
     ]
@@ -651,11 +693,25 @@
             {/if}
           </div>
           {#if reordering}
-            <!-- Mode réordonnancement : flèches ◀ ▶, écriture en un coup via
-                 PUT /products/{"{id}"}/images/positions (positions Tillin). -->
+            <!-- Mode réordonnancement : drag & drop natif + flèches ◀ ▶,
+                 écriture en un coup via PUT positions ; la poubelle désactive
+                 l'image côté Tillin (« suppression », décision Marc). -->
+            <p class="text-muted-foreground text-xs">
+              Glissez-déposez les vignettes (ou utilisez les flèches) pour
+              changer l'ordre.
+            </p>
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {#each orderedImages as image, index (image.id)}
-                <div class="relative">
+                <div
+                  class="relative cursor-grab {dragIndex === index
+                    ? 'ring-primary rounded-md opacity-70 ring-2'
+                    : ''}"
+                  role="listitem"
+                  draggable="true"
+                  ondragstart={(e) => onDragStart(index, e)}
+                  ondragover={(e) => onDragOver(index, e)}
+                  ondragend={onDragEnd}
+                >
                   <img
                     src={image.url}
                     alt=""
@@ -667,6 +723,16 @@
                   >
                     {index + 1}
                   </span>
+                  <button
+                    type="button"
+                    class="bg-card/90 hover:bg-destructive hover:text-destructive-foreground text-foreground absolute top-1 right-1 rounded-full px-2 py-1 text-xs shadow-sm disabled:opacity-40"
+                    aria-label="Supprimer cette image"
+                    title="Retirer de la boutique"
+                    disabled={savingOrder || deletingImageId != null}
+                    onclick={() => image.id != null && deleteImage(image.id)}
+                  >
+                    {deletingImageId === image.id ? "…" : "🗑"}
+                  </button>
                   <div class="absolute right-1 bottom-1 flex gap-1">
                     <button
                       type="button"

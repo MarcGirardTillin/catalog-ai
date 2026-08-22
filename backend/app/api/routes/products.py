@@ -167,6 +167,28 @@ def reorder_product_images(
     return updated if updated is not None else product
 
 
+@router.delete("/{product_id}/images/{image_id}", response_model=Product)
+def delete_product_image(product_id: int, image_id: int, xano: XanoDep) -> Product:
+    """« Supprime » une image de la galerie (désactivation Xano, décision
+    Marc 2026-08-22 : pas d'endpoint de suppression réelle côté Tillin —
+    la désactivation la retire de la boutique). Renvoie le produit relu."""
+    product = xano.get_product(product_id)
+    if product is None:
+        raise AppException(
+            status_code=404, code="not_found", message="Product not found"
+        )
+    known = {image.id for image in product.images if image.id is not None}
+    if image_id not in known:
+        raise AppException(
+            status_code=422,
+            code="unknown_image",
+            message="La galerie a changé — rechargez le produit avant de supprimer",
+        )
+    xano.deactivate_product_images([image_id])
+    updated = xano.get_product(product_id)
+    return updated if updated is not None else product
+
+
 @router.post("/{product_id}/images", response_model=ProductImagesUploadResult)
 def upload_product_images(
     product_id: int,

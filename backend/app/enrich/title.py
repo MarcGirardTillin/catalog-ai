@@ -5,7 +5,16 @@ import re
 from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
 
-TOKENS = ("brand", "title", "season", "reference", "color", "category", "department")
+TOKENS = (
+    "brand",
+    "title",
+    "season",
+    "reference",
+    "color",
+    "category",
+    "department",
+    "composition",
+)
 
 
 def _product_color(product: Product) -> str:
@@ -32,6 +41,9 @@ def _token_values(product: Product) -> dict[str, str]:
         "color": _product_color(product),
         "category": product.category or "",
         "department": product.department or "",
+        # Matière (« 100% coton ») — demandé pour les noms d'images et les
+        # modèles de titre type « {catégorie} en {matière} » (Marc 2026-08-22).
+        "composition": product.composition or "",
     }
 
 
@@ -62,6 +74,9 @@ def _apply_case(text: str, case: TitleCase) -> str:
         return re.sub(r"\b\w", lambda m: m.group().upper(), text)
     if case == "title":
         return re.sub(r"\b\w", lambda m: m.group().upper(), text.lower())
+    if case == "sentence":
+        lowered = text.lower()
+        return lowered[:1].upper() + lowered[1:]
     return text
 
 

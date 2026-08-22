@@ -13,6 +13,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import { toast } from "svelte-sonner"
+  import { navigate } from "svelte5-router"
 
   import {
     optionTitles,
@@ -679,9 +680,28 @@
               {#if item.warnings.length > 0}
                 <ul class="flex flex-col gap-0.5">
                   {#each item.warnings as warning, i (i)}
+                    {@const productMatch = warning.match(/\s*produit #(\d+)\)/)}
                     <li class="text-warning-foreground flex items-start gap-1.5 text-xs">
                       <TriangleAlert size={12} class="mt-0.5 shrink-0" aria-hidden="true" />
-                      {warning}
+                      <span class="flex flex-wrap items-center gap-1.5">
+                        <!-- L'id brut ne parle pas à l'utilisateur (feedback
+                             Marc) : on le remplace par un lien vers la fiche. -->
+                        {productMatch
+                          ? warning
+                              .replace(productMatch[0], ")")
+                              .replace(/\s*\(\)\s*$/, "")
+                          : warning}
+                        {#if productMatch}
+                          <button
+                            type="button"
+                            class="text-primary cursor-pointer underline-offset-2 hover:underline"
+                            onclick={() =>
+                              navigate(`/products?product=${productMatch[1]}`)}
+                          >
+                            Voir le produit
+                          </button>
+                        {/if}
+                      </span>
                     </li>
                   {/each}
                 </ul>

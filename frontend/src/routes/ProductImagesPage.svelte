@@ -667,6 +667,15 @@
   // « Tout enregistrer » : chaque résultat prêt, en SÉQUENTIEL (un upload
   // Xano à la fois), puis un seul rafraîchissement + un toast récapitulatif.
   let savingAll = $state(false)
+  // Résultats scindés : à valider (dont en cours/échoués) vs déjà
+  // enregistrés dans Tillin.
+  const pendingResults = $derived(
+    results.filter((pair) => pair.work.status !== "saved"),
+  )
+  const savedResults = $derived(
+    results.filter((pair) => pair.work.status === "saved"),
+  )
+
   const savableCount = $derived(
     results.filter((p) => p.work.status === "done" && !p.work.rendering).length,
   )
@@ -1131,10 +1140,65 @@
             disabled={runningCount > 0}
           />
 
-          <!-- Résultats -->
-          {#if results.length > 0}
+          <!-- Résultats : les visuels À VALIDER d'abord, les enregistrés dans
+               une section séparée en dessous (feedback Marc 2026-08-22 :
+               « toutes les photos se suivent »). -->
+          {#snippet resultCard(pair: (typeof results)[number])}
+            {@const isGeneration = KEY_SUFFIXES.some((s) =>
+              pair.key.endsWith(s),
+            )}
+            {@const retry = pair.key.endsWith(GEN_SUFFIX)
+              ? runGenerate
+              : pair.key.endsWith(FLAT_SUFFIX)
+                ? runFlat
+                : pair.key.endsWith(GHOST_SUFFIX)
+                  ? runGhost
+                  : pair.key.endsWith(SWAP_SUFFIX)
+                    ? runSwap
+                    : pair.key.endsWith(RECOLOR_SUFFIX)
+                      ? runRecolor
+                      : runOne}
+            {#if pair.work.status === "running"}
+              <Card size="sm">
+                <CardContent class="text-muted-foreground py-6 text-center text-sm">
+                  {isGeneration
+                    ? "Génération du visuel en cours (10 s à 1 min)…"
+                    : "Traitement en cours…"}
+                </CardContent>
+              </Card>
+            {:else if pair.work.status === "failed"}
+              <Card size="sm">
+                <CardContent class="flex items-center justify-between gap-3 py-4">
+                  <p class="text-destructive text-sm" role="alert">
+                    {pair.work.error ?? "Traitement échoué."}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={() => retry(pair.image)}
+                  >
+                    Réessayer
+                  </Button>
+                </CardContent>
+              </Card>
+            {:else}
+              <AssetResult
+                image={pair.image}
+                work={pair.work}
+                filenamePlaceholder={hasImageTemplate
+                  ? "selon le modèle de titre d'image"
+                  : ""}
+                onSave={() => saveOne(pair.key)}
+                onDiscard={() => discardOne(pair.key)}
+              />
+            {/if}
+          {/snippet}
+
+          {#if pendingResults.length > 0}
             <div class="mt-1 flex items-center justify-between gap-2">
-              <h2 class="font-title text-sm font-bold">Résultats</h2>
+              <h2 class="font-title text-sm font-bold">
+                À valider ({pendingResults.length})
+              </h2>
               {#if savableCount > 1}
                 <Button
                   size="sm"
@@ -1148,55 +1212,33 @@
                 </Button>
               {/if}
             </div>
-            {#each results as pair (pair.key)}
-              {@const isGeneration = KEY_SUFFIXES.some((s) =>
-                pair.key.endsWith(s),
-              )}
-              {@const retry = pair.key.endsWith(GEN_SUFFIX)
-                ? runGenerate
-                : pair.key.endsWith(FLAT_SUFFIX)
-                  ? runFlat
-                  : pair.key.endsWith(GHOST_SUFFIX)
-                    ? runGhost
-                    : pair.key.endsWith(SWAP_SUFFIX)
-                      ? runSwap
-                      : pair.key.endsWith(RECOLOR_SUFFIX)
-                        ? runRecolor
-                        : runOne}
-              {#if pair.work.status === "running"}
-                <Card size="sm">
-                  <CardContent class="text-muted-foreground py-6 text-center text-sm">
-                    {isGeneration
-                      ? "Génération du visuel en cours (10 s à 1 min)…"
-                      : "Traitement en cours…"}
-                  </CardContent>
-                </Card>
-              {:else if pair.work.status === "failed"}
-                <Card size="sm">
-                  <CardContent class="flex items-center justify-between gap-3 py-4">
-                    <p class="text-destructive text-sm" role="alert">
-                      {pair.work.error ?? "Traitement échoué."}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onclick={() => retry(pair.image)}
-                    >
-                      Réessayer
-                    </Button>
-                  </CardContent>
-                </Card>
-              {:else}
-                <AssetResult
-                  image={pair.image}
-                  work={pair.work}
-                  filenamePlaceholder={hasImageTemplate
-                    ? "selon le modèle de titre d'image"
-                    : ""}
-                  onSave={() => saveOne(pair.key)}
-                  onDiscard={() => discardOne(pair.key)}
-                />
-              {/if}
+            {#each pendingResults as pair (pair.key)}
+              {@render resultCard(pair)}
+            {/each}
+            {#if savableCount > 1}
+              <!-- Doublé en bas de liste : après avoir vérifié les visuels,
+                   pas besoin de remonter (feedback Marc 2026-08-22). -->
+              <div class="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={savingAll || runningCount > 0}
+                  onclick={saveAll}
+                >
+                  {savingAll
+                    ? "Enregistrement…"
+                    : `Tout enregistrer (${savableCount})`}
+                </Button>
+              </div>
+            {/if}
+          {/if}
+
+          {#if savedResults.length > 0}
+            <h2 class="font-title text-muted-foreground mt-2 text-sm font-bold">
+              Enregistrées dans Tillin ({savedResults.length})
+            </h2>
+            {#each savedResults as pair (pair.key)}
+              {@render resultCard(pair)}
             {/each}
           {/if}
         {/if}

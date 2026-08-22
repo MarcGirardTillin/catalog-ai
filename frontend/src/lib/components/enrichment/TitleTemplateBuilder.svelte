@@ -9,6 +9,7 @@
     { key: "color", label: "Couleur" },
     { key: "category", label: "Catégorie" },
     { key: "department", label: "Rayon" },
+    { key: "composition", label: "Matière" },
   ] as const
 
   export const SEPARATORS = [
@@ -48,7 +49,7 @@
   }: {
     tokens: string[]
     separator: string
-    titleCase: "none" | "upper" | "capitalize" | "title"
+    titleCase: "none" | "upper" | "capitalize" | "title" | "sentence"
   } = $props()
 
   const CASE_OPTIONS = [
@@ -56,6 +57,7 @@
     { value: "upper", label: "MAJUSCULES" },
     { value: "capitalize", label: "Initiales En Majuscule (acronymes préservés)" },
     { value: "title", label: "Initiales Seules (reste en minuscules)" },
+    { value: "sentence", label: "Phrase (1re lettre seulement en majuscule)" },
   ] as const
 
   /** Applique la casse choisie à l'aperçu (miroir du backend). */
@@ -65,6 +67,10 @@
       return text.replace(/\b\w/g, (c) => c.toUpperCase())
     if (titleCase === "title")
       return text.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+    if (titleCase === "sentence") {
+      const lowered = text.toLowerCase()
+      return lowered.charAt(0).toUpperCase() + lowered.slice(1)
+    }
     return text
   }
 
@@ -77,6 +83,7 @@
     color: "Vert",
     category: "T-shirts",
     department: "Homme",
+    composition: "100% coton bio",
   }
 
   const titleTemplate = $derived(tokens.map((key) => `{${key}}`).join(separator))

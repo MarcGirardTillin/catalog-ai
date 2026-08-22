@@ -601,6 +601,74 @@
         }
       }
     },
+    "/products/{product_id}/images/{image_id}": {
+      "delete": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Delete Product Image",
+        "description": "« Supprime » une image de la galerie (désactivation Xano, décision\nMarc 2026-08-22 : pas d'endpoint de suppression réelle côté Tillin —\nla désactivation la retire de la boutique). Renvoie le produit relu.",
+        "operationId": "products-delete_product_image",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/products/{product_id}/images": {
       "post": {
         "tags": [
@@ -7129,7 +7197,8 @@
               "none",
               "upper",
               "capitalize",
-              "title"
+              "title",
+              "sentence"
             ],
             "title": "Title Case",
             "default": "none"

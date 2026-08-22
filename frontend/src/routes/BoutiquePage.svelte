@@ -82,7 +82,9 @@
   let savingTitle = $state(false)
   let templateTokens = $state<string[]>(["title"])
   let templateSeparator = $state(" ")
-  let titleCase = $state<"none" | "upper" | "capitalize" | "title">("none")
+  let titleCase = $state<"none" | "upper" | "capitalize" | "title" | "sentence">(
+    "none",
+  )
 
   const titleTemplate = $derived(
     templateTokens.map((key) => `{${key}}`).join(templateSeparator),
@@ -120,7 +122,8 @@
     if (
       loadedCase === "upper" ||
       loadedCase === "capitalize" ||
-      loadedCase === "title"
+      loadedCase === "title" ||
+      loadedCase === "sentence"
     ) {
       titleCase = loadedCase
     }

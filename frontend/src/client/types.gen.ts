@@ -17,7 +17,7 @@ export type AccountSettings = {
     /**
      * Title Case
      */
-    title_case?: 'none' | 'upper' | 'capitalize' | 'title';
+    title_case?: 'none' | 'upper' | 'capitalize' | 'title' | 'sentence';
     /**
      * Editorial Instructions
      */
@@ -3900,6 +3900,40 @@ export type ProductsReorderProductImagesResponses = {
 };
 
 export type ProductsReorderProductImagesResponse = ProductsReorderProductImagesResponses[keyof ProductsReorderProductImagesResponses];
+
+export type ProductsDeleteProductImageData = {
+    body?: never;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+        /**
+         * Image Id
+         */
+        image_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/{image_id}';
+};
+
+export type ProductsDeleteProductImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsDeleteProductImageError = ProductsDeleteProductImageErrors[keyof ProductsDeleteProductImageErrors];
+
+export type ProductsDeleteProductImageResponses = {
+    /**
+     * Successful Response
+     */
+    200: Product;
+};
+
+export type ProductsDeleteProductImageResponse = ProductsDeleteProductImageResponses[keyof ProductsDeleteProductImageResponses];
 
 export type ProductsUploadProductImagesData = {
     body: BodyProductsUploadProductImages;

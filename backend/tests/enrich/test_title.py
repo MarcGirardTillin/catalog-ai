@@ -145,3 +145,24 @@ def test_case_title_lowers_the_rest_of_each_word() -> None:
         apply_title_template(product, "{brand} {title}", "title")
         == "Armedangels Polo Rayé En Coton Bio"
     )
+
+
+def test_case_sentence_only_first_letter_upper() -> None:
+    product = _product("Polo Rayé En COTON Bio", "ARMEDANGELS")
+    # « Phrase » : 1re lettre en majuscule, TOUT le reste en minuscules.
+    assert (
+        apply_title_template(product, "{brand} {title}", "sentence")
+        == "Armedangels polo rayé en coton bio"
+    )
+
+
+def test_composition_token_renders_the_material() -> None:
+    from app.api.schemas import Product
+
+    product = Product(
+        id=9, title="Polo rayé", category="T-shirts", composition="100% coton bio"
+    )
+    assert (
+        apply_title_template(product, "{category} {composition} {title}")
+        == "T-shirts 100% coton bio Polo rayé"
+    )

@@ -1,6 +1,6 @@
 // Produits : adaptateur fin au-dessus du client OpenAPI généré. Seul
 // l'upload multipart reste un appel brut (FormData avec champ répété).
-import { productsReadProduct } from "@/client"
+import { productsDeleteProductImage, productsReadProduct } from "@/client"
 import { client } from "@/client/client.gen"
 import type { Product, ProductImagesUploadResult } from "@/client"
 
@@ -19,6 +19,14 @@ export function reorderProductImages(id: number, imageIds: number[]) {
     responseType: "json",
     url: `/products/${id}/images/positions`,
     body: { product_image_ids: imageIds },
+  })
+}
+
+/** « Supprime » une image (désactivation Xano : retirée de la boutique).
+ * Renvoie le produit relu. */
+export function removeProductImage(id: number, imageId: number) {
+  return productsDeleteProductImage({
+    path: { product_id: id, image_id: imageId },
   })
 }
 

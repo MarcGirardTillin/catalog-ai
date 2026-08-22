@@ -19,7 +19,8 @@ export const AccountSettingsSchema = {
                 'none',
                 'upper',
                 'capitalize',
-                'title'
+                'title',
+                'sentence'
             ],
             title: 'Title Case',
             default: 'none'

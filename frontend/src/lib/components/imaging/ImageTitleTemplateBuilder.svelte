@@ -13,6 +13,7 @@
     { key: "position", label: "Position" },
     { key: "brand", label: "Marque" },
     { key: "title", label: "Titre" },
+    { key: "composition", label: "Matière" },
   ] as const
 
   /** Segments d'un modèle stocké : tokens connus + textes libres. */
@@ -52,6 +53,7 @@
     position: "2",
     brand: "ARMEDANGELS",
     title: "Polo rayé en coton bio",
+    composition: "100% coton bio",
   }
 
   const template = $derived(buildImageTemplate(parts))

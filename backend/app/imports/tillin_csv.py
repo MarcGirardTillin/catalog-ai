@@ -219,6 +219,7 @@ def render_rows(
                 "color": _product_color(product),
                 "category": category,
                 "department": gender,
+                "composition": product.composition or "",
             }
             title = (
                 render_title_template(values, title_template, title_case)

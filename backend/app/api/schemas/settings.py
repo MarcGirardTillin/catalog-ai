@@ -18,7 +18,7 @@ from app.api.schemas.imaging import (
 # or strict Title Case (first letters raised, REST LOWERED — "ARMEDANGELS"
 # becomes "Armedangels", but so does "XL" → "Xl": the trade-off is the
 # user's, per account).
-TitleCase = Literal["none", "upper", "capitalize", "title"]
+TitleCase = Literal["none", "upper", "capitalize", "title", "sentence"]
 
 
 class UserPreferences(BaseModel):
