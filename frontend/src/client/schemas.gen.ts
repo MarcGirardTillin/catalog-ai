@@ -799,6 +799,11 @@ export const Body_products_upload_product_imagesSchema = {
             type: 'array',
             title: 'Files',
             description: 'Image files to upload'
+        },
+        apply_template: {
+            type: 'boolean',
+            title: 'Apply Template',
+            default: true
         }
     },
     type: 'object',
@@ -5766,6 +5771,22 @@ export const RecolorRequestSchema = {
     ],
     title: 'RecolorRequest',
     description: '« Changer la couleur » : FASHN edit sur une photo du produit.\n\nLa couleur cible vient du picker (`color`, hex ou nom) OU d\'une image de\nréférence (`reference_image_url`, autre visuel dont on veut la teinte) —\nau moins l\'un des deux. `instructions` = ajustements libres.'
+} as const;
+
+export const RenameImageRequestSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 200,
+            minLength: 1,
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: [
+        'name'
+    ],
+    title: 'RenameImageRequest'
 } as const;
 
 export const RenderRequestSchema = {

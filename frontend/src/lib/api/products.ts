@@ -1,6 +1,10 @@
 // Produits : adaptateur fin au-dessus du client OpenAPI généré. Seul
 // l'upload multipart reste un appel brut (FormData avec champ répété).
-import { productsDeleteProductImage, productsReadProduct } from "@/client"
+import {
+  productsDeleteProductImage,
+  productsReadProduct,
+  productsRenameProductImage,
+} from "@/client"
 import { client } from "@/client/client.gen"
 import type { Product, ProductImagesUploadResult } from "@/client"
 
@@ -30,10 +34,25 @@ export function removeProductImage(id: number, imageId: number) {
   })
 }
 
-/** Upload multipart : chaque fichier part sous le champ répété `files`. */
-export function uploadProductImages(id: number, files: File[]) {
+/** Renomme une image (ré-upload sous le nouveau nom + désactivation de
+ * l'ancienne : nouvel id, position conservée). Renvoie le produit relu. */
+export function renameProductImage(id: number, imageId: number, name: string) {
+  return productsRenameProductImage({
+    path: { product_id: id, image_id: imageId },
+    body: { name },
+  })
+}
+
+/** Upload multipart : chaque fichier part sous le champ répété `files`.
+ * `applyTemplate` : nommer selon le modèle de nom d'images du compte. */
+export function uploadProductImages(
+  id: number,
+  files: File[],
+  applyTemplate = true,
+) {
   const body = new FormData()
   for (const file of files) body.append("files", file, file.name)
+  body.append("apply_template", applyTemplate ? "true" : "false")
   return client.post<{ 200: ProductImagesUploadResult }, unknown>({
     responseType: "json",
     url: `/products/${id}/images`,

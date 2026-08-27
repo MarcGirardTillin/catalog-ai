@@ -669,6 +669,84 @@
         }
       }
     },
+    "/products/{product_id}/images/{image_id}/rename": {
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Rename Product Image",
+        "description": "Renomme une image SANS traitement : même séquence que « remplacer »\nau studio (ré-upload des octets sous le nouveau nom, désactivation de\nl'ancienne ligne, position héritée). Tillin n'ayant pas d'endpoint de\nrenommage, l'image change d'id et l'ancien fichier reste désactivé\n(décision Marc 2026-08-23). Aucun prestataire appelé, aucun crédit.",
+        "operationId": "products-rename_product_image",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/products/{product_id}/images": {
       "post": {
         "tags": [
@@ -7965,6 +8043,11 @@
             "type": "array",
             "title": "Files",
             "description": "Image files to upload"
+          },
+          "apply_template": {
+            "type": "boolean",
+            "title": "Apply Template",
+            "default": true
           }
         },
         "type": "object",
@@ -12843,6 +12926,21 @@
         ],
         "title": "RecolorRequest",
         "description": "« Changer la couleur » : FASHN edit sur une photo du produit.\n\nLa couleur cible vient du picker (`color`, hex ou nom) OU d'une image de\nréférence (`reference_image_url`, autre visuel dont on veut la teinte) —\nau moins l'un des deux. `instructions` = ajustements libres."
+      },
+      "RenameImageRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "RenameImageRequest"
       },
       "RenderRequest": {
         "properties": {

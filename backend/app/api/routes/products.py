@@ -9,7 +9,9 @@ backend proxies the call behind the session cookie.
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from app.api.deps import (
     CurrentUserDep,
@@ -59,6 +61,8 @@ from app.clients.base import NotConfiguredError
 from app.clients.xano import XanoClient
 from app.core.config import settings
 from app.imaging import service as imaging_service
+from app.imaging.naming import render_image_filename, slugify_filename
+from app.imaging.service import download_source_image
 from app.imaging.uploads import prepare_upload
 from app.models import ImageAsset
 
@@ -189,11 +193,97 @@ def delete_product_image(product_id: int, image_id: int, xano: XanoDep) -> Produ
     return updated if updated is not None else product
 
 
+class RenameImageRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/{product_id}/images/{image_id}/rename", response_model=Product)
+def rename_product_image(
+    product_id: int, image_id: int, body: RenameImageRequest, xano: XanoDep
+) -> Product:
+    """Renomme une image SANS traitement : même séquence que « remplacer »
+    au studio (ré-upload des octets sous le nouveau nom, désactivation de
+    l'ancienne ligne, position héritée). Tillin n'ayant pas d'endpoint de
+    renommage, l'image change d'id et l'ancien fichier reste désactivé
+    (décision Marc 2026-08-23). Aucun prestataire appelé, aucun crédit."""
+    product = xano.get_product(product_id)
+    if product is None:
+        raise AppException(
+            status_code=404, code="not_found", message="Product not found"
+        )
+    original = next((image for image in product.images if image.id == image_id), None)
+    if original is None or not original.url:
+        raise AppException(
+            status_code=422,
+            code="unknown_image",
+            message="La galerie a changé — rechargez le produit avant de renommer",
+        )
+    stem = slugify_filename(body.name)
+    if not stem:
+        raise AppException(
+            status_code=422, code="invalid_name", message="Nom d'image invalide"
+        )
+    try:
+        data = download_source_image(original.url)
+    except Exception as exc:  # noqa: BLE001 — CDN Tillin injoignable
+        raise AppException(
+            status_code=502,
+            code="source_unavailable",
+            message="Image d'origine introuvable — réessayez",
+        ) from exc
+    part = prepare_upload(f"{stem}.jpg", data, index=0)
+    created = xano.upload_product_images(product_id, [part])
+    if not created or created[0].id is None:
+        raise AppException(
+            status_code=502,
+            code="images_rejected",
+            message="Tillin a refusé l'image renommée",
+        )
+    xano.deactivate_product_images([image_id])
+    # Position héritée : l'upload en masse ajoute en fin de galerie.
+    ordered = [image.id for image in product.images if image.id is not None]
+    ordered = [created[0].id if i == image_id else i for i in ordered]
+    xano.set_product_image_positions(
+        [(i, position) for position, i in enumerate(ordered, start=1)]
+    )
+    updated = xano.get_product(product_id)
+    return updated if updated is not None else product
+
+
+def _template_names_for_upload(
+    db: "Session", account_id: int, xano: XanoClient, product_id: int, count: int
+) -> list[str | None]:
+    """Noms rendus par le modèle du compte pour `count` images ajoutées en
+    fin de galerie (best-effort : pas de modèle / produit introuvable / token
+    inconnu → None = nom du fichier déposé)."""
+    template = (account_settings(db, account_id).image_title_template or "").strip()
+    if not template:
+        return [None] * count
+    try:
+        product = xano.get_product(product_id)
+    except Exception:  # noqa: BLE001 — nommage bonus, jamais bloquant
+        product = None
+    if product is None:
+        return [None] * count
+    offset = len(product.images)
+    names: list[str | None] = []
+    for index in range(count):
+        try:
+            stem = render_image_filename(product, offset + index + 1, template)
+        except ValueError:
+            stem = ""
+        names.append(f"{stem}.jpg" if stem else None)
+    return names
+
+
 @router.post("/{product_id}/images", response_model=ProductImagesUploadResult)
 def upload_product_images(
     product_id: int,
     xano: XanoDep,
+    db: SessionDep,
+    current_user: CurrentUserDep,
     files: Annotated[list[UploadFile], File(description="Image files to upload")],
+    apply_template: Annotated[bool, Form()] = True,
 ) -> ProductImagesUploadResult:
     """Upload local/captured images to a product (proxied to Tillin storage).
 
@@ -215,6 +305,14 @@ def upload_product_images(
             code="too_many_files",
             message=f"Too many files (max {MAX_UPLOAD_FILES})",
         )
+    # Nommage selon le modèle de nom d'images du compte (Marc 2026-08-23 :
+    # même règle qu'au studio et à l'apply d'enrichissement) — position =
+    # rang dans la galerie APRÈS ajout ; désactivable à l'appel.
+    template_names: list[str | None] = [None] * len(files)
+    if apply_template:
+        template_names = _template_names_for_upload(
+            db, resolve_account_id(db, current_user), xano, product_id, len(files)
+        )
     parts: list[tuple[str, bytes, str]] = []
     for index, upload in enumerate(files):
         data = upload.file.read()  # sync route -> threadpool; use the sync handle
@@ -224,7 +322,9 @@ def upload_product_images(
                 code="file_too_large",
                 message=f"{upload.filename or 'file'} exceeds the size limit",
             )
-        parts.append(prepare_upload(upload.filename, data, index=index))
+        parts.append(
+            prepare_upload(template_names[index] or upload.filename, data, index=index)
+        )
     created = xano.upload_product_images(product_id, parts)
     if len(created) < len(parts):
         # Tillin a accepté la requête mais n'a pas créé toutes les images :

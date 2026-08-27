@@ -453,6 +453,10 @@ export type BodyProductsUploadProductImages = {
      * Image files to upload
      */
     files: Array<Blob | File>;
+    /**
+     * Apply Template
+     */
+    apply_template?: boolean;
 };
 
 /**
@@ -3160,6 +3164,16 @@ export type RecolorRequest = {
 };
 
 /**
+ * RenameImageRequest
+ */
+export type RenameImageRequest = {
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
  * RenderRequest
  *
  * POST /imaging/assets/{id}/render body — local Pillow recompose.
@@ -4006,6 +4020,40 @@ export type ProductsDeleteProductImageResponses = {
 };
 
 export type ProductsDeleteProductImageResponse = ProductsDeleteProductImageResponses[keyof ProductsDeleteProductImageResponses];
+
+export type ProductsRenameProductImageData = {
+    body: RenameImageRequest;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: number;
+        /**
+         * Image Id
+         */
+        image_id: number;
+    };
+    query?: never;
+    url: '/products/{product_id}/images/{image_id}/rename';
+};
+
+export type ProductsRenameProductImageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProductsRenameProductImageError = ProductsRenameProductImageErrors[keyof ProductsRenameProductImageErrors];
+
+export type ProductsRenameProductImageResponses = {
+    /**
+     * Successful Response
+     */
+    200: Product;
+};
+
+export type ProductsRenameProductImageResponse = ProductsRenameProductImageResponses[keyof ProductsRenameProductImageResponses];
 
 export type ProductsUploadProductImagesData = {
     body: BodyProductsUploadProductImages;

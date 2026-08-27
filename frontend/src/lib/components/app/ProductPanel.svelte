@@ -33,6 +33,7 @@
   import {
     getProduct,
     removeProductImage,
+    renameProductImage,
     reorderProductImages,
     uploadProductImages,
     type ProductDetail,
@@ -351,6 +352,42 @@
     dragIndex = null
   }
 
+  // Renommage d'une image (ré-upload + désactivation, nouvel id, position
+  // conservée — décision Marc 2026-08-23, pas d'endpoint de renommage Xano).
+  let renamingImageId = $state<number | null>(null)
+  let renameValue = $state("")
+  let renameBusy = $state(false)
+  function fileStem(url: string): string {
+    const last = url.split("?")[0].split("/").pop() ?? ""
+    return last.replace(/\.[A-Za-z0-9]+$/, "")
+  }
+  function openRename(image: ProductImage) {
+    if (image.id == null) return
+    renamingImageId = image.id
+    renameValue = fileStem(image.url)
+  }
+  async function confirmRename() {
+    const id = productId
+    if (id == null || renamingImageId == null || renameBusy) return
+    const name = renameValue.trim()
+    if (!name) return
+    renameBusy = true
+    const { data, error } = await renameProductImage(id, renamingImageId, name)
+    renameBusy = false
+    if (error || !data) {
+      toast.error("Renommage impossible — rechargez le produit.")
+      return
+    }
+    product = data
+    orderedImages = [...(data.images ?? [])]
+    renamingImageId = null
+    toast.success("Image renommée.")
+    onProductChanged?.()
+  }
+
+  // Nommage des images déposées selon le modèle du compte (par défaut).
+  let uploadApplyTemplate = $state(true)
+
   // « Suppression » d'une image (désactivation Xano : retirée de la
   // boutique — pas d'endpoint de suppression réelle côté Tillin).
   let deletingImageId = $state<number | null>(null)
@@ -418,6 +455,7 @@
     const { data, error } = await uploadProductImages(
       id,
       stagedImages.map((image) => image.file),
+      uploadApplyTemplate,
     )
     savingImages = false
     if (error || !data) {
@@ -725,6 +763,16 @@
                   </span>
                   <button
                     type="button"
+                    class="bg-card/90 hover:bg-card text-foreground absolute top-1 right-9 rounded-full px-2 py-1 text-xs shadow-sm disabled:opacity-40"
+                    aria-label="Renommer cette image"
+                    title="Renommer"
+                    disabled={savingOrder || deletingImageId != null}
+                    onclick={() => openRename(image)}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
                     class="bg-card/90 hover:bg-destructive hover:text-destructive-foreground text-foreground absolute top-1 right-1 rounded-full px-2 py-1 text-xs shadow-sm disabled:opacity-40"
                     aria-label="Supprimer cette image"
                     title="Retirer de la boutique"
@@ -898,6 +946,10 @@
               Ces images sont en attente ; « Enregistrer » les importe dans Tillin
               et les attache au produit.
             </p>
+            <label class="flex items-center gap-1.5 text-xs">
+              <input type="checkbox" bind:checked={uploadApplyTemplate} />
+              Nommer les fichiers selon le modèle de nom d'images du compte
+            </label>
           {/if}
 
           <!-- Traitements sur l'image sélectionnée (défauts du compte) ;
@@ -1146,6 +1198,31 @@
      panneau, il passe aussi au-dessus à z-index égal. -->
 {#if lightboxSrc}
   <Lightbox src={lightboxSrc} onClose={() => (lightboxSrc = null)} />
+{/if}
+
+{#if renamingImageId != null}
+  <Dialog title="Renommer l'image" onClose={() => (renamingImageId = null)}>
+    <div class="flex flex-col gap-2">
+      <p class="text-muted-foreground text-xs">
+        Le fichier est ré-importé dans Tillin sous ce nom (l'extension est
+        conservée) ; l'ancienne image est désactivée, la position est gardée.
+      </p>
+      <input
+        type="text"
+        class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-2.5 font-mono text-sm outline-none focus-visible:ring-1"
+        bind:value={renameValue}
+        onkeydown={(e) => e.key === "Enter" && confirmRename()}
+      />
+    </div>
+    <div class="mt-3 flex justify-end gap-2">
+      <Button variant="outline" disabled={renameBusy} onclick={() => (renamingImageId = null)}>
+        Annuler
+      </Button>
+      <Button disabled={renameBusy || !renameValue.trim()} onclick={confirmRename}>
+        {renameBusy ? "Renommage…" : "Renommer"}
+      </Button>
+    </div>
+  </Dialog>
 {/if}
 
 <!-- Options d'enrichissement : même Dialog que la barre de sélection, monté
