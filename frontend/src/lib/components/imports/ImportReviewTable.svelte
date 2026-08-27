@@ -31,6 +31,7 @@
   import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { Input } from "@/lib/components/ui/input"
+  import TagInput from "@/lib/components/app/TagInput.svelte"
   import { Label } from "@/lib/components/ui/label"
   import { Select } from "@/lib/components/ui/select"
   import ReferenceSelect from "@/lib/components/app/ReferenceSelect.svelte"
@@ -77,6 +78,7 @@
       gender: string | null
       brand: string | null
       supplier: string | null
+      tags?: string[]
     } | null
     /** Items/statuts modifiés : la page rafraîchit le job + l'aperçu CSV. */
     onChanged: () => void
@@ -126,9 +128,11 @@
     composition: string
     hs_code: string
     manufacturing_country: string
+    // Tags Tillin propres au produit (cumulés avec ceux du profil au CSV).
+    tags: string[]
     variants: VariantDraft[]
   }
-  type DraftTextField = Exclude<keyof ProductDraft, "variants">
+  type DraftTextField = Exclude<keyof ProductDraft, "variants" | "tags">
 
   let drafts = $state<Record<number, ProductDraft>>({})
   let savingItemId = $state<number | null>(null)
@@ -145,6 +149,7 @@
       composition: product.composition ?? "",
       hs_code: product.hs_code ?? "",
       manufacturing_country: product.manufacturing_country ?? "",
+      tags: [...(product.tags ?? [])],
       variants: product.variants.map((v) => ({
         color: v.color ?? "",
         size: v.size ?? "",
@@ -178,6 +183,7 @@
       composition: clean(draft.composition),
       hs_code: clean(draft.hs_code),
       manufacturing_country: clean(draft.manufacturing_country),
+      tags: draft.tags.map((tag) => tag.trim()).filter((tag) => tag !== ""),
       variants: original.variants.map((variant, index): ImportedVariant => {
         const v = draft.variants[index]
         if (!v) return variant
@@ -422,6 +428,13 @@
   ]
 
   const GENDER_OPTIONS = ["Homme", "Femme", "Unisexe"]
+  // Rayons de la boutique (get_all_informations « departments », Tillin
+  // 2026-08-22) — repli sur la liste historique quand le compte n'en a pas.
+  const genderOptions = $derived(
+    catalogFilters?.departments?.length
+      ? optionTitles(catalogFilters.departments)
+      : GENDER_OPTIONS,
+  )
 
   /** Titres du référentiel pour un champ ([] = repli en champ texte). */
   function referentialTitles(list: ReviewReferential | undefined): string[] {
@@ -714,7 +727,7 @@
                 <!-- Mode review : édition locale (buffer), Enregistrer envoie le payload complet. -->
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {#each EDIT_FIELDS as field (field.key)}
-                    <div class="flex min-w-0 flex-col gap-1">
+                    <div class="flex min-w-0 flex-col gap-1 {field.key === 'title' ? 'sm:col-span-2' : ''}">
                       <Label for="item-{item.id}-{field.key}" class="text-xs">
                         {field.label}
                       </Label>
@@ -752,12 +765,12 @@
                               ? `— (${profileDefaults.gender} au transfert)`
                               : "—"}
                           </option>
-                          {#if drafts[item.id][field.key] !== "" && !GENDER_OPTIONS.includes(drafts[item.id][field.key])}
+                          {#if drafts[item.id][field.key] !== "" && !genderOptions.includes(drafts[item.id][field.key])}
                             <option value={drafts[item.id][field.key]}>
                               {drafts[item.id][field.key]} (extrait)
                             </option>
                           {/if}
-                          {#each GENDER_OPTIONS as gender (gender)}
+                          {#each genderOptions as gender (gender)}
                             <option value={gender}>{gender}</option>
                           {/each}
                         </Select>
@@ -768,6 +781,15 @@
                           options={referentialTitles(field.referential)}
                           bind:value={drafts[item.id][field.key]}
                         />
+                      {:else if field.key === "title"}
+                        <!-- Titres fournisseurs souvent longs : zone large
+                             et auto-extensible (feedback Marc 2026-08-22). -->
+                        <textarea
+                          id="item-{item.id}-{field.key}"
+                          rows="1"
+                          class="border-input bg-card text-foreground focus-visible:border-ring focus-visible:ring-ring/50 field-sizing-content min-h-8 w-full resize-none rounded-md border px-2.5 py-1.5 text-xs transition-colors outline-none focus-visible:ring-1"
+                          bind:value={drafts[item.id][field.key]}
+                        ></textarea>
                       {:else}
                         <Input
                           id="item-{item.id}-{field.key}"
@@ -777,6 +799,20 @@
                       {/if}
                     </div>
                   {/each}
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <Label for="item-{item.id}-tags" class="text-xs">Tags Tillin</Label>
+                  <TagInput
+                    id="item-{item.id}-tags"
+                    bind:values={drafts[item.id].tags}
+                    placeholder="Ex. nouveautés — Entrée pour ajouter"
+                  />
+                  {#if profileDefaults?.tags?.length}
+                    <p class="text-muted-foreground text-xs">
+                      + tags du profil : {profileDefaults.tags.join(", ")}
+                    </p>
+                  {/if}
                 </div>
 
                 {#if profileDefaults?.supplier}

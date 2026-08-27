@@ -237,6 +237,7 @@ def to_flat_service_options(
         prompt=base.prompt,
         ratio=base.ratio,
         resolution=base.resolution,
+        garment_color=base.garment_color,
         background_color=background_color,
         garment=garment,
     )

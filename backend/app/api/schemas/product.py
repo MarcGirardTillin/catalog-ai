@@ -61,6 +61,8 @@ class Product(BaseModel):
     season: str | None = None
     category: str | None = None
     department: str | None = None
+    # Division Tillin (nouveau groupe de classification, 2026-08-22).
+    division: str | None = None
     composition: str | None = None
     manufacturing_country: str | None = None
     tags: list[str] = Field(default_factory=list)

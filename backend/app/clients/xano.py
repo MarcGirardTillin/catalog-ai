@@ -80,6 +80,11 @@ CLASSIFICATION_GROUPS = (
     "seasons",
     "suppliers",
     "tags",
+    # Rayons et divisions : exposés par `/get_all_informations` depuis le
+    # 2026-08-22 (ids PAR BOUTIQUE — la carte statique ci-dessous ne sert
+    # plus que de repli pour les comptes non migrés).
+    "departments",
+    "divisions",
 )
 
 # Departments (« rayon ») are a fixed Tillin taxonomy — NOT exposed by
@@ -473,11 +478,17 @@ def _map_product(
     variants = [_map_variant(v, axes) for v in variants_raw]
     # Product-level retail price: the first variant that carries one.
     price = next((v.price for v in variants if v.price is not None), None)
-    department_id = raw.get("department_id")
-    try:
-        department = DEPARTMENTS.get(int(department_id)) if department_id else None
-    except (TypeError, ValueError):
-        department = None
+    department = _resolve_title(
+        raw, "department", "department_id", maps.get("departments")
+    )
+    if department is None:
+        # Repli historique (ids 1/2/3 fixes) pour les boutiques non migrées.
+        department_id = raw.get("department_id")
+        try:
+            department = DEPARTMENTS.get(int(department_id)) if department_id else None
+        except (TypeError, ValueError):
+            department = None
+    division = _resolve_title(raw, "division", "division_id", maps.get("divisions"))
     return Product(
         id=_first(raw, "id", "product_id"),
         title=_first(raw, "title", "title_label"),
@@ -486,6 +497,7 @@ def _map_product(
         category=_map_category(raw, maps.get("categories")),
         season=_resolve_title(raw, "season", "season_id", maps.get("seasons")),
         department=department,
+        division=division,
         composition=_resolve_title(
             raw, "composition", "composition_id", maps.get("compositions")
         ),
@@ -748,7 +760,14 @@ class XanoClient:
         """
         if self._class_maps is not None:
             return self._class_maps
-        groups = ("categories", "seasons", "compositions", "tags")
+        groups = (
+            "categories",
+            "seasons",
+            "compositions",
+            "tags",
+            "departments",
+            "divisions",
+        )
         maps: dict[str, dict[int, str]] = {group: {} for group in groups}
         try:
             classification = self.get_classification()
@@ -817,6 +836,9 @@ class XanoClient:
             # 1 Tous, 2 Connectés, 3 Partiellement connectés, 4 Non connectés.
             params["search_query_ecommerce"] = ecommerce
 
+        # Maps de classification AVANT la requête produits (rayons résolus
+        # en liste ; les doubles de test capturent la dernière requête).
+        class_maps = self._classification_maps()
         payload = self._request(PRODUCTS_PATH, params)
         if not isinstance(payload, Mapping):
             return ProductPage(items=[], total=0, page=page, per_page=per_page)
@@ -826,7 +848,7 @@ class XanoClient:
         # from the static map; season/composition/tags are left for the detail
         # read (get_product), which the product panel uses.
         items = [
-            _map_product(item, brands)
+            _map_product(item, brands, class_maps)
             for item in (raw_items if isinstance(raw_items, list) else [])
             if isinstance(item, Mapping)
         ]

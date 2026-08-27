@@ -32,6 +32,8 @@
   // Transformations à exécuter (contrat config_json.transforms : clé absente
   // = activé côté backend — on n'envoie le bloc que si un choix a été fait).
   let tCopy = $state(true)
+  // Meta description générée séparément de la description (Marc 2026-08-22).
+  let tMeta = $state(true)
   let tTitle = $state(true)
   let tWeights = $state(true)
   let tImages = $state(true)
@@ -67,9 +69,10 @@
     if (showSourceUrl && /^https?:\/\//.test(pageUrl)) {
       config.source_url_override = pageUrl
     }
-    if (!tCopy || !tTitle || !tWeights || !tImages) {
+    if (!tCopy || !tMeta || !tTitle || !tWeights || !tImages) {
       config.transforms = {
         copy: tCopy,
+        meta: tMeta,
         title: tTitle,
         weights: tWeights,
         images: tImages,
@@ -90,7 +93,11 @@
       </label>
       <label class="flex items-center gap-1.5 text-xs">
         <input type="checkbox" bind:checked={tCopy} />
-        Description & méta
+        Description
+      </label>
+      <label class="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" bind:checked={tMeta} />
+        Meta description
       </label>
       <label class="flex items-center gap-1.5 text-xs">
         <input type="checkbox" bind:checked={tTitle} />

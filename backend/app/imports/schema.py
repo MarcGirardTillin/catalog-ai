@@ -69,6 +69,9 @@ class ImportedProduct(BaseModel):
     # Poids unitaire lu dans le document (normalisé en kg) — prioritaire sur
     # le poids par défaut de la catégorie au rendu CSV (Marc 2026-08-22).
     weight_kg: float | None = None
+    # Tags Tillin propres à CE produit (saisis en review), cumulés avec ceux
+    # du profil au rendu CSV (Marc 2026-08-22).
+    tags: list[str] = Field(default_factory=list)
     image_urls: list[str] = Field(default_factory=list)
     variants: list[ImportedVariant] = Field(default_factory=list)
     confidence: Confidence = Field(default_factory=dict)

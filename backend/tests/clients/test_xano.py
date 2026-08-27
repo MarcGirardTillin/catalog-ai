@@ -905,3 +905,19 @@ def test_check_existing_references_uses_put_and_maps_by_reference() -> None:
     assert existing["F26-FG007-S"]["id"] == 219716
     with _client(httpx.MockTransport(handler)) as client:
         assert client.check_existing_references([]) == {}
+
+
+def test_map_product_resolves_department_from_classification_then_static() -> None:
+    """Rayons exposés par get_all_informations (ids par boutique, 2026-08-22)
+    → résolus par la map ; repli sur la carte fixe 1/2/3 sans map."""
+    from app.clients.xano import _map_product
+
+    raw = {"id": 1, "title": "Veste", "department_id": 173, "division_id": 9}
+    maps = {"departments": {173: "Homme"}, "divisions": {9: "Textile"}}
+    product = _map_product(raw, {}, maps)
+    assert product.department == "Homme"
+    assert product.division == "Textile"
+
+    legacy = _map_product({"id": 2, "title": "Robe", "department_id": 2}, {}, {})
+    assert legacy.department == "Femme"
+    assert legacy.division is None

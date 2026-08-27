@@ -74,7 +74,10 @@ DEFAULT_TITLE_TEMPLATE = "{title}"
 # its own catalog (multi-tenant scoping happens upstream, in Xano).
 ProductReader = Callable[[int, int], Product | None]
 
-_TRANSFORM_KEYS = ("copy", "title", "weights", "images")
+# `meta` (Marc 2026-08-22) : la meta description se génère séparément de
+# la description — un seul appel Claude produit les deux, on ne STAGE que
+# ce qui est demandé.
+_TRANSFORM_KEYS = ("copy", "meta", "title", "weights", "images")
 
 _SCRAPE_METHODS: tuple[Method, ...] = ("auto", "shopify_json", "firecrawl", "unlocker")
 
@@ -94,7 +97,12 @@ def _transforms(config: dict[str, Any]) -> dict[str, bool]:
     raw = config.get("transforms")
     if not isinstance(raw, dict):
         raw = {}
-    return {key: bool(raw.get(key, True)) for key in _TRANSFORM_KEYS}
+    toggles = {key: bool(raw.get(key, True)) for key in _TRANSFORM_KEYS}
+    if "meta" not in raw:
+        # Contrat historique : la meta suivait la description — un job
+        # ancien « copy: false » ne doit pas se mettre à générer une meta.
+        toggles["meta"] = toggles["copy"]
+    return toggles
 
 
 def _normalize_options(
@@ -449,7 +457,12 @@ class EnrichmentPipeline:
         # Source resolution feeds copy/weights/images only — skip it (and
         # everything downstream) when none of them is enabled. Degenerate case
         # (everything off): the item still reaches review with nothing staged.
-        if not (transforms["copy"] or transforms["weights"] or transforms["images"]):
+        if not (
+            transforms["copy"]
+            or transforms["meta"]
+            or transforms["weights"]
+            or transforms["images"]
+        ):
             logger.info(
                 "item %s: all source-dependent transforms disabled — skipping "
                 "source resolution",
@@ -958,7 +971,8 @@ class EnrichmentPipeline:
         Returns True when a copy was actually staged (callers that promise a
         generation, like ``stage_copy_only``, need to tell a silent skip apart).
         """
-        if not _transforms(config)["copy"]:
+        transforms = _transforms(config)
+        if not (transforms["copy"] or transforms["meta"]):
             logger.info("item %s: copy skipped (transform disabled)", item.id)
             return False
         if self._claude is None:
@@ -995,9 +1009,11 @@ class EnrichmentPipeline:
             ),
             **copy_kwargs,
         )
-        item.staged_description = copy.description_fr
-        item.staged_description_html = copy.description_html_fr
-        item.staged_meta = copy.meta_description_fr
+        if transforms["copy"]:
+            item.staged_description = copy.description_fr
+            item.staged_description_html = copy.description_html_fr
+        if transforms["meta"]:
+            item.staged_meta = copy.meta_description_fr
         # Metering (M1): one input_tokens + one output_tokens event per call,
         # committed alongside the staged result by the caller.
         if db is not None and copy.usage is not None:

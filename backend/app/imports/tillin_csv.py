@@ -290,7 +290,11 @@ def render_rows(
                         # Tags du profil, appliqués à toutes les lignes
                         # (Marc 2026-08-22) — valeurs séparées par des virgules.
                         "tags": ",".join(
-                            tag.strip() for tag in config.tags if tag.strip()
+                            dict.fromkeys(
+                                tag.strip()
+                                for tag in [*config.tags, *product.tags]
+                                if tag.strip()
+                            )
                         ),
                         "harmonized_system_code": product.hs_code or "",
                         "manufacturing_country": product.manufacturing_country or "",

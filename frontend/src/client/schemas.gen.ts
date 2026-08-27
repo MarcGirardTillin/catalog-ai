@@ -947,6 +947,22 @@ export const CatalogFiltersSchema = {
             type: 'array',
             title: 'Tags',
             default: []
+        },
+        departments: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Departments',
+            default: []
+        },
+        divisions: {
+            items: {
+                $ref: '#/components/schemas/FilterOption'
+            },
+            type: 'array',
+            title: 'Divisions',
+            default: []
         }
     },
     type: 'object',
@@ -1716,6 +1732,18 @@ export const GenerateFlatOptionsSchema = {
             ],
             title: 'Engine',
             default: 'photoroom'
+        },
+        garment_color: {
+            anyOf: [
+                {
+                    type: 'string',
+                    pattern: '^#?[0-9a-fA-F]{6}$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Garment Color'
         }
     },
     type: 'object',
@@ -3630,6 +3658,13 @@ export const ImportedProduct_InputSchema = {
             ],
             title: 'Weight Kg'
         },
+        tags: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Tags'
+        },
         image_urls: {
             items: {
                 type: 'string'
@@ -3764,6 +3799,13 @@ export const ImportedProduct_OutputSchema = {
                 }
             ],
             title: 'Weight Kg'
+        },
+        tags: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Tags'
         },
         image_urls: {
             items: {
@@ -5352,6 +5394,17 @@ export const ProductSchema = {
                 }
             ],
             title: 'Department'
+        },
+        division: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Division'
         },
         composition: {
             anyOf: [

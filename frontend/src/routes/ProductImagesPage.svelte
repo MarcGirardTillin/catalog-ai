@@ -153,12 +153,14 @@
     prompt: "",
     resolution: "1k",
     engine: "photoroom",
+    garmentColor: "",
   })
   let ghostConfig = $state<FlatGhostConfig>({
     ratio: "4:5",
     prompt: "",
     resolution: "1k",
     engine: "photoroom",
+    garmentColor: "",
   })
   // Moteur GPT : joindre d'autres vues du produit à la composition (max 3).
   let flatUseOtherViews = $state(false)
@@ -541,6 +543,9 @@
             ratio: flatConfig.ratio,
             resolution: flatConfig.resolution,
             engine: flatConfig.engine,
+            garment_color: /^#?[0-9a-fA-F]{6}$/.test(flatConfig.garmentColor)
+              ? flatConfig.garmentColor
+              : null,
           },
           otherViews,
         ),

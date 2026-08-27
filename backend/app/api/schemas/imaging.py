@@ -174,6 +174,9 @@ class GenerateFlatOptions(BaseModel):
     # Moteur de la mise à plat : Photoroom (historique) ou GPT Image (OpenAI,
     # accepte plusieurs vues du produit). Ignoré par le ghost mannequin.
     engine: Literal["photoroom", "gpt"] = "photoroom"
+    # Couleur EXACTE du vêtement à conserver (hex) — Marc 2026-08-22 : la
+    # teinte dérive entre rendus GPT ; None = celle de la photo source.
+    garment_color: str | None = Field(default=None, pattern=r"^#?[0-9a-fA-F]{6}$")
 
 
 class GenerateFlatRequest(BaseModel):

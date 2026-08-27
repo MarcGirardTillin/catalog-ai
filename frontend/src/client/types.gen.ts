@@ -537,6 +537,14 @@ export type CatalogFilters = {
      * Tags
      */
     tags?: Array<FilterOption>;
+    /**
+     * Departments
+     */
+    departments?: Array<FilterOption>;
+    /**
+     * Divisions
+     */
+    divisions?: Array<FilterOption>;
 };
 
 /**
@@ -1008,6 +1016,10 @@ export type GenerateFlatOptions = {
      * Engine
      */
     engine?: 'photoroom' | 'gpt';
+    /**
+     * Garment Color
+     */
+    garment_color?: string | null;
 };
 
 /**
@@ -1998,6 +2010,10 @@ export type ImportedProductInput = {
      */
     weight_kg?: number | null;
     /**
+     * Tags
+     */
+    tags?: Array<string>;
+    /**
      * Image Urls
      */
     image_urls?: Array<string>;
@@ -2059,6 +2075,10 @@ export type ImportedProductOutput = {
      * Weight Kg
      */
     weight_kg?: number | null;
+    /**
+     * Tags
+     */
+    tags?: Array<string>;
     /**
      * Image Urls
      */
@@ -2964,6 +2984,10 @@ export type Product = {
      * Department
      */
     department?: string | null;
+    /**
+     * Division
+     */
+    division?: string | null;
     /**
      * Composition
      */

@@ -8109,6 +8109,22 @@
             "type": "array",
             "title": "Tags",
             "default": []
+          },
+          "departments": {
+            "items": {
+              "$ref": "#/components/schemas/FilterOption"
+            },
+            "type": "array",
+            "title": "Departments",
+            "default": []
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/FilterOption"
+            },
+            "type": "array",
+            "title": "Divisions",
+            "default": []
           }
         },
         "type": "object",
@@ -8861,6 +8877,18 @@
             ],
             "title": "Engine",
             "default": "photoroom"
+          },
+          "garment_color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^#?[0-9a-fA-F]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Garment Color"
           }
         },
         "type": "object",
@@ -10744,6 +10772,13 @@
             ],
             "title": "Weight Kg"
           },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
           "image_urls": {
             "items": {
               "type": "string"
@@ -10877,6 +10912,13 @@
               }
             ],
             "title": "Weight Kg"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
           },
           "image_urls": {
             "items": {
@@ -12434,6 +12476,17 @@
               }
             ],
             "title": "Department"
+          },
+          "division": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division"
           },
           "composition": {
             "anyOf": [

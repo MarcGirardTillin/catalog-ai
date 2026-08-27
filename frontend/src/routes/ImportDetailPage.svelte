@@ -161,6 +161,7 @@
       gender: (c.default_gender ?? "").trim() || null,
       brand: c.brand_mode === "fixed" ? c.brand_value.trim() || null : null,
       supplier: (c.supplier_label ?? "").trim() || null,
+      tags: [...(c.tags ?? [])],
     }
   })
 

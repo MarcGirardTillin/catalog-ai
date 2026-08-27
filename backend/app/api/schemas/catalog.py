@@ -29,3 +29,5 @@ class CatalogFilters(BaseModel):
     seasons: list[FilterOption] = []
     suppliers: list[FilterOption] = []
     tags: list[FilterOption] = []
+    departments: list[FilterOption] = []
+    divisions: list[FilterOption] = []

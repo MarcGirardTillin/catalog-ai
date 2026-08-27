@@ -254,6 +254,9 @@ class GenerateFlatOptions:
     # Qualité de sortie (1k/2k/4k) — outputSize explicite envoyé à Photoroom,
     # débit client multiplié (RESOLUTION_CREDIT_UNITS).
     resolution: str = "1k"
+    # Couleur exacte du vêtement (hex) : consigne prompt, cohérence entre
+    # rendus (dérive de teinte vécue avec GPT Image).
+    garment_color: str | None = None
     # Fond uni demandé à Photoroom (hex, défaut = couleur du compte) — sans
     # lui le fond vient du modèle génératif (vécu : « pas de background ? »).
     background_color: str | None = None
@@ -736,6 +739,11 @@ def _flat_prompt(options: GenerateFlatOptions, *, verb: str) -> str | None:
             parts.append(f"keep only the {garment}")
     if options.garment:
         parts.append("keep any inner neck label plain and unreadable")
+    if options.garment_color:
+        parts.append(
+            f"the garment color must be exactly #{options.garment_color.lstrip('#')} "
+            "(match this hex precisely, no color shift)"
+        )
     if options.prompt and options.prompt.strip():
         parts.append(options.prompt.strip())
     return ", ".join(parts) or None

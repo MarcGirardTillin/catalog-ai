@@ -111,6 +111,18 @@
   loadAccountSettings()
   const META_MAX = $derived(accountSettings.meta_max_length)
 
+  /** Texte brut → HTML léger (paragraphes/<br>), miroir du format du copywriter. */
+  function textToHtml(text: string): string {
+    const escape = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    return text
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter((p) => p !== "")
+      .map((p) => `<p>${escape(p).replace(/\n/g, "<br>")}</p>`)
+      .join("")
+  }
+
   function hydrate(data: ItemPublic) {
     item = data
     title = data.staged_title ?? ""
@@ -640,6 +652,12 @@
       body: {
         staged_title: title || null,
         staged_description: description || null,
+        // Description éditée à la main : la version HTML (écrite dans
+        // description_html à l'apply) est régénérée depuis le texte — sinon
+        // la boutique afficherait l'ancienne version (Marc 2026-08-22).
+        ...(description !== (item.staged_description ?? "")
+          ? { staged_description_html: description ? textToHtml(description) : null }
+          : {}),
         staged_meta: meta || null,
         // Le type généré ne connaît pas encore les clés de sélection
         // partielle (image_urls, weight_variant_ids) : cast local.

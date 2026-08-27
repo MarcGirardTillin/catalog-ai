@@ -8,10 +8,13 @@
     resolution: "1k" | "2k" | "4k"
     /** Moteur de la mise à plat (ignoré par le ghost mannequin). */
     engine: "photoroom" | "gpt"
+    /** Couleur exacte du vêtement (hex) ; "" = celle de la photo source. */
+    garmentColor: string
   }
 </script>
 
 <script lang="ts">
+  import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import { Select } from "@/lib/components/ui/select"
 
@@ -50,6 +53,40 @@
       <option value="16:9">Paysage 16:9</option>
     </Select>
   </div>
+  {#if showEngine}
+    <div class="flex flex-col gap-1.5">
+      <Label for="{idPrefix}-garment-color">Couleur du vêtement (optionnel)</Label>
+      <div class="flex items-center gap-2">
+        <input
+          id="{idPrefix}-garment-color"
+          type="color"
+          class="border-input bg-card h-9 w-12 cursor-pointer rounded-md border p-1"
+          {disabled}
+          value={/^#[0-9a-fA-F]{6}$/.test(config.garmentColor) ? config.garmentColor : "#888888"}
+          oninput={(e) => (config.garmentColor = e.currentTarget.value)}
+        />
+        <Input
+          class="max-w-32 font-mono"
+          placeholder="#1F4E3D"
+          {disabled}
+          bind:value={config.garmentColor}
+        />
+        {#if config.garmentColor}
+          <button
+            type="button"
+            class="text-muted-foreground cursor-pointer text-xs underline-offset-2 hover:underline"
+            onclick={() => (config.garmentColor = "")}
+          >
+            Effacer
+          </button>
+        {/if}
+      </div>
+      <p class="text-muted-foreground text-xs">
+        Impose la teinte exacte sur tous les rendus (la couleur dérive
+        parfois entre générations). Vide = couleur de la photo.
+      </p>
+    </div>
+  {/if}
   <div class="flex flex-col gap-1.5">
     <Label for="{idPrefix}-resolution">Qualité</Label>
     <Select id="{idPrefix}-resolution" {disabled} bind:value={config.resolution}>
