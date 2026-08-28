@@ -1928,6 +1928,10 @@ export type ImportRenderPreview = {
      * Row Count
      */
     row_count?: number;
+    /**
+     * Transferred At
+     */
+    transferred_at?: string | null;
 };
 
 /**

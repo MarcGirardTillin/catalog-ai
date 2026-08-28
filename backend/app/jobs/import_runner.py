@@ -26,6 +26,7 @@ from app.api.services.credits import consume as consume_credits
 from app.api.services.usage import record_claude_usage
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.imports.references import existing_reference_warning
 from app.imports.selection import stored_import_files
 from app.imports.split import split_products_by_color
 from app.models import EnrichmentJob, ImportItem, ImportProfile
@@ -273,12 +274,7 @@ def _process(
         warnings_json: list[str] | None = None
         existing = existing_refs.get(product.supplier_ref.strip())
         if existing is not None:
-            title = str(existing.get("title") or "").strip()
-            warnings_json = [
-                "Référence déjà présente dans Tillin"
-                + (f" (« {title} »" if title else " (")
-                + f" produit #{existing.get('id')})"
-            ]
+            warnings_json = [existing_reference_warning(existing)]
         payload = product.model_dump(mode="json")
         db.add(
             ImportItem(

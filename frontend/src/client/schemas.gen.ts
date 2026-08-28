@@ -3495,6 +3495,17 @@ export const ImportRenderPreviewSchema = {
             type: 'integer',
             title: 'Row Count',
             default: 0
+        },
+        transferred_at: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Transferred At'
         }
     },
     type: 'object',

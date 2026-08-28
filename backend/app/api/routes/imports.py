@@ -6,6 +6,7 @@ names only live in `selection_json["files"]`), then the background runner
 parses/extracts them together and stages `import_item` rows for review.
 """
 
+import logging
 import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -64,6 +65,7 @@ from app.api.services.credits import require_credits
 from app.clients.xano import XanoClient, XanoError
 from app.core.config import settings
 from app.enrich.pipeline import DEFAULT_TITLE_TEMPLATE
+from app.imports.references import replace_existing_reference_warning
 from app.imports.schema import ImportedProduct
 from app.imports.selection import stored_import_files
 from app.imports.tillin_csv import (
@@ -73,6 +75,8 @@ from app.imports.tillin_csv import (
     render_rows,
 )
 from app.models import Account, EnrichmentJob, ImportItem, ImportProfile
+
+logger = logging.getLogger(__name__)
 
 # Module « Import » : offre par compte — 403 feature_disabled si non souscrit.
 router = APIRouter(
@@ -510,6 +514,19 @@ def _item_public(item: ImportItem) -> ImportItemPublic:
     )
 
 
+def _existing_reference(
+    xano: XanoClient | None, reference: str
+) -> dict[str, object] | None:
+    """Produit Tillin portant déjà cette référence (None si absent/injoignable)."""
+    if xano is None or not reference:
+        return None
+    try:
+        return xano.check_existing_references([reference]).get(reference)
+    except Exception:  # noqa: BLE001 — contrôle bonus, jamais bloquant
+        logger.warning("could not re-check reference %s in Tillin", reference)
+        return None
+
+
 @router.patch("/{import_id}/items/{item_id}", response_model=ImportItemPublic)
 def update_import_item(
     import_id: int,
@@ -517,6 +534,7 @@ def update_import_item(
     body: ImportItemUpdate,
     db: SessionDep,
     current_user: CurrentUserDep,
+    xano: OptionalXanoDep,
 ) -> ImportItemPublic:
     """Review edit: correct a staged payload and/or reject/restore the item."""
     account_id = resolve_account_id(db, current_user)
@@ -534,7 +552,16 @@ def update_import_item(
         )
     if body.payload is not None:
         # Déjà validé à la frontière (le schéma type payload: ImportedProduct).
+        previous_ref = str((item.payload_json or {}).get("supplier_ref") or "").strip()
         item.payload_json = body.payload.model_dump(mode="json")
+        new_ref = body.payload.supplier_ref.strip()
+        if new_ref != previous_ref:
+            # Référence corrigée en review : le contrôle « déjà en boutique »
+            # du staging ne vaut plus — on le rejoue (best-effort, jamais
+            # bloquant) et on remplace l'avertissement (retour Marc 2026-08-28).
+            item.warnings_json = replace_existing_reference_warning(
+                item.warnings_json, _existing_reference(xano, new_ref)
+            )
     if body.status is not None:
         item.status = body.status
     db.commit()
@@ -732,6 +759,36 @@ def _resolve_render(
         ) from exc
 
 
+def _transfer_snapshot(
+    db: Session, job: EnrichmentJob
+) -> tuple[list[list[str]], str] | None:
+    """Lignes envoyées à Tillin, quand il ne reste rien à transférer.
+
+    Après un transfert, les items sont `applied` et sortent du rendu (sinon
+    un second envoi les dupliquerait) : l'aperçu/CSV « vivant » serait vide.
+    On ressert alors la copie prise au moment du transfert (demande Marc
+    2026-08-28). Un import réconcilié n'en a pas (rien n'a été rendu ici).
+    """
+    transfer = (job.config_json or {}).get("transfer") or {}
+    rows = transfer.get("rows")
+    if not rows:
+        return None
+    remaining = db.scalar(
+        select(func.count())
+        .select_from(ImportItem)
+        .where(
+            ImportItem.job_id == job.id,
+            ImportItem.status.not_in(EXCLUDED_RENDER_STATUSES),
+        )
+    )
+    if remaining:
+        return None
+    return (
+        [[str(cell) for cell in row] for row in rows],
+        str(transfer.get("transferred_at") or ""),
+    )
+
+
 def _slug(value: str) -> str:
     """Lowercase, alphanumerics and dashes only (for the CSV file name)."""
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -756,6 +813,15 @@ def preview_import_rows(
     """JSON preview of the Tillin import CSV (same rows as the download)."""
     account_id = resolve_account_id(db, current_user)
     job = _get_import_job(db, account_id=account_id, job_id=import_id)
+    snapshot = _transfer_snapshot(db, job)
+    if snapshot is not None:
+        rows, transferred_at = snapshot
+        return ImportRenderPreview(
+            columns=TILLIN_CSV_COLUMNS,
+            rows=rows,
+            row_count=len(rows),
+            transferred_at=transferred_at,
+        )
     rows, warnings = _resolve_render(
         db,
         job,
@@ -778,12 +844,16 @@ def download_import_csv(
     """Download the rendered Tillin import CSV."""
     account_id = resolve_account_id(db, current_user)
     job = _get_import_job(db, account_id=account_id, job_id=import_id)
-    rows, _warnings = _resolve_render(
-        db,
-        job,
-        profile_id,
-        category_weights=xano.category_default_weights() if xano else None,
-    )
+    snapshot = _transfer_snapshot(db, job)
+    if snapshot is not None:
+        rows = snapshot[0]
+    else:
+        rows, _warnings = _resolve_render(
+            db,
+            job,
+            profile_id,
+            category_weights=xano.category_default_weights() if xano else None,
+        )
     file_name = _csv_file_name(job)
     return Response(
         content=render_csv(rows),
@@ -871,6 +941,9 @@ def transfer_import(
             "row_count": len(rows),
             "transferred_at": datetime.now(UTC).isoformat(),
             "create_reception": body.create_reception,
+            # Copie des lignes envoyées : aperçu/CSV en lecture seule après
+            # transfert (les items applied ne sont plus rendus).
+            "rows": rows,
         },
     }
     db.commit()

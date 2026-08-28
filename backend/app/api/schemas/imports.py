@@ -171,6 +171,9 @@ class ImportRenderPreview(BaseModel):
     rows: list[list[str]]
     warnings: list[str] = Field(default_factory=list)
     row_count: int = 0
+    # Renseigné quand l'aperçu est la COPIE des lignes envoyées à Tillin
+    # (plus rien à transférer) — lecture seule (demande Marc 2026-08-28).
+    transferred_at: str | None = None
 
 
 class ImportTransferRequest(BaseModel):

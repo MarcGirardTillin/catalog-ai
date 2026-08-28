@@ -666,3 +666,22 @@ def test_split_color_code_captures_the_code() -> None:
     assert _parse_weight_kg("1.2") == 1.2
     assert _parse_weight_kg("") is None
     assert _parse_weight_kg("n/a") is None
+
+
+def test_tags_column_is_split_into_product_tags() -> None:
+    # Colonne « tags » du fichier → liste de tags du produit (Marc 2026-08-28) ;
+    # absente → liste vide (jamais déduite).
+    def handler(_: httpx.Request) -> httpx.Response:
+        payload = _payload()
+        payload["products"][0]["tags"] = " nouveauté, été 26 ;fête|  "
+        payload["products"][0]["confidence"]["tags"] = 0.9
+        return httpx.Response(200, json=_api_response(payload))
+
+    product = _extractor(handler)(_tabular_document()).products[0]
+    assert product.tags == ["nouveauté", "été 26", "fête"]
+    assert product.confidence.get("tags") == 0.9
+
+    def no_tags(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_api_response(_payload()))
+
+    assert _extractor(no_tags)(_tabular_document()).products[0].tags == []

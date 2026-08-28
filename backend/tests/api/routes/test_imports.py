@@ -644,6 +644,46 @@ def test_patch_item_edits_payload(import_client: TestClient) -> None:
     assert db.get(ImportItem, item_id).payload_json["title"] == "Pull marin"
 
 
+def test_patch_item_rechecks_reference_in_tillin(
+    import_client: TestClient,
+    fake_xano: "_FakeXano",  # défini plus bas
+) -> None:
+    """Réf corrigée en review : le contrôle « déjà en boutique » est rejoué
+    et l'avertissement remplacé (retour Marc 2026-08-28)."""
+    fake_xano.existing_references = {"REF-OLD": {"id": 1, "title": "Ancien"}}
+    job = _upload(import_client)
+    item_id = _add_item(job["id"], {"supplier_ref": "REF-1", "title": "Pull"})
+    db = _db()
+    item = db.get(ImportItem, item_id)
+    item.warnings_json = [
+        "Référence déjà présente dans Tillin (« X » produit #9)",
+        "autre",
+    ]
+    db.commit()
+
+    def patch(ref: str) -> list[str]:
+        response = import_client.patch(
+            f"/imports/{job['id']}/items/{item_id}",
+            json={"payload": {"supplier_ref": ref, "title": "Pull"}},
+        )
+        assert response.status_code == 200, response.text
+        return list(response.json()["warnings"])
+
+    # Nouvelle réf inconnue : l'ancien avertissement tombe, les autres restent.
+    assert patch("REF-NEW") == ["autre"]
+    # Nouvelle réf déjà en boutique : avertissement (re)posé.
+    assert patch("REF-OLD") == [
+        "autre",
+        "Référence déjà présente dans Tillin (« Ancien » produit #1)",
+    ]
+    # Réf inchangée : pas de nouveau contrôle, avertissements intacts.
+    fake_xano.existing_references = {}
+    assert patch("REF-OLD") == [
+        "autre",
+        "Référence déjà présente dans Tillin (« Ancien » produit #1)",
+    ]
+
+
 def test_patch_item_rejects_invalid_payload(import_client: TestClient) -> None:
     job = _upload(import_client)
     item_id = _add_item(job["id"], {"supplier_ref": "REF-1"})
@@ -993,6 +1033,18 @@ class _FakeXano:
     def category_default_weights(self) -> dict[str, float]:
         return {}
 
+    # Références déjà en boutique (clé = référence exacte).
+    existing_references: dict[str, dict[str, Any]] = {}
+
+    def check_existing_references(
+        self, references: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        return {
+            r: self.existing_references[r]
+            for r in references
+            if r in self.existing_references
+        }
+
     def search_products(
         self, *, text: str | None = None, page: int = 1, per_page: int = 20, **_: Any
     ) -> Any:
@@ -1075,6 +1127,37 @@ def test_transfer_without_reception_zeroes_quantities(
     db = _db()
     transfer = db.get(EnrichmentJob, job["id"]).config_json["transfer"]
     assert transfer["create_reception"] is False
+
+
+def test_rows_and_csv_serve_the_transferred_snapshot(
+    import_client: TestClient, fake_xano: _FakeXano
+) -> None:
+    """Après transfert, plus rien à rendre : l'aperçu et le CSV ressortent
+    la copie des lignes envoyées, marquée transferred_at (Marc 2026-08-28)."""
+    job = _staged_job(import_client)
+    profile_id = _coefficient_profile(import_client)
+    import_client.put(f"/imports/{job['id']}/profile", json={"profile_id": profile_id})
+
+    before = import_client.get(f"/imports/{job['id']}/rows").json()
+    assert before["row_count"] == 1
+    assert before["transferred_at"] is None
+
+    transfer = import_client.post(
+        f"/imports/{job['id']}/transfer",
+        json={"location_id": 7, "create_reception": False},
+    )
+    assert transfer.status_code == 200, transfer.text
+    assert len(fake_xano.calls) == 1
+
+    after = import_client.get(f"/imports/{job['id']}/rows").json()
+    assert after["transferred_at"]
+    assert after["row_count"] == 1
+    # Les lignes envoyées, telles quelles (quantités à zéro ici).
+    assert after["rows"][0][-1] == "0"
+    assert after["rows"][0][: len(before["rows"][0]) - 1] == before["rows"][0][:-1]
+    csv = import_client.get(f"/imports/{job['id']}/csv")
+    assert csv.status_code == 200
+    assert len(csv.text.strip().splitlines()) == 2  # en-tête + 1 ligne
 
 
 def test_second_transfer_does_not_resend_applied_items(

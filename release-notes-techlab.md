@@ -2,6 +2,12 @@
 
 ## Latest Changes
 
+- Import : la référence corrigée en review est re-vérifiée dans Tillin
+  (avertissement « déjà présente » remplacé, jamais empilé) ; une colonne
+  « tags / mots-clés » du fichier fournisseur remplit désormais les tags du
+  produit (cumulés avec ceux du profil) ; après transfert, l'aperçu CSV et le
+  téléchargement ressortent la copie des lignes envoyées à Tillin (lecture
+  seule, datée) au lieu d'un rendu vide.
 - Fiabilité : les images d'enrichissement sont désormais téléchargées par
   CatalogAI et poussées en octets vérifiés vers Tillin — tout écart
   (image refusée) est signalé sur la fiche au lieu d'être perdu en

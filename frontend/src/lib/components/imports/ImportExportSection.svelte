@@ -79,6 +79,12 @@
     rowsOpen = false
   })
 
+  function formatTransferredAt(iso: string): string {
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return iso
+    return date.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
+  }
+
   async function toggleCsvPreview() {
     if (rowsOpen) {
       rowsOpen = false
@@ -206,6 +212,10 @@
     }
     transferOpen = false
     transferred = true
+    // L'aperçu « à transférer » est périmé : à la réouverture, le serveur
+    // ressert la copie des lignes envoyées (lecture seule).
+    rowsPreview = null
+    rowsOpen = false
     toast.success(
       `${data.row_count} ligne${data.row_count > 1 ? "s" : ""} transférée${data.row_count > 1 ? "s" : ""} vers Tillin`,
     )
@@ -435,8 +445,15 @@
           sheets={[{ rows: [rowsPreview.columns, ...rowsPreview.rows] }]}
         />
         <p class="text-muted-foreground text-xs">
-          {rowsPreview.row_count}
-          ligne{rowsPreview.row_count > 1 ? "s" : ""} dans le CSV généré.
+          {#if rowsPreview.transferred_at}
+            {rowsPreview.row_count}
+            ligne{rowsPreview.row_count > 1 ? "s" : ""} transférée{rowsPreview.row_count > 1 ? "s" : ""}
+            vers Tillin le {formatTransferredAt(rowsPreview.transferred_at)} —
+            copie en lecture seule de ce qui a été envoyé.
+          {:else}
+            {rowsPreview.row_count}
+            ligne{rowsPreview.row_count > 1 ? "s" : ""} dans le CSV généré.
+          {/if}
         </p>
       {/if}
     {/if}

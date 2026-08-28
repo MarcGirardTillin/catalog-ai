@@ -89,6 +89,10 @@ SYSTEM_PROMPT = (
     "un code ou un nom anglais.\n"
     "- brand et category uniquement si elles figurent littéralement dans "
     "le document — ne les déduis jamais.\n"
+    "- tags = les mots-clés du produit UNIQUEMENT si le document porte une "
+    "colonne dédiée (« tags », « mots-clés », « étiquettes », « keywords »…), "
+    "recopiés tels quels séparés par des virgules ; chaîne vide sinon — ne "
+    "les déduis jamais du titre ou de la catégorie.\n"
     "- Pour chaque champ, fournis une auto-évaluation de confiance entre "
     "0 et 1 (mets 0 pour un champ vide).\n"
     "- Au niveau du document : po_number = numéro du bon de commande "
@@ -204,6 +208,7 @@ _PRODUCT_FIELDS = [
     "hs_code",
     "manufacturing_country",
     "weight",
+    "tags",
 ]
 
 # Every field is a required string; "" means absent (see note above).
@@ -272,6 +277,7 @@ class _RawProduct(BaseModel):
     hs_code: str = ""
     manufacturing_country: str = ""
     weight: str = ""
+    tags: str = ""
     image_urls: list[str] = Field(default_factory=list)
     variants: list[_RawVariant] = Field(default_factory=list)
     confidence: dict[str, float] = Field(default_factory=dict)
@@ -820,9 +826,15 @@ class ClaudeExtractor:
         weight_kg = _parse_weight_kg(_opt(raw.weight))
         if weight_kg is not None:
             present.add("weight")
+        # Tags lus dans une colonne dédiée du document (Marc 2026-08-28) :
+        # même forme que ceux saisis en review, cumulés avec ceux du profil.
+        tags = [t.strip() for t in re.split(r"[,;|]", raw.tags) if t.strip()]
+        if tags:
+            present.add("tags")
         return ImportedProduct(
             **fields,  # type: ignore[arg-type]
             weight_kg=weight_kg,
+            tags=tags,
             image_urls=raw.image_urls,
             variants=variants,
             confidence=_kept_confidence(raw.confidence, present),
