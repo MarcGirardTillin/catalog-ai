@@ -14,6 +14,7 @@
     { key: "brand", label: "Marque" },
     { key: "title", label: "Titre" },
     { key: "composition", label: "Matière" },
+    { key: "department", label: "Rayon" },
   ] as const
 
   /** Segments d'un modèle stocké : tokens connus + textes libres. */

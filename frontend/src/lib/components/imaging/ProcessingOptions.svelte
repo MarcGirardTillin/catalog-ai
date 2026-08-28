@@ -26,6 +26,7 @@
   // Panneau « traitements à la carte » : chaque étape de la normalisation est
   // débrayable. Seul le détourage appelle le service d'imagerie (facturé) —
   // le reste est de la composition locale.
+  import ColorPicker, { type SampleImage } from "@/lib/components/imaging/ColorPicker.svelte"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import { Select } from "@/lib/components/ui/select"
@@ -34,14 +35,13 @@
   let {
     options = $bindable(),
     disabled = false,
-  }: { options: StudioOptions; disabled?: boolean } = $props()
-
-  const hexValue = $derived(`#${options.bg_color.replace(/^#/, "")}`)
-
-  function onColorPicked(event: Event) {
-    const value = (event.currentTarget as HTMLInputElement).value
-    options.bg_color = value.replace(/^#/, "").toUpperCase()
-  }
+    images = [],
+  }: {
+    options: StudioOptions
+    disabled?: boolean
+    /** Images du produit pour la pipette (repli hors Chrome/Edge). */
+    images?: SampleImage[]
+  } = $props()
 </script>
 
 <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -55,19 +55,14 @@
   </div>
   <div class="flex items-center gap-2">
     <Label for="opt-bg" class="shrink-0">Fond</Label>
-    <input
+    <ColorPicker
       id="opt-bg"
-      type="color"
-      class="border-input h-9 w-10 shrink-0 cursor-pointer rounded-md border p-1"
-      {disabled}
-      value={hexValue}
-      onchange={onColorPicked}
-    />
-    <Input
-      class="font-mono uppercase"
-      maxlength={7}
-      {disabled}
       bind:value={options.bg_color}
+      hash={false}
+      placeholder="FFFFFF"
+      inputClass="uppercase"
+      {disabled}
+      {images}
     />
   </div>
   <div class="flex items-center gap-2">

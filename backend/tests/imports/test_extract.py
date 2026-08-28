@@ -241,15 +241,24 @@ def test_extracted_category_is_canonicalized_to_the_tree() -> None:
     assert product.confidence["category"] == 1.0
 
 
-def test_unmatched_category_is_kept_verbatim() -> None:
+def test_unmatched_category_is_dropped() -> None:
+    # Hors arbre (libellé fournisseur ou inventé) → vide, jamais transmis tel
+    # quel à Tillin (décision Marc 2026-08-28) ; sans arbre connu, le libellé
+    # brut reste (pas de référentiel pour trancher).
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_api_response(_category_payload("Chaussettes")))
+        payload = _category_payload("Chaussettes")
+        payload["products"][0]["confidence"] = {"category": 0.9}
+        return httpx.Response(200, json=_api_response(payload))
 
     result = _extractor_with_categories(handler, ["VETEMENTS > Robes"])(
         _tabular_document()
     )
-    # No confident tree match -> raw label preserved for manual mapping.
-    assert result.products[0].category == "Chaussettes"
+    assert result.products[0].category is None
+    assert "category" not in result.products[0].confidence
+
+    assert _extractor(handler)(_tabular_document()).products[0].category == (
+        "Chaussettes"
+    )
 
 
 def test_tabular_cross_check_removes_unverifiable_values() -> None:

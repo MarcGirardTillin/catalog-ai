@@ -14,6 +14,7 @@
 </script>
 
 <script lang="ts">
+  import ColorPicker, { type SampleImage } from "@/lib/components/imaging/ColorPicker.svelte"
   import { Input } from "@/lib/components/ui/input"
   import { Label } from "@/lib/components/ui/label"
   import { Select } from "@/lib/components/ui/select"
@@ -24,6 +25,7 @@
     idPrefix = "flat",
     promptPlaceholder = "Ex. fond lin clair, lumière naturelle, plié soigneusement…",
     showEngine = false,
+    images = [],
   }: {
     config: FlatGhostConfig
     disabled?: boolean
@@ -31,6 +33,8 @@
     promptPlaceholder?: string
     /** Affiche le sélecteur de moteur (mise à plat uniquement). */
     showEngine?: boolean
+    /** Images du produit pour la pipette (repli hors Chrome/Edge). */
+    images?: SampleImage[]
   } = $props()
 </script>
 
@@ -57,19 +61,13 @@
     <div class="flex flex-col gap-1.5">
       <Label for="{idPrefix}-garment-color">Couleur du vêtement (optionnel)</Label>
       <div class="flex items-center gap-2">
-        <input
+        <ColorPicker
           id="{idPrefix}-garment-color"
-          type="color"
-          class="border-input bg-card h-9 w-12 cursor-pointer rounded-md border p-1"
-          {disabled}
-          value={/^#[0-9a-fA-F]{6}$/.test(config.garmentColor) ? config.garmentColor : "#888888"}
-          oninput={(e) => (config.garmentColor = e.currentTarget.value)}
-        />
-        <Input
-          class="max-w-32 font-mono"
-          placeholder="#1F4E3D"
-          {disabled}
           bind:value={config.garmentColor}
+          placeholder="#1F4E3D"
+          inputClass="max-w-32"
+          {disabled}
+          {images}
         />
         {#if config.garmentColor}
           <button

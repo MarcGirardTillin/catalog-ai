@@ -12,7 +12,16 @@ from app.api.schemas import Product
 from app.enrich.title import _token_values, render_title_template
 
 # Tokens offered by the image title template builder.
-IMAGE_TOKENS = ("reference", "color", "position", "brand", "title", "composition")
+# `department` = rayon Tillin (Marc 2026-08-28).
+IMAGE_TOKENS = (
+    "reference",
+    "color",
+    "position",
+    "brand",
+    "title",
+    "composition",
+    "department",
+)
 
 # Extensions we strip from user-provided names before re-appending the real
 # output extension (avoids "photo.webp.webp").

@@ -58,6 +58,7 @@
     type GenerationConfig,
   } from "@/lib/components/imaging/GenerationOptions.svelte"
   import ImageGrid, { type WorkStatus } from "@/lib/components/imaging/ImageGrid.svelte"
+  import ColorPicker from "@/lib/components/imaging/ColorPicker.svelte"
   import ProcessingOptions, {
     type StudioOptions,
   } from "@/lib/components/imaging/ProcessingOptions.svelte"
@@ -95,6 +96,14 @@
   const loadFailed = $derived(productQuery.isError)
 
   const images = $derived(product?.images ?? [])
+  // Galerie pour la pipette couleur (image sélectionnée en premier).
+  const sampleImages = $derived.by(() => {
+    const all = images.map((i) => ({ url: i.url }))
+    return [
+      ...all.filter((i) => selected.includes(i.url)),
+      ...all.filter((i) => !selected.includes(i.url)),
+    ]
+  })
   // Les titres Tillin peuvent être vides : même repli que la liste produits.
   const productLabel = $derived(
     product
@@ -800,7 +809,11 @@
                 </CardDescription>
               </CardHeader>
               <CardContent class="flex flex-col gap-3">
-                <ProcessingOptions bind:options disabled={runningCount > 0} />
+                <ProcessingOptions
+                  bind:options
+                  disabled={runningCount > 0}
+                  images={sampleImages}
+                />
               </CardContent>
             </Card>
           {:else if mode === "generate"}
@@ -922,6 +935,7 @@
                   disabled={runningCount > 0}
                   idPrefix="studio-flat"
                   showEngine
+                  images={sampleImages}
                 />
                 {#if flatConfig.engine === "gpt"}
                   <label class="flex items-center gap-1.5 text-xs">
@@ -1016,22 +1030,12 @@
                 <div class="grid gap-3 sm:grid-cols-2">
                   <div class="flex flex-col gap-1.5">
                     <Label for="recolor-color">Couleur cible</Label>
-                    <div class="flex items-center gap-2">
-                      <input
-                        id="recolor-color"
-                        type="color"
-                        class="border-input bg-card h-9 w-12 cursor-pointer rounded-md border p-1"
-                        value={/^#[0-9a-fA-F]{6}$/.test(recolorColor)
-                          ? recolorColor
-                          : "#888888"}
-                        oninput={(e) => (recolorColor = e.currentTarget.value)}
-                      />
-                      <Input
-                        class="font-mono"
-                        placeholder="#1F4E3D ou « vert forêt »"
-                        bind:value={recolorColor}
-                      />
-                    </div>
+                    <ColorPicker
+                      id="recolor-color"
+                      bind:value={recolorColor}
+                      placeholder="#1F4E3D ou « vert forêt »"
+                      images={sampleImages}
+                    />
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <Label for="recolor-resolution">Qualité</Label>
@@ -1099,6 +1103,7 @@
                   disabled={runningCount > 0}
                   idPrefix="studio-ghost"
                   promptPlaceholder="Ex. col et manches structurés, fond blanc pur…"
+                  images={sampleImages}
                 />
               </CardContent>
             </Card>

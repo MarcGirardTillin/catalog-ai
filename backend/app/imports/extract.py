@@ -898,8 +898,9 @@ class ClaudeExtractor:
 
         When the tree is known, an extracted category that normalizes to an
         existing leaf is rewritten to that leaf's canonical casing (confidence
-        1.0). An unmatched value is kept verbatim so the reviewer can still map
-        it by hand — never dropped.
+        1.0). An unmatched value is DROPPED (category left empty): the tree is
+        the boutique's whole truth, so a label outside it is never sent to
+        Tillin — the reviewer picks one from the visible list instead.
         """
         if not self._category_canon:
             return
@@ -912,6 +913,12 @@ class ClaudeExtractor:
             if canonical is not None:
                 product.category = canonical
                 product.confidence["category"] = 1.0
+            else:
+                # Décision Marc 2026-08-28 : la boutique a toutes ses
+                # catégories — un libellé hors arbre (fournisseur ou inventé)
+                # n'est jamais transmis, on laisse vide (à choisir en review).
+                product.category = None
+                product.confidence.pop("category", None)
 
     # ---- cross-checks ----
 

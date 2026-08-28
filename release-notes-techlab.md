@@ -2,6 +2,13 @@
 
 ## Latest Changes
 
+- Studio : pipette couleur (fond, couleur du vêtement, couleur cible) —
+  pointer un pixel à l'écran (Chrome/Edge) ou sur une image du produit ;
+  variable « Rayon » disponible dans le modèle de nom d'images.
+- Mise à jour : une bannière propose de recharger la page quand une nouvelle
+  version de Catalog a été déployée.
+- Import : la catégorie est toujours rattachée à une catégorie VISIBLE de la
+  boutique ; un libellé hors arbre est laissé vide (jamais transmis tel quel).
 - Import : la référence corrigée en review est re-vérifiée dans Tillin
   (avertissement « déjà présente » remplacé, jamais empilé) ; une colonne
   « tags / mots-clés » du fichier fournisseur remplit désormais les tags du

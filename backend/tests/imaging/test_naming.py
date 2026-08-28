@@ -55,3 +55,11 @@ def test_render_image_filename_empty_template_and_unknown_token() -> None:
     assert render_image_filename(empty, 1, "{color}") == ""
     with pytest.raises(ValueError):
         render_image_filename(PRODUCT, 1, "{season}")  # not an image token
+
+
+def test_render_image_filename_department_token() -> None:
+    # Rayon Tillin disponible dans le modèle de nom d'images (Marc 2026-08-28).
+    product = Product(id=1, title="Pull", reference_code="REF-1", department="Femme")
+    assert render_image_filename(product, 2, "{department}-{reference}-{position}") == (
+        "femme-ref-1-2"
+    )

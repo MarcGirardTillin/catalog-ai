@@ -1,4 +1,5 @@
 <script lang="ts">
+  import UpdateBanner from "@/lib/components/app/UpdateBanner.svelte"
   import type { Component, Snippet } from "svelte"
   import ChartColumn from "@lucide/svelte/icons/chart-column"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
@@ -427,6 +428,7 @@
   {/if}
 
   <div class="flex min-w-0 flex-1 flex-col">
+    <UpdateBanner />
     <!-- Topbar -->
     <header
       class="border-border bg-card sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4"

@@ -11,3 +11,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** Identifiant du build courant (vite.config.ts) — comparé à /version.json. */
+declare const __BUILD_ID__: string
