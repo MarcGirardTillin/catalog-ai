@@ -145,6 +145,27 @@ def resolve_account_id(db: Session, user: User) -> int:
     return account.id
 
 
+def launcher_token(db: Session, account_id: int, user_id: int) -> str | None:
+    """Le token Xano du LANCEUR d'un job, s'il est encore utilisable.
+
+    Contrairement au pool (`freshest_company_token`), l'admin plateforme est
+    accepté : lancer un job est un geste explicite — celui qui voit les
+    produits dans l'interface est, par construction, sur la bonne entreprise
+    (incidents jobs 126/128 du 2026-09-03 : le pool pointait sur une autre
+    entreprise que celle du lanceur). Le token ne sert qu'aux lectures de CE
+    job, jamais réinjecté dans le pool. None si l'utilisateur n'appartient
+    pas/plus au compte, est désactivé ou n'a pas de token.
+    """
+    return db.scalar(
+        select(User.xano_token).where(
+            User.id == user_id,
+            User.account_id == account_id,
+            User.is_active.is_(True),
+            User.xano_token.is_not(None),
+        )
+    )
+
+
 def freshest_company_token(db: Session, account_id: int) -> str | None:
     """The most recently captured Xano token among the account's active users.
 

@@ -2,6 +2,10 @@
 
 ## Latest Changes
 
+- Jobs de fond (enrichissement, import) : le jeton Tillin du LANCEUR du job
+  est utilisé en priorité (relances comprises), avec repli sur le jeton le
+  plus récent du compte — fini les échecs « session expired » ou « produit
+  introuvable » quand l'utilisateur du pool a changé d'entreprise.
 - Studio : pipette couleur (fond, couleur du vêtement, couleur cible) —
   pointer un pixel à l'écran (Chrome/Edge) ou sur une image du produit ;
   variable « Rayon » disponible dans le modèle de nom d'images.

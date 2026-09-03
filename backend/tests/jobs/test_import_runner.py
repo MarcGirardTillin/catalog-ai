@@ -90,7 +90,9 @@ def _build_extractor_returning(
     seen_calls: list[list[RawDocument]] | None = None,
 ) -> import_runner.BuildExtractor:
     def build(
-        _account_id: int, _instructions: str | None = None
+        _account_id: int,
+        _instructions: str | None = None,
+        _launcher_user_id: int | None = None,
     ) -> import_runner.Extractor:
         def extract(
             document: RawDocument | list[RawDocument],
@@ -269,7 +271,9 @@ def test_run_import_job_parse_failure_fails_job(
         raise ValueError("unreadable PDF")
 
     def never_build(
-        _account_id: int, _instructions: str | None = None
+        _account_id: int,
+        _instructions: str | None = None,
+        _launcher_user_id: int | None = None,
     ) -> import_runner.Extractor:
         raise AssertionError("extractor must not be built when parsing fails")
 
@@ -449,7 +453,9 @@ def test_known_category_paths_skip_hidden_categories(
             }
 
     monkeypatch.setattr(
-        deps, "xano_client_for_account", lambda _db, _account_id: _FakeClient()
+        deps,
+        "xano_client_for_account",
+        lambda _db, _account_id, launcher_user_id=None: _FakeClient(),
     )
 
     paths = import_runner._known_category_paths(account_id=1)
@@ -475,7 +481,7 @@ def test_existing_references_flag_items_with_a_warning(
     monkeypatch.setattr(
         import_runner,
         "_check_existing_references",
-        lambda _account_id, _refs: {
+        lambda _account_id, _refs, _launcher=None: {
             "REF-EXISTS": {"id": 219716, "title": "Orbit Multi Ring"}
         },
     )
@@ -521,12 +527,16 @@ def test_profile_instructions_are_combined_with_upload_instructions(
 
     received: list[str | None] = []
 
-    def build(_account_id: int, instructions: str | None = None):  # type: ignore[no-untyped-def]
+    def build(
+        _account_id: int,
+        instructions: str | None = None,
+        _launcher: int | None = None,
+    ) -> import_runner.Extractor:
         received.append(instructions)
         inner = _build_extractor_returning(
             ExtractionResult(products=[], document=DocumentInfo())
         )
-        return inner(_account_id, None)
+        return inner(_account_id, None, None)
 
     import_runner.run_import_job(job.id, parse_file=_fake_parse, build_extractor=build)
 

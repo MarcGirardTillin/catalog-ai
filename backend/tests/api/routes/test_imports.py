@@ -825,7 +825,10 @@ def test_upload_with_location_id_stores_it(import_client: TestClient) -> None:
     assert import_client.get(f"/imports/{job['id']}").json()["location_id"] == 7
 
     db = _db()
-    assert db.get(EnrichmentJob, job["id"]).config_json == {"location_id": 7}
+    stored = db.get(EnrichmentJob, job["id"]).config_json
+    assert stored["location_id"] == 7
+    # Le lanceur est capturé : ses lectures Xano de fond utilisent SON token.
+    assert isinstance(stored["launcher_user_id"], int)
 
 
 def test_upload_without_location_id_is_null(import_client: TestClient) -> None:

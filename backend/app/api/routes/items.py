@@ -171,7 +171,7 @@ def retry_item_route(
     """Requeue one item for a full re-generation and kick the worker."""
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
-    item = retry_item(db, item)
+    item = retry_item(db, item, launcher_user_id=current_user.id)
     background.add_task(run_job, item.job_id)
     return ItemPublic.model_validate(item, from_attributes=True)
 

@@ -27,7 +27,10 @@ def test_create_job_with_ids_creates_items(auth_client: TestClient) -> None:
     assert job["counts"]["total"] == 3
     assert job["counts"]["pending"] == 3
     assert job["selection_json"] == {"ids": [101, 102, 103]}
-    assert job["config_json"] == {"translate": True}
+    # Le lanceur est capturé (token préféré pour les lectures de fond) ; un
+    # launcher_user_id fourni par le client serait écrasé (anti-usurpation).
+    assert job["config_json"]["translate"] is True
+    assert isinstance(job["config_json"]["launcher_user_id"], int)
 
 
 def test_create_job_requires_ids_xor_tag(auth_client: TestClient) -> None:

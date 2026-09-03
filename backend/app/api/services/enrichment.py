@@ -76,6 +76,7 @@ def create_job(
     account_id: int,
     selection: dict[str, Any],
     config: dict[str, Any],
+    launcher_user_id: int | None = None,
 ) -> EnrichmentJob:
     """Create a job; explicit ids become items immediately.
 
@@ -91,6 +92,12 @@ def create_job(
     credentials. The job is stored with its selection either way.
     """
     config = dict(config)
+    # Lanceur du job : son token Xano est préféré pour les lectures de fond
+    # (jobs 126/128 du 2026-09-03). Toujours écrasé — le config vient du
+    # client, un launcher_user_id fourni par lui serait une usurpation.
+    config.pop("launcher_user_id", None)
+    if launcher_user_id is not None:
+        config["launcher_user_id"] = launcher_user_id
 
     # A named instruction is resolved server-side and snapshotted; the id is
     # dropped from the stored config (explicit editorial_instructions win).
@@ -362,7 +369,16 @@ def _reset_item_for_retry(item: EnrichmentItem) -> None:
     item.finished_at = None
 
 
-def retry_item(db: Session, item: EnrichmentItem) -> EnrichmentItem:
+def _adopt_launcher(job: EnrichmentJob, launcher_user_id: int | None) -> None:
+    """La relance adopte son auteur comme lanceur (token à jour pour le job)."""
+    if launcher_user_id is None:
+        return
+    job.config_json = {**(job.config_json or {}), "launcher_user_id": launcher_user_id}
+
+
+def retry_item(
+    db: Session, item: EnrichmentItem, *, launcher_user_id: int | None = None
+) -> EnrichmentItem:
     """Requeue one item for a full re-generation (resolve + scrape + copy)."""
     if item.status not in _RETRYABLE:
         raise AppException(
@@ -373,6 +389,7 @@ def retry_item(db: Session, item: EnrichmentItem) -> EnrichmentItem:
     _reset_item_for_retry(item)
     job = db.get(EnrichmentJob, item.job_id)
     if job is not None:
+        _adopt_launcher(job, launcher_user_id)
         job.status = "pending"
         job.started_at = None
         job.finished_at = None
@@ -381,7 +398,9 @@ def retry_item(db: Session, item: EnrichmentItem) -> EnrichmentItem:
     return item
 
 
-def retry_failed_items(db: Session, job: EnrichmentJob) -> int:
+def retry_failed_items(
+    db: Session, job: EnrichmentJob, *, launcher_user_id: int | None = None
+) -> int:
     """Requeue every failed/rejected item of a job. Returns how many."""
     targets = [i for i in job.items if i.status in ("failed", "rejected")]
     if not targets:
@@ -390,6 +409,7 @@ def retry_failed_items(db: Session, job: EnrichmentJob) -> int:
             code="invalid_state",
             message="No failed or rejected item to retry in this job",
         )
+    _adopt_launcher(job, launcher_user_id)
     for item in targets:
         _reset_item_for_retry(item)
     job.status = "pending"

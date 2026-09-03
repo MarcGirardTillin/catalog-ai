@@ -28,12 +28,16 @@ logger = logging.getLogger(__name__)
 _USER_AGENT = "CatalogAI enrichment worker"
 
 
-def _placeholder_reader(product_id: int, _account_id: int) -> Product:
+def _placeholder_reader(
+    product_id: int, _account_id: int, _launcher_user_id: int | None = None
+) -> Product:
     """LOCAL DEV ONLY — stands in for the Xano read path."""
     return Product(id=product_id, title=f"Produit {product_id}")
 
 
-def _account_reader(product_id: int, account_id: int) -> Product | None:
+def _account_reader(
+    product_id: int, account_id: int, launcher_user_id: int | None = None
+) -> Product | None:
     """Read a product AS the item's account (company-scoped Xano token).
 
     Resolved on every call — not baked at pipeline build time — because the
@@ -45,7 +49,9 @@ def _account_reader(product_id: int, account_id: int) -> Product | None:
 
     db = SessionLocal()
     try:
-        client = xano_client_for_account(db, account_id)
+        client = xano_client_for_account(
+            db, account_id, launcher_user_id=launcher_user_id
+        )
     finally:
         db.close()
     return client.get_product(product_id)

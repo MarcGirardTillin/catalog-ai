@@ -257,7 +257,9 @@ def create_import(
     # Product count is unknown before extraction: require a positive balance
     # (the actual debit happens per extracted product, in the runner).
     require_credits(db, account_id, 1)
-    config: dict[str, object] = {}
+    # Lanceur : son token Xano est préféré par le runner de fond (mêmes
+    # règles que les jobs d'enrichissement — incidents 126/128 du 2026-09-03).
+    config: dict[str, object] = {"launcher_user_id": current_user.id}
     if location_id is not None:
         config["location_id"] = location_id
     if instructions and instructions.strip():
@@ -369,6 +371,7 @@ def retry_import(
     db.query(ImportItem).filter(ImportItem.job_id == job.id).delete()
     config = dict(job.config_json or {})
     config.pop("error", None)
+    config["launcher_user_id"] = current_user.id
     job.config_json = config
     job.status = "pending"
     job.started_at = None

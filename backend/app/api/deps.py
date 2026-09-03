@@ -8,7 +8,11 @@ from fastapi import Cookie, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
-from app.api.services.accounts import freshest_company_token, resolve_account_id
+from app.api.services.accounts import (
+    freshest_company_token,
+    launcher_token,
+    resolve_account_id,
+)
 from app.api.services.users import get_user_by_id
 from app.clients.base import NotConfiguredError
 from app.clients.fashn import FashnClient
@@ -126,8 +130,14 @@ def xano_client_for_user(db: Session, user: User) -> XanoClient:
     return _legacy_fallback_or_401(db, resolve_account_id(db, user))
 
 
-def xano_client_for_account(db: Session, account_id: int) -> XanoClient:
+def xano_client_for_account(
+    db: Session, account_id: int, *, launcher_user_id: int | None = None
+) -> XanoClient:
     """The Xano client acting on behalf of an account (background jobs only).
+
+    `launcher_user_id` : l'utilisateur qui a lancé le job — son token est
+    préféré (admin compris : geste explicite, il voyait les produits qu'il a
+    sélectionnés), repli sur le pool du compte s'il n'est plus utilisable.
 
     Sans session utilisateur, on prend le token le plus frais parmi les
     utilisateurs NON ADMIN du compte (un admin plateforme peut changer
@@ -139,7 +149,11 @@ def xano_client_for_account(db: Session, account_id: int) -> XanoClient:
       data would be a cross-tenant leak, failing is the only correct answer.
     """
     _require_xano_configured()
-    token = freshest_company_token(db, account_id)
+    token = None
+    if launcher_user_id is not None:
+        token = launcher_token(db, account_id, launcher_user_id)
+    if token is None:
+        token = freshest_company_token(db, account_id)
     if token is None:
         return _legacy_fallback_or_401(db, account_id)
     return _client_for_token(token)

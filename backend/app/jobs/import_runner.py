@@ -42,7 +42,8 @@ logger = logging.getLogger(__name__)
 ParseFile = Callable[[bytes, str], "RawDocument"]
 Extractor = Callable[["RawDocument | list[RawDocument]"], "ExtractionResult"]
 # (account_id, consignes libres saisies au dépôt ou None) -> extracteur.
-BuildExtractor = Callable[[int, "str | None"], Extractor]
+# Third argument: the job's launcher user id (token preference), or None.
+BuildExtractor = Callable[[int, "str | None", "int | None"], Extractor]
 
 
 def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
@@ -51,7 +52,15 @@ def _default_parse_file(data: bytes, filename: str) -> "RawDocument":
     return parse_file(data, filename)
 
 
-def _known_category_paths(account_id: int) -> list[str] | None:
+def _job_launcher(job: EnrichmentJob) -> int | None:
+    """Le lanceur du job d'import (create/retry) — None sur les jobs anciens."""
+    raw = (job.config_json or {}).get("launcher_user_id")
+    return int(raw) if isinstance(raw, int) else None
+
+
+def _known_category_paths(
+    account_id: int, launcher_user_id: int | None = None
+) -> list[str] | None:
     """Best-effort « parent > enfant » category paths from the boutique tree.
 
     Fed to the extractor so it maps supplier category labels onto the user's
@@ -65,7 +74,9 @@ def _known_category_paths(account_id: int) -> list[str] | None:
 
         db = SessionLocal()
         try:
-            client = xano_client_for_account(db, account_id)
+            client = xano_client_for_account(
+                db, account_id, launcher_user_id=launcher_user_id
+            )
         finally:
             db.close()
         options = client.get_classification().get("categories", [])
@@ -92,19 +103,23 @@ def _known_category_paths(account_id: int) -> list[str] | None:
 
 
 def _default_build_extractor(
-    account_id: int, extra_instructions: str | None = None
+    account_id: int,
+    extra_instructions: str | None = None,
+    launcher_user_id: int | None = None,
 ) -> Extractor:
     from app.imports.extract import build_extractor
 
     return build_extractor(
         settings.ANTHROPIC_API_KEY,
-        known_categories=_known_category_paths(account_id),
+        known_categories=_known_category_paths(account_id, launcher_user_id),
         extra_instructions=extra_instructions,
     )
 
 
 def _check_existing_references(
-    account_id: int, references: list[str]
+    account_id: int,
+    references: list[str],
+    launcher_user_id: int | None = None,
 ) -> dict[str, dict[str, object]]:
     """Références déjà en boutique (`check_existing_reference/bulk` Xano).
 
@@ -119,7 +134,9 @@ def _check_existing_references(
 
         db = SessionLocal()
         try:
-            client = xano_client_for_account(db, account_id)
+            client = xano_client_for_account(
+                db, account_id, launcher_user_id=launcher_user_id
+            )
         finally:
             db.close()
         return client.check_existing_references(refs)
@@ -247,7 +264,7 @@ def _process(
     if adhoc:
         instruction_parts.append(adhoc)
     instructions = "\n".join(instruction_parts) or None
-    extractor = build(job.account_id, instructions)
+    extractor = build(job.account_id, instructions, _job_launcher(job))
     result = extractor(documents)
 
     # Profile conventions that shape the STAGED data (not just the render):
@@ -267,7 +284,7 @@ def _process(
     # à l'autre) : vérification en masse, avertissement posé sur l'item —
     # best-effort, l'import n'échoue jamais sur ce contrôle.
     existing_refs = _check_existing_references(
-        job.account_id, [p.supplier_ref for p in products]
+        job.account_id, [p.supplier_ref for p in products], _job_launcher(job)
     )
 
     for product in products:

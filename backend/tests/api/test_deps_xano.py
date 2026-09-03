@@ -157,3 +157,66 @@ def test_user_without_token_on_company_account_is_401(db: Session) -> None:
 
     assert excinfo.value.status_code == 401
     assert excinfo.value.code == "xano_token_expired"
+
+
+def test_launcher_token_is_preferred_over_the_pool(db: Session) -> None:
+    """Le token du LANCEUR du job (admin compris) prime sur le pool du compte.
+
+    Incidents jobs 126/128 (2026-09-03) : le token du pool pointait sur une
+    autre entreprise Tillin que celle des produits sélectionnés par le
+    lanceur — « product not found at the source ».
+    """
+    from datetime import UTC, datetime
+
+    account = _company_account(db, 61)
+    colleague = create_user(db, email="pool@jogging.fr", password="x")
+    admin = create_user(db, email="marc@tillin.fr", password="x")
+    admin.is_admin = True
+    colleague.account_id = admin.account_id = account.id
+    colleague.xano_token = "tok-pool"
+    colleague.xano_token_at = datetime.now(UTC)
+    admin.xano_token = "tok-launcher"
+    admin.xano_token_at = datetime.now(UTC)
+    db.commit()
+
+    from app.api.services.accounts import launcher_token
+
+    # Lanceur admin : accepté ici (geste explicite), bien qu'exclu du pool.
+    assert launcher_token(db, account.id, admin.id) == "tok-launcher"
+    launcher = deps.xano_client_for_account(db, account.id, launcher_user_id=admin.id)
+    assert launcher._token == "tok-launcher"  # noqa: SLF001
+
+    # Sans lanceur (jobs anciens) : pool inchangé (admin toujours exclu).
+    assert deps.xano_client_for_account(db, account.id)._token == "tok-pool"  # noqa: SLF001
+
+
+def test_launcher_token_falls_back_to_the_pool(db: Session) -> None:
+    from datetime import UTC, datetime
+
+    account = _company_account(db, 62)
+    other_account = _company_account(db, 63)
+    colleague = create_user(db, email="pool@b62.fr", password="x")
+    colleague.account_id = account.id
+    colleague.xano_token = "tok-pool"
+    colleague.xano_token_at = datetime.now(UTC)
+    # Lanceur inutilisable : plus de token…
+    dry = create_user(db, email="dry@b62.fr", password="x")
+    dry.account_id = account.id
+    # …ou rattaché à un AUTRE compte (jamais de fuite cross-entreprise)…
+    stranger = create_user(db, email="s@b63.fr", password="x")
+    stranger.account_id = other_account.id
+    stranger.xano_token = "tok-stranger"
+    stranger.xano_token_at = datetime.now(UTC)
+    # …ou désactivé.
+    gone = create_user(db, email="gone@b62.fr", password="x")
+    gone.account_id = account.id
+    gone.xano_token = "tok-gone"
+    gone.xano_token_at = datetime.now(UTC)
+    gone.is_active = False
+    db.commit()
+
+    for launcher_id in (dry.id, stranger.id, gone.id):
+        client = deps.xano_client_for_account(
+            db, account.id, launcher_user_id=launcher_id
+        )
+        assert client._token == "tok-pool"  # noqa: SLF001

@@ -142,7 +142,7 @@ def test_pipeline_stages_title_weights_images_and_copy(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -215,7 +215,7 @@ def test_pipeline_hybrid_enriches_shopify_text_with_firecrawl(
         ) as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
             firecrawl=fc,
@@ -263,7 +263,7 @@ def test_pipeline_hybrid_survives_firecrawl_failure(
         FirecrawlClient("fc-key", transport=httpx.MockTransport(broken)) as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
             firecrawl=fc,
@@ -290,7 +290,8 @@ def test_pipeline_without_claude_and_without_brand_site(
 
     with httpx.Client(transport=_store({})) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: bare, http_client=http_client
+            read_product=lambda _pid, _account, _launcher: bare,
+            http_client=http_client,
         )
         assert process_one(db, pipeline) is True
 
@@ -314,7 +315,8 @@ def test_pipeline_persists_resolution_candidates(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT, http_client=http_client
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
+            http_client=http_client,
         )
         assert process_one(db, pipeline) is True
 
@@ -340,7 +342,7 @@ def test_stage_from_url_manually_restages(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -382,7 +384,8 @@ def test_pipeline_reaches_extra_website_urls(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: product, http_client=http_client
+            read_product=lambda _pid, _account, _launcher: product,
+            http_client=http_client,
         )
         assert process_one(db, pipeline) is True
 
@@ -412,7 +415,7 @@ def test_pipeline_passes_context_keywords_and_meta_length_to_claude(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -457,7 +460,7 @@ def test_pipeline_selects_instruction_by_product_category(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: product,
+            read_product=lambda _pid, _account, _launcher: product,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -484,7 +487,7 @@ def _run(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
             photoroom=photoroom,
@@ -799,7 +802,7 @@ def test_pipeline_firecrawl_fallback_end_to_end(
         _firecrawl_store({f"{NON_SHOPIFY_SITE}/fiche/g-short": FIRECRAWL_PAGE}) as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
             photoroom=_photoroom(photoroom_handler),
@@ -863,7 +866,7 @@ def test_stage_from_url_non_shopify_falls_back_to_firecrawl(
         _firecrawl_store({url: FIRECRAWL_PAGE}) as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
             firecrawl=fc,
         )
@@ -905,7 +908,7 @@ def test_stage_from_url_strips_tracking_query(
         _forbidden_firecrawl() as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             firecrawl=fc,
         )
@@ -938,7 +941,7 @@ def test_stage_from_url_theme_route_falls_back_to_shopify_handle(
         _forbidden_firecrawl() as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             firecrawl=fc,
         )
@@ -975,7 +978,7 @@ def test_stage_images_dedupes_duplicate_source_urls(
         _firecrawl_store({url: page}) as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
             firecrawl=fc,
         )
@@ -1003,7 +1006,7 @@ def test_stage_from_url_firecrawl_low_score_without_reference(
         _firecrawl_store({url: decoy}) as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
             firecrawl=fc,
         )
@@ -1021,7 +1024,7 @@ def test_stage_from_url_without_firecrawl_still_raises(
 
     with httpx.Client(transport=_store({})) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
         )
         with pytest.raises(LookupError):
@@ -1044,7 +1047,7 @@ def test_scrape_method_shopify_json_never_touches_firecrawl(
         _forbidden_firecrawl() as fc,
     ):
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
             firecrawl=fc,
         )
@@ -1068,7 +1071,7 @@ def test_copy_withheld_when_source_needs_manual(
 
     with httpx.Client(transport=_store({})) as http_client:  # rien ne résout
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: NON_SHOPIFY_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: NON_SHOPIFY_PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -1097,7 +1100,7 @@ def test_copy_still_generated_when_brand_has_no_website(
 
     with httpx.Client(transport=_store({})) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: bare,
+            read_product=lambda _pid, _account, _launcher: bare,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -1123,7 +1126,7 @@ def test_stage_copy_only_generates_from_catalog(
 
     with httpx.Client(transport=_store({})) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -1149,7 +1152,7 @@ def test_stage_copy_only_raises_when_unavailable(
 
     with httpx.Client(transport=_store({})) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,  # pas de client IA
         )
         with pytest.raises(RuntimeError):
@@ -1165,7 +1168,8 @@ def test_pipeline_missing_product_fails_item(
 
     with httpx.Client(transport=_store({})) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: None, http_client=http_client
+            read_product=lambda _pid, _account, _launcher: None,
+            http_client=http_client,
         )
         assert process_one(db, pipeline) is True
 
@@ -1236,7 +1240,7 @@ def test_llm_selection_resolves_ambiguous_candidates(
 
     with httpx.Client(transport=_store(_LEMAIRE_STORE)) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: _LEMAIRE_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: _LEMAIRE_PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -1270,7 +1274,7 @@ def test_llm_selection_abstains_keeps_manual_review(
 
     with httpx.Client(transport=_store(_LEMAIRE_STORE)) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: _LEMAIRE_PRODUCT,
+            read_product=lambda _pid, _account, _launcher: _LEMAIRE_PRODUCT,
             http_client=http_client,
             claude=claude,  # type: ignore[arg-type]
         )
@@ -1298,7 +1302,8 @@ def test_online_search_disabled_skips_resolution(
 
     with httpx.Client(transport=httpx.MockTransport(_explode)) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: bare, http_client=http_client
+            read_product=lambda _pid, _account, _launcher: bare,
+            http_client=http_client,
         )
         assert process_one(db, pipeline) is True
 
@@ -1331,7 +1336,7 @@ def test_launch_url_override_short_circuits_resolution(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
         )
         assert process_one(db, pipeline) is True
@@ -1363,7 +1368,7 @@ def test_launch_url_override_bad_page_falls_back_to_auto(
         transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
     ) as http_client:
         pipeline = EnrichmentPipeline(
-            read_product=lambda _pid, _account: PRODUCT,
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
             http_client=http_client,
         )
         assert process_one(db, pipeline) is True

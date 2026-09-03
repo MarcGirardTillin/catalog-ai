@@ -72,7 +72,16 @@ DEFAULT_TITLE_TEMPLATE = "{title}"
 # (product_id, account_id) -> product. The account matters: the Xano read is
 # made with a token of THAT account's company, so each tenant only ever reads
 # its own catalog (multi-tenant scoping happens upstream, in Xano).
-ProductReader = Callable[[int, int], Product | None]
+# (product_id, account_id, launcher_user_id) — le lanceur du job, dont le
+# token Xano est préféré pour lire la fiche (None : pool du compte).
+ProductReader = Callable[[int, int, int | None], Product | None]
+
+
+def _launcher_of(item: EnrichmentItem) -> int | None:
+    """L'utilisateur qui a lancé (ou relancé) le job de cet item."""
+    raw = (item.job.config_json or {}).get("launcher_user_id")
+    return int(raw) if isinstance(raw, int) else None
+
 
 # `meta` (Marc 2026-08-22) : la meta description se génère séparément de
 # la description — un seul appel Claude produit les deux, on ne STAGE que
@@ -432,7 +441,9 @@ class EnrichmentPipeline:
         self._firecrawl = firecrawl
 
     def __call__(self, db: Session, item: EnrichmentItem) -> None:
-        product = self._read_product(item.tillin_product_id, item.account_id)
+        product = self._read_product(
+            item.tillin_product_id, item.account_id, _launcher_of(item)
+        )
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"
@@ -686,7 +697,9 @@ class EnrichmentPipeline:
         Non-Shopify URLs fall back to Firecrawl extraction when configured.
         Raises LookupError when the URL yields no product page.
         """
-        product = self._read_product(item.tillin_product_id, item.account_id)
+        product = self._read_product(
+            item.tillin_product_id, item.account_id, _launcher_of(item)
+        )
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"
@@ -774,7 +787,9 @@ class EnrichmentPipeline:
         générer quand même ». Raises RuntimeError when copy generation is
         unavailable (transform disabled or no AI client configured).
         """
-        product = self._read_product(item.tillin_product_id, item.account_id)
+        product = self._read_product(
+            item.tillin_product_id, item.account_id, _launcher_of(item)
+        )
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"

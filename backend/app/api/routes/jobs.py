@@ -90,6 +90,7 @@ def create_enrichment_job(
         account_id=account_id,
         selection=selection,
         config=payload.config,
+        launcher_user_id=current_user.id,
     )
     background.add_task(run_job, job.id)
     return _to_public(db, job)
@@ -138,7 +139,7 @@ def retry_job_failures(
     """Requeue a job's failed/rejected items and kick the worker."""
     account_id = resolve_account_id(db, current_user)
     job = get_job(db, account_id=account_id, job_id=job_id)
-    retry_failed_items(db, job)
+    retry_failed_items(db, job, launcher_user_id=current_user.id)
     background.add_task(run_job, job.id)
     return _to_public(db, job)
 
