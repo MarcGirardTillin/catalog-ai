@@ -1040,3 +1040,14 @@ clients par TOKEN (dict token→client, non fermés — fuite bornée par la
 rotation). Conséquence assumée : un utilisateur au token expiré voit un 401
 xano_token_expired au lieu d'être silencieusement servi par le token d'un
 collègue — c'est le comportement correct.
+
+## 2026-09-03 — Jeton Xano des jobs de fond : lanceur d'abord, pool ensuite
+
+Les jobs de fond (enrichissement, import) préfèrent le jeton Tillin du
+LANCEUR du job (`config_json.launcher_user_id`, capturé à la création et
+adopté à chaque relance, écrasé côté serveur — jamais accepté du client),
+avec repli sur `freshest_company_token`. L'admin plateforme est accepté
+comme lanceur (geste explicite : il voyait les produits sélectionnés),
+mais reste exclu du pool anonyme (incident Neiwa/Madel 2026-07-30).
+Raison : incidents jobs 126/128 (session expirée / produits introuvables
+quand l'utilisateur du pool change d'entreprise dans Tillin).
