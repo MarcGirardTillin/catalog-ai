@@ -3,9 +3,14 @@
   import { createQuery } from "@tanstack/svelte-query"
   import { navigate } from "svelte5-router"
 
-  import { listImports, type ImportJobPublic } from "@/lib/api/imports"
+  import {
+    listImports,
+    listImportSuppliers,
+    type ImportJobPublic,
+  } from "@/lib/api/imports"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -22,10 +27,55 @@
   // Pagination serveur (des milliers d'imports à terme) : la page est dans
   // la clé de query, changer de page refetch automatiquement.
   let page = $state(1)
-  const importsQuery = createQuery(() => ({
-    queryKey: ["imports", "list", page],
+
+  // Filtres serveur (demande Marc 2026-09-15) : statut du job, « suivi
+  // produits » (au moins un produit dans cet état) et fournisseur. "" = tous.
+  type JobStatusFilter = "" | "pending" | "processing" | "completed" | "partial" | "failed"
+  type ItemStatusFilter = "" | "ready_for_review" | "applied" | "rejected" | "failed"
+  let statusFilter = $state<JobStatusFilter>("")
+  let itemStatusFilter = $state<ItemStatusFilter>("")
+  let supplierFilter = $state("")
+  const filtersActive = $derived(
+    statusFilter !== "" || itemStatusFilter !== "" || supplierFilter !== "",
+  )
+
+  const STATUS_OPTIONS: { value: JobStatusFilter; label: string }[] = [
+    { value: "pending", label: "En attente" },
+    { value: "processing", label: "En cours" },
+    { value: "completed", label: "Terminé" },
+    { value: "partial", label: "Partiel" },
+    { value: "failed", label: "Échec" },
+  ]
+  // Mêmes libellés que les puces de la colonne « Suivi produits ».
+  const ITEM_STATUS_OPTIONS: { value: ItemStatusFilter; label: string }[] = [
+    { value: "ready_for_review", label: "À transférer" },
+    { value: "applied", label: "Transférés" },
+    { value: "rejected", label: "Écartés" },
+    { value: "failed", label: "Échecs" },
+  ]
+
+  // Options du filtre fournisseur : fournisseurs distincts de TOUS les
+  // imports du compte (pas seulement la page affichée).
+  const suppliersQuery = createQuery(() => ({
+    queryKey: ["imports", "suppliers"],
     queryFn: async () => {
-      const { data, error } = await listImports({ page, page_size: 25 })
+      const { data, error } = await listImportSuppliers()
+      if (error || !data) throw new Error("suppliers_load_failed")
+      return data
+    },
+  }))
+  const supplierOptions = $derived(suppliersQuery.data ?? [])
+
+  const importsQuery = createQuery(() => ({
+    queryKey: ["imports", "list", page, statusFilter, itemStatusFilter, supplierFilter],
+    queryFn: async () => {
+      const { data, error } = await listImports({
+        page,
+        page_size: 25,
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(itemStatusFilter ? { item_status: itemStatusFilter } : {}),
+        ...(supplierFilter ? { supplier: supplierFilter } : {}),
+      })
       if (error || !data) throw new Error("imports_load_failed")
       return data
     },
@@ -92,12 +142,73 @@
           <Button size="sm" onclick={() => navigate("/imports/new")}>Importer un fichier</Button>
         </div>
 
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="flex flex-col gap-1">
+            <span class="text-muted-foreground text-xs font-medium">Statut</span>
+            <Select
+              class="h-8 w-40 text-xs"
+              bind:value={statusFilter}
+              onchange={() => (page = 1)}
+            >
+              <option value="">Tous</option>
+              {#each STATUS_OPTIONS as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </Select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-muted-foreground text-xs font-medium">Suivi produits</span>
+            <Select
+              class="h-8 w-40 text-xs"
+              bind:value={itemStatusFilter}
+              onchange={() => (page = 1)}
+            >
+              <option value="">Tous</option>
+              {#each ITEM_STATUS_OPTIONS as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </Select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-muted-foreground text-xs font-medium">Fournisseur</span>
+            <Select
+              class="h-8 w-48 text-xs"
+              bind:value={supplierFilter}
+              onchange={() => (page = 1)}
+            >
+              <option value="">Tous</option>
+              {#each supplierOptions as supplier (supplier)}
+                <option value={supplier}>{supplier}</option>
+              {/each}
+            </Select>
+          </label>
+          {#if filtersActive}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-8"
+              onclick={() => {
+                statusFilter = ""
+                itemStatusFilter = ""
+                supplierFilter = ""
+                page = 1
+              }}
+            >
+              Effacer les filtres
+            </Button>
+          {/if}
+        </div>
+
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
         {:else if imports === null}
           <Skeleton class="h-10 w-full" />
           <Skeleton class="h-10 w-full" />
           <Skeleton class="h-10 w-full" />
+        {:else if imports.length === 0 && filtersActive}
+          <p class="text-muted-foreground py-8 text-center text-sm">
+            Aucun import ne correspond aux filtres.
+          </p>
         {:else if imports.length === 0}
           <Card>
             <CardContent class="flex flex-col items-center gap-3 py-10 text-center">

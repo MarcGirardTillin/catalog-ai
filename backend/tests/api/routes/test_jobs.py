@@ -66,6 +66,41 @@ def test_list_and_detail_jobs(auth_client: TestClient) -> None:
     assert auth_client.get("/jobs/99999").status_code == 404
 
 
+def test_list_jobs_filters_by_status_and_item_status(auth_client: TestClient) -> None:
+    """Filtres de la liste : statut du job et « suivi produits » (au moins un
+    item du job dans l'état demandé)."""
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import EnrichmentItem, EnrichmentJob
+
+    first = _create_job(auth_client, [21])
+    second = _create_job(auth_client, [22, 23])
+
+    db = next(app.dependency_overrides[get_db]())
+    job2 = db.get(EnrichmentJob, second["id"])
+    assert job2 is not None
+    job2.status = "completed"
+    for item in db.query(EnrichmentItem).filter_by(job_id=second["id"]).all():
+        item.status = "ready_for_review"
+    db.commit()
+
+    completed = auth_client.get("/jobs", params={"status": "completed"})
+    assert completed.status_code == 200
+    assert [j["id"] for j in completed.json()["items"]] == [second["id"]]
+
+    pending = auth_client.get("/jobs", params={"status": "pending"})
+    assert [j["id"] for j in pending.json()["items"]] == [first["id"]]
+
+    review = auth_client.get("/jobs", params={"item_status": "ready_for_review"})
+    assert [j["id"] for j in review.json()["items"]] == [second["id"]]
+
+    assert (
+        auth_client.get("/jobs", params={"item_status": "applied"}).json()["total"] == 0
+    )
+    # Valeur inconnue refusée par le schéma (Literal).
+    assert auth_client.get("/jobs", params={"status": "bogus"}).status_code == 422
+
+
 def _first_item_id(auth_client: TestClient, job: dict[str, Any]) -> int:
     # Items are created sequentially with the job; find one via detail counts.
     # The API exposes items individually; ids start at 1 in a fresh test DB.

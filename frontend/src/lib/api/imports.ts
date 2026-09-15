@@ -19,6 +19,7 @@ import {
   importsListImportItems,
   importsListImportProducts,
   importsListImports,
+  importsListImportSuppliers,
   importsPreviewImportFile,
   importsPreviewImportRows,
   importsReadImport,
@@ -137,9 +138,23 @@ export function createImport(
   })
 }
 
-export function listImports(query?: { page?: number; page_size?: number }) {
+export function listImports(query?: {
+  page?: number
+  page_size?: number
+  status?: "pending" | "processing" | "completed" | "partial" | "failed"
+  item_status?: "ready_for_review" | "approved" | "applied" | "rejected" | "failed"
+  supplier?: string
+}) {
   return importsListImports({ query }) as Promise<{
     data?: Paginated<ImportJobPublic>
+    error?: unknown
+  }>
+}
+
+/** Fournisseurs distincts des imports du compte (options du filtre). */
+export function listImportSuppliers() {
+  return importsListImportSuppliers() as Promise<{
+    data?: string[]
     error?: unknown
   }>
 }

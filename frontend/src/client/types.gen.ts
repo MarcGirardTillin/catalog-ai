@@ -4644,6 +4644,14 @@ export type JobsListJobsData = {
          * Page Size
          */
         page_size?: number;
+        /**
+         * Status
+         */
+        status?: 'pending' | 'processing' | 'completed' | 'partial' | 'failed' | null;
+        /**
+         * Item Status
+         */
+        item_status?: 'ready_for_review' | 'approved' | 'applied' | 'rejected' | 'failed' | null;
     };
     url: '/jobs';
 };
@@ -4836,6 +4844,18 @@ export type ImportsListImportsData = {
          * Page Size
          */
         page_size?: number;
+        /**
+         * Status
+         */
+        status?: 'pending' | 'processing' | 'completed' | 'partial' | 'failed' | null;
+        /**
+         * Item Status
+         */
+        item_status?: 'ready_for_review' | 'approved' | 'applied' | 'rejected' | 'failed' | null;
+        /**
+         * Supplier
+         */
+        supplier?: string | null;
     };
     url: '/imports';
 };
@@ -4882,6 +4902,33 @@ export type ImportsCreateImportResponses = {
 };
 
 export type ImportsCreateImportResponse = ImportsCreateImportResponses[keyof ImportsCreateImportResponses];
+
+export type ImportsListImportSuppliersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/imports/suppliers';
+};
+
+export type ImportsListImportSuppliersErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportsListImportSuppliersError = ImportsListImportSuppliersErrors[keyof ImportsListImportSuppliersErrors];
+
+export type ImportsListImportSuppliersResponses = {
+    /**
+     * Response Imports-List Import Suppliers
+     *
+     * Successful Response
+     */
+    200: Array<string>;
+};
+
+export type ImportsListImportSuppliersResponse = ImportsListImportSuppliersResponses[keyof ImportsListImportSuppliersResponses];
 
 export type ImportsReadImportData = {
     body?: never;

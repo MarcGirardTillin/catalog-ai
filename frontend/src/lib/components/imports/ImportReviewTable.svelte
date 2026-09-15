@@ -117,6 +117,9 @@
     wholesale_price: string
     retail_price: string
     wholesale_discount: string
+    // Variante extraite d'origine (SKU, code couleur, confiances conservés
+    // au save) — null pour une ligne ajoutée à la main en review.
+    original: ImportedVariant | null
   }
   type ProductDraft = {
     supplier_ref: string
@@ -159,6 +162,7 @@
         wholesale_price: v.wholesale_price ?? "",
         retail_price: v.retail_price ?? "",
         wholesale_discount: v.wholesale_discount ?? "",
+        original: v,
       })),
     }
   }
@@ -184,12 +188,26 @@
       hs_code: clean(draft.hs_code),
       manufacturing_country: clean(draft.manufacturing_country),
       tags: draft.tags.map((tag) => tag.trim()).filter((tag) => tag !== ""),
-      variants: original.variants.map((variant, index): ImportedVariant => {
-        const v = draft.variants[index]
-        if (!v) return variant
+      // Le brouillon fait foi : lignes ajoutées à la main incluses, lignes
+      // supprimées exclues. Une ligne extraite garde SKU/code couleur/
+      // confiances de sa variante d'origine ; une ligne ajoutée part vierge.
+      variants: draft.variants.map((v): ImportedVariant => {
+        const base: ImportedVariant = v.original ?? {
+          ean: null,
+          color: null,
+          color_code: null,
+          size: null,
+          extra: null,
+          quantity: null,
+          wholesale_price: null,
+          retail_price: null,
+          wholesale_discount: null,
+          supplier_sku: null,
+          confidence: {},
+        }
         const quantity = v.quantity.trim()
         return {
-          ...variant,
+          ...base,
           color: clean(v.color),
           size: clean(v.size),
           extra: clean(v.extra),
@@ -476,7 +494,38 @@
 
   /** Copie la valeur d'une cellule sur toutes les variantes SUIVANTES
    * (geste tableur « étendre vers le bas », ex. renommer une couleur). */
-  function fillDown(itemId: number, field: keyof VariantDraft, from: number) {
+  /** Ajoute une ligne de variante vierge (taille saisie à la main) : la
+   * couleur et les prix de la dernière ligne sont repris, taille/EAN vides
+   * (demande Marc 2026-09-15). */
+  function addVariant(itemId: number) {
+    const draft = drafts[itemId]
+    if (!draft) return
+    const last = draft.variants.at(-1)
+    draft.variants.push({
+      color: last?.color ?? "",
+      size: "",
+      extra: "",
+      ean: "",
+      quantity: "1",
+      wholesale_price: last?.wholesale_price ?? "",
+      retail_price: last?.retail_price ?? "",
+      wholesale_discount: last?.wholesale_discount ?? "",
+      original: null,
+    })
+  }
+
+  /** Retire une ligne de variante (« Réinitialiser » restaure l'extrait). */
+  function removeVariant(itemId: number, index: number) {
+    const draft = drafts[itemId]
+    if (!draft || draft.variants.length <= 1) return
+    draft.variants = draft.variants.filter((_, i) => i !== index)
+  }
+
+  function fillDown(
+    itemId: number,
+    field: Exclude<keyof VariantDraft, "original">,
+    from: number,
+  ) {
     const draft = drafts[itemId]
     if (!draft) return
     const value = draft.variants[from][field]
@@ -839,6 +888,9 @@
                             Prix vente (profil)
                           </th>
                         {/if}
+                        <th class="w-6 px-1 py-1.5">
+                          <span class="sr-only">Retirer</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -963,10 +1015,43 @@
                               {profilePrice(drafts[item.id].variants[vIndex].wholesale_price)}
                             </td>
                           {/if}
+                          <td class="px-1 py-1">
+                            <button
+                              type="button"
+                              class="text-muted-foreground hover:text-destructive cursor-pointer rounded p-1 opacity-50 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-25"
+                              title="Retirer cette variante"
+                              aria-label="Retirer la variante {vIndex + 1}"
+                              disabled={drafts[item.id].variants.length <= 1}
+                              onclick={() => removeVariant(item.id, vIndex)}
+                            >
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg
+                              >
+                            </button>
+                          </td>
                         </tr>
                       {/each}
                     </tbody>
                   </table>
+                </div>
+
+                <div>
+                  <!-- Taille manquante du document (réassort, ligne oubliée) :
+                       ajout à la main, couleur et prix repris de la dernière
+                       ligne (demande Marc 2026-09-15). -->
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={() => addVariant(item.id)}
+                  >
+                    + Ajouter une taille
+                  </Button>
                 </div>
 
                 {#if coefficientConfig}

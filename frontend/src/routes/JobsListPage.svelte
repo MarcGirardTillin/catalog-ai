@@ -7,6 +7,7 @@
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { EmptyState } from "@/lib/components/ui/empty-state"
+  import { Select } from "@/lib/components/ui/select"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -23,10 +24,42 @@
   // Pagination serveur (des milliers d'enrichissements à terme) : la page
   // est dans la clé de query, changer de page refetch automatiquement.
   let page = $state(1)
+
+  // Filtres serveur (demande Marc 2026-09-15) : statut du job + « suivi
+  // produits » (au moins un item du job dans cet état). "" = tous.
+  type JobStatusFilter = "" | "pending" | "processing" | "completed" | "partial" | "failed"
+  type ItemStatusFilter = "" | "ready_for_review" | "approved" | "applied" | "rejected" | "failed"
+  let statusFilter = $state<JobStatusFilter>("")
+  let itemStatusFilter = $state<ItemStatusFilter>("")
+  const filtersActive = $derived(statusFilter !== "" || itemStatusFilter !== "")
+
+  const STATUS_OPTIONS: { value: JobStatusFilter; label: string }[] = [
+    { value: "pending", label: "En attente" },
+    { value: "processing", label: "En cours" },
+    { value: "completed", label: "Terminé" },
+    { value: "partial", label: "Partiel" },
+    { value: "failed", label: "Échec" },
+  ]
+  // Mêmes libellés que les puces de la colonne « Suivi produits ».
+  const ITEM_STATUS_OPTIONS: { value: ItemStatusFilter; label: string }[] = [
+    { value: "ready_for_review", label: "À vérifier" },
+    { value: "approved", label: "Validés" },
+    { value: "applied", label: "Appliqués" },
+    { value: "rejected", label: "Écartés" },
+    { value: "failed", label: "Échecs" },
+  ]
+
   const jobsQuery = createQuery(() => ({
-    queryKey: ["jobs", "list", page],
+    queryKey: ["jobs", "list", page, statusFilter, itemStatusFilter],
     queryFn: async () => {
-      const { data, error } = await jobsListJobs({ query: { page, page_size: 25 } })
+      const { data, error } = await jobsListJobs({
+        query: {
+          page,
+          page_size: 25,
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(itemStatusFilter ? { item_status: itemStatusFilter } : {}),
+        },
+      })
       if (error || !data) throw new Error("jobs_load_failed")
       return data
     },
@@ -109,6 +142,49 @@
           </Button>
         </div>
 
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="flex flex-col gap-1">
+            <span class="text-muted-foreground text-xs font-medium">Statut</span>
+            <Select
+              class="h-8 w-40 text-xs"
+              bind:value={statusFilter}
+              onchange={() => (page = 1)}
+            >
+              <option value="">Tous</option>
+              {#each STATUS_OPTIONS as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </Select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-muted-foreground text-xs font-medium">Suivi produits</span>
+            <Select
+              class="h-8 w-40 text-xs"
+              bind:value={itemStatusFilter}
+              onchange={() => (page = 1)}
+            >
+              <option value="">Tous</option>
+              {#each ITEM_STATUS_OPTIONS as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </Select>
+          </label>
+          {#if filtersActive}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-8"
+              onclick={() => {
+                statusFilter = ""
+                itemStatusFilter = ""
+                page = 1
+              }}
+            >
+              Effacer les filtres
+            </Button>
+          {/if}
+        </div>
+
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
         {:else if jobs === null}
@@ -116,13 +192,17 @@
           <Skeleton class="h-10 w-full" />
           <Skeleton class="h-10 w-full" />
         {:else if jobs.length === 0}
-          <EmptyState
-            message="Aucun enrichissement — créez le premier depuis la recherche produits."
-          >
-            <Button onclick={() => navigate("/products?intent=enrich")}>
-              Enrichir des produits
-            </Button>
-          </EmptyState>
+          {#if filtersActive}
+            <EmptyState message="Aucun enrichissement ne correspond aux filtres." />
+          {:else}
+            <EmptyState
+              message="Aucun enrichissement — créez le premier depuis la recherche produits."
+            >
+              <Button onclick={() => navigate("/products?intent=enrich")}>
+                Enrichir des produits
+              </Button>
+            </EmptyState>
+          {/if}
         {:else}
           <Card class="py-0">
             <CardContent class="overflow-x-auto px-0">

@@ -195,6 +195,81 @@ def test_list_and_detail_imports(import_client: TestClient) -> None:
     assert import_client.get("/imports/99999").status_code == 404
 
 
+def test_list_imports_filters_status_item_status_and_supplier(
+    import_client: TestClient,
+) -> None:
+    """Filtres de la liste : statut du job, « suivi produits » (au moins un
+    item dans l'état demandé) et fournisseur (profil ou document, insensible
+    à la casse)."""
+    first = _upload(import_client, name="a.csv", data=b"ref;ean\n")
+    second = _upload(import_client, name="b.csv", data=b"ref;ean\n")
+
+    db = _db()
+    row2 = db.get(EnrichmentJob, second["id"])
+    row2.status = "completed"
+    row2.config_json = {
+        **(row2.config_json or {}),
+        "document": {"supplier": "OLOW"},
+    }
+    db.add(
+        ImportItem(
+            job_id=second["id"],
+            account_id=row2.account_id,
+            status="ready_for_review",
+            payload_json={"supplier_ref": "R1", "variants": []},
+        )
+    )
+    db.commit()
+
+    completed = import_client.get("/imports", params={"status": "completed"})
+    assert completed.status_code == 200
+    assert [j["id"] for j in completed.json()["items"]] == [second["id"]]
+
+    review = import_client.get("/imports", params={"item_status": "ready_for_review"})
+    assert [j["id"] for j in review.json()["items"]] == [second["id"]]
+    assert (
+        import_client.get("/imports", params={"item_status": "applied"}).json()["total"]
+        == 0
+    )
+
+    olow = import_client.get("/imports", params={"supplier": "olow"})
+    assert olow.json()["total"] == 1
+    assert [j["id"] for j in olow.json()["items"]] == [second["id"]]
+    assert (
+        import_client.get("/imports", params={"supplier": "Inconnu"}).json()["total"]
+        == 0
+    )
+    # `first` reste visible sans filtre.
+    assert import_client.get("/imports").json()["total"] == 2
+    assert first["id"] in [
+        j["id"] for j in import_client.get("/imports").json()["items"]
+    ]
+
+    # Valeur inconnue refusée par le schéma (Literal).
+    assert import_client.get("/imports", params={"status": "bogus"}).status_code == 422
+
+
+def test_list_import_suppliers_returns_distinct_labels(
+    import_client: TestClient,
+) -> None:
+    a = _upload(import_client, name="a.csv", data=b"x")
+    b = _upload(import_client, name="b.csv", data=b"x")
+    _upload(import_client, name="c.csv", data=b"x")  # sans fournisseur
+
+    db = _db()
+    for job_id, supplier in ((a["id"], "OLOW"), (b["id"], "armedangels")):
+        row = db.get(EnrichmentJob, job_id)
+        row.config_json = {
+            **(row.config_json or {}),
+            "document": {"supplier": supplier},
+        }
+    db.commit()
+
+    response = import_client.get("/imports/suppliers")
+    assert response.status_code == 200
+    assert response.json() == ["armedangels", "OLOW"]
+
+
 def test_import_detail_surfaces_warnings_error_and_counts(
     import_client: TestClient,
 ) -> None:

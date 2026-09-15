@@ -8,10 +8,11 @@ parses/extracts them together and stages `import_item` rows for review.
 
 import logging
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import (
@@ -160,12 +161,12 @@ def _job_totals(db: Session, job_id: int) -> ImportJobTotals:
     )
 
 
-def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
+def _job_supplier(db: Session, job: EnrichmentJob) -> str | None:
+    """Fournisseur affiché : celui du PROFIL rattaché quand il y en a un —
+    l'extraction confond parfois le fournisseur avec le client facturé
+    (demande Marc 2026-07-30). Repli : le fournisseur extrait du document."""
     config = job.config_json or {}
     document = config.get("document") or {}
-    # Fournisseur affiché : celui du PROFIL rattaché quand il y en a un —
-    # l'extraction confond parfois le fournisseur avec le client facturé
-    # (demande Marc 2026-07-30). Repli : le fournisseur extrait du document.
     supplier = document.get("supplier")
     if config.get("profile_id"):
         profile = db.get(ImportProfile, int(config["profile_id"]))
@@ -174,6 +175,13 @@ def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
                 (profile.config_json or {}).get("supplier_label") or ""
             ).strip()
             supplier = profile_supplier or profile.name or supplier
+    return supplier
+
+
+def _to_public(db: Session, job: EnrichmentJob) -> ImportJobPublic:
+    config = job.config_json or {}
+    document = config.get("document") or {}
+    supplier = _job_supplier(db, job)
     duration: float | None = None
     if job.started_at is not None and job.finished_at is not None:
         duration = (job.finished_at - job.started_at).total_seconds()
@@ -302,21 +310,54 @@ def list_imports(
     current_user: CurrentUserDep,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: Annotated[
+        Literal["pending", "processing", "completed", "partial", "failed"] | None,
+        Query(),
+    ] = None,
+    item_status: Annotated[
+        Literal["ready_for_review", "approved", "applied", "rejected", "failed"] | None,
+        Query(),
+    ] = None,
+    supplier: Annotated[str | None, Query(max_length=200)] = None,
 ) -> PaginatedResponse[ImportJobPublic]:
     account_id = resolve_account_id(db, current_user)
     base = select(EnrichmentJob).where(
         EnrichmentJob.account_id == account_id, EnrichmentJob.job_type == "import"
     )
-    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
-    rows = (
-        db.execute(
-            base.order_by(EnrichmentJob.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+    if status is not None:
+        base = base.where(EnrichmentJob.status == status)
+    if item_status is not None:
+        # « Suivi produits » : les imports dont AU MOINS un produit est dans
+        # cet état (même sémantique que les puces de la liste).
+        base = base.where(
+            select(ImportItem.id)
+            .where(
+                ImportItem.job_id == EnrichmentJob.id,
+                ImportItem.status == item_status,
+            )
+            .exists()
         )
-        .scalars()
-        .all()
-    )
+    ordered = base.order_by(EnrichmentJob.id.desc())
+    rows: Sequence[EnrichmentJob]
+    if supplier is not None:
+        # Le fournisseur affiché se résout en Python (profil rattaché puis
+        # document extrait) : on filtre donc la liste complète avant de
+        # paginer — volume par compte raisonnable (centaines d'imports).
+        wanted = supplier.strip().casefold()
+        matched = [
+            job
+            for job in db.scalars(ordered).all()
+            if (_job_supplier(db, job) or "").strip().casefold() == wanted
+        ]
+        total = len(matched)
+        rows = matched[(page - 1) * page_size : (page - 1) * page_size + page_size]
+    else:
+        total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+        rows = (
+            db.execute(ordered.offset((page - 1) * page_size).limit(page_size))
+            .scalars()
+            .all()
+        )
     return PaginatedResponse(
         items=[_to_public(db, job) for job in rows],
         total=total,
@@ -324,6 +365,22 @@ def list_imports(
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size,
     )
+
+
+@router.get("/suppliers", response_model=list[str])
+def list_import_suppliers(db: SessionDep, current_user: CurrentUserDep) -> list[str]:
+    """Fournisseurs distincts des imports du compte (options du filtre)."""
+    account_id = resolve_account_id(db, current_user)
+    jobs = db.scalars(
+        select(EnrichmentJob).where(
+            EnrichmentJob.account_id == account_id,
+            EnrichmentJob.job_type == "import",
+        )
+    ).all()
+    labels = {
+        stripped for job in jobs if (stripped := (_job_supplier(db, job) or "").strip())
+    }
+    return sorted(labels, key=str.casefold)
 
 
 @router.get("/{import_id}", response_model=ImportJobPublic)

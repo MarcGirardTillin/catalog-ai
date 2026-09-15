@@ -1,6 +1,6 @@
 """Enrichment job routes: create, list, detail."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import func, select, update
@@ -102,6 +102,14 @@ def list_jobs(
     current_user: CurrentUserDep,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: Annotated[
+        Literal["pending", "processing", "completed", "partial", "failed"] | None,
+        Query(),
+    ] = None,
+    item_status: Annotated[
+        Literal["ready_for_review", "approved", "applied", "rejected", "failed"] | None,
+        Query(),
+    ] = None,
 ) -> PaginatedResponse[JobPublic]:
     account_id = resolve_account_id(db, current_user)
     # Import jobs have their own screen (/imports) — keep them out of Jobs.
@@ -109,6 +117,19 @@ def list_jobs(
         EnrichmentJob.account_id == account_id,
         EnrichmentJob.job_type == "enrichment",
     )
+    if status is not None:
+        base = base.where(EnrichmentJob.status == status)
+    if item_status is not None:
+        # « Suivi produits » : les jobs dont AU MOINS un item est dans cet
+        # état (même sémantique que les puces de la liste).
+        base = base.where(
+            select(EnrichmentItem.id)
+            .where(
+                EnrichmentItem.job_id == EnrichmentJob.id,
+                EnrichmentItem.status == item_status,
+            )
+            .exists()
+        )
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = (
         db.execute(
