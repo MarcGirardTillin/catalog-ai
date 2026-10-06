@@ -2,10 +2,23 @@
 
 ## Latest Changes
 
-- Studio : « Modifier l'image » remplace l'outil de recadrage — éditeur sur
-  le modèle de Tillin (cadre fixe, image déplacée et zoomée dessous, formats
-  1:1 · 16:9 · 4:5 · 5:4 · Libre, rotation, miroir, taille de sortie,
-  aperçu du rendu). Il s'applique à l'image telle qu'elle est : une
+- Enrichissement : les sites de marque qui ne sont pas des boutiques
+  Shopify (Magento, WooCommerce, PrestaShop…) sont désormais interrogés via
+  leur propre moteur de recherche, au code-barres puis à la référence,
+  gratuitement et avant la recherche web : une fiche n'est retenue que si
+  le code-barres (ou la référence) y figure bien (ex. Le Petit Souk).
+- Console admin — Coûts : la grille des coûts fournisseurs est désormais
+  COMMUNE à tous les comptes (une seule ligne à créer pour un nouveau
+  modèle) ; une remise négociée pour un client s'ajoute en « Exception de
+  coûts » sur la page de son compte, avec le prix commun remplacé en
+  regard. La migration fusionne les copies existantes sans changer aucun
+  coût affiché et ajoute les prix de Claude Sonnet 5.5 (2 $ / 10 $ par
+  million de tokens). Les mois déjà figés ne bougent pas.
+- Studio : onglet « Cadrage » sous l'image (à côté de « Produit » ou
+  « Aperçu »), sur le modèle de l'éditeur Tillin : cadre fixe, image
+  déplacée et zoomée dessous, poignées dans les angles (et sur les côtés en
+  format Libre) avec recalage façon iPhone, formats 1:1 · 16:9 · 4:5 · 5:4 ·
+  Libre, rotation, miroir, taille de sortie ; appliqué en direct. Il s'applique à l'image telle qu'elle est : une
   retouche IA (embellissement, ombre…) n'est plus perdue au recadrage, et
   le recadrage survit au repositionnement. Disponible aussi sur les mises à
   plat et autres générations à sortie unique ; gratuit.

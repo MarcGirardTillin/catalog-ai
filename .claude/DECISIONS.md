@@ -1063,10 +1063,10 @@ quel que soit le modèle configuré. La rédaction garde la réflexion
 adaptative (effort `high` par défaut sur 5.5) avec `MAX_TOKENS` porté à
 8192 pour qu'elle ne tronque pas le JSON. Le SDK installé (0.116) ne déclare
 pas `between_tools` : le dict passe tel quel (typé `Any`).
-Au déploiement : éditer `AI_DEFAULT_MODEL` dans les `.env` (local + prod),
-et créer les lignes `usage_price` `claude`/`claude-sonnet-5-5` pour chaque
-compte — les prix sont résolus par modèle exact, sans ligne de repli, donc
-sans elles les appels 5.5 ne seraient pas facturés.
+Au déploiement : éditer `AI_DEFAULT_MODEL` dans les `.env` (local + prod).
+Les coûts `claude`/`claude-sonnet-5-5` (0.000002 / 0.00001 €/token) sont
+insérés dans la grille COMMUNE par la migration 0027 (voir « Grille de coûts
+fournisseurs commune ») — plus aucune ligne à créer par compte.
 
 ## 2026-10-06 — Fiches source supplémentaires « une page par couleur »
 
@@ -1086,7 +1086,7 @@ normalisation auto de ses images. Aucun changement Xano : l'apply pousse
 toutes les images sélectionnées dans l'ordre stagé.
 
 
-## 2026-10-06 — Studio : « Modifier l'image » sur la sortie courante
+## 2026-10-06 — Studio : cadrage sur la sortie courante (onglet « Cadrage »)
 
 Bug Marc : traitement → retouche IA (embellissement) → recadrage perdait la
 retouche (le recadrage recomposait depuis le cutout). Le recadrage devient une
@@ -1103,3 +1103,80 @@ Routes `POST/DELETE /imaging/assets/{id}/edit`, `GET .../edit-source`
 à toute sortie unique non enregistrée (mises à plat comprises). Marge : fond
 du canevas pour une normalisation, blanc sinon. L'ancien recadrage tracé
 (`render.crop`) reste lu pour les assets existants, l'UI ne le pose plus.
+UI (retour Marc) : pas de fenêtre — onglets sous l'aperçu « Produit » /
+« Aperçu » et « Cadrage », chaque geste appliqué ~0,5 s après le relâchement ;
+poignées d'angle (et de côté en Libre) avec recalage au maximum du cadre en
+zoomant l'image (iPhone), géométrie pure dans `lib/imaging/image-edit.ts`.
+
+## 2026-10-06 — Grille de coûts fournisseurs commune
+
+`usage_price` (coûts RÉELS fournisseurs, vue marge opérateur uniquement — les
+clients paient en crédits) était par compte : 11 copies identiques en prod,
+11 insertions par nouveau modèle. Décision Marc : grille COMMUNE +
+exceptions par compte.
+- **Modèle** : `usage_price.account_id` nullable ; `NULL` = grille commune,
+  une ligne de compte = exception (remise négociée). Résolution unique
+  (`app/api/services/usage_pricing.PriceGrid.resolve`) : compte exact →
+  compte modèle NULL → commun exact → commun modèle NULL → pas de prix.
+  Summary, by-job, export, timeseries, overview admin, usage-metrics et
+  figement passent tous par elle.
+- **Figement** : le snapshot sérialise la grille RÉSOLUE du compte avec un
+  `scope` (account/common) par ligne pour rejouer la cascade à l'identique ;
+  les snapshots antérieurs (sans `scope`) sont lus comme lignes de compte —
+  les mois figés ne bougent pas.
+- **Migration 0027** : fusion en Python pur (prix majoritaire par
+  (provider, model, metric), égalité → `updated_at` le plus récent ; devise
+  comprise dans la valeur). Lignes de compte égales au commun supprimées,
+  divergentes gardées en exception ; une boucle de point fixe vérifie compte
+  par compte que la résolution est inchangée et garde toute ligne
+  nécessaire (ex. exception modèle NULL qui masquait un commun exact).
+  Seul effet visible : un compte qui n'avait AUCUN prix pour une clé hérite
+  du prix commun (correction voulue du cas JoggingJogging). Insère aussi
+  `claude-sonnet-5-5` commun (2 $/10 $ par M répercutés). Downgrade : recopie
+  du commun sur chaque compte en préservant la cascade, puis NOT NULL.
+- **Unicité** : une ligne par (portée, provider, model, metric), vérifiée par
+  l'API (409 `duplicate_price`) plutôt qu'un index — un index NULL-safe sur
+  account_id/model exigerait `NULLS NOT DISTINCT`, absent de SQLite (tests).
+- **API (toutes `get_current_admin`)** : `/usage/prices` = CRUD de la grille
+  commune ; `/admin/accounts/{id}/prices` = CRUD des exceptions (réponse avec
+  `common_unit_price`, le prix commun remplacé). Une portée ne touche jamais
+  l'autre (404). `/admin/usage-metrics.priced` se lit contre la grille
+  commune. Les nouveaux comptes ne reçoivent plus de copie (seeding
+  supprimé). Bypass admin non étendu aux crédits ni au scoping.
+- **UI** : « Coûts » (/admin/pricing) édite la grille commune ; la page d'un
+  compte porte la carte « Exceptions de coûts ».
+
+## 2026-10-06 — Recherche interne des sites non-Shopify
+
+Vécu Le Petit Souk (boutique Marcel en Bretelles) : site Magento 2,
+`/search/suggest.json` en 404 → la chaîne Shopify ne cherchait jamais le
+code-barres, et le repli web le retire de ses requêtes ; pourtant la barre de
+recherche du site trouve chaque produit à l'EAN. Décision : une étape
+`site_search` (mode `auto` uniquement), entre la chaîne Shopify et le repli
+web payant.
+
+- **Détection** : suggest.json en 404/405/410 ou 2xx non-JSON marque l'hôte
+  non-Shopify (403/429/5xx/timeouts = transitoires, jamais marqués). Cache
+  en mémoire par client HTTP (le client du worker vit avec le process) et
+  par hôte, TTL 6 h : les produits suivants ne refont pas les suggest.json.
+- **Gabarits** (`app/sources/site_search.py`, découverts une fois par hôte) :
+  `SearchAction.target` du JSON-LD de la page d'accueil, puis gabarits de la
+  plateforme détectée (Magento catalogsearch + ajax suggest ElasticSuite ;
+  WooCommerce Store API `wp-json/wc/store/v1/products?search=` — avant le
+  `?s=` WordPress, qui ne cherche ni SKU ni EAN — ; PrestaShop URL de
+  recherche déclarée). Plateforme inconnue sans SearchAction : rien n'est
+  deviné (une URL qui ignore la requête renverrait les produits de la home).
+- **Requêtes** : jusqu'à 3 EAN dédupliqués puis la référence ; jamais le
+  titre (invérifiable). Redirection vers une fiche suivie, sinon max 3 liens
+  produits du même hôte (HTML ou JSON).
+- **Vérification obligatoire** : EAN en jeton exact dans le HTML de la fiche
+  (tiret compris : `W-<ean>` d'une fiche sœur ne matche pas) ou dans le
+  chemin de l'URL → 1.0 ; sinon référence (`reference_matches`, codes
+  contenant l'EAN écartés) → 0.9, ou 0.5 si la couleur du produit manque ;
+  sinon simple candidat 0.3, jamais résolu. Seuil, départage couleur et
+  candidats de review inchangés ; `source_method = "site_search"`.
+- **Coût** : zéro crédit ; ≤ 8 GET de recherche + 4 GET de fiche par
+  produit, + 1 à 3 GET de page d'accueil par hôte et par TTL. Le JSON-LD lu
+  sert de fiche source ; sans JSON-LD, le pipeline reprend la chaîne d'une
+  URL de fiche (JSON-LD → extraction web métérée), comme une résolution
+  manuelle.
