@@ -14,8 +14,8 @@
   regard. La migration fusionne les copies existantes sans changer aucun
   coût affiché et ajoute les prix de Claude Sonnet 5.5 (2 $ / 10 $ par
   million de tokens). Les mois déjà figés ne bougent pas.
-- Studio : onglet « Cadrage » sous l'image (à côté de « Produit » ou
-  « Aperçu »), sur le modèle de l'éditeur Tillin : cadre fixe, image
+- Studio : l'aperçu « Après » devient l'éditeur de cadrage (il remplace le
+  repositionnement du produit), sur le modèle de l'éditeur Tillin : cadre fixe, image
   déplacée et zoomée dessous, poignées dans les angles (et sur les côtés en
   format Libre) avec recalage façon iPhone, formats 1:1 · 16:9 · 4:5 · 5:4 ·
   Libre, rotation, miroir, taille de sortie ; appliqué en direct. Il s'applique à l'image telle qu'elle est : une

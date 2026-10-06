@@ -1103,8 +1103,10 @@ Routes `POST/DELETE /imaging/assets/{id}/edit`, `GET .../edit-source`
 à toute sortie unique non enregistrée (mises à plat comprises). Marge : fond
 du canevas pour une normalisation, blanc sinon. L'ancien recadrage tracé
 (`render.crop`) reste lu pour les assets existants, l'UI ne le pose plus.
-UI (retour Marc) : pas de fenêtre — onglets sous l'aperçu « Produit » /
-« Aperçu » et « Cadrage », chaque geste appliqué ~0,5 s après le relâchement ;
+UI (retour Marc) : ni fenêtre ni onglets — l'éditeur de cadrage EST l'aperçu
+« Après » de toute sortie éditable, et remplace le repositionnement du
+produit (glisser/taille %/guides, POST /render n'est plus appelé par l'UI ;
+la route reste). Chaque geste est appliqué ~0,5 s après le relâchement ;
 poignées d'angle (et de côté en Libre) avec recalage au maximum du cadre en
 zoomant l'image (iPhone), géométrie pure dans `lib/imaging/image-edit.ts`.
 

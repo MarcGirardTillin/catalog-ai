@@ -24,21 +24,17 @@
 </script>
 
 <script lang="ts">
-  // Résultat d'une normalisation : avant/après grand format avec poids et
-  // dimensions, repositionnement manuel (aperçu en direct pendant le drag,
-  // POST /render au relâchement — aucune refacturation), guides de placement,
-  // zoom plein écran, renommage, enregistrement vers Tillin ou rejet.
+  // Résultat d'un traitement : avant/après grand format avec poids et
+  // dimensions, cadrage sous l'image (CropEditor — gratuit, conserve une
+  // finalisation IA), finalisation IA optionnelle, zoom plein écran,
+  // renommage, enregistrement vers Tillin ou rejet.
   import ChevronDown from "@lucide/svelte/icons/chevron-down"
-  import CropIcon from "@lucide/svelte/icons/crop"
-  import Grid3x3 from "@lucide/svelte/icons/grid-3x3"
-  import Maximize2 from "@lucide/svelte/icons/maximize-2"
-  import RotateCcw from "@lucide/svelte/icons/rotate-ccw"
   import Sparkles from "@lucide/svelte/icons/sparkles"
   import { toast } from "svelte-sonner"
 
   import type { ProductImage } from "@/client"
   import { insufficientCreditsMessage } from "@/lib/api/credits"
-  import { fetchAssetPreviews, finalizeAsset, renderAsset } from "@/lib/api/imaging"
+  import { fetchAssetPreviews, finalizeAsset } from "@/lib/api/imaging"
   import { Button } from "@/lib/components/ui/button"
   import { Card, CardContent } from "@/lib/components/ui/card"
   import { ConfirmButton } from "@/lib/components/ui/confirm-button"
@@ -76,20 +72,17 @@
       : "4 / 5",
   )
   const multiOutput = $derived(work.previewUrls.length > 1)
-  // Le repositionnement ne s'applique qu'aux sorties uniques (normalisation).
-  const canRender = $derived(
-    work.asset?.can_render === true && !work.saving && !multiOutput,
-  )
   const saved = $derived(work.status === "saved")
-  // Onglet « Cadrage » (recadrage, rotation, miroir, taille) : toute sortie
-  // unique non enregistrée — génération comprise — sans perdre une
-  // finalisation IA. Onglet principal : « Produit » (repositionnement) pour
-  // une normalisation, « Aperçu » pour une génération.
+  // Cadrage sous l'image (recadrage, zoom, rotation, miroir, taille) : toute
+  // sortie unique non enregistrée — génération comprise — sans perdre une
+  // finalisation IA. Il remplace l'ancien repositionnement du produit.
   const canEdit = $derived(
     work.asset?.can_edit === true && !work.saving && !multiOutput,
   )
-  let tool = $state<"main" | "crop">("main")
-  const cropping = $derived(tool === "crop" && canEdit)
+  // La finalisation IA reste réservée aux normalisations (cutout disponible).
+  const canFinalize = $derived(
+    work.asset?.can_render === true && !work.saving && !multiOutput,
+  )
 
   async function onEdited(asset: ImageAssetPublic) {
     work.asset = asset
@@ -98,158 +91,15 @@
     work.previewUrls = previews
   }
 
-  // --- Re-render (repositionnement) : débouncé, séquencé (1 à la fois) ---
-  let renderTimer: ReturnType<typeof setTimeout> | undefined
-  let renderQueued = false
-
-  function scheduleRender(delayMs = 400) {
-    if (!canRender) return
-    clearTimeout(renderTimer)
-    renderTimer = setTimeout(() => void runRender(), delayMs)
-  }
-
-  async function runRender() {
-    const asset = work.asset
-    if (!asset || work.saving) return
-    if (work.rendering) {
-      renderQueued = true // un render tourne : rejouer à la fin
-      return
-    }
-    work.rendering = true
-    const sent = { x: Math.round(work.offsetX), y: Math.round(work.offsetY) }
-    const { data, error } = await renderAsset(asset.id, {
-      offset_x: sent.x,
-      offset_y: sent.y,
-      scale: Number(work.scale.toFixed(2)),
-      crop: work.crop,
-    })
-    if (error || !data) {
-      work.rendering = false
-      toast.error("Recomposition impossible.")
-      return
-    }
-    work.asset = data
-    const previews = await fetchAssetPreviews(data)
-    for (const url of work.previewUrls) URL.revokeObjectURL(url)
-    work.previewUrls = previews
-    // La nouvelle preview intègre ces offsets : le décalage CSS retombe à 0.
-    renderedOffset = sent
-    work.rendering = false
-    if (renderQueued) {
-      renderQueued = false
-      scheduleRender(50) // dernière position posée pendant le render
-    }
-  }
-
-  function resetPosition() {
-    work.offsetX = 0
-    work.offsetY = 0
-    work.scale = 1
-    work.crop = null
-    scheduleRender(0)
-  }
-
-  // Échelle pilotable au clavier : champ % + crans de 5 (mêmes bornes que la
-  // barre : 30 → 200 %).
-  function setScalePercent(percent: number) {
-    if (!Number.isFinite(percent)) return
-    work.scale = Math.min(2, Math.max(0.3, Math.round(percent) / 100))
-    scheduleRender()
-  }
-
-  function onScaleTyped(event: Event) {
-    const input = event.currentTarget as HTMLInputElement
-    setScalePercent(Number(input.value))
-    input.value = String(Math.round(work.scale * 100))
-  }
-
-  // --- Drag natif sur l'aperçu : delta écran → pixels canevas ---
-  let afterImg: HTMLImageElement | null = $state(null)
-  let dragging = $state(false)
-  let dragStart = { x: 0, y: 0, offsetX: 0, offsetY: 0 }
-  // Offsets intégrés dans la preview affichée (mis à jour à chaque render) :
-  // l'écart avec work.offsetX/Y se traduit en translation CSS immédiate, d'où
-  // un déplacement visible PENDANT le drag (le rendu exact — produit seul
-  // déplacé, fond fixe — revient au relâchement). La capture initiale est
-  // voulue : c'est l'état au montage (réhydratation comprise).
-  // svelte-ignore state_referenced_locally
-  let renderedOffset = $state({ x: work.offsetX, y: work.offsetY })
-
-  function canvasFactor(): number {
-    const canvasWidth = outputFile?.width ?? 1600
-    const displayed = afterImg?.clientWidth || 1
-    return canvasWidth / displayed
-  }
-
-  const previewShift = $derived.by(() => {
-    const factor = canvasFactor() || 1
-    return {
-      x: (work.offsetX - renderedOffset.x) / factor,
-      y: (work.offsetY - renderedOffset.y) / factor,
-    }
-  })
-
-  // --- Guides de placement (patrons) : tiers, croix centrale ---
-  // Actifs par défaut (demande Marc) ; le bouton grille les masque.
-  let showGuides = $state(true)
-  const guidesVisible = $derived(canRender && (dragging || showGuides))
-
   // --- Zoom plein écran ---
   let lightboxSrc = $state<string | null>(null)
 
-  function onPointerDown(event: PointerEvent) {
-    if (!canRender) return
-    if (finalized && !finalizeWarned) {
-      // La finalisation est « cuite » : le premier repositionnement du
-      // produit recompose depuis le cutout et l'annule — on prévient une
-      // fois. (L'onglet « Cadrage », lui, la conserve.)
-      const proceed = window.confirm(
-        "Repositionner le produit recompose l'image et annule la finalisation " +
-          "IA — une nouvelle finalisation sera facturée. Pour seulement " +
-          "recadrer, utilisez l'onglet « Cadrage ». Continuer ?",
-      )
-      if (!proceed) return
-      finalizeWarned = true
-    }
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    dragging = true
-    dragStart = {
-      x: event.clientX,
-      y: event.clientY,
-      offsetX: work.offsetX,
-      offsetY: work.offsetY,
-    }
-  }
-
-  function onPointerMove(event: PointerEvent) {
-    if (!dragging) return
-    const factor = canvasFactor()
-    work.offsetX = dragStart.offsetX + (event.clientX - dragStart.x) * factor
-    work.offsetY = dragStart.offsetY + (event.clientY - dragStart.y) * factor
-  }
-
-  function onPointerUp() {
-    if (!dragging) return
-    dragging = false
-    scheduleRender(0) // POST au relâchement (pas pendant le drag)
-  }
-
-  const repositioned = $derived(
-    work.offsetX !== 0 ||
-      work.offsetY !== 0 ||
-      work.scale !== 1 ||
-      work.crop !== null,
-  )
-
   // --- Finalisation IA (payante, « cuite » dans l'image) : ombre, décor IA,
   // défroissage, upscale, beautifier, recoloration — UN appel = UN débit.
-  // À appliquer une fois le cadrage validé : un re-render local l'annule.
+  // Le cadrage la conserve (il est rejoué sur l'image finalisée).
   const finalized = $derived(work.asset?.finalized === true)
   let showFinalize = $state(false)
   let finalizing = $state(false)
-  // Avertissement « repositionner annule la finalisation » : une seule
-  // confirmation par finalisation (le drag suivant recompose sans redemander).
-  let finalizeWarned = false
   let fin = $state({
     shadowMode: "" as "" | "soft" | "hard" | "floating",
     backgroundKind: "keep" as "keep" | "prompt",
@@ -293,7 +143,6 @@
     const previews = await fetchAssetPreviews(data)
     for (const url of work.previewUrls) URL.revokeObjectURL(url)
     work.previewUrls = previews
-    finalizeWarned = false
     showFinalize = false
     toast.success("Image finalisée")
   }
@@ -328,7 +177,7 @@
           </span>
         </figcaption>
       </figure>
-      <!-- Après (drag pour repositionner quand sortie unique) -->
+      <!-- Après : éditeur de cadrage quand la sortie est éditable. -->
       <figure class="flex flex-col gap-1">
         {#if multiOutput}
           <div class="grid grid-cols-2 gap-2">
@@ -348,191 +197,44 @@
               </button>
             {/each}
           </div>
-        {:else if cropping && work.asset}
+        {:else if canEdit && work.asset}
           {#key work.asset.id}
             <CropEditor asset={work.asset} onApplied={onEdited} />
           {/key}
-        {:else}
-          <div
-            class="relative overflow-hidden rounded-md {canRender
-              ? 'cursor-grab'
-              : ''} {dragging ? 'cursor-grabbing' : ''}"
-            role="presentation"
-            onpointerdown={onPointerDown}
-            onpointermove={onPointerMove}
-            onpointerup={onPointerUp}
-            onpointercancel={onPointerUp}
+        {:else if work.previewUrls[0]}
+          <button
+            type="button"
+            class="cursor-zoom-in"
+            aria-label="Agrandir le résultat"
+            onclick={() => (lightboxSrc = work.previewUrls[0])}
           >
-            {#if work.previewUrls[0]}
-              <img
-                bind:this={afterImg}
-                src={work.previewUrls[0]}
-                alt="Après"
-                draggable="false"
-                class="bg-muted w-full object-contain select-none {work.rendering
-                  ? 'opacity-60'
-                  : ''}"
-                style={`aspect-ratio: ${outputAspect};${
-                  previewShift.x !== 0 || previewShift.y !== 0
-                    ? ` transform: translate(${previewShift.x}px, ${previewShift.y}px)`
-                    : ""
-                }`}
-              />
-            {:else}
-              <div class="bg-muted aspect-4/5 w-full animate-pulse rounded-md"></div>
-            {/if}
-            {#if guidesVisible}
-              <!-- Patrons : règle des tiers + croix centrale. -->
-              <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-                <div class="absolute inset-y-0 left-1/3 w-px bg-white/50 mix-blend-difference"></div>
-                <div class="absolute inset-y-0 left-2/3 w-px bg-white/50 mix-blend-difference"></div>
-                <div class="absolute inset-x-0 top-1/3 h-px bg-white/50 mix-blend-difference"></div>
-                <div class="absolute inset-x-0 top-2/3 h-px bg-white/50 mix-blend-difference"></div>
-                <div class="absolute top-1/2 left-1/2 h-4 w-px -translate-x-1/2 -translate-y-1/2 bg-white mix-blend-difference"></div>
-                <div class="absolute top-1/2 left-1/2 h-px w-4 -translate-x-1/2 -translate-y-1/2 bg-white mix-blend-difference"></div>
-              </div>
-            {/if}
-            {#if work.rendering}
-              <span
-                class="bg-card/80 absolute right-1.5 bottom-1.5 rounded-full px-2 py-0.5 text-[10px]"
-              >
-                Recomposition…
-              </span>
-            {/if}
-            <!-- Outils de l'aperçu (le clic direct est réservé au drag). -->
-            <div class="absolute top-1.5 right-1.5 flex gap-1">
-              {#if canRender}
-                <button
-                  type="button"
-                  class="rounded-full p-1.5 transition-colors {showGuides
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-card/80 text-foreground hover:bg-card'}"
-                  aria-label="Afficher les guides de placement"
-                  aria-pressed={showGuides}
-                  title="Guides de placement"
-                  onpointerdown={(e) => e.stopPropagation()}
-                  onclick={() => (showGuides = !showGuides)}
-                >
-                  <Grid3x3 size={14} />
-                </button>
-              {/if}
-              {#if work.previewUrls[0]}
-                <button
-                  type="button"
-                  class="bg-card/80 hover:bg-card rounded-full p-1.5 transition-colors"
-                  aria-label="Agrandir le résultat"
-                  title="Agrandir"
-                  onpointerdown={(e) => e.stopPropagation()}
-                  onclick={() => (lightboxSrc = work.previewUrls[0])}
-                >
-                  <Maximize2 size={14} />
-                </button>
-              {/if}
-            </div>
-          </div>
-        {/if}
-        {#if canEdit}
-          <!-- Onglets sous l'image : la barre d'outils suit l'onglet. -->
-          <div class="flex justify-center">
-            <div class="bg-muted inline-flex rounded-md p-0.5" role="tablist" aria-label="Retouche de l'image">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tool === "main"}
-                class="rounded px-3 py-1 text-xs transition-colors {tool === 'main'
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'}"
-                onclick={() => (tool = "main")}
-              >
-                {canRender ? "Produit" : "Aperçu"}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tool === "crop"}
-                class="flex items-center gap-1 rounded px-3 py-1 text-xs transition-colors {tool === 'crop'
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'}"
-                onclick={() => (tool = "crop")}
-              >
-                <CropIcon size={12} aria-hidden="true" />
-                Cadrage
-                {#if work.asset?.edit}
-                  <span class="bg-primary size-1.5 rounded-full" aria-label="(appliqué)"></span>
-                {/if}
-              </button>
-            </div>
-          </div>
-        {/if}
-        {#if canRender && !cropping}
-          <!-- Contrôles sous l'image MODIFIÉE, centrés (demande Marc). -->
-          <!-- Échelle (barre courte + crans de 5 + saisie directe) + reset -->
-            <div class="flex flex-wrap items-center justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-7 px-2 font-mono"
-                aria-label="Réduire de 5 %"
-                onclick={() => setScalePercent(Math.round(work.scale * 100) - 5)}
-              >
-                −5
-              </Button>
-              <input
-                type="range"
-                min="0.3"
-                max="2"
-                step="0.05"
-                class="accent-primary h-2 w-28 sm:w-36"
-                aria-label="Taille du produit (%)"
-                bind:value={work.scale}
-                oninput={() => scheduleRender()}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-7 px-2 font-mono"
-                aria-label="Agrandir de 5 %"
-                onclick={() => setScalePercent(Math.round(work.scale * 100) + 5)}
-              >
-                +5
-              </Button>
-              <span class="flex items-center gap-1">
-                <input
-                  type="number"
-                  min="30"
-                  max="200"
-                  step="5"
-                  inputmode="numeric"
-                  class="border-input h-7 w-16 rounded-md border bg-transparent px-2 text-right font-mono text-xs tabular-nums"
-                  aria-label="Taille du produit en pourcentage"
-                  value={Math.round(work.scale * 100)}
-                  onchange={onScaleTyped}
-                />
-                <span class="text-muted-foreground text-xs">%</span>
-              </span>
-              <!-- Toujours rendu (invisible tant que rien n'est repositionné) :
-                   le groupe est centré, un bouton qui apparaît/disparaît
-                   décalerait la barre de zoom à chaque premier geste. -->
-              <Button
-                variant="ghost"
-                size="sm"
-                class={repositioned ? undefined : "invisible"}
-                aria-hidden={!repositioned}
-                tabindex={repositioned ? undefined : -1}
-                onclick={resetPosition}
-              >
-                <RotateCcw size={13} aria-hidden="true" data-icon="inline-start" />
-                Réinitialiser
-              </Button>
-            </div>
+            <img
+              src={work.previewUrls[0]}
+              alt="Après"
+              class="bg-muted w-full rounded-md object-contain"
+              style={`aspect-ratio: ${outputAspect}`}
+            />
+          </button>
+        {:else}
+          <div class="bg-muted aspect-4/5 w-full animate-pulse rounded-md"></div>
         {/if}
         <figcaption class="text-muted-foreground flex justify-between text-xs">
           <span>
             {multiOutput
               ? `Visuels générés (${work.previewUrls.length})`
-              : cropping
-                ? "Cadrage — glissez l'image, tirez les poignées du cadre"
-                : `Après${canRender ? " — glissez pour repositionner" : ""}`}
+              : canEdit
+                ? "Après — glissez l'image, tirez les poignées du cadre"
+                : "Après"}
+            {#if canEdit && work.previewUrls[0]}
+              ·
+              <button
+                type="button"
+                class="hover:text-foreground underline-offset-2 hover:underline"
+                onclick={() => (lightboxSrc = work.previewUrls[0])}
+              >
+                agrandir le résultat
+              </button>
+            {/if}
           </span>
           <span class="tabular-nums">
             {outputFile?.width ? `${outputFile.width}×${outputFile.height}` : ""}
@@ -544,8 +246,8 @@
       </figure>
     </div>
 
-    {#if canRender}
-      <!-- Finalisation IA (optionnelle, payante) — sur la position validée. -->
+    {#if canFinalize}
+      <!-- Finalisation IA (optionnelle, payante). -->
       <div class="border-border rounded-md border">
         <button
           type="button"
@@ -573,10 +275,8 @@
         {#if showFinalize}
           <div class="flex flex-col gap-3 px-3 pb-3">
             <p class="text-muted-foreground text-xs">
-              Ces retouches sont intégrées à l'image. « Modifier l'image »
-              (recadrer, tourner, redimensionner) les conserve ; repositionner
-              le produit ensuite les annule (une nouvelle finalisation sera
-              facturée).
+              Ces retouches sont intégrées à l'image ; le cadrage les
+              conserve (il est rejoué sur l'image finalisée).
             </p>
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="flex flex-col gap-1.5">

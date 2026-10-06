@@ -10,7 +10,6 @@ import {
   type ImageAssetPublic,
   type ImageEditRequest,
   type NormalizeOptions,
-  type RenderRequest,
   type StagedFilePublic,
   imagingDiscardAsset,
   imagingEditAsset,
@@ -19,7 +18,6 @@ import {
   imagingListImagingAssets,
   imagingListPendingProducts,
   imagingReadAsset,
-  imagingRenderAsset,
   imagingSaveAsset,
   itemsNormalizeItemImageRoute,
   productsGenerateFlatImage,
@@ -39,7 +37,6 @@ export type {
   ImageAssetPublic,
   ImageEditRequest,
   NormalizeOptions,
-  RenderRequest,
   StagedFilePublic,
 }
 
@@ -193,12 +190,6 @@ export function saveAsset(
     path: { asset_id: assetId },
     body: { replace, filenames },
   })
-}
-
-/** Recomposition locale (repositionnement / options) — aucun nouvel appel
- *  provider, réponse synchrone avec l'asset à jour (`?r=` sur les previews). */
-export function renderAsset(assetId: number, body: RenderRequest) {
-  return imagingRenderAsset({ path: { asset_id: assetId }, body })
 }
 
 /** Édition « à la Tillin » de la sortie courante (recadrage, rotation,
