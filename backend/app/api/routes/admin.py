@@ -20,8 +20,9 @@ from app.api.routes.usage import (
     _build_summary,
     _build_timeseries,
     _parse_month,
-    _price_lookup,
-    _resolve_price,
+    create_scoped_price,
+    get_scoped_price,
+    update_scoped_price,
 )
 from app.api.schemas.admin import (
     AdminAccountActivity,
@@ -38,12 +39,21 @@ from app.api.schemas.credits import (
     CreditTimeseries,
 )
 from app.api.schemas.settings import AccountSettings, OperatorSettings
-from app.api.schemas.usage import UsageByJob, UsageSummary, UsageTimeseries
-from app.api.services.accounts import (
-    get_or_create_default_account,
-    resolve_account_id,
+from app.api.schemas.usage import (
+    UsageByJob,
+    UsagePriceCreate,
+    UsagePriceOverridePublic,
+    UsagePriceUpdate,
+    UsageSummary,
+    UsageTimeseries,
 )
+from app.api.services.accounts import get_or_create_default_account
 from app.api.services.credits import balance as credit_balance
+from app.api.services.usage_pricing import (
+    PriceGrid,
+    account_prices,
+    load_common_grid,
+)
 from app.models import (
     Account,
     CreditEntry,
@@ -51,6 +61,7 @@ from app.models import (
     EnrichmentJob,
     ImportItem,
     UsageEvent,
+    UsagePrice,
     User,
 )
 
@@ -168,17 +179,17 @@ def read_overview(
 
 @router.get("/usage-metrics", response_model=list[AdminUsageMetric])
 def list_usage_metrics(
-    db: SessionDep, current_user: CurrentAdminDep
+    db: SessionDep, _current_user: CurrentAdminDep
 ) -> list[AdminUsageMetric]:
     """Every (provider, model, metric) combo the app has actually recorded.
 
     Source of truth for the pricing form's metric picker: prices created from
     this list always match real events (free-text metrics caused silent
-    "unpriced" gaps). `priced` resolves against the caller's grid with the
-    same exact-then-model-null fallback as the billing code.
+    "unpriced" gaps). `priced` resolves against the COMMON grid (the one the
+    « Coûts » page edits) with the same exact-then-model-null fallback as the
+    billing code.
     """
-    account_id = resolve_account_id(db, current_user)
-    lookup = _price_lookup(db, account_id)
+    grid = load_common_grid(db)
     rows = db.execute(
         select(
             UsageEvent.provider,
@@ -193,7 +204,7 @@ def list_usage_metrics(
             model=model,
             metric=metric,
             quantity=int(quantity or 0),
-            priced=_resolve_price(lookup, provider, model, metric) is not None,
+            priced=grid.resolve(provider, model, metric) is not None,
         )
         for provider, model, metric, quantity in rows
     ]
@@ -273,6 +284,83 @@ def read_account_usage_by_job(
     _get_account(db, account_id)
     label, start, end = _parse_month(month)
     return _build_by_job(db, account_id, label, start, end)
+
+
+def _override_public(
+    price: UsagePrice, common_grid: PriceGrid
+) -> UsagePriceOverridePublic:
+    common = common_grid.resolve(price.provider, price.model, price.metric)
+    return UsagePriceOverridePublic(
+        id=price.id,
+        provider=price.provider,
+        model=price.model,
+        metric=price.metric,
+        unit_price=str(price.unit_price),
+        currency=price.currency,
+        common_unit_price=str(common) if common is not None else None,
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/prices", response_model=list[UsagePriceOverridePublic]
+)
+def list_account_price_overrides(
+    account_id: int, db: SessionDep, _current_user: CurrentAdminDep
+) -> list[UsagePriceOverridePublic]:
+    """One account's cost exceptions (they win over the common grid)."""
+    _get_account(db, account_id)
+    common_grid = load_common_grid(db)
+    prices = sorted(
+        account_prices(db, account_id),
+        key=lambda p: (p.provider, p.model or "", p.metric),
+    )
+    return [_override_public(price, common_grid) for price in prices]
+
+
+@router.post(
+    "/accounts/{account_id}/prices",
+    response_model=UsagePriceOverridePublic,
+    status_code=201,
+)
+def create_account_price_override(
+    account_id: int,
+    payload: UsagePriceCreate,
+    db: SessionDep,
+    _current_user: CurrentAdminDep,
+) -> UsagePriceOverridePublic:
+    """Add an exception for one account (409 duplicate_price if it exists)."""
+    _get_account(db, account_id)
+    price = create_scoped_price(db, account_id=account_id, payload=payload)
+    return _override_public(price, load_common_grid(db))
+
+
+@router.patch(
+    "/accounts/{account_id}/prices/{price_id}",
+    response_model=UsagePriceOverridePublic,
+)
+def update_account_price_override(
+    account_id: int,
+    price_id: int,
+    payload: UsagePriceUpdate,
+    db: SessionDep,
+    _current_user: CurrentAdminDep,
+) -> UsagePriceOverridePublic:
+    _get_account(db, account_id)
+    price = update_scoped_price(
+        db, account_id=account_id, price_id=price_id, payload=payload
+    )
+    return _override_public(price, load_common_grid(db))
+
+
+@router.delete("/accounts/{account_id}/prices/{price_id}", status_code=204)
+def delete_account_price_override(
+    account_id: int, price_id: int, db: SessionDep, _current_user: CurrentAdminDep
+) -> None:
+    """Drop an exception: the account falls back to the common grid."""
+    _get_account(db, account_id)
+    price = get_scoped_price(db, account_id=account_id, price_id=price_id)
+    db.delete(price)
+    db.commit()
 
 
 @router.get("/accounts/{account_id}/activity", response_model=AdminAccountActivity)

@@ -6444,6 +6444,65 @@ export const UsagePriceCreateSchema = {
     title: 'UsagePriceCreate'
 } as const;
 
+export const UsagePriceOverridePublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        metric: {
+            type: 'string',
+            title: 'Metric'
+        },
+        unit_price: {
+            type: 'string',
+            title: 'Unit Price'
+        },
+        currency: {
+            type: 'string',
+            title: 'Currency'
+        },
+        common_unit_price: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Common Unit Price'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'provider',
+        'model',
+        'metric',
+        'unit_price',
+        'currency',
+        'common_unit_price'
+    ],
+    title: 'UsagePriceOverridePublic',
+    description: 'An account exception, with the common price it replaces (resolved\nexact model then model-NULL in the common grid; null when the common grid\nhas no price for this key).'
+} as const;
+
 export const UsagePricePublicSchema = {
     properties: {
         id: {

@@ -64,7 +64,9 @@ export function getUsageExport(month: string) {
   })
 }
 
-// --- CRUD de la grille tarifaire (admin) ---
+// --- CRUD de la grille de coûts COMMUNE (admin) ---
+// Elle vaut pour tous les comptes ; les exceptions d'un compte passent par
+// lib/api/admin (listAccountPriceOverrides…).
 
 export function listUsagePrices() {
   return usageListUsagePrices()

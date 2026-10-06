@@ -1,6 +1,8 @@
 <script lang="ts">
-  // Console admin — Coûts : grille des prix d'achat providers (CRUD) et
-  // re-figement d'un mois facturé. C'est la vue COÛT RÉEL de l'opérateur —
+  // Console admin — Coûts : grille COMMUNE des prix d'achat providers (CRUD,
+  // vaut pour tous les comptes) et re-figement d'un mois facturé. Les
+  // exceptions d'un compte (remises négociées) s'éditent sur la page du
+  // compte (/admin/accounts/:id). C'est la vue COÛT RÉEL de l'opérateur —
   // la tarification vendue aux clients (packs de crédits, grille de
   // consommation) vit sur la page « Tarification » (/admin/billing).
   import { createQuery, useQueryClient } from "@tanstack/svelte-query"
@@ -34,37 +36,18 @@
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
   import { prefs } from "@/lib/preferences.svelte"
+  import {
+    apiErrorCode,
+    formatUnitPrice,
+    isTokenMetric,
+    priceInputValue,
+    unitPriceFromInput,
+  } from "@/lib/usagePricing"
 
   let { appName }: { appName: string } = $props()
 
   const queryClient = useQueryClient()
   const cellPad = $derived(prefs.density === "compact" ? "py-1" : "py-2.5")
-
-  /** Les métriques *_tokens sont tarifées à l'unité mais lues par million. */
-  function isTokenMetric(metric: string): boolean {
-    return metric.trim().endsWith("_tokens")
-  }
-
-  /** Prix unitaire affiché : « 3,00 € / M » pour les tokens, sinon par unité. */
-  function formatUnitPrice(metric: string, unitPrice: string | null): string {
-    if (unitPrice == null) return "—"
-    const n = Number(unitPrice)
-    if (!Number.isFinite(n)) return "—"
-    if (isTokenMetric(metric)) {
-      return `${(n * 1_000_000).toLocaleString("fr-FR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} € / M`
-    }
-    return `${n.toLocaleString("fr-FR", { maximumFractionDigits: 6 })} € / unité`
-  }
-
-  /** Chaîne décimale sans notation scientifique (ex. 3e-7 → "0.0000003"). */
-  function toDecimalString(value: number): string {
-    if (!Number.isFinite(value)) return "0"
-    const fixed = value.toFixed(12)
-    return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed
-  }
 
   // --- Grille de coûts ---
   const pricesQuery = createQuery(() => ({
@@ -179,10 +162,7 @@
     formProvider = price.provider
     formModel = price.model ?? ""
     formMetric = price.metric
-    const unit = Number(price.unit_price)
-    formPrice = Number.isFinite(unit)
-      ? String(isTokenMetric(price.metric) ? unit * 1_000_000 : unit)
-      : ""
+    formPrice = priceInputValue(price.metric, price.unit_price)
     formError = null
     formOpen = true
   }
@@ -198,12 +178,12 @@
     formError = null
     const provider = formProvider.trim()
     const metric = formMetric.trim()
-    const priceValue = Number(String(formPrice).replace(",", "."))
+    const unitPrice = unitPriceFromInput(metric, formPrice)
     if (!provider || !metric) {
       formError = "Le provider et la métrique sont obligatoires."
       return
     }
-    if (!Number.isFinite(priceValue) || priceValue < 0) {
+    if (unitPrice === null) {
       formError = "Le prix doit être un nombre positif."
       return
     }
@@ -211,9 +191,7 @@
       provider,
       model: formModel.trim() || null,
       metric,
-      unit_price: toDecimalString(
-        isTokenMetric(metric) ? priceValue / 1_000_000 : priceValue,
-      ),
+      unit_price: unitPrice,
       currency: "EUR",
     }
     savingPrice = true
@@ -221,7 +199,11 @@
       const { data, error } = await createUsagePrice(body)
       savingPrice = false
       if (error || data === undefined) {
-        toast.error("Création du coût impossible.")
+        toast.error(
+          apiErrorCode(error) === "duplicate_price"
+            ? "Un coût existe déjà pour ce provider, ce modèle et cette métrique."
+            : "Création du coût impossible.",
+        )
         return
       }
       toast.success("Coût enregistré")
@@ -229,7 +211,11 @@
       const { data, error } = await updateUsagePrice(editingId, body)
       savingPrice = false
       if (error || data === undefined) {
-        toast.error("Enregistrement du coût impossible.")
+        toast.error(
+          apiErrorCode(error) === "duplicate_price"
+            ? "Un coût existe déjà pour ce provider, ce modèle et cette métrique."
+            : "Enregistrement du coût impossible.",
+        )
         return
       }
       toast.success("Coût mis à jour")
@@ -291,6 +277,8 @@
           <p class="text-muted-foreground text-xs">
             Prix d'achat providers utilisés pour calculer les coûts réels —
             la tarification vendue aux clients vit sur la page « Tarification ».
+            Une remise négociée pour un client s'ajoute en exception sur la
+            page de son compte.
           </p>
         </div>
 
@@ -328,11 +316,12 @@
           <CardHeader>
             <CardTitle class="font-title flex items-center gap-2 text-sm">
               <ChartColumn size={14} aria-hidden="true" />
-              Grille de coûts
+              Grille de coûts commune
             </CardTitle>
             <CardDescription class="text-muted-foreground text-xs">
-              Prix d'achat appliqués pour calculer les coûts. Pour les métriques en
-              tokens, le prix se saisit et s'affiche en € par million. Les
+              Prix d'achat appliqués à tous les comptes, sauf exception
+              définie sur la page d'un compte. Pour les métriques en tokens,
+              le prix se saisit et s'affiche en € par million. Les
               modifications n'affectent que les mois non encore facturés.
             </CardDescription>
           </CardHeader>

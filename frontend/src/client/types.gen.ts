@@ -3511,6 +3511,44 @@ export type UsagePriceCreate = {
 };
 
 /**
+ * UsagePriceOverridePublic
+ *
+ * An account exception, with the common price it replaces (resolved
+ * exact model then model-NULL in the common grid; null when the common grid
+ * has no price for this key).
+ */
+export type UsagePriceOverridePublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model: string | null;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Unit Price
+     */
+    unit_price: string;
+    /**
+     * Currency
+     */
+    currency: string;
+    /**
+     * Common Unit Price
+     */
+    common_unit_price: string | null;
+};
+
+/**
  * UsagePricePublic
  */
 export type UsagePricePublic = {
@@ -7240,6 +7278,136 @@ export type AdminReadAccountUsageByJobResponses = {
 };
 
 export type AdminReadAccountUsageByJobResponse = AdminReadAccountUsageByJobResponses[keyof AdminReadAccountUsageByJobResponses];
+
+export type AdminListAccountPriceOverridesData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/prices';
+};
+
+export type AdminListAccountPriceOverridesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListAccountPriceOverridesError = AdminListAccountPriceOverridesErrors[keyof AdminListAccountPriceOverridesErrors];
+
+export type AdminListAccountPriceOverridesResponses = {
+    /**
+     * Response Admin-List Account Price Overrides
+     *
+     * Successful Response
+     */
+    200: Array<UsagePriceOverridePublic>;
+};
+
+export type AdminListAccountPriceOverridesResponse = AdminListAccountPriceOverridesResponses[keyof AdminListAccountPriceOverridesResponses];
+
+export type AdminCreateAccountPriceOverrideData = {
+    body: UsagePriceCreate;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/prices';
+};
+
+export type AdminCreateAccountPriceOverrideErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCreateAccountPriceOverrideError = AdminCreateAccountPriceOverrideErrors[keyof AdminCreateAccountPriceOverrideErrors];
+
+export type AdminCreateAccountPriceOverrideResponses = {
+    /**
+     * Successful Response
+     */
+    201: UsagePriceOverridePublic;
+};
+
+export type AdminCreateAccountPriceOverrideResponse = AdminCreateAccountPriceOverrideResponses[keyof AdminCreateAccountPriceOverrideResponses];
+
+export type AdminDeleteAccountPriceOverrideData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+        /**
+         * Price Id
+         */
+        price_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/prices/{price_id}';
+};
+
+export type AdminDeleteAccountPriceOverrideErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminDeleteAccountPriceOverrideError = AdminDeleteAccountPriceOverrideErrors[keyof AdminDeleteAccountPriceOverrideErrors];
+
+export type AdminDeleteAccountPriceOverrideResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AdminDeleteAccountPriceOverrideResponse = AdminDeleteAccountPriceOverrideResponses[keyof AdminDeleteAccountPriceOverrideResponses];
+
+export type AdminUpdateAccountPriceOverrideData = {
+    body: UsagePriceUpdate;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: number;
+        /**
+         * Price Id
+         */
+        price_id: number;
+    };
+    query?: never;
+    url: '/admin/accounts/{account_id}/prices/{price_id}';
+};
+
+export type AdminUpdateAccountPriceOverrideErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateAccountPriceOverrideError = AdminUpdateAccountPriceOverrideErrors[keyof AdminUpdateAccountPriceOverrideErrors];
+
+export type AdminUpdateAccountPriceOverrideResponses = {
+    /**
+     * Successful Response
+     */
+    200: UsagePriceOverridePublic;
+};
+
+export type AdminUpdateAccountPriceOverrideResponse = AdminUpdateAccountPriceOverrideResponses[keyof AdminUpdateAccountPriceOverrideResponses];
 
 export type AdminReadAccountActivityData = {
     body?: never;

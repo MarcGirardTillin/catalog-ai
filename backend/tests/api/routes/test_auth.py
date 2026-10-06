@@ -265,23 +265,22 @@ def test_company_account_is_named_after_the_company(
         db.close()
 
 
-def test_company_account_seeds_usage_price_grid_from_oldest_account(
+def test_company_account_uses_common_usage_price_grid(
     client: TestClient,
     db_session_factory: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`usage_price` is a separate table from `settings_json` — it must be
-    copied too, or a fresh company account has NO € cost grid at all (seen
-    live: the admin usage screen reported it missing for JoggingJogging)."""
-    from app.api.services.accounts import get_or_create_default_account
+    """A fresh company account gets NO `usage_price` copy: the € cost grid is
+    common (account_id NULL rows) and prices it as is (the JoggingJogging
+    "grid missing" incident can no longer happen)."""
+    from app.api.services.usage_pricing import load_price_grid
     from app.models import Account, UsagePrice, User
 
     db = db_session_factory()
     try:
-        default_account = get_or_create_default_account(db)
         db.add(
             UsagePrice(
-                account_id=default_account.id,
+                account_id=None,
                 provider="claude",
                 model=None,
                 metric="input_tokens",
@@ -307,10 +306,10 @@ def test_company_account_seeds_usage_price_grid_from_oldest_account(
         user = db.query(User).filter(User.email == "buyer@jbs.fr").one()
         account = db.get(Account, user.account_id)
         assert account is not None
-        prices = db.query(UsagePrice).filter(UsagePrice.account_id == account.id).all()
-        assert len(prices) == 1
-        assert prices[0].provider == "claude"
-        assert prices[0].metric == "input_tokens"
+        own = db.query(UsagePrice).filter(UsagePrice.account_id == account.id).all()
+        assert own == []
+        grid = load_price_grid(db, account.id)
+        assert grid.resolve("claude", "any-model", "input_tokens") == 3
     finally:
         db.close()
 

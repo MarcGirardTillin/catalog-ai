@@ -6138,6 +6138,7 @@
           "usage"
         ],
         "summary": "List Usage Prices",
+        "description": "The COMMON cost grid (applies to every account without an exception).",
         "operationId": "usage-list_usage_prices",
         "parameters": [
           {
@@ -6189,6 +6190,7 @@
           "usage"
         ],
         "summary": "Create Usage Price",
+        "description": "Add a row to the common grid (409 duplicate_price if the key exists).",
         "operationId": "usage-create_usage_price",
         "parameters": [
           {
@@ -6948,7 +6950,7 @@
           "admin"
         ],
         "summary": "List Usage Metrics",
-        "description": "Every (provider, model, metric) combo the app has actually recorded.\n\nSource of truth for the pricing form's metric picker: prices created from\nthis list always match real events (free-text metrics caused silent\n\"unpriced\" gaps). `priced` resolves against the caller's grid with the\nsame exact-then-model-null fallback as the billing code.",
+        "description": "Every (provider, model, metric) combo the app has actually recorded.\n\nSource of truth for the pricing form's metric picker: prices created from\nthis list always match real events (free-text metrics caused silent\n\"unpriced\" gaps). `priced` resolves against the COMMON grid (the one the\n« Coûts » page edits) with the same exact-then-model-null fallback as the\nbilling code.",
         "operationId": "admin-list_usage_metrics",
         "parameters": [
           {
@@ -7293,6 +7295,272 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/accounts/{account_id}/prices": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Account Price Overrides",
+        "description": "One account's cost exceptions (they win over the common grid).",
+        "operationId": "admin-list_account_price_overrides",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UsagePriceOverridePublic"
+                  },
+                  "title": "Response Admin-List Account Price Overrides"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Create Account Price Override",
+        "description": "Add an exception for one account (409 duplicate_price if it exists).",
+        "operationId": "admin-create_account_price_override",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsagePriceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsagePriceOverridePublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/accounts/{account_id}/prices/{price_id}": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Update Account Price Override",
+        "operationId": "admin-update_account_price_override",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "price_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Price Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsagePriceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsagePriceOverridePublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Delete Account Price Override",
+        "description": "Drop an exception: the account falls back to the common grid.",
+        "operationId": "admin-delete_account_price_override",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "price_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Price Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -14133,6 +14401,64 @@
           "unit_price"
         ],
         "title": "UsagePriceCreate"
+      },
+      "UsagePriceOverridePublic": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "metric": {
+            "type": "string",
+            "title": "Metric"
+          },
+          "unit_price": {
+            "type": "string",
+            "title": "Unit Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "common_unit_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Common Unit Price"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "model",
+          "metric",
+          "unit_price",
+          "currency",
+          "common_unit_price"
+        ],
+        "title": "UsagePriceOverridePublic",
+        "description": "An account exception, with the common price it replaces (resolved\nexact model then model-NULL in the common grid; null when the common grid\nhas no price for this key)."
       },
       "UsagePricePublic": {
         "properties": {

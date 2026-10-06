@@ -32,11 +32,12 @@ def _account_id(client: TestClient) -> int:
 
 def _seed_priced_events(account_id: int) -> None:
     """Two providers, one priced metric each (priced directly in DB — a
-    regular user cannot reach the price CRUD)."""
+    regular user cannot reach the price CRUD). Prices live in the COMMON grid
+    (account_id NULL), like in production."""
     db = _db()
     db.add(
         UsagePrice(
-            account_id=account_id,
+            account_id=None,
             provider="claude",
             model=None,
             metric="input_tokens",
@@ -46,7 +47,7 @@ def _seed_priced_events(account_id: int) -> None:
     )
     db.add(
         UsagePrice(
-            account_id=account_id,
+            account_id=None,
             provider="photoroom",
             model=None,
             metric="images",

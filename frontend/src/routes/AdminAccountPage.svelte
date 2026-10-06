@@ -42,6 +42,7 @@
   import LocalPagination from "@/lib/components/app/LocalPagination.svelte"
   import RequireAdmin from "@/lib/components/app/RequireAdmin.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
+  import AccountPriceOverrides from "@/lib/components/usage/AccountPriceOverrides.svelte"
   import UsageChart from "@/lib/components/usage/UsageChart.svelte"
   import { formatRelativeDate } from "@/lib/format"
   import { prefs } from "@/lib/preferences.svelte"
@@ -904,6 +905,10 @@
             {/if}
           </CardContent>
         </Card>
+
+        <!-- Coûts fournisseurs propres à ce compte (remises négociées) :
+             priment sur la grille commune de /admin/pricing. -->
+        <AccountPriceOverrides {accountId} />
 
       </div>
     </AppShell>

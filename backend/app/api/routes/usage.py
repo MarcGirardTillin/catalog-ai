@@ -1,9 +1,12 @@
-"""Usage reporting routes: price CRUD, monthly summary, per-job breakdown, CSV.
+"""Usage reporting routes: common cost grid CRUD, monthly summary, per-job
+breakdown, CSV.
 
 Frozen plan principle: cost is NEVER stored on usage events — it is computed
 at read time from `usage_price`, so the account can be repriced at any moment.
-Price resolution for an event: exact (provider, model, metric) first, then the
-provider-wide fallback (provider, model IS NULL, metric), else no price.
+Price resolution (app.api.services.usage_pricing.PriceGrid): account exception
+exact → account model-NULL → common exact → common model-NULL → no price.
+`/usage/prices` edits the COMMON grid; an account's exceptions live under
+`/admin/accounts/{id}/prices`.
 """
 
 import csv
@@ -37,6 +40,13 @@ from app.api.schemas.usage import (
     UsageTotals,
 )
 from app.api.services.accounts import resolve_account_id
+from app.api.services.usage_pricing import (
+    PriceGrid,
+    common_prices,
+    grid_from_snapshot,
+    load_price_grid,
+    serialize_grid,
+)
 from app.models import (
     Account,
     EnrichmentJob,
@@ -44,9 +54,6 @@ from app.models import (
     UsageEvent,
     UsagePrice,
 )
-
-# Type alias for a resolved price lookup: (provider, model|None, metric) -> price
-PriceLookup = dict[tuple[str, str | None, str], Decimal]
 
 router = APIRouter(prefix="/usage", tags=["usage"])
 
@@ -204,37 +211,13 @@ def _is_frozen(billing_date: date, today: date) -> bool:
     return today >= billing_date
 
 
-def _serialize_prices(db: Session, account_id: int) -> list[dict[str, Any]]:
-    """Current price grid serialized for a snapshot (unit_price as string)."""
-    prices = db.scalars(
-        select(UsagePrice).where(UsagePrice.account_id == account_id)
-    ).all()
-    return [
-        {
-            "provider": p.provider,
-            "model": p.model,
-            "metric": p.metric,
-            "unit_price": str(p.unit_price),
-            "currency": p.currency,
-        }
-        for p in prices
-    ]
-
-
-def _snapshot_lookup(prices_json: list[dict[str, Any]]) -> PriceLookup:
-    """Rebuild a (provider, model|None, metric) -> Decimal lookup from JSON."""
-    return {
-        (row["provider"], row["model"], row["metric"]): Decimal(str(row["unit_price"]))
-        for row in prices_json
-    }
-
-
 def _get_or_create_snapshot(
     db: Session, account_id: int, period: str
-) -> tuple[PriceLookup, Decimal, datetime]:
+) -> tuple[PriceGrid, Decimal, datetime]:
     """Frozen-price resolution for a billed month: read the snapshot, or create
-    it lazily from the CURRENT grid + coefficient the first time the month is
-    consulted after billing. Returns (lookup, coefficient, frozen_at)."""
+    it lazily from the CURRENT resolved grid (account exceptions + common grid)
+    + coefficient the first time the month is consulted after billing.
+    Returns (grid, coefficient, frozen_at)."""
     snapshot = db.scalars(
         select(UsageBillingSnapshot).where(
             UsageBillingSnapshot.account_id == account_id,
@@ -246,13 +229,13 @@ def _get_or_create_snapshot(
             account_id=account_id,
             period=period,
             coefficient=_billing_coefficient(db, account_id),
-            prices_json=_serialize_prices(db, account_id),
+            prices_json=serialize_grid(load_price_grid(db, account_id)),
         )
         db.add(snapshot)
         db.commit()
         db.refresh(snapshot)
     return (
-        _snapshot_lookup(snapshot.prices_json),
+        grid_from_snapshot(snapshot.prices_json),
         Decimal(str(snapshot.coefficient)),
         snapshot.created_at,
     )
@@ -260,47 +243,25 @@ def _get_or_create_snapshot(
 
 def _resolve_pricing(
     db: Session, account_id: int, period: str
-) -> tuple[PriceLookup, Decimal, str, bool, datetime | None]:
+) -> tuple[PriceGrid, Decimal, str, bool, datetime | None]:
     """Single source of truth for prices of a month: frozen snapshot when the
     month is billed, current grid otherwise. Returns
-    (lookup, coefficient, billing_date_iso, frozen, frozen_at)."""
+    (grid, coefficient, billing_date_iso, frozen, frozen_at)."""
     year, month = int(period[:4]), int(period[5:7])
     bill_date = _billing_date(
         _account_settings(db, account_id).billing_day, year, month
     )
     frozen = _is_frozen(bill_date, _now().date())
     if frozen:
-        lookup, coefficient, frozen_at = _get_or_create_snapshot(db, account_id, period)
-        return lookup, coefficient, bill_date.isoformat(), True, frozen_at
+        grid, coefficient, frozen_at = _get_or_create_snapshot(db, account_id, period)
+        return grid, coefficient, bill_date.isoformat(), True, frozen_at
     return (
-        _price_lookup(db, account_id),
+        load_price_grid(db, account_id),
         _billing_coefficient(db, account_id),
         bill_date.isoformat(),
         False,
         None,
     )
-
-
-def _price_lookup(
-    db: Session, account_id: int
-) -> dict[tuple[str, str | None, str], Decimal]:
-    prices = db.scalars(
-        select(UsagePrice).where(UsagePrice.account_id == account_id)
-    ).all()
-    return {(p.provider, p.model, p.metric): p.unit_price for p in prices}
-
-
-def _resolve_price(
-    lookup: dict[tuple[str, str | None, str], Decimal],
-    provider: str,
-    model: str | None,
-    metric: str,
-) -> Decimal | None:
-    """Exact (provider, model, metric) first, then the model-null fallback."""
-    exact = lookup.get((provider, model, metric))
-    if exact is not None:
-        return exact
-    return lookup.get((provider, None, metric))
 
 
 def _month_groups(
@@ -340,7 +301,12 @@ def _to_public(price: UsagePrice) -> UsagePricePublic:
     )
 
 
-def _get_price(db: Session, *, account_id: int, price_id: int) -> UsagePrice:
+def get_scoped_price(
+    db: Session, *, account_id: int | None, price_id: int
+) -> UsagePrice:
+    """A price row of ONE scope: the common grid (account_id None) or one
+    account's exceptions. A row of another scope is a 404 — the common CRUD
+    never touches exceptions and vice versa."""
     price = db.get(UsagePrice, price_id)
     if price is None or price.account_id != account_id:
         raise AppException(
@@ -349,23 +315,46 @@ def _get_price(db: Session, *, account_id: int, price_id: int) -> UsagePrice:
     return price
 
 
-@router.get("/prices", response_model=list[UsagePricePublic])
-def list_usage_prices(
-    db: SessionDep, current_user: CurrentAdminDep
-) -> list[UsagePricePublic]:
-    account_id = resolve_account_id(db, current_user)
-    prices = db.scalars(
-        select(UsagePrice).where(UsagePrice.account_id == account_id)
-    ).all()
-    ordered = sorted(prices, key=lambda p: (p.provider, p.model or "", p.metric))
-    return [_to_public(price) for price in ordered]
+def _ensure_unique(
+    db: Session,
+    *,
+    account_id: int | None,
+    provider: str,
+    model: str | None,
+    metric: str,
+    exclude_id: int | None = None,
+) -> None:
+    """One row per (scope, provider, model, metric): a duplicate would make
+    the resolution order-dependent. Enforced here rather than by a DB index
+    (NULL account/model would need NULLS NOT DISTINCT, absent from SQLite)."""
+    query = select(UsagePrice.id).where(
+        UsagePrice.provider == provider,
+        UsagePrice.metric == metric,
+        UsagePrice.account_id.is_(None)
+        if account_id is None
+        else UsagePrice.account_id == account_id,
+        UsagePrice.model.is_(None) if model is None else UsagePrice.model == model,
+    )
+    if exclude_id is not None:
+        query = query.where(UsagePrice.id != exclude_id)
+    if db.scalar(query.limit(1)) is not None:
+        raise AppException(
+            status_code=409,
+            code="duplicate_price",
+            message="A price already exists for this provider/model/metric",
+        )
 
 
-@router.post("/prices", response_model=UsagePricePublic, status_code=201)
-def create_usage_price(
-    payload: UsagePriceCreate, db: SessionDep, current_user: CurrentAdminDep
-) -> UsagePricePublic:
-    account_id = resolve_account_id(db, current_user)
+def create_scoped_price(
+    db: Session, *, account_id: int | None, payload: UsagePriceCreate
+) -> UsagePrice:
+    _ensure_unique(
+        db,
+        account_id=account_id,
+        provider=payload.provider,
+        model=payload.model,
+        metric=payload.metric,
+    )
     price = UsagePrice(
         account_id=account_id,
         provider=payload.provider,
@@ -377,7 +366,51 @@ def create_usage_price(
     db.add(price)
     db.commit()
     db.refresh(price)
-    return _to_public(price)
+    return price
+
+
+def update_scoped_price(
+    db: Session,
+    *,
+    account_id: int | None,
+    price_id: int,
+    payload: UsagePriceUpdate,
+) -> UsagePrice:
+    price = get_scoped_price(db, account_id=account_id, price_id=price_id)
+    updates = payload.model_dump(exclude_unset=True)
+    _ensure_unique(
+        db,
+        account_id=account_id,
+        provider=updates.get("provider") or price.provider,
+        model=updates["model"] if "model" in updates else price.model,
+        metric=updates.get("metric") or price.metric,
+        exclude_id=price.id,
+    )
+    for name, value in updates.items():
+        setattr(price, name, value)
+    db.commit()
+    db.refresh(price)
+    return price
+
+
+def _sorted_prices(prices: list[UsagePrice]) -> list[UsagePrice]:
+    return sorted(prices, key=lambda p: (p.provider, p.model or "", p.metric))
+
+
+@router.get("/prices", response_model=list[UsagePricePublic])
+def list_usage_prices(
+    db: SessionDep, _current_user: CurrentAdminDep
+) -> list[UsagePricePublic]:
+    """The COMMON cost grid (applies to every account without an exception)."""
+    return [_to_public(price) for price in _sorted_prices(common_prices(db))]
+
+
+@router.post("/prices", response_model=UsagePricePublic, status_code=201)
+def create_usage_price(
+    payload: UsagePriceCreate, db: SessionDep, _current_user: CurrentAdminDep
+) -> UsagePricePublic:
+    """Add a row to the common grid (409 duplicate_price if the key exists)."""
+    return _to_public(create_scoped_price(db, account_id=None, payload=payload))
 
 
 @router.patch("/prices/{price_id}", response_model=UsagePricePublic)
@@ -385,24 +418,17 @@ def update_usage_price(
     price_id: int,
     payload: UsagePriceUpdate,
     db: SessionDep,
-    current_user: CurrentAdminDep,
+    _current_user: CurrentAdminDep,
 ) -> UsagePricePublic:
-    account_id = resolve_account_id(db, current_user)
-    price = _get_price(db, account_id=account_id, price_id=price_id)
-    updates = payload.model_dump(exclude_unset=True)
-    for name, value in updates.items():
-        setattr(price, name, value)
-    db.commit()
-    db.refresh(price)
+    price = update_scoped_price(db, account_id=None, price_id=price_id, payload=payload)
     return _to_public(price)
 
 
 @router.delete("/prices/{price_id}", status_code=204)
 def delete_usage_price(
-    price_id: int, db: SessionDep, current_user: CurrentAdminDep
+    price_id: int, db: SessionDep, _current_user: CurrentAdminDep
 ) -> None:
-    account_id = resolve_account_id(db, current_user)
-    price = _get_price(db, account_id=account_id, price_id=price_id)
+    price = get_scoped_price(db, account_id=None, price_id=price_id)
     db.delete(price)
     db.commit()
 
@@ -410,7 +436,7 @@ def delete_usage_price(
 def _build_summary(
     db: Session, account_id: int, month: str, start: datetime, end: datetime
 ) -> UsageSummary:
-    lookup, coefficient, billing_date, frozen, frozen_at = _resolve_pricing(
+    grid, coefficient, billing_date, frozen, frozen_at = _resolve_pricing(
         db, account_id, month
     )
     lines: list[UsageSummaryLine] = []
@@ -418,7 +444,7 @@ def _build_summary(
     total_billable = Decimal(0)
     unpriced_count = 0
     for provider, model, metric, quantity in _month_groups(db, account_id, start, end):
-        unit_price = _resolve_price(lookup, provider, model, metric)
+        unit_price = grid.resolve(provider, model, metric)
         if unit_price is None:
             unpriced_count += 1
             lines.append(
@@ -494,7 +520,7 @@ def _build_by_job(
     db: Session, account_id: int, label: str, start: datetime, end: datetime
 ) -> UsageByJob:
     """Monthly consumption grouped by job (null job_id = "Hors job")."""
-    lookup, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
+    grid, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
         db, account_id, label
     )
 
@@ -536,7 +562,7 @@ def _build_by_job(
         else:
             key = (provider, metric)
             bucket.other[key] = bucket.other.get(key, 0) + quantity
-        unit_price = _resolve_price(lookup, provider, model, metric)
+        unit_price = grid.resolve(provider, model, metric)
         if unit_price is not None:
             bucket.cost += Decimal(quantity) * unit_price
             bucket.priced = True
@@ -701,7 +727,7 @@ def refreeze_snapshot(
         )
     ).first()
     coefficient = _billing_coefficient(db, account_id)
-    prices_json = _serialize_prices(db, account_id)
+    prices_json = serialize_grid(load_price_grid(db, account_id))
     if snapshot is None:
         snapshot = UsageBillingSnapshot(
             account_id=account_id,
@@ -746,7 +772,7 @@ def _build_timeseries(
     quantities: dict[tuple[str, date], int] = defaultdict(int)
     keys: set[str] = set()
     for account_id in account_ids:
-        lookup, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
+        grid, coefficient, _billing_date, _frozen, _frozen_at = _resolve_pricing(
             db, account_id, label
         )
         events = db.execute(
@@ -772,7 +798,7 @@ def _build_timeseries(
             key = _series_key(group_by, provider, model)
             keys.add(key)
             quantities[(key, day)] += qty
-            unit_price = _resolve_price(lookup, provider, model, metric)
+            unit_price = grid.resolve(provider, model, metric)
             if unit_price is not None:
                 amounts[(key, day)] += Decimal(qty) * unit_price * coefficient
 

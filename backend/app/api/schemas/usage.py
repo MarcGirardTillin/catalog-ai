@@ -35,6 +35,14 @@ class UsagePricePublic(BaseModel):
     currency: str
 
 
+class UsagePriceOverridePublic(UsagePricePublic):
+    """An account exception, with the common price it replaces (resolved
+    exact model then model-NULL in the common grid; null when the common grid
+    has no price for this key)."""
+
+    common_unit_price: str | None
+
+
 class UsageSummaryLine(BaseModel):
     provider: str
     model: str | None

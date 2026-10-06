@@ -1,9 +1,10 @@
-"""Usage pricing (M3): per-account unit prices for usage_event metrics.
+"""Usage pricing (M3): supplier unit costs for usage_event metrics.
 
 Costs are NEVER stored on the events themselves — they are computed at read
-time from this table, so repricing is always possible. Resolution order for an
-event: exact (provider, model, metric) first, then the provider-wide fallback
-(provider, model IS NULL, metric), else no price (cost is null).
+time from this table, so repricing is always possible. `account_id IS NULL`
+rows are the platform-wide COMMON grid; rows with an account are that
+account's exceptions. Resolution (see app.api.services.usage_pricing):
+account exact → account model-NULL → common exact → common model-NULL → none.
 """
 
 from datetime import datetime
@@ -19,7 +20,10 @@ class UsagePrice(Base):
     __tablename__ = "usage_price"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("account.id"), index=True)
+    # None = common grid row (applies to every account without an exception).
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("account.id"), index=True, default=None
+    )
     provider: Mapped[str] = mapped_column(String(20))  # "claude" | ...
     # None = applies to every model of the provider (fallback price).
     model: Mapped[str | None] = mapped_column(String(80), default=None)

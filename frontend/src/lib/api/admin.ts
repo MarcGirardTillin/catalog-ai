@@ -1,6 +1,9 @@
 // Console admin (opérateur uniquement) : adaptateur fin au-dessus du client
 // OpenAPI généré — types et appels viennent de src/client, zéro redéfinition.
 import {
+  adminCreateAccountPriceOverride,
+  adminDeleteAccountPriceOverride,
+  adminListAccountPriceOverrides,
   adminListAccounts,
   adminListUsageMetrics,
   adminReadAccountActivity,
@@ -11,10 +14,16 @@ import {
   adminReadAdminTimeseries,
   adminReadOperatorSettings,
   adminReadOverview,
+  adminUpdateAccountPriceOverride,
   adminUpdateAccountSettingsAdmin,
   adminUpdateOperatorSettings,
 } from "@/client"
-import type { AccountSettings, OperatorSettings } from "@/client"
+import type {
+  AccountSettings,
+  OperatorSettings,
+  UsagePriceCreate,
+  UsagePriceUpdate,
+} from "@/client"
 
 export type {
   AdminAccountActivity,
@@ -23,6 +32,7 @@ export type {
   AdminOverview,
   AdminOverviewLine,
   AdminUsageMetric,
+  UsagePriceOverridePublic,
 } from "@/client"
 // Réglages complets d'un compte, vue opérateur.
 export type AdminAccountSettings = AccountSettings
@@ -109,4 +119,38 @@ export function getOperatorSettings() {
 /** Écriture globale : la politique est appliquée à TOUS les comptes. */
 export function putOperatorSettings(body: OperatorSettings) {
   return adminUpdateOperatorSettings({ body })
+}
+
+// --- Exceptions de coûts d'un compte (remises négociées) ---
+// Elles priment sur la grille commune (/usage/prices) pour CE compte.
+
+export function listAccountPriceOverrides(accountId: number) {
+  return adminListAccountPriceOverrides({ path: { account_id: accountId } })
+}
+
+export function createAccountPriceOverride(
+  accountId: number,
+  body: UsagePriceCreate,
+) {
+  return adminCreateAccountPriceOverride({
+    path: { account_id: accountId },
+    body,
+  })
+}
+
+export function updateAccountPriceOverride(
+  accountId: number,
+  priceId: number,
+  body: UsagePriceUpdate,
+) {
+  return adminUpdateAccountPriceOverride({
+    path: { account_id: accountId, price_id: priceId },
+    body,
+  })
+}
+
+export function deleteAccountPriceOverride(accountId: number, priceId: number) {
+  return adminDeleteAccountPriceOverride({
+    path: { account_id: accountId, price_id: priceId },
+  })
 }

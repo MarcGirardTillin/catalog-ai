@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, User
 from app.models.account import DEFAULT_ACCOUNT_NAME
-from app.models.usage_price import UsagePrice
 
 # Operator-owned pricing/consumption policy is written to EVERY account by
 # PUT /admin/settings. A company account created AFTER such a write must not
@@ -96,39 +95,9 @@ def get_or_create_company_account(
     db.add(account)
     db.commit()
     db.refresh(account)
-    _seed_usage_prices(db, seed_source, account)
+    # No `usage_price` copy: the € cost grid is COMMON (account_id NULL rows)
+    # and applies to a new account as is — only exceptions are per account.
     return account
-
-
-def _seed_usage_prices(
-    db: Session, seed_source: Account | None, account: Account
-) -> None:
-    """Copy the € cost grid (`usage_price`) onto a freshly created account.
-
-    `usage_price` is a separate table (not `settings_json`), so it was left
-    out of `OPERATOR_SEEDED_KEYS` and a new company account got NO price rows
-    at all — the admin usage screen then reports the grid as missing (seen
-    live for the JoggingJogging account). Same source-of-truth rule as the
-    settings seed: the oldest account, kept current by every operator write.
-    """
-    if seed_source is None:
-        return
-    prices = db.scalars(
-        select(UsagePrice).where(UsagePrice.account_id == seed_source.id)
-    ).all()
-    for price in prices:
-        db.add(
-            UsagePrice(
-                account_id=account.id,
-                provider=price.provider,
-                model=price.model,
-                metric=price.metric,
-                unit_price=price.unit_price,
-                currency=price.currency,
-            )
-        )
-    if prices:
-        db.commit()
 
 
 def resolve_account_id(db: Session, user: User) -> int:
