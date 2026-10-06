@@ -63,11 +63,31 @@ def test_claude_generate_copy_parses_structured_output() -> None:
     assert request.headers["x-api-key"] == "sk-test"
     assert request.headers["anthropic-version"]
     body = json.loads(request.content)
-    assert body["model"] == "claude-sonnet-5"
+    from app.core.config import settings
+
+    assert body["model"] == settings.AI_DEFAULT_MODEL
     assert body["output_config"]["format"]["type"] == "json_schema"
-    # Sonnet 5 rejects sampling params — none must be sent.
+    # Sonnet 5+ rejects sampling params — none must be sent.
     assert "temperature" not in body
+    # La rédaction garde la réflexion adaptative (pas de paramètre thinking).
+    assert "thinking" not in body
     assert "Ton sobre." in body["messages"][0]["content"]
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("claude-sonnet-5-5", "between_tools"),
+        ("claude-opus-5-5", "between_tools"),
+        ("claude-sonnet-5", "disabled"),
+        ("claude-sonnet-4-6", "disabled"),
+        ("claude-haiku-4-5", "disabled"),
+    ],
+)
+def test_thinking_off_matches_model_generation(model: str, expected: str) -> None:
+    from app.clients.claude import thinking_off
+
+    assert thinking_off(model) == {"type": expected}
 
 
 def test_claude_meta_max_length_parameterizes_system_prompt() -> None:

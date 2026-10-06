@@ -2,8 +2,8 @@
 
 Uses the official `anthropic` SDK with structured outputs
 (`output_config.format`) so the response is guaranteed-parseable JSON. The
-model defaults to settings.AI_DEFAULT_MODEL (`claude-sonnet-5` per plan);
-Sonnet 5 rejects sampling parameters, so none are sent. An `http_client` is
+model defaults to settings.AI_DEFAULT_MODEL (`claude-sonnet-5-5`); Sonnet 5+
+rejects sampling parameters, so none are sent. An `http_client` is
 injectable for tests (httpx.MockTransport) — no real API calls in the suite.
 """
 
@@ -17,7 +17,26 @@ from pydantic import BaseModel, ValidationError
 from app.clients.base import ExternalServiceError, NotConfiguredError
 from app.core.config import settings
 
-MAX_TOKENS = 2048
+# Marge pour la réflexion adaptative (activée par défaut, effort `high` sur
+# Sonnet 5.5) en plus du JSON de la fiche : seuls les tokens produits sont
+# facturés, un plafond trop bas tronquerait le JSON.
+MAX_TOKENS = 8192
+
+# Modèles qui coupent la réflexion avec `disabled` ; à partir de Sonnet 5.5,
+# `disabled` renvoie une 400 et la valeur minimale est `between_tools`.
+_LEGACY_THINKING_OFF_MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-fable-5")
+
+
+def thinking_off(model: str) -> Any:
+    """Paramètre `thinking` qui coupe la réflexion préalable pour `model`.
+
+    Typé `Any` : le SDK installé (0.116) ne déclare pas encore le type
+    `between_tools` ; le dict est transmis tel quel à l'API."""
+    legacy = model in _LEGACY_THINKING_OFF_MODELS or model.startswith(
+        ("claude-sonnet-4", "claude-opus-4", "claude-haiku-4")
+    )
+    return {"type": "disabled"} if legacy else {"type": "between_tools"}
+
 
 # Le SDK Anthropic rejoue nativement 429/5xx/timeouts avec backoff exponentiel
 # en honorant Retry-After ; 5 tentatives absorbent les pics de rate-limit des
@@ -243,10 +262,14 @@ class ClaudeClient:
             "correspond). Réponds par l'index du candidat correspondant, ou "
             "-1 si aucun ne correspond avec certitude. Justifie en une phrase."
         )
+        selected_model = model or self._model
         try:
+            # Choix d'un index parmi quelques candidats : pas de réflexion
+            # préalable, qui consommerait le petit budget de sortie.
             response = self._client.messages.create(
-                model=model or self._model,
+                model=selected_model,
                 max_tokens=512,
+                thinking=thinking_off(selected_model),
                 system=system,
                 output_config={
                     "format": {"type": "json_schema", "schema": SELECT_SCHEMA}

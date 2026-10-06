@@ -158,6 +158,13 @@ def test_tabular_extraction_maps_and_verifies_values() -> None:
     body = json.loads(captured["request"].content)
     assert body["output_config"]["format"]["type"] == "json_schema"
     assert "bon de commande" in body["system"]
+    # La réflexion préalable est coupée avec le paramètre adapté au modèle
+    # configuré (`between_tools` à partir de Sonnet 5.5, où `disabled` 400).
+    from app.clients.claude import thinking_off
+    from app.core.config import settings
+
+    assert body["model"] == settings.AI_DEFAULT_MODEL
+    assert body["thinking"] == thinking_off(settings.AI_DEFAULT_MODEL)
     text = body["messages"][0]["content"][0]["text"]
     assert "Feuille : Commande" in text
     assert VALID_EAN in text

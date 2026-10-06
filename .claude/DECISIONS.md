@@ -1051,3 +1051,19 @@ comme lanceur (geste explicite : il voyait les produits sélectionnés),
 mais reste exclu du pool anonyme (incident Neiwa/Madel 2026-07-30).
 Raison : incidents jobs 126/128 (session expirée / produits introuvables
 quand l'utilisateur du pool change d'entreprise dans Tillin).
+
+## 2026-10-06 — Modèle par défaut : Claude Sonnet 5.5
+
+`AI_DEFAULT_MODEL` passe de `claude-sonnet-5` à `claude-sonnet-5-5` (demande
+Marc). Sonnet 5.5 refuse `thinking: {"type": "disabled"}` (400) : la
+réflexion préalable se coupe avec `between_tools`. `thinking_off(model)`
+(`app/clients/claude.py`) choisit la bonne valeur selon le modèle, pour que
+l'extraction d'import et la sélection de candidat restent sans réflexion
+quel que soit le modèle configuré. La rédaction garde la réflexion
+adaptative (effort `high` par défaut sur 5.5) avec `MAX_TOKENS` porté à
+8192 pour qu'elle ne tronque pas le JSON. Le SDK installé (0.116) ne déclare
+pas `between_tools` : le dict passe tel quel (typé `Any`).
+Au déploiement : éditer `AI_DEFAULT_MODEL` dans les `.env` (local + prod),
+et créer les lignes `usage_price` `claude`/`claude-sonnet-5-5` pour chaque
+compte — les prix sont résolus par modèle exact, sans ligne de repli, donc
+sans elles les appels 5.5 ne seraient pas facturés.

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.clients.base import ExternalServiceError, NotConfiguredError
 from app.clients.claude import MAX_RETRIES as CLAUDE_MAX_RETRIES
+from app.clients.claude import thinking_off
 from app.core.config import settings
 from app.imports.schema import (
     Confidence,
@@ -600,16 +601,16 @@ class ClaudeExtractor:
             content = self._build_multi_content(documents, warnings)
 
         try:
-            # Thinking is disabled: extraction is mechanical transcription —
-            # adaptive thinking (Sonnet 5's default) would eat into the output
-            # budget without improving fidelity.
+            # Thinking is off: extraction is mechanical transcription —
+            # adaptive thinking (the default since Sonnet 5) would eat into
+            # the output budget without improving fidelity.
             response = self._client.with_options(
                 timeout=REQUEST_TIMEOUT_SECONDS
             ).messages.create(
                 model=self._model,
                 max_tokens=MAX_TOKENS,
                 system=SYSTEM_PROMPT,
-                thinking={"type": "disabled"},
+                thinking=thinking_off(self._model),
                 output_config={
                     "format": {"type": "json_schema", "schema": EXTRACTION_SCHEMA}
                 },
