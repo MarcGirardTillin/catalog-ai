@@ -372,6 +372,69 @@ export type AdminUsageMetric = {
 };
 
 /**
+ * ApiTokenCreate
+ */
+export type ApiTokenCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Ttl Days
+     */
+    ttl_days?: number;
+};
+
+/**
+ * ApiTokenCreated
+ */
+export type ApiTokenCreated = {
+    token: ApiTokenPublic;
+    /**
+     * Secret
+     */
+    secret: string;
+};
+
+/**
+ * ApiTokenPublic
+ */
+export type ApiTokenPublic = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Prefix
+     */
+    prefix: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Last Used At
+     */
+    last_used_at?: string | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
+    /**
+     * Revoked At
+     */
+    revoked_at?: string | null;
+    /**
+     * Active
+     */
+    active: boolean;
+};
+
+/**
  * AssetSaveRequest
  *
  * POST /imaging/assets/{id}/save body.
@@ -7643,3 +7706,85 @@ export type AdminUpdateAccountSettingsAdminResponses = {
 };
 
 export type AdminUpdateAccountSettingsAdminResponse = AdminUpdateAccountSettingsAdminResponses[keyof AdminUpdateAccountSettingsAdminResponses];
+
+export type ApiTokensListTokensData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api-tokens';
+};
+
+export type ApiTokensListTokensErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ApiTokensListTokensError = ApiTokensListTokensErrors[keyof ApiTokensListTokensErrors];
+
+export type ApiTokensListTokensResponses = {
+    /**
+     * Response Api-Tokens-List Tokens
+     *
+     * Successful Response
+     */
+    200: Array<ApiTokenPublic>;
+};
+
+export type ApiTokensListTokensResponse = ApiTokensListTokensResponses[keyof ApiTokensListTokensResponses];
+
+export type ApiTokensCreateTokenData = {
+    body: ApiTokenCreate;
+    path?: never;
+    query?: never;
+    url: '/api-tokens';
+};
+
+export type ApiTokensCreateTokenErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ApiTokensCreateTokenError = ApiTokensCreateTokenErrors[keyof ApiTokensCreateTokenErrors];
+
+export type ApiTokensCreateTokenResponses = {
+    /**
+     * Successful Response
+     */
+    201: ApiTokenCreated;
+};
+
+export type ApiTokensCreateTokenResponse = ApiTokensCreateTokenResponses[keyof ApiTokensCreateTokenResponses];
+
+export type ApiTokensRevokeTokenData = {
+    body?: never;
+    path: {
+        /**
+         * Token Id
+         */
+        token_id: number;
+    };
+    query?: never;
+    url: '/api-tokens/{token_id}';
+};
+
+export type ApiTokensRevokeTokenErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ApiTokensRevokeTokenError = ApiTokensRevokeTokenErrors[keyof ApiTokensRevokeTokenErrors];
+
+export type ApiTokensRevokeTokenResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiTokenPublic;
+};
+
+export type ApiTokensRevokeTokenResponse = ApiTokensRevokeTokenResponses[keyof ApiTokensRevokeTokenResponses];

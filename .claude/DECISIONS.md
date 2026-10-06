@@ -1182,3 +1182,31 @@ web payant.
   sert de fiche source ; sans JSON-LD, le pipeline reprend la chaîne d'une
   URL de fiche (JSON-LD → extraction web métérée), comme une résolution
   manuelle.
+
+## 2026-10-06 — Serveur MCP CatalogAI (phase 1)
+
+FastMCP **4.0.11 figé** (`backend/pyproject.toml`), monté dans l'app FastAPI
+à la RACINE après les routes de l'API (`app.mount("", …)`, endpoint `/mcp`) :
+`POST /mcp` sans redirection et métadonnées OAuth futures sur
+`/.well-known/…`. Conséquence assumée : une URL inconnue de l'API répond le
+404 texte du serveur MCP au lieu du JSON FastAPI. Streamable HTTP **sans
+état** + réponses JSON : le backend tourne sur plusieurs workers (une session
+en mémoire tomberait sur un autre processus) et Caddy n'a aucun flux à
+relayer. Lifespans combinés (`combine_lifespans`).
+Auth phase 1 : jetons d'API personnels (`api_token`, migration 0028 ;
+`cat_<8>_<secret>`, SHA-256 seul stocké, 10 actifs max, 90 j par défaut),
+gérés dans Paramètres → Claude & Codex ; `ApiTokenVerifier` résout
+l'utilisateur. Garde commune `app/mcp/guard.py:run_tool` : utilisateur actif,
+`resolve_account_id`, module du compte (bypass admin limité aux modules),
+Xano au jeton Tillin de l'utilisateur, erreurs traduites en consignes
+(« reconnectez-vous… »), une ligne de journal par appel. Les outils appellent
+les FONCTIONS DE ROUTE de l'API (mêmes contrôles de scoping, crédits, états)
+plutôt qu'une copie de leur logique ; tâches de fond exécutées dans un thread.
+`apply_item` et `transfer_import` (annotés destructifs) renvoient un aperçu
+tant que `confirm` n'est pas vrai. Session Tillin 72 h non renouvelée par le
+MCP : acceptée par Marc pour la phase 1. Effet de bord : le SDK MCP installe
+`httpx2`, que le TestClient de Starlette utilise désormais. Au passage,
+`uv.lock` committé avec `pypdf` (déclaré mais absent du verrou : l'image
+`uv sync --frozen` ne l'installait pas — extraction des liens d'images des
+bons JOOR muette en prod depuis le 31/07).
+

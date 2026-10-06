@@ -23,6 +23,7 @@
   import { TabBar } from "@/lib/components/ui/tabs"
   import AppShell from "@/lib/components/app/AppShell.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
+  import ApiTokensPanel from "@/lib/components/settings/ApiTokensPanel.svelte"
   import type { AccountSettingsExtended } from "@/lib/accountSettings.svelte"
   import { saveAccountSettingsPartial } from "@/lib/accountSettings.svelte"
   import { prefs, savePreferences } from "@/lib/preferences.svelte"
@@ -39,6 +40,7 @@
   const TABS = [
     { key: "preferences", label: "Préférences" },
     { key: "account", label: "Compte" },
+    { key: "ai", label: "Claude & Codex" },
   ] as const
   type TabKey = (typeof TABS)[number]["key"]
   let tab = $state<TabKey>("preferences")
@@ -286,6 +288,14 @@
             </CardContent>
           </Card>
         </div>
+
+        <!-- Onglet Claude & Codex (jetons d'accès MCP) : monté à la première
+             ouverture (requête de liste des jetons). -->
+        {#if tab === "ai"}
+          <div class="flex flex-col gap-3" role="tabpanel">
+            <ApiTokensPanel />
+          </div>
+        {/if}
       </div>
     </AppShell>
   {/snippet}

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     admin,
+    api_tokens,
     auth,
     brands,
     catalog,
@@ -44,3 +45,4 @@ api_router.include_router(instructions.router)
 api_router.include_router(usage.router)
 api_router.include_router(credits.router)
 api_router.include_router(admin.router)
+api_router.include_router(api_tokens.router)

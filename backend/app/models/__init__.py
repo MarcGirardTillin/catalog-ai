@@ -1,4 +1,5 @@
 from app.models.account import Account
+from app.models.api_token import ApiToken
 from app.models.base import Base
 from app.models.credit import CreditEntry
 from app.models.enrichment import EnrichmentItem, EnrichmentJob
@@ -14,6 +15,7 @@ from app.models.user import User
 
 __all__ = [
     "Account",
+    "ApiToken",
     "Base",
     "CreditEntry",
     "EnrichmentItem",

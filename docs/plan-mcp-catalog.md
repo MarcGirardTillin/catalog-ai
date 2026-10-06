@@ -1,6 +1,8 @@
 # Plan — serveur MCP CatalogAI (Claude & Codex)
 
-Statut : plan validé à soumettre, **non implémenté** (2026-10-06).
+Statut : **phase 1 implémentée** (2026-10-06) — guide de connexion : [mcp.md](mcp.md).
+Écarts au plan : 12 outils (+ `catalogai_list_locations`), mode sans état
+(plusieurs workers en prod), montage à la racine après les routes de l'API.
 Décision Marc : phase 1 avec un jeton personnel ; l'expiration du jeton
 Tillin (72 h) est acceptée pour l'instant.
 

@@ -19,6 +19,7 @@ dependencies = [
     # Photos iPhone : HEIC/HEIF, que Pillow seul ne sait pas ouvrir.
     "pillow-heif>=1.1,<2.0",
     "pypdf>=5.0,<7.0",
+    "fastmcp==4.0.11",
 ]
 
 [dependency-groups]

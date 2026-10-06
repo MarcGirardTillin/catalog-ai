@@ -654,6 +654,118 @@ export const AdminUsageMetricSchema = {
     description: 'One (provider, model, metric) combo actually recorded by the app.\n\nFeeds the pricing page: the metric picker offers only real combos, and\n`priced=False` rows surface as "consumption without a price" alerts.'
 } as const;
 
+export const ApiTokenCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 80,
+            minLength: 1,
+            title: 'Name'
+        },
+        ttl_days: {
+            type: 'integer',
+            maximum: 365,
+            minimum: 1,
+            title: 'Ttl Days',
+            default: 90
+        }
+    },
+    type: 'object',
+    required: [
+        'name'
+    ],
+    title: 'ApiTokenCreate'
+} as const;
+
+export const ApiTokenCreatedSchema = {
+    properties: {
+        token: {
+            $ref: '#/components/schemas/ApiTokenPublic'
+        },
+        secret: {
+            type: 'string',
+            title: 'Secret'
+        }
+    },
+    type: 'object',
+    required: [
+        'token',
+        'secret'
+    ],
+    title: 'ApiTokenCreated'
+} as const;
+
+export const ApiTokenPublicSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        prefix: {
+            type: 'string',
+            title: 'Prefix'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        last_used_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Used At'
+        },
+        expires_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Expires At'
+        },
+        revoked_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Revoked At'
+        },
+        active: {
+            type: 'boolean',
+            title: 'Active'
+        }
+    },
+    type: 'object',
+    required: [
+        'id',
+        'name',
+        'prefix',
+        'created_at',
+        'active'
+    ],
+    title: 'ApiTokenPublic'
+} as const;
+
 export const AssetSaveRequestSchema = {
     properties: {
         replace: {

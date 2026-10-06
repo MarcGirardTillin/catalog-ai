@@ -8,12 +8,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from fastmcp.utilities.lifespan import combine_lifespans
 
 from app.api.errors import handle_unexpected_exception, register_exception_handlers
 from app.api.main import api_router
 from app.core.config import LOG_FORMAT, settings
 from app.core.db import ping_database
 from app.imaging import staging
+from app.mcp.server import mcp
 
 
 def configure_application_logging() -> None:
@@ -52,12 +54,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info("Shutdown app")
 
 
+# Serveur MCP (Claude, Codex) : Streamable HTTP SANS ÉTAT — le backend tourne
+# sur plusieurs workers, une session gardée en mémoire tomberait sur un autre
+# processus — et réponses JSON (pas de flux à faire traverser par Caddy).
+mcp_app = mcp.http_app(path="/mcp", stateless_http=True, json_response=True)
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.APP_VERSION,
     openapi_url="/openapi.json",
     generate_unique_id_function=custom_generate_unique_id,
-    lifespan=lifespan,
+    lifespan=combine_lifespans(lifespan, mcp_app.lifespan),
 )
 
 
@@ -86,3 +94,6 @@ app.add_middleware(
 
 register_exception_handlers(app)
 app.include_router(api_router)
+# Monté à la racine APRÈS les routes de l'API : `POST /mcp` répond sans
+# redirection et les métadonnées OAuth (phase 2) tombent sur /.well-known/….
+app.mount("", mcp_app)

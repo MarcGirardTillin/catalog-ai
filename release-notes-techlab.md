@@ -2,6 +2,12 @@
 
 ## Latest Changes
 
+- Serveur MCP : pilotez CatalogAI depuis Claude Code ou OpenAI Codex
+  (recherche produits, enrichissements, imports) avec un jeton personnel
+  créé dans Paramètres → Claude & Codex ; mêmes droits et crédits que l'app,
+  confirmation avant toute écriture dans Tillin. Guide : docs/mcp.md.
+- Correctif : `pypdf` est de nouveau installé en production (liens d'images
+  des bons de commande JOOR).
 - Enrichissement : les sites de marque qui ne sont pas des boutiques
   Shopify (Magento, WooCommerce, PrestaShop…) sont désormais interrogés via
   leur propre moteur de recherche, au code-barres puis à la référence,

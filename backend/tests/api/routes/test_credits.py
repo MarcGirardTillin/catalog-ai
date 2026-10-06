@@ -296,7 +296,8 @@ def test_admin_credit_timeseries(admin_client: TestClient) -> None:
 # --- 402 guards on launch routes ----------------------------------------------
 
 
-def _assert_insufficient(response: httpx.Response) -> None:
+def _assert_insufficient(response: Any) -> None:
+    # TestClient renvoie une réponse httpx2 depuis que le SDK MCP l'installe.
     assert response.status_code == 402
     assert response.json()["code"] == "insufficient_credits"
 
