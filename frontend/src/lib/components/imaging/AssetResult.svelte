@@ -220,13 +220,11 @@
         {/if}
         <figcaption class="text-muted-foreground flex justify-between text-xs">
           <span>
-            {multiOutput
-              ? `Visuels générés (${work.previewUrls.length})`
-              : canEdit
-                ? "Après — glissez l'image, tirez les poignées du cadre"
-                : "Après"}
-            {#if canEdit && work.previewUrls[0]}
-              ·
+            {#if multiOutput}
+              Visuels générés ({work.previewUrls.length})
+            {:else if !canEdit}
+              Après
+            {:else if work.previewUrls[0]}
               <button
                 type="button"
                 class="hover:text-foreground underline-offset-2 hover:underline"

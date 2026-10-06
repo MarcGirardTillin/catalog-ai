@@ -156,7 +156,6 @@
   let applyTimer: ReturnType<typeof setTimeout> | undefined
   let applying = $state(false)
   let applyQueued = false
-  let appliedOnce = $state(false)
 
   function scheduleApply(delayMs = 500) {
     clearTimeout(applyTimer)
@@ -191,7 +190,6 @@
       toast.error("Le cadrage n'a pas pu être appliqué.")
       return
     }
-    appliedOnce = true
     onApplied(data)
     if (applyQueued) {
       applyQueued = false
@@ -644,32 +642,15 @@
           px
         </Button>
       </fieldset>
-      <!-- Toujours rendu (invisible sans cadrage) : la ligne reste centrée. -->
-      <Button
-        variant="ghost"
-        size="sm"
-        class={edited || asset.edit ? undefined : "invisible"}
-        aria-hidden={!(edited || asset.edit)}
-        tabindex={edited || asset.edit ? undefined : -1}
-        onclick={resetEditor}
-      >
-        <Undo2 size={13} aria-hidden="true" data-icon="inline-start" />
-        Réinitialiser
-      </Button>
+      {#if edited || asset.edit}
+        <Button variant="ghost" size="sm" onclick={resetEditor}>
+          <Undo2 size={13} aria-hidden="true" data-icon="inline-start" />
+          Réinitialiser
+        </Button>
+      {/if}
     </div>
     {#if sizeError}
       <p class="text-destructive text-center text-xs" role="alert">{sizeError}</p>
     {/if}
-    <p class="text-muted-foreground text-center text-xs">
-      {#if output}
-        Sortie {output.width} × {output.height} px
-      {/if}
-      {#if asset.finalized}
-        · la finalisation IA est conservée
-      {/if}
-      {#if appliedOnce && !applying}
-        · cadrage appliqué
-      {/if}
-    </p>
   {/if}
 </div>
