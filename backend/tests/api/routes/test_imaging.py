@@ -1144,6 +1144,118 @@ def test_finalize_replaces_output_debits_and_render_clears_flag(
 
 
 @pytest.mark.usefixtures("patch_source_download")
+def test_edit_after_finalize_keeps_the_finalization(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+) -> None:
+    """Bug Marc 2026-10-06 : traitement → embellissement → recadrage perdait
+    l'embellissement. L'édition s'applique désormais à l'image finalisée."""
+    override_photoroom(_edit_ok_handler)
+    asset_id = _normalized_asset_id(auth_client)
+    finalized = auth_client.post(
+        f"/imaging/assets/{asset_id}/finalize", json={"beautify": True}
+    ).json()
+    base_w = finalized["files"][0]["width"]
+    base_h = finalized["files"][0]["height"]
+    finalized_bytes = auth_client.get(finalized["preview_urls"][0]).content
+
+    # L'éditeur s'ouvre sur l'image finalisée.
+    source = auth_client.get(f"/imaging/assets/{asset_id}/edit-source")
+    assert source.status_code == 200
+    assert source.content == finalized_bytes
+
+    half = {"x": 0, "y": 0, "width": base_w / 2, "height": base_h / 2}
+    edited = auth_client.post(f"/imaging/assets/{asset_id}/edit", json={"area": half})
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["finalized"] is True  # l'embellissement est conservé
+    assert body["edit"]["base_width"] == base_w
+    assert (body["files"][0]["width"], body["files"][0]["height"]) == (
+        round(base_w / 2),
+        round(base_h / 2),
+    )
+
+    # Rééditer repart de la même base (pas de recadrage cumulé).
+    again = auth_client.post(
+        f"/imaging/assets/{asset_id}/edit",
+        json={"area": {"x": 0, "y": 0, "width": base_w, "height": base_h}},
+    ).json()
+    assert (again["files"][0]["width"], again["files"][0]["height"]) == (
+        base_w,
+        base_h,
+    )
+    assert auth_client.get(f"/imaging/assets/{asset_id}/edit-source").content == (
+        finalized_bytes
+    )
+
+    # Annuler l'édition restaure la base finalisée.
+    auth_client.post(f"/imaging/assets/{asset_id}/edit", json={"area": half})
+    reset = auth_client.delete(f"/imaging/assets/{asset_id}/edit")
+    assert reset.status_code == 200
+    assert reset.json()["edit"] is None
+    assert reset.json()["finalized"] is True
+    assert auth_client.get(reset.json()["preview_urls"][0]).content == finalized_bytes
+
+
+@pytest.mark.usefixtures("patch_source_download")
+def test_edit_is_replayed_after_reposition(
+    auth_client: TestClient,
+    override_photoroom: Callable[[Handler], None],
+) -> None:
+    override_photoroom(_edit_ok_handler)
+    asset_id = _normalized_asset_id(auth_client)
+    asset = auth_client.get(f"/imaging/assets/{asset_id}").json()
+    assert asset["can_edit"] is True
+    width = asset["files"][0]["width"]
+    height = asset["files"][0]["height"]
+    square = {"x": 0, "y": 0, "width": width, "height": width}
+    edited = auth_client.post(
+        f"/imaging/assets/{asset_id}/edit", json={"area": square, "quarter": 1}
+    )
+    assert edited.status_code == 200, edited.text
+
+    render = auth_client.post(
+        f"/imaging/assets/{asset_id}/render", json={"offset_x": 10}
+    ).json()
+    # Le recadrage carré est rejoué sur la nouvelle composition.
+    assert render["edit"] is not None
+    assert render["files"][0]["width"] == render["files"][0]["height"] == width
+    assert height != width
+
+
+def test_edit_guards(
+    auth_client: TestClient,
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    area = {"area": {"x": 0, "y": 0, "width": 10, "height": 10}}
+    saved = _make_asset(
+        db_session_factory, staged_paths=["x/0.png"], tillin_image_ids=[1]
+    )
+    multi = _make_asset(db_session_factory, staged_paths=["x/0.png", "x/1.png"])
+    pending = _make_asset(db_session_factory, status="processing")
+    for asset_id in (saved, multi, pending):
+        response = auth_client.post(f"/imaging/assets/{asset_id}/edit", json=area)
+        assert response.status_code == 409
+        assert response.json()["code"] == "not_editable"
+
+    other = Account(name="autre")
+    db = _db(db_session_factory)
+    try:
+        db.add(other)
+        db.commit()
+        other_id = other.id
+    finally:
+        db.close()
+    foreign = _make_asset(
+        db_session_factory, staged_paths=["x/0.png"], account_id=other_id
+    )
+    assert (
+        auth_client.post(f"/imaging/assets/{foreign}/edit", json=area).status_code
+        == 404
+    )
+
+
+@pytest.mark.usefixtures("patch_source_download")
 def test_finalize_422_without_active_option(
     auth_client: TestClient,
     override_photoroom: Callable[[Handler], None],

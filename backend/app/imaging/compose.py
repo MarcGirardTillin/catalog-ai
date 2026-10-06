@@ -185,3 +185,97 @@ def compose(
         height=canvas.height,
         format=normalized_fmt,
     )
+
+
+# Plus grand côté d'une image éditée (aligné sur l'éditeur Tillin).
+EDIT_MAX_SIDE = 4000
+
+
+@dataclass
+class ImageEditSpec:
+    """Édition « à la Tillin » d'une image : miroir puis quart de tour autour
+    du centre, découpe de `area` (px de l'image tournée, débord autorisé =
+    marge), mise à `size` (None = taille de la zone)."""
+
+    area: tuple[float, float, float, float]  # x, y, w, h
+    quarter: int = 0  # quarts de tour horaires (0-3)
+    flip_h: bool = False
+    flip_v: bool = False
+    size: tuple[int, int] | None = None
+    # Taille de la base à laquelle `area` se rapporte : une base de taille
+    # différente (agrandissement ×4 de la finalisation) remet la zone à
+    # l'échelle.
+    base_size: tuple[int, int] | None = None
+
+
+def edit_image(
+    image: bytes,
+    spec: ImageEditSpec,
+    *,
+    bg_color: str | None,
+    fmt: str,
+    quality: int = 90,
+    max_kb: int | None = None,
+) -> ComposedImage:
+    """Applique une édition (recadrage, rotation, miroir, taille) à une image.
+
+    La marge (zone qui déborde de l'image) prend `bg_color`, ou reste
+    transparente quand `bg_color` est None et que le format le permet.
+    """
+    if fmt not in _FORMATS:
+        raise ValueError(f"unknown output format {fmt!r}")
+    normalized_fmt = _FORMATS[fmt][0]
+
+    with Image.open(io.BytesIO(image)) as opened:
+        src = opened.convert("RGBA")
+
+    if spec.flip_h:
+        src = src.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if spec.flip_v:
+        src = src.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    quarter = spec.quarter % 4
+    if quarter:
+        # Pillow tourne dans le sens antihoraire : 1 quart horaire = 270°.
+        src = src.transpose(
+            {
+                1: Image.Transpose.ROTATE_270,
+                2: Image.Transpose.ROTATE_180,
+                3: Image.Transpose.ROTATE_90,
+            }[quarter]
+        )
+
+    x, y, w, h = spec.area
+    out_size = spec.size
+    if spec.base_size is not None:
+        base_w, base_h = spec.base_size
+        # La base de référence est exprimée avant rotation.
+        if quarter % 2:
+            base_w, base_h = base_h, base_w
+        kx = src.width / base_w if base_w else 1.0
+        ky = src.height / base_h if base_h else 1.0
+        x, y, w, h = x * kx, y * ky, w * kx, h * ky
+    left, top = round(x), round(y)
+    width, height = max(1, round(w)), max(1, round(h))
+
+    if bg_color is None and _FORMATS[fmt][1] != "JPEG":
+        canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    else:
+        fill = _parse_hex(bg_color) if bg_color else (255, 255, 255)
+        canvas = Image.new("RGBA", (width, height), (*fill, 255))
+    # Hors de l'image, `crop` renvoie des pixels transparents : la marge
+    # laisse voir le fond du canevas.
+    canvas.alpha_composite(src.crop((left, top, left + width, top + height)))
+
+    target = out_size or (width, height)
+    scale = min(1.0, EDIT_MAX_SIDE / max(target[0], target[1], 1))
+    target = (max(1, round(target[0] * scale)), max(1, round(target[1] * scale)))
+    if target != canvas.size:
+        canvas = canvas.resize(target, Image.Resampling.LANCZOS)
+
+    final = canvas if _FORMATS[fmt][1] != "JPEG" else canvas.convert("RGB")
+    return ComposedImage(
+        data=_encode(final, fmt, quality, max_kb),
+        width=final.width,
+        height=final.height,
+        format=normalized_fmt,
+    )

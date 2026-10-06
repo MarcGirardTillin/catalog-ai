@@ -252,6 +252,40 @@ class CropBox(BaseModel):
     height: int = Field(ge=1)
 
 
+class EditArea(BaseModel):
+    """Zone recadrée en pixels de l'image tournée (débord autorisé = marge)."""
+
+    x: float = Field(ge=-20000, le=20000)
+    y: float = Field(ge=-20000, le=20000)
+    width: float = Field(gt=0, le=20000)
+    height: float = Field(gt=0, le=20000)
+
+
+class EditSize(BaseModel):
+    width: int = Field(ge=1, le=4000)
+    height: int = Field(ge=1, le=4000)
+
+
+class ImageEditRequest(BaseModel):
+    """POST /imaging/assets/{id}/edit — édition « à la Tillin » de la sortie
+    courante (recadrage, rotation par quart de tour, miroir, taille), locale
+    et gratuite. Toujours appliquée à la même base (la sortie avant toute
+    édition) : rouvrir l'éditeur ne cumule pas les recadrages."""
+
+    area: EditArea
+    quarter: int = Field(default=0, ge=0, le=3)
+    flip_h: bool = False
+    flip_v: bool = False
+    size: EditSize | None = None
+
+
+class ImageEditState(ImageEditRequest):
+    """Édition appliquée, avec la taille de la base de référence."""
+
+    base_width: int
+    base_height: int
+
+
 class ImageAssetPublic(BaseModel):
     """One imaging operation: status + provenance + staged previews."""
 
@@ -288,6 +322,10 @@ class ImageAssetPublic(BaseModel):
     # True quand une finalisation IA a été appliquée (retouches « cuites ») ;
     # un re-render local recompose depuis le cutout et EFFACE ce flag.
     finalized: bool = False
+    # POST /edit possible (sortie unique, terminée, non enregistrée).
+    can_edit: bool = False
+    # Édition appliquée (réhydratation de l'éditeur), None = aucune.
+    edit: ImageEditState | None = None
     source_image: str | None = None
     source_product_image_id: int | None = None
     created_at: datetime

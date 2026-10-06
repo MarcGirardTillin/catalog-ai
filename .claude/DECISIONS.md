@@ -1067,3 +1067,39 @@ Au déploiement : éditer `AI_DEFAULT_MODEL` dans les `.env` (local + prod),
 et créer les lignes `usage_price` `claude`/`claude-sonnet-5-5` pour chaque
 compte — les prix sont résolus par modèle exact, sans ligne de repli, donc
 sans elles les appels 5.5 ne seraient pas facturés.
+
+## 2026-10-06 — Fiches source supplémentaires « une page par couleur »
+
+Version minimale validée par Marc : un item d'enrichissement garde UNE fiche
+principale (`source_url`, autorité pour copie/meta/titre/prix/poids) et peut
+recevoir des fiches supplémentaires qui n'apportent que des IMAGES, taguées
+avec une couleur du produit. Stockage sans migration :
+`resolution_json.extra_sources = [{url, color, title?}]`,
+`resolution_json.main_color`, et `color` + `source_page` sur les entrées de
+`staged_images_json` (conservés par la normalisation et son revert). Routes
+`POST/DELETE /items/{id}/sources`, `PUT /items/{id}/main-color` (même garde
+`feature_enrich` + scoping `account_id` que le reste du router items, mêmes
+statuts éditables que `/resolve`). Un `/resolve` conserve les extras (une
+fiche promue principale quitte la liste et lègue sa couleur). Pas de greffe
+de texte Firecrawl sur une fiche supplémentaire (inutile, payante) ; pas de
+normalisation auto de ses images. Aucun changement Xano : l'apply pousse
+toutes les images sélectionnées dans l'ordre stagé.
+
+
+## 2026-10-06 — Studio : « Modifier l'image » sur la sortie courante
+
+Bug Marc : traitement → retouche IA (embellissement) → recadrage perdait la
+retouche (le recadrage recomposait depuis le cutout). Le recadrage devient une
+ÉDITION de la sortie, sur le modèle de l'éditeur de la fiche produit Tillin
+(cadre fixe, image déplacée/zoomée dessous, formats 1:1 · 16:9 · 4:5 · 5:4 ·
+Libre, quart de tour, miroir, taille de sortie). Modèle : sortie =
+édition(base), la base (composition ou résultat finalisé) gardée sous le rôle
+`edit_base`, l'édition dans `params.edit` (zone en px de la base tournée +
+taille de la base). `write_output` (services/imaging.py) rejoue l'édition
+après chaque repositionnement ou finalisation — l'ordre recadrer/finaliser
+n'a plus d'importance ; un agrandissement ×4 remet la zone à l'échelle.
+Routes `POST/DELETE /imaging/assets/{id}/edit`, `GET .../edit-source`
+(router studio : `feature_studio` + scoping), locales et gratuites, ouvertes
+à toute sortie unique non enregistrée (mises à plat comprises). Marge : fond
+du canevas pour une normalisation, blanc sinon. L'ancien recadrage tracé
+(`render.crop`) reste lu pour les assets existants, l'UI ne le pose plus.

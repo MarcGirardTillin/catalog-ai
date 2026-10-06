@@ -47,6 +47,7 @@
   import { Select } from "@/lib/components/ui/select"
   import { formatFileSize } from "@/lib/format"
 
+  import ImageEditDialog from "./ImageEditDialog.svelte"
   import Lightbox from "./Lightbox.svelte"
 
   let {
@@ -80,6 +81,22 @@
     work.asset?.can_render === true && !work.saving && !multiOutput,
   )
   const saved = $derived(work.status === "saved")
+  // « Modifier l'image » (recadrage, rotation, miroir, taille) : toute sortie
+  // unique non enregistrée — génération comprise — et sans perdre une
+  // finalisation IA.
+  const canEdit = $derived(
+    work.asset?.can_edit === true && !work.saving && !multiOutput,
+  )
+  let editOpen = $state(false)
+
+  async function onEdited(asset: ImageAssetPublic) {
+    work.asset = asset
+    const previews = await fetchAssetPreviews(asset)
+    for (const url of work.previewUrls) URL.revokeObjectURL(url)
+    work.previewUrls = previews
+    editOpen = false
+    toast.success(asset.edit ? "Image modifiée" : "Modifications retirées")
+  }
 
   // --- Re-render (repositionnement) : débouncé, séquencé (1 à la fois) ---
   let renderTimer: ReturnType<typeof setTimeout> | undefined
@@ -129,8 +146,6 @@
     work.offsetY = 0
     work.scale = 1
     work.crop = null
-    cropMode = false
-    cropSel = null
     scheduleRender(0)
   }
 
@@ -182,99 +197,21 @@
   // --- Zoom plein écran ---
   let lightboxSrc = $state<string | null>(null)
 
-  // --- Recadrage : sélection au ratio verrouillé sur l'aperçu ---
-  // La sélection vit en pixels d'affichage relatifs au conteneur ; à
-  // l'application elle est convertie en pixels canevas (composée avec un
-  // recadrage déjà en place — l'aperçu affiché EST la zone recadrée).
-  let cropMode = $state(false)
-  let cropSel = $state<{ x: number; y: number; w: number; h: number } | null>(null)
-  let cropDrawing = $state(false)
-  let cropStart = { x: 0, y: 0 }
-  let containerEl: HTMLDivElement | null = $state(null)
-
-  /** Boîte réellement rendue par l'aperçu object-contain (px affichage). */
-  function contentBox() {
-    const el = afterImg
-    const w = outputFile?.width
-    const h = outputFile?.height
-    if (!el || !w || !h) return null
-    const s = Math.min(el.clientWidth / w, el.clientHeight / h)
-    return {
-      left: (el.clientWidth - w * s) / 2,
-      top: (el.clientHeight - h * s) / 2,
-      width: w * s,
-      height: h * s,
-    }
-  }
-
-  function relPos(event: PointerEvent) {
-    const rect = containerEl!.getBoundingClientRect()
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top }
-  }
-
-  function updateCropSel(event: PointerEvent) {
-    const box = contentBox()
-    if (!box) return
-    const pos = relPos(event)
-    const aspect = box.height / box.width // = ratio de sortie (verrouillé)
-    const dx = pos.x - cropStart.x
-    const dy = pos.y - cropStart.y
-    let w = Math.max(Math.abs(dx), Math.abs(dy) / aspect)
-    let h = w * aspect
-    let x = dx >= 0 ? cropStart.x : cropStart.x - w
-    let y = dy >= 0 ? cropStart.y : cropStart.y - h
-    // Reste dans la zone d'image rendue, sans casser le ratio.
-    x = Math.max(box.left, x)
-    y = Math.max(box.top, y)
-    const shrink = Math.min(
-      1,
-      (box.left + box.width - x) / w,
-      (box.top + box.height - y) / h,
-    )
-    w *= shrink
-    h *= shrink
-    cropSel = { x, y, w, h }
-  }
-
-  function applyCrop() {
-    const box = contentBox()
-    const sel = cropSel
-    const outputW = outputFile?.width
-    if (!box || !sel || !outputW || sel.w < 12) return
-    // px affichage → px de la sortie COURANTE (un recadrage antérieur ne
-    // change pas l'échelle : c'est une coupe pixel, pas un resize).
-    const factor = outputW / box.width
-    const base = work.crop ?? { x: 0, y: 0 }
-    work.crop = {
-      x: Math.max(0, Math.round(base.x + (sel.x - box.left) * factor)),
-      y: Math.max(0, Math.round(base.y + (sel.y - box.top) * factor)),
-      width: Math.max(1, Math.round(sel.w * factor)),
-      height: Math.max(1, Math.round(sel.h * factor)),
-    }
-    cropMode = false
-    cropSel = null
-    scheduleRender(0)
-  }
-
   function onPointerDown(event: PointerEvent) {
     if (!canRender) return
     if (finalized && !finalizeWarned) {
-      // La finalisation est « cuite » : le premier repositionnement qui suit
-      // recompose depuis le cutout et l'annule — on prévient une fois.
+      // La finalisation est « cuite » : le premier repositionnement du
+      // produit recompose depuis le cutout et l'annule — on prévient une
+      // fois. (« Modifier l'image », lui, la conserve.)
       const proceed = window.confirm(
-        "Repositionner recompose l'image et annule la finalisation IA — " +
-          "une nouvelle finalisation sera facturée. Continuer ?",
+        "Repositionner le produit recompose l'image et annule la finalisation " +
+          "IA — une nouvelle finalisation sera facturée. Pour seulement " +
+          "recadrer, utilisez « Modifier l'image ». Continuer ?",
       )
       if (!proceed) return
       finalizeWarned = true
     }
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    if (cropMode) {
-      cropDrawing = true
-      cropStart = relPos(event)
-      cropSel = null
-      return
-    }
     dragging = true
     dragStart = {
       x: event.clientX,
@@ -285,10 +222,6 @@
   }
 
   function onPointerMove(event: PointerEvent) {
-    if (cropDrawing) {
-      updateCropSel(event)
-      return
-    }
     if (!dragging) return
     const factor = canvasFactor()
     work.offsetX = dragStart.offsetX + (event.clientX - dragStart.x) * factor
@@ -296,12 +229,6 @@
   }
 
   function onPointerUp() {
-    if (cropDrawing) {
-      cropDrawing = false
-      // Un simple clic (sélection minuscule) annule la sélection en cours.
-      if (cropSel && cropSel.w < 12) cropSel = null
-      return
-    }
     if (!dragging) return
     dragging = false
     scheduleRender(0) // POST au relâchement (pas pendant le drag)
@@ -423,12 +350,9 @@
           </div>
         {:else}
           <div
-            bind:this={containerEl}
-            class="relative overflow-hidden rounded-md {cropMode
-              ? 'cursor-crosshair'
-              : canRender
-                ? 'cursor-grab'
-                : ''} {dragging ? 'cursor-grabbing' : ''}"
+            class="relative overflow-hidden rounded-md {canRender
+              ? 'cursor-grab'
+              : ''} {dragging ? 'cursor-grabbing' : ''}"
             role="presentation"
             onpointerdown={onPointerDown}
             onpointermove={onPointerMove}
@@ -464,23 +388,6 @@
                 <div class="absolute top-1/2 left-1/2 h-px w-4 -translate-x-1/2 -translate-y-1/2 bg-white mix-blend-difference"></div>
               </div>
             {/if}
-            {#if cropMode}
-              <!-- Sélection de recadrage (ratio verrouillé, tracée au drag). -->
-              <div class="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
-                {#if cropSel}
-                  <div
-                    class="absolute border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
-                    style="left:{cropSel.x}px;top:{cropSel.y}px;width:{cropSel.w}px;height:{cropSel.h}px"
-                  ></div>
-                {:else}
-                  <p
-                    class="bg-card/85 absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-[11px]"
-                  >
-                    Tracez la zone à conserver
-                  </p>
-                {/if}
-              </div>
-            {/if}
             {#if work.rendering}
               <span
                 class="bg-card/80 absolute right-1.5 bottom-1.5 rounded-full px-2 py-0.5 text-[10px]"
@@ -504,19 +411,15 @@
                 >
                   <Grid3x3 size={14} />
                 </button>
+              {/if}
+              {#if canEdit}
                 <button
                   type="button"
-                  class="rounded-full p-1.5 transition-colors {cropMode
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-card/80 text-foreground hover:bg-card'}"
-                  aria-label="Recadrer l'image"
-                  aria-pressed={cropMode}
-                  title="Recadrer"
+                  class="bg-card/80 text-foreground hover:bg-card rounded-full p-1.5 transition-colors"
+                  aria-label="Modifier l'image (recadrer, tourner, redimensionner)"
+                  title="Modifier l'image"
                   onpointerdown={(e) => e.stopPropagation()}
-                  onclick={() => {
-                    cropMode = !cropMode
-                    cropSel = null
-                  }}
+                  onclick={() => (editOpen = true)}
                 >
                   <CropIcon size={14} />
                 </button>
@@ -538,33 +441,7 @@
         {/if}
         {#if canRender}
           <!-- Contrôles sous l'image MODIFIÉE, centrés (demande Marc). -->
-          {#if cropMode}
-            <!-- Mode recadrage : tracer, puis appliquer ou abandonner. -->
-            <div class="flex flex-wrap items-center justify-center gap-2">
-              <span class="text-muted-foreground w-full text-center text-xs">
-                Tracez la zone à conserver — proportions verrouillées au format.
-              </span>
-              <Button
-                size="sm"
-                disabled={!cropSel || cropSel.w < 12}
-                onclick={applyCrop}
-              >
-                <CropIcon size={13} aria-hidden="true" data-icon="inline-start" />
-                Recadrer
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onclick={() => {
-                  cropMode = false
-                  cropSel = null
-                }}
-              >
-                Annuler
-              </Button>
-            </div>
-          {:else}
-            <!-- Échelle (barre courte + crans de 5 + saisie directe) + reset -->
+          <!-- Échelle (barre courte + crans de 5 + saisie directe) + reset -->
             <div class="flex flex-wrap items-center justify-center gap-2">
               <Button
                 variant="outline"
@@ -623,7 +500,6 @@
                 Réinitialiser
               </Button>
             </div>
-          {/if}
         {/if}
         <figcaption class="text-muted-foreground flex justify-between text-xs">
           <span>
@@ -670,9 +546,10 @@
         {#if showFinalize}
           <div class="flex flex-col gap-3 px-3 pb-3">
             <p class="text-muted-foreground text-xs">
-              À appliquer une fois le cadrage validé : ces retouches sont
-              intégrées à l'image — repositionner ensuite les annule (une
-              nouvelle finalisation sera facturée).
+              Ces retouches sont intégrées à l'image. « Modifier l'image »
+              (recadrer, tourner, redimensionner) les conserve ; repositionner
+              le produit ensuite les annule (une nouvelle finalisation sera
+              facturée).
             </p>
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="flex flex-col gap-1.5">
@@ -837,4 +714,12 @@
 
 {#if lightboxSrc}
   <Lightbox src={lightboxSrc} onClose={() => (lightboxSrc = null)} />
+{/if}
+
+{#if editOpen && work.asset}
+  <ImageEditDialog
+    asset={work.asset}
+    onClose={() => (editOpen = false)}
+    onApplied={onEdited}
+  />
 {/if}

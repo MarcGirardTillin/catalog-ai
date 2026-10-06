@@ -202,3 +202,78 @@ def test_transparent_bg_keeps_alpha_and_forces_png() -> None:
     center = img.getpixel((img.width // 2, img.height // 2))
     assert isinstance(center, tuple)
     assert center[:3] == PRODUCT and center[3] == 255
+
+
+def _quadrants() -> bytes:
+    """20×10 PNG : moitié gauche rouge, moitié droite bleue."""
+    img = Image.new("RGB", (20, 10), (255, 0, 0))
+    img.paste((0, 0, 255), (10, 0, 20, 10))
+    buffer = io.BytesIO()
+    img.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def _pixel(data: bytes, xy: tuple[int, int]) -> tuple[int, ...]:
+    with Image.open(io.BytesIO(data)) as img:
+        return tuple(img.convert("RGB").getpixel(xy))  # type: ignore[arg-type]
+
+
+def test_edit_image_crops_flips_and_rotates() -> None:
+    from app.imaging.compose import ImageEditSpec, edit_image
+
+    # Découpe de la moitié droite : bleu.
+    right = edit_image(
+        _quadrants(), ImageEditSpec(area=(10, 0, 10, 10)), bg_color=None, fmt="png"
+    )
+    assert (right.width, right.height) == (10, 10)
+    assert _pixel(right.data, (5, 5)) == (0, 0, 255)
+
+    # Miroir horizontal : la moitié droite devient rouge.
+    flipped = edit_image(
+        _quadrants(),
+        ImageEditSpec(area=(10, 0, 10, 10), flip_h=True),
+        bg_color=None,
+        fmt="png",
+    )
+    assert _pixel(flipped.data, (5, 5)) == (255, 0, 0)
+
+    # Quart de tour horaire : 10×20, le rouge (gauche) passe en haut.
+    turned = edit_image(
+        _quadrants(),
+        ImageEditSpec(area=(0, 0, 10, 20), quarter=1),
+        bg_color=None,
+        fmt="png",
+    )
+    assert (turned.width, turned.height) == (10, 20)
+    assert _pixel(turned.data, (5, 2)) == (255, 0, 0)
+    assert _pixel(turned.data, (5, 17)) == (0, 0, 255)
+
+
+def test_edit_image_margin_size_and_base_rescale() -> None:
+    from app.imaging.compose import ImageEditSpec, edit_image
+
+    # Zone qui déborde à gauche : la marge prend la couleur de fond.
+    margin = edit_image(
+        _quadrants(), ImageEditSpec(area=(-10, 0, 20, 10)), bg_color="00FF00", fmt="png"
+    )
+    assert _pixel(margin.data, (2, 5)) == (0, 255, 0)
+    assert _pixel(margin.data, (15, 5)) == (255, 0, 0)
+
+    # Taille de sortie imposée.
+    sized = edit_image(
+        _quadrants(),
+        ImageEditSpec(area=(0, 0, 20, 10), size=(40, 20)),
+        bg_color=None,
+        fmt="png",
+    )
+    assert (sized.width, sized.height) == (40, 20)
+
+    # Zone exprimée pour une base 2× plus petite (avant agrandissement ×4).
+    rescaled = edit_image(
+        _quadrants(),
+        ImageEditSpec(area=(5, 0, 5, 5), base_size=(10, 5)),
+        bg_color=None,
+        fmt="png",
+    )
+    assert (rescaled.width, rescaled.height) == (10, 10)
+    assert _pixel(rescaled.data, (5, 5)) == (0, 0, 255)

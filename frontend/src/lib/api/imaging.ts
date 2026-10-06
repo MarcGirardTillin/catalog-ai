@@ -8,11 +8,14 @@ import {
   type GenerateFlatOptions,
   type GenerateModelOptions,
   type ImageAssetPublic,
+  type ImageEditRequest,
   type NormalizeOptions,
   type RenderRequest,
   type StagedFilePublic,
   imagingDiscardAsset,
+  imagingEditAsset,
   imagingFinalizeAsset,
+  imagingResetAssetEdit,
   imagingListImagingAssets,
   imagingListPendingProducts,
   imagingReadAsset,
@@ -34,6 +37,7 @@ export type {
   GenerateFlatOptions,
   GenerateModelOptions,
   ImageAssetPublic,
+  ImageEditRequest,
   NormalizeOptions,
   RenderRequest,
   StagedFilePublic,
@@ -195,6 +199,28 @@ export function saveAsset(
  *  provider, réponse synchrone avec l'asset à jour (`?r=` sur les previews). */
 export function renderAsset(assetId: number, body: RenderRequest) {
   return imagingRenderAsset({ path: { asset_id: assetId }, body })
+}
+
+/** Édition « à la Tillin » de la sortie courante (recadrage, rotation,
+ *  miroir, taille) — locale et gratuite, une finalisation IA est conservée.
+ *  Toujours rejouée depuis la même base : rééditer ne cumule pas. */
+export function editAsset(assetId: number, body: ImageEditRequest) {
+  return imagingEditAsset({ path: { asset_id: assetId }, body })
+}
+
+/** Annule l'édition : la base (avant recadrage) redevient la sortie. */
+export function resetAssetEdit(assetId: number) {
+  return imagingResetAssetEdit({ path: { asset_id: assetId } })
+}
+
+/** Image ouverte dans l'éditeur (base sans édition), en object-URL — à
+ *  révoquer par l'appelant. */
+export async function fetchEditSource(assetId: number): Promise<string | null> {
+  const { data } = await client.get<{ 200: Blob }, unknown>({
+    responseType: "blob",
+    url: `/imaging/assets/${assetId}/edit-source`,
+  })
+  return data instanceof Blob ? URL.createObjectURL(data) : null
 }
 
 /** Normalise (ou rétablit) UNE image stagée d'un item d'enrichissement —

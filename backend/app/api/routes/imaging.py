@@ -25,6 +25,8 @@ from app.api.schemas import (
     AssetSaveResult,
     FinalizeRequest,
     ImageAssetPublic,
+    ImageEditRequest,
+    ImageEditState,
     PendingImagingProducts,
     RenderRequest,
 )
@@ -34,15 +36,17 @@ from app.api.services.credits import credit_grid, require_credits
 from app.api.services.imaging import (
     MEDIA_TYPES,
     account_settings,
+    can_edit,
     file_by_role,
     get_asset,
     list_assets,
     output_files,
     pending_product_ids,
     to_public,
+    write_output,
 )
 from app.imaging import staging
-from app.imaging.compose import compose
+from app.imaging.compose import ComposedImage, compose, probe
 from app.imaging.naming import build_filename, render_image_filename
 from app.imaging.service import FinalizeOptions, finalize_image
 from app.models import ImageAsset
@@ -220,22 +224,6 @@ def render_asset(
         ),
     )
 
-    output_path = staging.store(asset.id, 0, composed.data, composed.format)
-    output_entry = {
-        "role": "output",
-        "path": output_path,
-        "bytes": len(composed.data),
-        "width": composed.width,
-        "height": composed.height,
-        "format": composed.format,
-        "index": 0,
-    }
-    asset.staged_paths_json = [output_path]
-    asset.staged_files_json = [
-        entry
-        for entry in (asset.staged_files_json or [])
-        if entry.get("role") != "output"
-    ] + [output_entry]
     params["options"] = {**stored, **options}
     params["render"] = {
         "offset_x": body.offset_x,
@@ -243,12 +231,13 @@ def render_asset(
         "scale": body.scale,
         "crop": body.crop.model_dump() if body.crop is not None else None,
     }
-    params["render_rev"] = int(params.get("render_rev") or 0) + 1
     # Repositionner recompose depuis le cutout : le résultat d'une
     # finalisation IA (ombre « cuite », décor…) est écrasé — comportement
     # voulu, une nouvelle finalisation sera facturée (avertissement UI).
+    # L'édition (recadrage, rotation…) est, elle, rejouée sur la nouvelle base.
     params.pop("finalize", None)
     asset.params_json = params
+    write_output(asset, composed)
     db.commit()
     db.refresh(asset)
     return to_public(asset)
@@ -346,28 +335,22 @@ def finalize_asset(
         account_id=account_id,
     )
 
-    output_path = staging.store(asset.id, 0, result.data, result.format)
-    output_entry = {
-        "role": "output",
-        "path": output_path,
-        "bytes": len(result.data),
-        "width": result.width,
-        "height": result.height,
-        "format": result.format,
-        "index": 0,
-    }
-    asset.staged_paths_json = [output_path]
-    asset.staged_files_json = [
-        entry
-        for entry in (asset.staged_files_json or [])
-        if entry.get("role") != "output"
-    ] + [output_entry]
     params["finalize"] = {
         "options": body.model_dump(),
         "trace": result.trace,
     }
-    params["render_rev"] = int(params.get("render_rev") or 0) + 1
     asset.params_json = params
+    # La finalisation porte sur le canevas entier ; l'édition éventuelle
+    # (recadrage…) est rejouée ensuite sur l'image finalisée.
+    width, height = result.width, result.height
+    if width is None or height is None:
+        width, height, _ = probe(result.data)
+    write_output(
+        asset,
+        ComposedImage(
+            data=result.data, width=width, height=height, format=result.format
+        ),
+    )
     consume_credits(
         db,
         account_id=account_id,
@@ -375,6 +358,95 @@ def finalize_asset(
         quantity=1,
         asset_id=asset.id,
     )
+    db.commit()
+    db.refresh(asset)
+    return to_public(asset)
+
+
+def _editable_asset(db: SessionDep, account_id: int, asset_id: int) -> ImageAsset:
+    asset = get_asset(db, account_id=account_id, asset_id=asset_id)
+    if not can_edit(asset):
+        raise AppException(
+            status_code=409,
+            code="not_editable",
+            message="Only a completed, unsaved single-output asset can be edited",
+        )
+    return asset
+
+
+def _edit_base(asset: ImageAsset) -> ComposedImage:
+    """Image à laquelle l'édition s'applique : la base gardée, sinon la
+    sortie courante (première édition)."""
+    entry = file_by_role(asset, "edit_base") or output_files(asset)[0]
+    try:
+        data = staging.load(str(entry["path"]))
+    except (FileNotFoundError, ValueError):
+        raise AppException(
+            status_code=409,
+            code="staging_expired",
+            message="The staged files are no longer available",
+        )
+    width, height, fmt = probe(data)
+    return ComposedImage(
+        data=data,
+        width=width,
+        height=height,
+        format=str(entry.get("format") or fmt or "png").replace("jpg", "jpeg"),
+    )
+
+
+@router.get("/assets/{asset_id}/edit-source")
+def read_edit_source(
+    asset_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> Response:
+    """Image ouverte dans l'éditeur (base sans édition)."""
+    account_id = resolve_account_id(db, current_user)
+    base = _edit_base(_editable_asset(db, account_id, asset_id))
+    return Response(
+        content=base.data,
+        media_type=MEDIA_TYPES.get(base.format, "application/octet-stream"),
+    )
+
+
+@router.post("/assets/{asset_id}/edit", response_model=ImageAssetPublic)
+def edit_asset(
+    asset_id: int,
+    body: ImageEditRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ImageAssetPublic:
+    """Recadrage / rotation / miroir / taille de la sortie (local, gratuit).
+
+    S'applique à la sortie telle qu'elle est — une finalisation IA
+    (embellissement, ombre…) est conservée — et repart toujours de la même
+    base : rouvrir l'éditeur ne cumule pas les recadrages.
+    """
+    account_id = resolve_account_id(db, current_user)
+    asset = _editable_asset(db, account_id, asset_id)
+    base = _edit_base(asset)
+    params = dict(asset.params_json or {})
+    params["edit"] = ImageEditState(
+        **body.model_dump(), base_width=base.width, base_height=base.height
+    ).model_dump()
+    asset.params_json = params
+    write_output(asset, base)
+    db.commit()
+    db.refresh(asset)
+    return to_public(asset)
+
+
+@router.delete("/assets/{asset_id}/edit", response_model=ImageAssetPublic)
+def reset_asset_edit(
+    asset_id: int, db: SessionDep, current_user: CurrentUserDep
+) -> ImageAssetPublic:
+    """Annule l'édition : la base redevient la sortie."""
+    account_id = resolve_account_id(db, current_user)
+    asset = _editable_asset(db, account_id, asset_id)
+    base = _edit_base(asset)
+    params = dict(asset.params_json or {})
+    params.pop("edit", None)
+    asset.params_json = params
+    write_output(asset, base)
     db.commit()
     db.refresh(asset)
     return to_public(asset)

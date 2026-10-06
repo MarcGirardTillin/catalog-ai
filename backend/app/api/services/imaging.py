@@ -9,7 +9,12 @@ from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
-from app.api.schemas import CropBox, ImageAssetPublic, StagedFilePublic
+from app.api.schemas import (
+    CropBox,
+    ImageAssetPublic,
+    ImageEditState,
+    StagedFilePublic,
+)
 from app.api.schemas import GenerateFlatOptions as GenerateFlatOptionsSchema
 from app.api.schemas import GenerateModelOptions as GenerateModelOptionsSchema
 from app.api.schemas import NormalizeOptions as NormalizeOptionsSchema
@@ -20,6 +25,7 @@ from app.clients.openai_images import OpenAiImagesClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.db import SessionLocal
 from app.imaging import staging
+from app.imaging.compose import ComposedImage, ImageEditSpec, edit_image
 from app.imaging.service import (
     PHOTOROOM_POSE_MAP,
     PHOTOROOM_SCENE_MAP,
@@ -79,6 +85,113 @@ def file_by_role(asset: ImageAsset, role: str) -> dict[str, Any] | None:
     return None
 
 
+def edit_state(asset: ImageAsset) -> ImageEditState | None:
+    """Édition « à la Tillin » appliquée à la sortie, None si aucune."""
+    raw = (asset.params_json or {}).get("edit")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return ImageEditState.model_validate(raw)
+    except ValueError:
+        return None
+
+
+def edit_spec(state: ImageEditState) -> ImageEditSpec:
+    area = state.area
+    return ImageEditSpec(
+        area=(area.x, area.y, area.width, area.height),
+        quarter=state.quarter,
+        flip_h=state.flip_h,
+        flip_v=state.flip_v,
+        size=(state.size.width, state.size.height) if state.size else None,
+        base_size=(state.base_width, state.base_height),
+    )
+
+
+def can_edit(asset: ImageAsset) -> bool:
+    """Édition possible : sortie unique, terminée, pas encore enregistrée."""
+    return (
+        asset.status == "completed"
+        and asset.tillin_image_ids_json is None
+        and len(output_files(asset)) == 1
+    )
+
+
+def _output_encoding(
+    asset: ImageAsset, fallback_format: str
+) -> tuple[str, int, int | None, str | None]:
+    """(format, qualité, poids max, couleur de marge) de la sortie éditée.
+
+    Normalisation : les options du rendu (fond = couleur du canevas).
+    Générations : le format de la sortie, marge blanche.
+    """
+    options: dict[str, Any] = dict((asset.params_json or {}).get("options") or {})
+    if asset.verb == "normalize":
+        return (
+            str(options.get("format") or fallback_format),
+            int(options.get("quality") or 80),
+            int(options["max_kb"]) if options.get("max_kb") else None,
+            str(options.get("bg_color") or "FFFFFF"),
+        )
+    fmt = fallback_format if fallback_format in ("webp", "jpeg", "png") else "png"
+    return fmt, 92, None, "FFFFFF"
+
+
+def write_output(asset: ImageAsset, base: ComposedImage) -> None:
+    """Pose `base` comme sortie de l'asset, édition mémorisée réappliquée.
+
+    La base est gardée à part (rôle `edit_base`) tant qu'une édition existe :
+    rééditer repart d'elle (pas de recadrages cumulés), et un repositionnement
+    ou une finalisation produit une nouvelle base sur laquelle l'édition est
+    rejouée — l'embellissement n'est plus perdu par un recadrage.
+    """
+    state = edit_state(asset)
+    entries = [
+        entry
+        for entry in (asset.staged_files_json or [])
+        if entry.get("role") not in ("output", "edit_base")
+    ]
+    final = base
+    if state is not None:
+        base_path = staging.store(asset.id, "edit_base", base.data, base.format)
+        entries.append(
+            {
+                "role": "edit_base",
+                "path": base_path,
+                "bytes": len(base.data),
+                "width": base.width,
+                "height": base.height,
+                "format": base.format,
+            }
+        )
+        fmt, quality, max_kb, bg_color = _output_encoding(asset, base.format)
+        final = edit_image(
+            base.data,
+            edit_spec(state),
+            bg_color=bg_color,
+            fmt=fmt,
+            quality=quality,
+            max_kb=max_kb,
+        )
+    output_path = staging.store(asset.id, 0, final.data, final.format)
+    entries.append(
+        {
+            "role": "output",
+            "path": output_path,
+            "bytes": len(final.data),
+            "width": final.width,
+            "height": final.height,
+            "format": final.format,
+            "index": 0,
+        }
+    )
+    asset.staged_paths_json = [output_path]
+    asset.staged_files_json = entries
+    params = dict(asset.params_json or {})
+    params["render_rev"] = int(params.get("render_rev") or 0) + 1
+    asset.params_json = params
+
+
 def to_public(asset: ImageAsset) -> ImageAssetPublic:
     """Map one ImageAsset row onto its public shape (with preview routes)."""
     outputs = output_files(asset)
@@ -125,6 +238,8 @@ def to_public(asset: ImageAsset) -> ImageAssetPublic:
         render_scale=float(render.get("scale") or 1.0),
         render_crop=CropBox.model_validate(crop) if isinstance(crop, dict) else None,
         finalized=bool((asset.params_json or {}).get("finalize")),
+        can_edit=can_edit(asset),
+        edit=edit_state(asset),
         source_image=asset.source_image,
         source_product_image_id=asset.source_product_image_id,
         created_at=asset.created_at,

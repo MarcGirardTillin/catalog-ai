@@ -1661,6 +1661,189 @@
         }
       }
     },
+    "/imaging/assets/{asset_id}/edit-source": {
+      "get": {
+        "tags": [
+          "imaging"
+        ],
+        "summary": "Read Edit Source",
+        "description": "Image ouverte dans l'éditeur (base sans édition).",
+        "operationId": "imaging-read_edit_source",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imaging/assets/{asset_id}/edit": {
+      "post": {
+        "tags": [
+          "imaging"
+        ],
+        "summary": "Edit Asset",
+        "description": "Recadrage / rotation / miroir / taille de la sortie (local, gratuit).\n\nS'applique à la sortie telle qu'elle est — une finalisation IA\n(embellissement, ombre…) est conservée — et repart toujours de la même\nbase : rouvrir l'éditeur ne cumule pas les recadrages.",
+        "operationId": "imaging-edit_asset",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageEditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAssetPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "imaging"
+        ],
+        "summary": "Reset Asset Edit",
+        "description": "Annule l'édition : la base redevient la sortie.",
+        "operationId": "imaging-reset_asset_edit",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAssetPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/imaging/assets/{asset_id}/discard": {
       "post": {
         "tags": [
@@ -4474,13 +4657,217 @@
         }
       }
     },
+    "/items/{item_id}/sources": {
+      "post": {
+        "tags": [
+          "items"
+        ],
+        "summary": "Add Item Source Route",
+        "description": "Associe une fiche supplémentaire à une couleur du produit.\n\nLes images de la fiche s'ajoutent en fin de galerie, taguées couleur ;\nla copie, la meta, le titre, le prix et les poids restent ceux de la\nfiche principale. Même URL déjà associée → ses images sont remplacées.\nMétering identique à la résolution manuelle (aucun débit de crédit).",
+        "operationId": "items-add_item_source_route",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemExtraSourceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "items"
+        ],
+        "summary": "Remove Item Source Route",
+        "description": "Retire une fiche supplémentaire (query `source_url`) et ses images.",
+        "operationId": "items-remove_item_source_route",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "source_url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Url"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{item_id}/main-color": {
+      "put": {
+        "tags": [
+          "items"
+        ],
+        "summary": "Set Item Main Color Route",
+        "description": "Couleur du produit illustrée par la fiche principale (null = aucune).",
+        "operationId": "items-set_item_main_color_route",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemMainColorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/items/{item_id}/page-preview": {
       "get": {
         "tags": [
           "items"
         ],
         "summary": "Page Preview Route",
-        "description": "Thumbnail (og:image) of one of the item's resolution pages.\n\nBest-effort : image_url absente quand la page ne publie pas de visuel de\npartage ou ne répond pas. L'URL demandée doit être la page source de\nl'item ou l'un de ses candidats — jamais une URL arbitraire (anti-SSRF).",
+        "description": "Thumbnail (og:image) of one of the item's resolution pages.\n\nBest-effort : image_url absente quand la page ne publie pas de visuel de\npartage ou ne répond pas. L'URL demandée doit être la page source de\nl'item, l'un de ses candidats ou une fiche supplémentaire par couleur —\njamais une URL arbitraire (anti-SSRF).",
         "operationId": "items-page_preview_route",
         "parameters": [
           {
@@ -8928,6 +9315,65 @@
         "title": "DashboardStats",
         "description": "Account-scoped headline numbers for the dashboard.\n\nServer-side exact counters (the frontend previously approximated some of\nthese from the first page of paginated lists)."
       },
+      "EditArea": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "maximum": 20000.0,
+            "minimum": -20000.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "maximum": 20000.0,
+            "minimum": -20000.0,
+            "title": "Y"
+          },
+          "width": {
+            "type": "number",
+            "maximum": 20000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "number",
+            "maximum": 20000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "EditArea",
+        "description": "Zone recadrée en pixels de l'image tournée (débord autorisé = marge)."
+      },
+      "EditSize": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "maximum": 4000.0,
+            "minimum": 1.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "maximum": 4000.0,
+            "minimum": 1.0,
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "EditSize"
+      },
       "ExampleResponse": {
         "properties": {
           "status": {
@@ -9663,6 +10109,21 @@
             "title": "Finalized",
             "default": false
           },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "default": false
+          },
+          "edit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageEditState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_image": {
             "anyOf": [
               {
@@ -9714,6 +10175,96 @@
         ],
         "title": "ImageAssetPublic",
         "description": "One imaging operation: status + provenance + staged previews."
+      },
+      "ImageEditRequest": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/EditArea"
+          },
+          "quarter": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Quarter",
+            "default": 0
+          },
+          "flip_h": {
+            "type": "boolean",
+            "title": "Flip H",
+            "default": false
+          },
+          "flip_v": {
+            "type": "boolean",
+            "title": "Flip V",
+            "default": false
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditSize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "area"
+        ],
+        "title": "ImageEditRequest",
+        "description": "POST /imaging/assets/{id}/edit — édition « à la Tillin » de la sortie\ncourante (recadrage, rotation par quart de tour, miroir, taille), locale\net gratuite. Toujours appliquée à la même base (la sortie avant toute\nédition) : rouvrir l'éditeur ne cumule pas les recadrages."
+      },
+      "ImageEditState": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/EditArea"
+          },
+          "quarter": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Quarter",
+            "default": 0
+          },
+          "flip_h": {
+            "type": "boolean",
+            "title": "Flip H",
+            "default": false
+          },
+          "flip_v": {
+            "type": "boolean",
+            "title": "Flip V",
+            "default": false
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditSize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_width": {
+            "type": "integer",
+            "title": "Base Width"
+          },
+          "base_height": {
+            "type": "integer",
+            "title": "Base Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "area",
+          "base_width",
+          "base_height"
+        ],
+        "title": "ImageEditState",
+        "description": "Édition appliquée, avec la taille de la base de référence."
       },
       "ImportFilePreview": {
         "properties": {
@@ -11604,6 +12155,28 @@
         "title": "ItemApplyRequest",
         "description": "Optional apply body — required semantics for RE-propagation.\n\n`apply_fields` (même forme que `apply_fields_json` : {\"title\": bool, …,\n\"image_urls\": [...], \"weight_variant_ids\": [...]}) remplace la sélection\nstockée pour CETTE écriture. Sur un item déjà `applied`, il est\nOBLIGATOIRE : re-propager sans sélection explicite re-pousserait toutes\nles images (endpoint Xano append-only → doublons)."
       },
+      "ItemExtraSourceRequest": {
+        "properties": {
+          "source_url": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Url"
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_url",
+          "color"
+        ],
+        "title": "ItemExtraSourceRequest",
+        "description": "Associe une fiche supplémentaire (une page par couleur) à l'item.\n\nSeules ses images sont stagées, taguées `color` ; la copie, la meta, le\ntitre, le prix et les poids restent issus de la fiche principale."
+      },
       "ItemHistoryEntry": {
         "properties": {
           "id": {
@@ -11665,6 +12238,25 @@
         ],
         "title": "ItemImageNormalizeRequest",
         "description": "Per-image review action: normalize one staged image (or revert it)."
+      },
+      "ItemMainColorRequest": {
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "title": "ItemMainColorRequest",
+        "description": "Couleur du produit illustrée par la fiche principale (null = aucune)."
       },
       "ItemPatchRequest": {
         "properties": {

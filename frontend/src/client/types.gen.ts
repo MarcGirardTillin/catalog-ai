@@ -901,6 +901,44 @@ export type DashboardStats = {
 };
 
 /**
+ * EditArea
+ *
+ * Zone recadrée en pixels de l'image tournée (débord autorisé = marge).
+ */
+export type EditArea = {
+    /**
+     * X
+     */
+    x: number;
+    /**
+     * Y
+     */
+    y: number;
+    /**
+     * Width
+     */
+    width: number;
+    /**
+     * Height
+     */
+    height: number;
+};
+
+/**
+ * EditSize
+ */
+export type EditSize = {
+    /**
+     * Width
+     */
+    width: number;
+    /**
+     * Height
+     */
+    height: number;
+};
+
+/**
  * ExampleResponse
  *
  * Response payload returned by the example endpoint.
@@ -1251,6 +1289,11 @@ export type ImageAssetPublic = {
      */
     finalized?: boolean;
     /**
+     * Can Edit
+     */
+    can_edit?: boolean;
+    edit?: ImageEditState | null;
+    /**
      * Source Image
      */
     source_image?: string | null;
@@ -1266,6 +1309,61 @@ export type ImageAssetPublic = {
      * Finished At
      */
     finished_at?: string | null;
+};
+
+/**
+ * ImageEditRequest
+ *
+ * POST /imaging/assets/{id}/edit — édition « à la Tillin » de la sortie
+ * courante (recadrage, rotation par quart de tour, miroir, taille), locale
+ * et gratuite. Toujours appliquée à la même base (la sortie avant toute
+ * édition) : rouvrir l'éditeur ne cumule pas les recadrages.
+ */
+export type ImageEditRequest = {
+    area: EditArea;
+    /**
+     * Quarter
+     */
+    quarter?: number;
+    /**
+     * Flip H
+     */
+    flip_h?: boolean;
+    /**
+     * Flip V
+     */
+    flip_v?: boolean;
+    size?: EditSize | null;
+};
+
+/**
+ * ImageEditState
+ *
+ * Édition appliquée, avec la taille de la base de référence.
+ */
+export type ImageEditState = {
+    area: EditArea;
+    /**
+     * Quarter
+     */
+    quarter?: number;
+    /**
+     * Flip H
+     */
+    flip_h?: boolean;
+    /**
+     * Flip V
+     */
+    flip_v?: boolean;
+    size?: EditSize | null;
+    /**
+     * Base Width
+     */
+    base_width: number;
+    /**
+     * Base Height
+     */
+    base_height: number;
 };
 
 /**
@@ -2310,6 +2408,25 @@ export type ItemApplyRequest = {
 };
 
 /**
+ * ItemExtraSourceRequest
+ *
+ * Associe une fiche supplémentaire (une page par couleur) à l'item.
+ *
+ * Seules ses images sont stagées, taguées `color` ; la copie, la meta, le
+ * titre, le prix et les poids restent issus de la fiche principale.
+ */
+export type ItemExtraSourceRequest = {
+    /**
+     * Source Url
+     */
+    source_url: string;
+    /**
+     * Color
+     */
+    color: string;
+};
+
+/**
  * ItemHistoryEntry
  *
  * Trace compacte d'un passage d'enrichissement pour UN produit.
@@ -2354,6 +2471,18 @@ export type ItemImageNormalizeRequest = {
      * Revert
      */
     revert?: boolean;
+};
+
+/**
+ * ItemMainColorRequest
+ *
+ * Couleur du produit illustrée par la fiche principale (null = aucune).
+ */
+export type ItemMainColorRequest = {
+    /**
+     * Color
+     */
+    color?: string | null;
 };
 
 /**
@@ -4460,6 +4589,94 @@ export type ImagingFinalizeAssetResponses = {
 
 export type ImagingFinalizeAssetResponse = ImagingFinalizeAssetResponses[keyof ImagingFinalizeAssetResponses];
 
+export type ImagingReadEditSourceData = {
+    body?: never;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/edit-source';
+};
+
+export type ImagingReadEditSourceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingReadEditSourceError = ImagingReadEditSourceErrors[keyof ImagingReadEditSourceErrors];
+
+export type ImagingReadEditSourceResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImagingResetAssetEditData = {
+    body?: never;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/edit';
+};
+
+export type ImagingResetAssetEditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingResetAssetEditError = ImagingResetAssetEditErrors[keyof ImagingResetAssetEditErrors];
+
+export type ImagingResetAssetEditResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ImagingResetAssetEditResponse = ImagingResetAssetEditResponses[keyof ImagingResetAssetEditResponses];
+
+export type ImagingEditAssetData = {
+    body: ImageEditRequest;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: number;
+    };
+    query?: never;
+    url: '/imaging/assets/{asset_id}/edit';
+};
+
+export type ImagingEditAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImagingEditAssetError = ImagingEditAssetErrors[keyof ImagingEditAssetErrors];
+
+export type ImagingEditAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageAssetPublic;
+};
+
+export type ImagingEditAssetResponse = ImagingEditAssetResponses[keyof ImagingEditAssetResponses];
+
 export type ImagingDiscardAssetData = {
     body?: never;
     path: {
@@ -5760,6 +5977,101 @@ export type ItemsResolveItemRouteResponses = {
 };
 
 export type ItemsResolveItemRouteResponse = ItemsResolveItemRouteResponses[keyof ItemsResolveItemRouteResponses];
+
+export type ItemsRemoveItemSourceRouteData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query: {
+        /**
+         * Source Url
+         */
+        source_url: string;
+    };
+    url: '/items/{item_id}/sources';
+};
+
+export type ItemsRemoveItemSourceRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsRemoveItemSourceRouteError = ItemsRemoveItemSourceRouteErrors[keyof ItemsRemoveItemSourceRouteErrors];
+
+export type ItemsRemoveItemSourceRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsRemoveItemSourceRouteResponse = ItemsRemoveItemSourceRouteResponses[keyof ItemsRemoveItemSourceRouteResponses];
+
+export type ItemsAddItemSourceRouteData = {
+    body: ItemExtraSourceRequest;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/sources';
+};
+
+export type ItemsAddItemSourceRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsAddItemSourceRouteError = ItemsAddItemSourceRouteErrors[keyof ItemsAddItemSourceRouteErrors];
+
+export type ItemsAddItemSourceRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsAddItemSourceRouteResponse = ItemsAddItemSourceRouteResponses[keyof ItemsAddItemSourceRouteResponses];
+
+export type ItemsSetItemMainColorRouteData = {
+    body: ItemMainColorRequest;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+    };
+    query?: never;
+    url: '/items/{item_id}/main-color';
+};
+
+export type ItemsSetItemMainColorRouteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsSetItemMainColorRouteError = ItemsSetItemMainColorRouteErrors[keyof ItemsSetItemMainColorRouteErrors];
+
+export type ItemsSetItemMainColorRouteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ItemPublic;
+};
+
+export type ItemsSetItemMainColorRouteResponse = ItemsSetItemMainColorRouteResponses[keyof ItemsSetItemMainColorRouteResponses];
 
 export type ItemsPagePreviewRouteData = {
     body?: never;

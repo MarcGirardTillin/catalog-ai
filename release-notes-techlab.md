@@ -2,6 +2,20 @@
 
 ## Latest Changes
 
+- Studio : « Modifier l'image » remplace l'outil de recadrage — éditeur sur
+  le modèle de Tillin (cadre fixe, image déplacée et zoomée dessous, formats
+  1:1 · 16:9 · 4:5 · 5:4 · Libre, rotation, miroir, taille de sortie,
+  aperçu du rendu). Il s'applique à l'image telle qu'elle est : une
+  retouche IA (embellissement, ombre…) n'est plus perdue au recadrage, et
+  le recadrage survit au repositionnement. Disponible aussi sur les mises à
+  plat et autres générations à sortie unique ; gratuit.
+- Modèle IA par défaut : Claude Sonnet 5.5.
+- Enrichissement : un produit à plusieurs couleurs dont chaque couleur a sa
+  propre fiche sur le site de la marque peut recevoir une fiche
+  supplémentaire par couleur (« Ajouter pour une couleur » sur un candidat
+  ou une URL collée). Ses images s'ajoutent au produit, groupées par
+  couleur dans la vérification ; description, meta, titre, prix et poids
+  restent issus de la fiche principale (dont la couleur se précise aussi).
 - Jobs de fond (enrichissement, import) : le jeton Tillin du LANCEUR du job
   est utilisé en priorité (relances comprises), avec repli sur le jeton le
   plus récent du compte — fini les échecs « session expired » ou « produit

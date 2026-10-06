@@ -1538,6 +1538,67 @@ export const DashboardStatsSchema = {
     description: 'Account-scoped headline numbers for the dashboard.\n\nServer-side exact counters (the frontend previously approximated some of\nthese from the first page of paginated lists).'
 } as const;
 
+export const EditAreaSchema = {
+    properties: {
+        x: {
+            type: 'number',
+            maximum: 20000,
+            minimum: -20000,
+            title: 'X'
+        },
+        y: {
+            type: 'number',
+            maximum: 20000,
+            minimum: -20000,
+            title: 'Y'
+        },
+        width: {
+            type: 'number',
+            maximum: 20000,
+            exclusiveMinimum: 0,
+            title: 'Width'
+        },
+        height: {
+            type: 'number',
+            maximum: 20000,
+            exclusiveMinimum: 0,
+            title: 'Height'
+        }
+    },
+    type: 'object',
+    required: [
+        'x',
+        'y',
+        'width',
+        'height'
+    ],
+    title: 'EditArea',
+    description: 'Zone recadrée en pixels de l\'image tournée (débord autorisé = marge).'
+} as const;
+
+export const EditSizeSchema = {
+    properties: {
+        width: {
+            type: 'integer',
+            maximum: 4000,
+            minimum: 1,
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            maximum: 4000,
+            minimum: 1,
+            title: 'Height'
+        }
+    },
+    type: 'object',
+    required: [
+        'width',
+        'height'
+    ],
+    title: 'EditSize'
+} as const;
+
 export const ExampleResponseSchema = {
     properties: {
         status: {
@@ -2283,6 +2344,21 @@ export const ImageAssetPublicSchema = {
             title: 'Finalized',
             default: false
         },
+        can_edit: {
+            type: 'boolean',
+            title: 'Can Edit',
+            default: false
+        },
+        edit: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/ImageEditState'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
         source_image: {
             anyOf: [
                 {
@@ -2334,6 +2410,98 @@ export const ImageAssetPublicSchema = {
     ],
     title: 'ImageAssetPublic',
     description: 'One imaging operation: status + provenance + staged previews.'
+} as const;
+
+export const ImageEditRequestSchema = {
+    properties: {
+        area: {
+            $ref: '#/components/schemas/EditArea'
+        },
+        quarter: {
+            type: 'integer',
+            maximum: 3,
+            minimum: 0,
+            title: 'Quarter',
+            default: 0
+        },
+        flip_h: {
+            type: 'boolean',
+            title: 'Flip H',
+            default: false
+        },
+        flip_v: {
+            type: 'boolean',
+            title: 'Flip V',
+            default: false
+        },
+        size: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/EditSize'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    required: [
+        'area'
+    ],
+    title: 'ImageEditRequest',
+    description: 'POST /imaging/assets/{id}/edit — édition « à la Tillin » de la sortie\ncourante (recadrage, rotation par quart de tour, miroir, taille), locale\net gratuite. Toujours appliquée à la même base (la sortie avant toute\nédition) : rouvrir l\'éditeur ne cumule pas les recadrages.'
+} as const;
+
+export const ImageEditStateSchema = {
+    properties: {
+        area: {
+            $ref: '#/components/schemas/EditArea'
+        },
+        quarter: {
+            type: 'integer',
+            maximum: 3,
+            minimum: 0,
+            title: 'Quarter',
+            default: 0
+        },
+        flip_h: {
+            type: 'boolean',
+            title: 'Flip H',
+            default: false
+        },
+        flip_v: {
+            type: 'boolean',
+            title: 'Flip V',
+            default: false
+        },
+        size: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/EditSize'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
+        base_width: {
+            type: 'integer',
+            title: 'Base Width'
+        },
+        base_height: {
+            type: 'integer',
+            title: 'Base Height'
+        }
+    },
+    type: 'object',
+    required: [
+        'area',
+        'base_width',
+        'base_height'
+    ],
+    title: 'ImageEditState',
+    description: 'Édition appliquée, avec la taille de la base de référence.'
 } as const;
 
 export const ImportFilePreviewSchema = {
@@ -4258,6 +4426,29 @@ export const ItemApplyRequestSchema = {
     description: 'Optional apply body — required semantics for RE-propagation.\n\n`apply_fields` (même forme que `apply_fields_json` : {"title": bool, …,\n"image_urls": [...], "weight_variant_ids": [...]}) remplace la sélection\nstockée pour CETTE écriture. Sur un item déjà `applied`, il est\nOBLIGATOIRE : re-propager sans sélection explicite re-pousserait toutes\nles images (endpoint Xano append-only → doublons).'
 } as const;
 
+export const ItemExtraSourceRequestSchema = {
+    properties: {
+        source_url: {
+            type: 'string',
+            minLength: 1,
+            title: 'Source Url'
+        },
+        color: {
+            type: 'string',
+            maxLength: 120,
+            minLength: 1,
+            title: 'Color'
+        }
+    },
+    type: 'object',
+    required: [
+        'source_url',
+        'color'
+    ],
+    title: 'ItemExtraSourceRequest',
+    description: 'Associe une fiche supplémentaire (une page par couleur) à l\'item.\n\nSeules ses images sont stagées, taguées `color` ; la copie, la meta, le\ntitre, le prix et les poids restent issus de la fiche principale.'
+} as const;
+
 export const ItemHistoryEntrySchema = {
     properties: {
         id: {
@@ -4320,6 +4511,26 @@ export const ItemImageNormalizeRequestSchema = {
     ],
     title: 'ItemImageNormalizeRequest',
     description: 'Per-image review action: normalize one staged image (or revert it).'
+} as const;
+
+export const ItemMainColorRequestSchema = {
+    properties: {
+        color: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 120
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Color'
+        }
+    },
+    type: 'object',
+    title: 'ItemMainColorRequest',
+    description: 'Couleur du produit illustrée par la fiche principale (null = aucune).'
 } as const;
 
 export const ItemPatchRequestSchema = {
