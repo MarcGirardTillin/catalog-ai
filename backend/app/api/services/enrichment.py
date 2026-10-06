@@ -246,6 +246,10 @@ def normalize_item_image(
             )
         new_entry = normalized
 
+    # Les tags « fiche par couleur » suivent l'image (normalisée ou non).
+    for key in ("color", "source_page"):
+        if entry.get(key):
+            new_entry[key] = entry[key]
     entries[index] = new_entry
     item.staged_images_json = entries
     # Keep the reviewer's partial selection pointing at the same image.
@@ -302,6 +306,106 @@ def resolve_item_from_url(
             message=f"Could not resolve from that URL: {exc}",
         ) from exc
     item.error = None
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+_SOURCE_EDITABLE = ("ready_for_review", "approved")
+
+
+def _require_source_editable(item: EnrichmentItem) -> None:
+    if item.status not in _SOURCE_EDITABLE:
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message=f"Cannot edit the sources of an item in status '{item.status}'",
+        )
+
+
+def _purge_staged(asset_ids: list[int]) -> None:
+    from app.imaging import staging
+
+    for asset_id in asset_ids:
+        staging.purge_asset(asset_id)
+
+
+def add_item_extra_source(
+    db: Session,
+    item: EnrichmentItem,
+    url: str,
+    color: str,
+    *,
+    stage: Callable[[EnrichmentItem, str, str], None],
+) -> EnrichmentItem:
+    """Associe une fiche supplémentaire à une couleur (`stage` =
+    ``EnrichmentPipeline.stage_extra_source`` : fetch + images taguées).
+    Même URL déjà associée → ses images sont remplacées."""
+    _require_source_editable(item)
+    before = {
+        int(e["asset_id"])
+        for e in item.staged_images_json or []
+        if isinstance(e, dict) and e.get("asset_id")
+    }
+    try:
+        stage(item, url, color)
+    except ValueError as exc:
+        db.rollback()
+        raise AppException(
+            status_code=422, code="same_as_main_source", message=str(exc)
+        ) from exc
+    except RuntimeError as exc:
+        db.rollback()
+        raise AppException(
+            status_code=409, code="images_disabled", message=str(exc)
+        ) from exc
+    except (LookupError, httpx.HTTPError) as exc:
+        db.rollback()
+        raise AppException(
+            status_code=422,
+            code="unresolvable_source",
+            message=f"Could not resolve from that URL: {exc}",
+        ) from exc
+    after = {
+        int(e["asset_id"])
+        for e in item.staged_images_json or []
+        if isinstance(e, dict) and e.get("asset_id")
+    }
+    db.commit()
+    db.refresh(item)
+    # Images normalisées d'une fiche remplacée : staging devenu orphelin.
+    _purge_staged(sorted(before - after))
+    return item
+
+
+def remove_item_extra_source(
+    db: Session, item: EnrichmentItem, url: str
+) -> EnrichmentItem:
+    """Retire une fiche supplémentaire et ses images (sélection d'apply
+    comprise) ; positions renumérotées."""
+    from app.enrich import extra_sources
+
+    _require_source_editable(item)
+    try:
+        purged = extra_sources.remove_extra_source(item, url)
+    except LookupError as exc:
+        raise AppException(
+            status_code=404, code="not_found", message="Unknown extra source"
+        ) from exc
+    db.commit()
+    db.refresh(item)
+    _purge_staged(purged)
+    return item
+
+
+def set_item_main_color(
+    db: Session, item: EnrichmentItem, color: str | None
+) -> EnrichmentItem:
+    """Couleur de la fiche principale, taguée sur ses images."""
+    from app.enrich import extra_sources
+
+    _require_source_editable(item)
+    extra_sources.set_main_color(item, color)
     db.commit()
     db.refresh(item)
     return item

@@ -155,3 +155,29 @@ class ItemResolveRequest(BaseModel):
         if not self.source_url.startswith(("http://", "https://")):
             raise ValueError("Expected a product page URL (http/https)")
         return self
+
+
+class ItemExtraSourceRequest(BaseModel):
+    """Associe une fiche supplémentaire (une page par couleur) à l'item.
+
+    Seules ses images sont stagées, taguées `color` ; la copie, la meta, le
+    titre, le prix et les poids restent issus de la fiche principale.
+    """
+
+    source_url: str = Field(min_length=1)
+    color: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _looks_like_url(self) -> "ItemExtraSourceRequest":
+        if not self.source_url.startswith(("http://", "https://")):
+            raise ValueError("Expected a product page URL (http/https)")
+        self.color = self.color.strip()
+        if not self.color:
+            raise ValueError("Expected a non-empty color")
+        return self
+
+
+class ItemMainColorRequest(BaseModel):
+    """Couleur du produit illustrée par la fiche principale (null = aucune)."""
+
+    color: str | None = Field(default=None, max_length=120)

@@ -16,8 +16,10 @@ from app.api.exceptions import AppException
 from app.api.schemas import Product
 from app.api.schemas.enrichment import (
     ItemApplyRequest,
+    ItemExtraSourceRequest,
     ItemHistoryEntry,
     ItemImageNormalizeRequest,
+    ItemMainColorRequest,
     ItemPatchRequest,
     ItemPublic,
     ItemResolveRequest,
@@ -26,16 +28,20 @@ from app.api.schemas.enrichment import (
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import credit_grid, require_credits
 from app.api.services.enrichment import (
+    add_item_extra_source,
     apply_item,
     generate_item_copy,
     get_item,
     normalize_item_image,
+    remove_item_extra_source,
     resolve_item_from_url,
     retry_item,
     review_item,
+    set_item_main_color,
     update_staged_fields,
 )
 from app.destinations.xano_tillin import XanoTillinDestination
+from app.enrich.extra_sources import extra_source_urls
 from app.models import EnrichmentItem
 from app.sources.preview import fetch_page_preview
 
@@ -111,6 +117,57 @@ def resolve_item_route(
     return ItemPublic.model_validate(item, from_attributes=True)
 
 
+@router.post("/{item_id}/sources", response_model=ItemPublic)
+def add_item_source_route(
+    item_id: int,
+    payload: ItemExtraSourceRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    pipeline: PipelineDep,
+) -> ItemPublic:
+    """Associe une fiche supplémentaire à une couleur du produit.
+
+    Les images de la fiche s'ajoutent en fin de galerie, taguées couleur ;
+    la copie, la meta, le titre, le prix et les poids restent ceux de la
+    fiche principale. Même URL déjà associée → ses images sont remplacées.
+    Métering identique à la résolution manuelle (aucun débit de crédit).
+    """
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = add_item_extra_source(
+        db, item, payload.source_url, payload.color, stage=pipeline.stage_extra_source
+    )
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.delete("/{item_id}/sources", response_model=ItemPublic)
+def remove_item_source_route(
+    item_id: int,
+    source_url: str,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ItemPublic:
+    """Retire une fiche supplémentaire (query `source_url`) et ses images."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = remove_item_extra_source(db, item, source_url)
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
+@router.put("/{item_id}/main-color", response_model=ItemPublic)
+def set_item_main_color_route(
+    item_id: int,
+    payload: ItemMainColorRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+) -> ItemPublic:
+    """Couleur du produit illustrée par la fiche principale (null = aucune)."""
+    account_id = resolve_account_id(db, current_user)
+    item = get_item(db, account_id=account_id, item_id=item_id)
+    item = set_item_main_color(db, item, payload.color)
+    return ItemPublic.model_validate(item, from_attributes=True)
+
+
 @router.get("/{item_id}/page-preview", response_model=PagePreview)
 def page_preview_route(
     item_id: int,
@@ -122,15 +179,20 @@ def page_preview_route(
 
     Best-effort : image_url absente quand la page ne publie pas de visuel de
     partage ou ne répond pas. L'URL demandée doit être la page source de
-    l'item ou l'un de ses candidats — jamais une URL arbitraire (anti-SSRF).
+    l'item, l'un de ses candidats ou une fiche supplémentaire par couleur —
+    jamais une URL arbitraire (anti-SSRF).
     """
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
-    allowed = {item.source_url} | {
-        str(candidate.get("url"))
-        for candidate in (item.resolution_json or {}).get("candidates") or []
-        if isinstance(candidate, dict)
-    }
+    allowed = (
+        {item.source_url}
+        | {
+            str(candidate.get("url"))
+            for candidate in (item.resolution_json or {}).get("candidates") or []
+            if isinstance(candidate, dict)
+        }
+        | extra_source_urls(item)
+    )
     if url not in allowed:
         raise AppException(
             status_code=422,

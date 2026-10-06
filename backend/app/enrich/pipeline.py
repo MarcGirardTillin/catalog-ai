@@ -39,6 +39,7 @@ from app.clients.claude import ClaudeClient
 from app.clients.firecrawl import EXTRACT_CREDITS, FirecrawlClient
 from app.clients.photoroom import PhotoroomClient
 from app.core.config import settings
+from app.enrich import extra_sources
 from app.enrich.price import source_price
 from app.enrich.title import apply_title_template
 from app.enrich.weights import map_weights
@@ -317,6 +318,21 @@ def _probe_sibling_images(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Ordre de galerie = ordre du compteur (l'originale s'y replace).
     ordered = sorted(found)
     return [{"src": url} for url in ordered]
+
+
+def _source_image_urls(source_product: dict[str, Any]) -> list[str]:
+    """URLs d'images d'une fiche : pleine résolution, sans junk, dédoublonnées.
+
+    L'extraction LLM Firecrawl peut renvoyer la même URL deux fois, et chaque
+    doublon coûterait une normalisation Photoroom (constaté sur salomon.com).
+    """
+    sources: list[str] = []
+    for image in source_product.get("images") or []:
+        if isinstance(image, dict) and image.get("src"):
+            src = _upgrade_image_url(str(image["src"]))
+            if src not in sources and not _is_junk_image_url(src):
+                sources.append(src)
+    return sources
 
 
 def _fallback_site_handle(url: str) -> tuple[str, str]:
@@ -712,11 +728,53 @@ class EnrichmentPipeline:
         source_product, score = self._fetch_source_from_url(
             db, item, product, config, url
         )
+        # Les fiches supplémentaires « par couleur » survivent au changement
+        # de fiche principale : seules les images de la principale changent.
+        snapshot = extra_sources.snapshot_extras(item)
         item.match_score = score
         item.source_url = url
         item.source_method = "manual"
         self._stage_source(db, item, product, source_product, config)
+        extra_sources.restore_extras(item, snapshot)
         self._stage_copy(db, item, product, source_product, config)
+
+    def stage_extra_source(self, item: EnrichmentItem, url: str, color: str) -> None:
+        """Associe une fiche supplémentaire à une couleur du produit.
+
+        Même récupération que la résolution manuelle (JSON Shopify → JSON-LD
+        → extraction web, métérée pareil) mais SANS greffe de texte : seule
+        la galerie de la fiche est stagée (fin de liste, taguée couleur +
+        page). La copie, le prix et les poids restent ceux de la fiche
+        principale. Raises LookupError (page inexploitable), ValueError (URL
+        = fiche principale) ou RuntimeError (images désactivées pour ce job).
+        """
+        product = self._read_product(
+            item.tillin_product_id, item.account_id, _launcher_of(item)
+        )
+        if product is None:
+            raise LookupError(
+                f"product {item.tillin_product_id} not found at the source"
+            )
+        config: dict[str, Any] = item.job.config_json or {}
+        if not _transforms(config)["images"]:
+            raise RuntimeError("images are disabled for this job")
+        db = object_session(item)
+        url = _clean_page_url(url)
+        if item.source_url and url == _clean_page_url(item.source_url):
+            raise ValueError("this page is already the main source")
+        source_product, _score = self._fetch_source_from_url(
+            db, item, product, config, url, enrich_text=False
+        )
+        source_product = self._complete_sparse_images(
+            db, item, source_product, page_url=url
+        )
+        extra_sources.add_extra_source(
+            item,
+            url=url,
+            color=color,
+            title=str(source_product.get("title") or "") or None,
+            image_urls=_source_image_urls(source_product),
+        )
 
     def _fetch_source_from_url(
         self,
@@ -725,6 +783,8 @@ class EnrichmentPipeline:
         product: Product,
         config: dict[str, Any],
         url: str,
+        *,
+        enrich_text: bool = True,
     ) -> tuple[dict[str, Any], float]:
         """Résout UNE URL de fiche en (source_product, score).
 
@@ -755,7 +815,7 @@ class EnrichmentPipeline:
             score = score_product_match(product, source_product)
             # Même greffe hybride que le chemin automatique : la page rendue
             # complète le texte du JSON Shopify (accordéons, composition…).
-            if _transforms(config)["copy"]:
+            if enrich_text and _transforms(config)["copy"]:
                 source_product = self._enrich_source_text(db, item, url, source_product)
             return source_product, score
 
@@ -886,6 +946,8 @@ class EnrichmentPipeline:
         db: Session | None,
         item: EnrichmentItem,
         source_product: dict[str, Any],
+        *,
+        page_url: str | None = None,
     ) -> dict[str, Any]:
         """Complète les images d'un JSON-LD pauvre par l'extraction web.
 
@@ -895,21 +957,23 @@ class EnrichmentPipeline:
         plus d'une, une extraction Firecrawl (payante, métérée) vient chercher
         la galerie complète. Le JSON-LD reste l'autorité pour tout le reste ;
         best-effort : l'échec d'extraction garde la source telle quelle.
+        `page_url` : la page à compléter (défaut : la fiche principale).
         """
+        page_url = page_url or item.source_url
         if (
             not source_product.get("_jsonld")
             or len(source_product.get("images") or []) > 1
             or self._firecrawl is None
-            or not item.source_url
+            or not page_url
         ):
             return source_product
         try:
-            extracted = extract_source_product(self._firecrawl, item.source_url)
+            extracted = extract_source_product(self._firecrawl, page_url)
         except ExternalServiceError as exc:
             logger.warning(
                 "item %s: image-completion extract failed for %s (%s)",
                 item.id,
-                item.source_url,
+                page_url,
                 exc,
             )
             return source_product
@@ -944,15 +1008,7 @@ class EnrichmentPipeline:
         Every entry keeps a ``url`` key (review-UI contract). Normalized
         entries add ``asset_id``/``source_url`` and point at the staged file.
         """
-        # Dédoublonné (ordre conservé) : l'extraction LLM Firecrawl peut
-        # renvoyer la même URL deux fois, et chaque doublon coûterait une
-        # normalisation Photoroom (constaté live sur salomon.com).
-        sources: list[str] = []
-        for image in source_product.get("images") or []:
-            if isinstance(image, dict) and image.get("src"):
-                src = _upgrade_image_url(str(image["src"]))
-                if src not in sources and not _is_junk_image_url(src):
-                    sources.append(src)
+        sources = _source_image_urls(source_product)
         image_config = config.get("image")
         auto_normalize = bool(
             isinstance(image_config, dict) and image_config.get("auto_normalize")

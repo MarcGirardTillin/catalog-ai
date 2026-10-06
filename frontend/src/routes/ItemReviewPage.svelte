@@ -10,6 +10,7 @@
   import { navigate } from "svelte5-router"
 
   import {
+    itemsAddItemSourceRoute,
     itemsApplyItemRoute,
     itemsApproveItem,
     itemsGenerateItemCopyRoute,
@@ -18,8 +19,10 @@
     itemsReadItem,
     itemsReadItemProduct,
     itemsRejectItem,
+    itemsRemoveItemSourceRoute,
     itemsResolveItemRoute,
     itemsRetryItemRoute,
+    itemsSetItemMainColorRoute,
     jobsListJobItems,
   } from "@/client"
   import type { ItemPublic, Product } from "@/client"
@@ -198,11 +201,12 @@
   // staged_images_json (positions renumérotées), sans toucher aux brouillons
   // texte locaux (title/description restent non écrasés).
   let reorderingStaged = $state(false)
-  async function moveStagedImage(index: number, delta: number) {
+  // `index`/`target` : positions globales dans staged_images_json (galerie
+  // groupée par couleur : la cible est la voisine DANS le groupe).
+  async function moveStagedImage(index: number, target: number) {
     if (!item || reorderingStaged) return
-    const target = index + delta
     const entries = [...((item.staged_images_json ?? []) as unknown[])]
-    if (target < 0 || target >= entries.length) return
+    if (target < 0 || target >= entries.length || target === index) return
     ;[entries[index], entries[target]] = [entries[target], entries[index]]
     const renumbered = entries.map((entry, i) => ({
       ...(entry as Record<string, unknown>),
@@ -449,8 +453,28 @@
       position?: number
       asset_id?: number
       source_url?: string
+      color?: string | null
+      source_page?: string | null
     }[],
   )
+  type StagedImage = (typeof images)[number]
+  // Galerie groupée par couleur (fiches « une page par couleur ») : groupes
+  // dans l'ordre d'apparition, « Sans couleur » pour le reste. Sans aucune
+  // image taguée, un seul groupe sans titre (affichage historique).
+  const imageGroups = $derived.by(() => {
+    const groups: { color: string | null; images: StagedImage[] }[] = []
+    for (const image of images) {
+      const color = (image.color ?? "").trim() || null
+      let group = groups.find((g) => g.color === color)
+      if (!group) {
+        group = { color, images: [] }
+        groups.push(group)
+      }
+      group.images.push(image)
+    }
+    return groups
+  })
+  const groupedGallery = $derived(imageGroups.some((g) => g.color !== null))
   const hasBeforeAfter = $derived(images.some((i) => i.source_url))
   const weights = $derived(
     (item?.staged_weights_json ?? []) as {
@@ -546,6 +570,7 @@
     const urls = [
       ...(item.source_url ? [item.source_url] : []),
       ...candidates.map((c) => c.url),
+      ...extraSources.map((s) => s.url),
     ]
     for (const url of urls) void loadPreview(item.id, url)
   })
@@ -779,6 +804,117 @@
     manualUrl = ""
   }
 
+  // --- Fiches supplémentaires « une page par couleur » : produit Tillin à
+  // plusieurs couleurs dont chaque couleur a sa fiche sur le site de la
+  // marque. Seules les IMAGES de ces fiches sont ajoutées (taguées couleur) ;
+  // description, meta, titre, prix et poids restent ceux de la fiche
+  // principale.
+  type ExtraSource = { url: string; color: string; title?: string | null }
+  const productColors = $derived.by(() => {
+    const colors: string[] = []
+    for (const variant of product?.variants ?? []) {
+      const color = (variant.color ?? "").trim()
+      if (color && !colors.includes(color)) colors.push(color)
+    }
+    return colors
+  })
+  const multiColor = $derived(productColors.length >= 2)
+  const extraSources = $derived(
+    (
+      ((item?.resolution_json ?? {}) as { extra_sources?: ExtraSource[] })
+        .extra_sources ?? []
+    ).filter((s) => s && s.url),
+  )
+  const mainColor = $derived(
+    ((item?.resolution_json ?? {}) as { main_color?: string | null }).main_color ??
+      null,
+  )
+  const extraUrls = $derived(new Set(extraSources.map((s) => s.url)))
+  // Couleurs encore libres pour une nouvelle fiche : ni la principale, ni
+  // celles déjà associées.
+  const freeColors = $derived(
+    productColors.filter(
+      (c) => c !== mainColor && !extraSources.some((s) => s.color === c),
+    ),
+  )
+  // Couleurs proposées pour la fiche principale (celles des fiches
+  // supplémentaires exclues).
+  const mainColorOptions = $derived(
+    productColors.filter((c) => !extraSources.some((s) => s.color === c)),
+  )
+
+  // Ajout en deux temps : « Ajouter pour une couleur » ouvre le sélecteur
+  // sous la page visée (candidat ou URL collée), puis « Ajouter ».
+  let pendingExtraUrl = $state<string | null>(null)
+  let pendingExtraColor = $state("")
+  let sourcingUrl = $state<string | null>(null)
+  let savingMainColor = $state(false)
+
+  function openExtra(url: string) {
+    pendingExtraUrl = url.trim()
+    pendingExtraColor = freeColors[0] ?? ""
+  }
+
+  async function addExtraSource() {
+    const it = item
+    const url = pendingExtraUrl
+    if (!it || !url || !pendingExtraColor || sourcingUrl !== null) return
+    sourcingUrl = url
+    const { data, error } = await itemsAddItemSourceRoute({
+      path: { item_id: it.id },
+      body: { source_url: url, color: pendingExtraColor },
+    })
+    sourcingUrl = null
+    if (error || !data) {
+      const code = (error as { code?: string } | undefined)?.code
+      toast.error(
+        code === "same_as_main_source"
+          ? "Cette page est déjà la fiche principale."
+          : code === "images_disabled"
+            ? "Les images ne sont pas demandées pour cet enrichissement."
+            : "Impossible d'ajouter cette fiche (page introuvable ou site non pris en charge).",
+      )
+      return
+    }
+    toast.success(`Fiche ajoutée pour la couleur ${pendingExtraColor}`)
+    pendingExtraUrl = null
+    if (url === manualUrl.trim()) manualUrl = ""
+    hydrate(data)
+  }
+
+  async function removeExtraSource(url: string) {
+    const it = item
+    if (!it || sourcingUrl !== null) return
+    sourcingUrl = url
+    const { data, error } = await itemsRemoveItemSourceRoute({
+      path: { item_id: it.id },
+      query: { source_url: url },
+    })
+    sourcingUrl = null
+    if (error || !data) {
+      toast.error("Impossible de retirer cette fiche.")
+      return
+    }
+    toast.success("Fiche retirée")
+    hydrate(data)
+  }
+
+  async function setMainColor(color: string) {
+    const it = item
+    if (!it || savingMainColor) return
+    savingMainColor = true
+    const { data, error } = await itemsSetItemMainColorRoute({
+      path: { item_id: it.id },
+      body: { color: color || null },
+    })
+    savingMainColor = false
+    if (error || !data) {
+      toast.error("Impossible d'enregistrer la couleur de la fiche principale.")
+      return
+    }
+    hydrate(data)
+  }
+
   // « Ignorer les candidats et générer quand même » : description rédigée à
   // partir des seules données catalogue (la source reste non résolue).
   let generatingCopy = $state(false)
@@ -871,6 +1007,58 @@
     />
     Appliquer
   </label>
+{/snippet}
+
+{#snippet extraColorPicker(url: string)}
+  {#if pendingExtraUrl === url}
+    <div class="flex w-full flex-wrap items-center gap-2 pt-1">
+      <Label for={`extra-color-${url}`} class="text-xs font-normal">Couleur :</Label>
+      <select
+        id={`extra-color-${url}`}
+        class="border-input bg-card h-7 rounded-md border px-2 text-xs"
+        bind:value={pendingExtraColor}
+        disabled={sourcingUrl !== null}
+      >
+        {#each freeColors as color (color)}
+          <option value={color}>{color}</option>
+        {/each}
+      </select>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={sourcingUrl !== null || !pendingExtraColor}
+        onclick={addExtraSource}
+      >
+        {#if sourcingUrl === url}
+          <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+          Ajout…
+        {:else}
+          Ajouter
+        {/if}
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={sourcingUrl !== null}
+        onclick={() => (pendingExtraUrl = null)}
+      >
+        Annuler
+      </Button>
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet extraButton(url: string)}
+  {#if reviewable && multiColor && freeColors.length > 0 && url !== item?.source_url && !extraUrls.has(url)}
+    <button
+      type="button"
+      disabled={resolving || sourcingUrl !== null}
+      onclick={() => openExtra(url)}
+      class="text-primary shrink-0 cursor-pointer underline underline-offset-2 disabled:opacity-50"
+    >
+      Ajouter pour une couleur
+    </button>
+  {/if}
 {/snippet}
 
 <svelte:window onkeydown={onKeydown} />
@@ -1108,6 +1296,92 @@
                 {/if}
               </div>
 
+              {#if multiColor && item.source_url}
+                <!-- Produit à plusieurs couleurs : une fiche par couleur sur
+                     le site de la marque. La fiche principale garde la copie,
+                     le prix et les poids ; les autres n'apportent que leurs
+                     images. -->
+                <div class="flex flex-wrap items-center gap-2">
+                  <Label for="main-color" class="text-xs font-normal">
+                    Couleur de la fiche principale :
+                  </Label>
+                  {#if reviewable}
+                    <select
+                      id="main-color"
+                      class="border-input bg-card h-7 rounded-md border px-2 text-xs"
+                      value={mainColor ?? ""}
+                      disabled={savingMainColor}
+                      onchange={(e) => setMainColor(e.currentTarget.value)}
+                    >
+                      <option value="">Non précisée</option>
+                      {#each mainColorOptions as color (color)}
+                        <option value={color}>{color}</option>
+                      {/each}
+                    </select>
+                    {#if savingMainColor}
+                      <LoaderCircle size={14} class="animate-spin" aria-hidden="true" />
+                    {/if}
+                  {:else}
+                    <span class="text-foreground">{mainColor ?? "non précisée"}</span>
+                  {/if}
+                </div>
+              {/if}
+
+              {#if extraSources.length > 0}
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground">
+                    Fiches supplémentaires (images seulement) :
+                  </span>
+                  {#each extraSources as extra (extra.url)}
+                    <div
+                      class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border px-2 py-1.5"
+                    >
+                      {#if previews[extra.url]}
+                        <a href={extra.url} target="_blank" rel="noreferrer">
+                          <img
+                            src={previews[extra.url]}
+                            alt="Aperçu de la fiche supplémentaire"
+                            loading="lazy"
+                            class="bg-muted h-14 w-11 shrink-0 rounded object-cover"
+                          />
+                        </a>
+                      {/if}
+                      <span
+                        class="bg-muted text-foreground shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      >
+                        {extra.color}
+                      </span>
+                      <div class="min-w-0 flex-1" title={extra.url}>
+                        <span class="block min-w-0 truncate">
+                          {extra.title ?? pageSlug(extra.url)}
+                        </span>
+                        <p class="text-muted-foreground truncate font-mono text-[10px]">
+                          {pageSlug(extra.url)}
+                        </p>
+                      </div>
+                      <a
+                        href={extra.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        class="text-primary shrink-0 underline underline-offset-2"
+                      >
+                        voir la page
+                      </a>
+                      {#if reviewable}
+                        <button
+                          type="button"
+                          disabled={sourcingUrl !== null || resolving}
+                          onclick={() => removeExtraSource(extra.url)}
+                          class="text-destructive shrink-0 cursor-pointer underline underline-offset-2 disabled:opacity-50"
+                        >
+                          {sourcingUrl === extra.url ? "Retrait…" : "Retirer"}
+                        </button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
               {#if diagnostic}
                 <p class="text-muted-foreground">{diagnostic}</p>
               {/if}
@@ -1168,6 +1442,8 @@
                         >
                           Choisir ce candidat
                         </button>
+                        {@render extraButton(candidate.url)}
+                        {@render extraColorPicker(candidate.url)}
                       </div>
                     {/each}
                   </div>
@@ -1195,7 +1471,22 @@
                         Résoudre
                       {/if}
                     </Button>
+                    {#if reviewable && multiColor && freeColors.length > 0 && item.source_url}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={resolving ||
+                          sourcingUrl !== null ||
+                          !manualUrl.trim().startsWith("http")}
+                        onclick={() => openExtra(manualUrl)}
+                      >
+                        Ajouter pour une couleur
+                      </Button>
+                    {/if}
                   </div>
+                  {#if pendingExtraUrl !== null && pendingExtraUrl === manualUrl.trim()}
+                    {@render extraColorPicker(pendingExtraUrl)}
+                  {/if}
                 </div>
 
                 {#if !hasSource && !description.trim()}
@@ -1454,11 +1745,20 @@
                     {/if}
                   </span>
                 </div>
+                {#each imageGroups as group (group.color ?? "")}
+                {#if groupedGallery}
+                  <h3 class="text-foreground pt-1 text-xs font-semibold">
+                    {group.color ?? "Sans couleur"}
+                    <span class="text-muted-foreground font-normal">
+                      ({group.images.length})
+                    </span>
+                  </h3>
+                {/if}
                 <div
                   class="grid grid-cols-2 gap-2 sm:grid-cols-3"
                   class:opacity-60={!isApplied("images")}
                 >
-                  {#each images as image (image.url)}
+                  {#each group.images as image, groupIndex (image.url)}
                     {@const selected = selectedImageUrls.includes(image.url)}
                     {@const busy = normalizingUrl === image.url}
                     <div class="relative">
@@ -1520,8 +1820,10 @@
                           {/if}
                         </button>
                       {/if}
-                      {#if reviewable && isApplied("images") && images.length > 1}
+                      {#if reviewable && isApplied("images") && group.images.length > 1}
                         {@const index = images.indexOf(image)}
+                        {@const prev = group.images[groupIndex - 1]}
+                        {@const next = group.images[groupIndex + 1]}
                         <!-- Réordonner : l'ordre stagé = l'ordre d'envoi à
                              Tillin à l'apply (donc l'ordre de la galerie). -->
                         <div class="absolute bottom-1.5 left-1.5 flex gap-1">
@@ -1529,8 +1831,8 @@
                             type="button"
                             class="bg-card/90 border-input text-foreground hover:bg-card cursor-pointer rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-40"
                             aria-label="Avancer cette image"
-                            disabled={index === 0 || reorderingStaged}
-                            onclick={() => moveStagedImage(index, -1)}
+                            disabled={!prev || reorderingStaged}
+                            onclick={() => prev && moveStagedImage(index, images.indexOf(prev))}
                           >
                             ◀
                           </button>
@@ -1538,8 +1840,8 @@
                             type="button"
                             class="bg-card/90 border-input text-foreground hover:bg-card cursor-pointer rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-40"
                             aria-label="Reculer cette image"
-                            disabled={index === images.length - 1 || reorderingStaged}
-                            onclick={() => moveStagedImage(index, 1)}
+                            disabled={!next || reorderingStaged}
+                            onclick={() => next && moveStagedImage(index, images.indexOf(next))}
                           >
                             ▶
                           </button>
@@ -1548,6 +1850,7 @@
                     </div>
                   {/each}
                 </div>
+                {/each}
               </CardContent>
             </Card>
           {/if}
