@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import BackgroundTasks
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import MultiAuth
 from mcp.types import ToolAnnotations
 from pydantic import Field
 from sqlalchemy import select
@@ -32,6 +33,7 @@ from app.api.services.credits import credit_grid
 from app.api.services.imaging import account_settings
 from app.mcp.auth import ApiTokenVerifier
 from app.mcp.guard import ToolContext, run_tool
+from app.mcp.oauth import CatalogOAuthProvider
 from app.models import Account, EnrichmentItem, EnrichmentJob
 
 INSTRUCTIONS = (
@@ -43,7 +45,13 @@ INSTRUCTIONS = (
     "écrivent dans Tillin demandent confirm=true après un aperçu."
 )
 
-mcp = FastMCP(name="CatalogAI", instructions=INSTRUCTIONS, auth=ApiTokenVerifier())
+# OAuth 2.1 (connecteur claude.ai, `codex mcp login`) + jetons personnels
+# (Claude Code, Codex avec bearer) : le premier qui reconnaît le jeton gagne.
+mcp = FastMCP(
+    name="CatalogAI",
+    instructions=INSTRUCTIONS,
+    auth=MultiAuth(server=CatalogOAuthProvider(), verifiers=[ApiTokenVerifier()]),
+)
 
 # Remplaçable dans les tests (pas de vrai worker).
 job_runner = get_job_runner
@@ -356,7 +364,7 @@ async def start_enrichment(
             "estimated_credits": job.counts.total * per_item,
         }
 
-    return await run_tool("start_enrichment", "feature_enrich", work)
+    return await run_tool("start_enrichment", "feature_enrich", work, write=True)
 
 
 @mcp.tool(
@@ -558,7 +566,7 @@ async def review_item(
             _spawn(background)
         return _item_summary(item)
 
-    return await run_tool("review_item", "feature_enrich", work)
+    return await run_tool("review_item", "feature_enrich", work, write=True)
 
 
 @mcp.tool(
@@ -590,7 +598,7 @@ async def apply_item(
         item = item_routes.apply_item_route(item_id, ctx.db, ctx.user, ctx.xano, None)
         return {"applied": item.status == "applied", **_item_summary(item)}
 
-    return await run_tool("apply_item", "feature_enrich", work)
+    return await run_tool("apply_item", "feature_enrich", work, write=True)
 
 
 # --- Imports ------------------------------------------------------------------
@@ -742,4 +750,4 @@ async def transfer_import(
         )
         return {"transferred": True, **result.model_dump(mode="json")}
 
-    return await run_tool("transfer_import", "feature_import", work)
+    return await run_tool("transfer_import", "feature_import", work, write=True)

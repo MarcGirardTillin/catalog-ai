@@ -1216,3 +1216,23 @@ lecture produit par produit : id de la marque → ses produits via la recherche
 Tillin (5 pages de 100 max) → intersection avec les fiches enrichies (délai
 de 60 s de Codex). `/jobs` accepte `created_after` / `created_before`.
 
+## 2026-10-06 — Serveur MCP : OAuth 2.1 (phase 2, connecteur claude.ai)
+
+CatalogAI devient serveur d'autorisation (`app/mcp/oauth.py`,
+`CatalogOAuthProvider`, FastMCP `OAuthProvider`) combiné aux jetons
+personnels par `MultiAuth`. Enregistrement dynamique (RFC 7591) seulement :
+CIMD n'est pas annoncé, Claude se replie alors sur DCR. Tout est en base
+(migration 0029 : `oauth_client`, `oauth_authorization`, `oauth_token`) —
+plusieurs workers en prod ; codes et jetons hachés (SHA-256). `/authorize`
+crée une demande (10 min) et renvoie vers `/oauth/consent` de l'app
+(session de l'utilisateur, `GET/POST /oauth/requests/{clé}`), qui émet un
+code à usage unique (5 min, consommé atomiquement). Jeton d'accès 1 h,
+rafraîchissement 30 j avec rotation (révocation de la famille). Scopes
+`catalogai:read` / `catalogai:write` ; les outils qui écrivent exigent
+`write` (garde commune) ; un jeton personnel a les deux. URL publiques
+dérivées de `API_DOMAIN` / `APP_DOMAIN` (déjà dans le .env de prod). La page
+de connexion accepte `?next=` (chemin interne seulement, pas de redirection
+ouverte) pour revenir au consentement. Session Tillin 72 h toujours non
+renouvelée par le MCP (renouvelée quand l'utilisateur se connecte à l'app,
+y compris pour consentir).
+

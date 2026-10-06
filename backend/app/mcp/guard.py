@@ -27,6 +27,7 @@ from app.api.services.imaging import account_settings
 from app.clients.base import ExternalServiceError
 from app.clients.xano import XanoClient
 from app.core.db import SessionLocal
+from app.mcp.oauth import SCOPE_READ, SCOPE_WRITE
 from app.models import User
 
 logger = logging.getLogger("app.mcp")
@@ -63,12 +64,21 @@ class ToolContext:
         return xano_client_for_user(self.db, self.user)
 
 
-def current_user_id() -> int:
-    """Utilisateur du jeton de la requête (posé par le vérificateur)."""
+def current_user_id(*, write: bool = False) -> int:
+    """Utilisateur du jeton de la requête (posé par le vérificateur), après
+    contrôle du scope : `catalogai:write` pour les outils qui écrivent."""
     token = get_access_token()
     user_id = (token.claims or {}).get("user_id") if token else None
-    if not isinstance(user_id, int):
+    if token is None or not isinstance(user_id, int):
         raise ToolError("Authentification requise : jeton d'API CatalogAI manquant.")
+    scopes = set(token.scopes or [])
+    if write and SCOPE_WRITE not in scopes:
+        raise ToolError(
+            "Cette connexion est en lecture seule : reconnectez CatalogAI en "
+            "autorisant les actions (scope catalogai:write)."
+        )
+    if not scopes & {SCOPE_READ, SCOPE_WRITE}:
+        raise ToolError("Cette connexion n'a accès à aucun outil CatalogAI.")
     return user_id
 
 
@@ -106,10 +116,12 @@ async def run_tool[T](
     name: str,
     feature: Feature | None,
     work: Callable[[ToolContext], T],
+    *,
+    write: bool = False,
 ) -> T:
     """Exécute `work` dans un thread (routes et services synchrones) sous la
     garde commune, avec une ligne de journal par appel (sans les arguments)."""
-    user_id = current_user_id()
+    user_id = current_user_id(write=write)
     started = time.monotonic()
     outcome = "ok"
 

@@ -34,6 +34,21 @@ default_tools_approval_mode = "writes"
 La page Paramètres affiche ces deux blocs prêts à copier (jeton inclus juste
 après sa création).
 
+### claude.ai (web, Desktop, mobile) — connecteur, sans jeton
+
+claude.ai → **Paramètres → Connecteurs → Ajouter un connecteur personnalisé**,
+URL `https://api-catalog.tillin.fr/mcp`. Claude ouvre la page de
+consentement de CatalogAI (connexion si besoin) : « Autoriser » donne
+l'accès en votre nom. L'accès peut être limité à la lecture (scope
+`catalogai:read`) ; les actions (lancer, valider, appliquer, transférer)
+demandent `catalogai:write`. Côté Codex, `codex mcp login catalogai` suit le
+même parcours si l'on préfère OAuth au jeton personnel.
+
+Sous le capot : OAuth 2.1 (enregistrement dynamique RFC 7591, PKCE S256,
+jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
+`/.well-known/oauth-protected-resource/mcp` et
+`/.well-known/oauth-authorization-server`.
+
 ## 3. Outils disponibles
 
 | Outil | Rôle | Module | Écrit dans Tillin |

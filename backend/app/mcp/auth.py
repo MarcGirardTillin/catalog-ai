@@ -5,6 +5,7 @@ from fastmcp.server.auth import AccessToken, TokenVerifier
 
 from app.api.services.api_tokens import authenticate_api_token
 from app.core.db import SessionLocal
+from app.mcp.oauth import ALL_SCOPES
 
 
 class ApiTokenVerifier(TokenVerifier):
@@ -25,7 +26,7 @@ class ApiTokenVerifier(TokenVerifier):
                 return AccessToken(
                     token=token,
                     client_id=f"user:{user.id}",
-                    scopes=[],
+                    scopes=list(ALL_SCOPES),
                     expires_at=int(expires_at.timestamp()) if expires_at else None,
                     claims={"user_id": user.id, "token_id": api_token.id},
                 )

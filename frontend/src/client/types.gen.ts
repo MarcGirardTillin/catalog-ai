@@ -2909,6 +2909,52 @@ export type NormalizeRequest = {
 };
 
 /**
+ * OAuthDecision
+ */
+export type OAuthDecision = {
+    /**
+     * Redirect Url
+     */
+    redirect_url: string;
+};
+
+/**
+ * OAuthRequestPublic
+ */
+export type OAuthRequestPublic = {
+    /**
+     * Client Name
+     */
+    client_name: string;
+    /**
+     * Redirect Host
+     */
+    redirect_host: string;
+    /**
+     * Scopes
+     */
+    scopes: Array<OAuthScopePublic>;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+};
+
+/**
+ * OAuthScopePublic
+ */
+export type OAuthScopePublic = {
+    /**
+     * Scope
+     */
+    scope: string;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
  * OperatorSettings
  *
  * Operator-owned settings managed GLOBALLY (admin console, one form).
@@ -4970,6 +5016,14 @@ export type JobsListJobsData = {
          * Item Status
          */
         item_status?: 'ready_for_review' | 'approved' | 'applied' | 'rejected' | 'failed' | null;
+        /**
+         * Created After
+         */
+        created_after?: string | null;
+        /**
+         * Created Before
+         */
+        created_before?: string | null;
     };
     url: '/jobs';
 };
@@ -7788,3 +7842,93 @@ export type ApiTokensRevokeTokenResponses = {
 };
 
 export type ApiTokensRevokeTokenResponse = ApiTokensRevokeTokenResponses[keyof ApiTokensRevokeTokenResponses];
+
+export type OauthReadRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Request Key
+         */
+        request_key: string;
+    };
+    query?: never;
+    url: '/oauth/requests/{request_key}';
+};
+
+export type OauthReadRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type OauthReadRequestError = OauthReadRequestErrors[keyof OauthReadRequestErrors];
+
+export type OauthReadRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthRequestPublic;
+};
+
+export type OauthReadRequestResponse = OauthReadRequestResponses[keyof OauthReadRequestResponses];
+
+export type OauthApproveRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Request Key
+         */
+        request_key: string;
+    };
+    query?: never;
+    url: '/oauth/requests/{request_key}/approve';
+};
+
+export type OauthApproveRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type OauthApproveRequestError = OauthApproveRequestErrors[keyof OauthApproveRequestErrors];
+
+export type OauthApproveRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthDecision;
+};
+
+export type OauthApproveRequestResponse = OauthApproveRequestResponses[keyof OauthApproveRequestResponses];
+
+export type OauthDenyRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Request Key
+         */
+        request_key: string;
+    };
+    query?: never;
+    url: '/oauth/requests/{request_key}/deny';
+};
+
+export type OauthDenyRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type OauthDenyRequestError = OauthDenyRequestErrors[keyof OauthDenyRequestErrors];
+
+export type OauthDenyRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthDecision;
+};
+
+export type OauthDenyRequestResponse = OauthDenyRequestResponses[keyof OauthDenyRequestResponses];

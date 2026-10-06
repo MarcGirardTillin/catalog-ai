@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["local", "dev", "staging", "production"] = "local"
     APP_LOG_LEVEL: str = "INFO"
     BACKEND_CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Domaines publics (déjà dans le .env de prod pour Caddy) : URL annoncées
+    # par l'OAuth du serveur MCP. Vides en local -> localhost.
+    APP_DOMAIN: str = ""
+    API_DOMAIN: str = ""
 
     # PostgreSQL
     POSTGRES_SERVER: str
@@ -116,6 +120,21 @@ class Settings(BaseSettings):
         return bool(
             self.XANO_BASE_URL and self.XANO_LOGIN_EMAIL and self.XANO_LOGIN_PASSWORD
         )
+
+    @property
+    def PUBLIC_API_URL(self) -> str:
+        """URL publique de l'API (émetteur OAuth, ressource MCP)."""
+        return (
+            f"https://{self.API_DOMAIN}" if self.API_DOMAIN else "http://localhost:8000"
+        )
+
+    @property
+    def PUBLIC_APP_URL(self) -> str:
+        """URL publique de l'app (page de consentement OAuth)."""
+        if self.APP_DOMAIN:
+            return f"https://{self.APP_DOMAIN}"
+        origins = self.BACKEND_CORS_ORIGIN_LIST
+        return origins[0] if origins else "http://localhost:5173"
 
     @property
     def BACKEND_CORS_ORIGIN_LIST(self) -> list[str]:

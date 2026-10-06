@@ -18,6 +18,7 @@ from app.api.routes import (
     items,
     jobs,
     locations,
+    oauth_consent,
     products,
     settings,
     stats,
@@ -46,3 +47,4 @@ api_router.include_router(usage.router)
 api_router.include_router(credits.router)
 api_router.include_router(admin.router)
 api_router.include_router(api_tokens.router)
+api_router.include_router(oauth_consent.router)

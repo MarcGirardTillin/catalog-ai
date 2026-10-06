@@ -22,6 +22,7 @@ import app.mcp.server as mcp_server
 from app.api.routes import imports as import_routes
 from app.api.routes import items as item_routes
 from app.api.services.api_tokens import authenticate_api_token
+from app.mcp.oauth import ALL_SCOPES
 from app.models import Account, ApiToken, CreditEntry, EnrichmentJob, User
 
 
@@ -68,7 +69,7 @@ def as_user(
     assert auth_client.get("/stats/dashboard").status_code == 200
     user = _user(db, test_user["email"])
     token = AccessToken(
-        token="t", client_id="c", scopes=[], claims={"user_id": user.id}
+        token="t", client_id="c", scopes=list(ALL_SCOPES), claims={"user_id": user.id}
     )
     monkeypatch.setattr(mcp_guard, "get_access_token", lambda: token)
     return user

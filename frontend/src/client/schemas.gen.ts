@@ -5310,6 +5310,72 @@ export const NormalizeRequestSchema = {
     title: 'NormalizeRequest'
 } as const;
 
+export const OAuthDecisionSchema = {
+    properties: {
+        redirect_url: {
+            type: 'string',
+            title: 'Redirect Url'
+        }
+    },
+    type: 'object',
+    required: [
+        'redirect_url'
+    ],
+    title: 'OAuthDecision'
+} as const;
+
+export const OAuthRequestPublicSchema = {
+    properties: {
+        client_name: {
+            type: 'string',
+            title: 'Client Name'
+        },
+        redirect_host: {
+            type: 'string',
+            title: 'Redirect Host'
+        },
+        scopes: {
+            items: {
+                $ref: '#/components/schemas/OAuthScopePublic'
+            },
+            type: 'array',
+            title: 'Scopes'
+        },
+        expires_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Expires At'
+        }
+    },
+    type: 'object',
+    required: [
+        'client_name',
+        'redirect_host',
+        'scopes',
+        'expires_at'
+    ],
+    title: 'OAuthRequestPublic'
+} as const;
+
+export const OAuthScopePublicSchema = {
+    properties: {
+        scope: {
+            type: 'string',
+            title: 'Scope'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        }
+    },
+    type: 'object',
+    required: [
+        'scope',
+        'label'
+    ],
+    title: 'OAuthScopePublic'
+} as const;
+
 export const OperatorSettingsSchema = {
     properties: {
         minutes_saved_per_import_product: {

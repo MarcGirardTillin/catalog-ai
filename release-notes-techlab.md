@@ -2,6 +2,10 @@
 
 ## Latest Changes
 
+- MCP : connecteur claude.ai (web, Desktop, mobile) — ajoutez
+  `https://api-catalog.tillin.fr/mcp` comme connecteur personnalisé et
+  autorisez l'accès depuis la page de consentement de CatalogAI (OAuth,
+  sans jeton à copier). Accès en lecture seule possible.
 - MCP : nouveaux outils pour les questions du type « produits Le Petit Souk
   enrichis aujourd'hui » — liste des enrichissements par jour, fiches
   traitées par période/marque/statut, recherche de marque par nom.

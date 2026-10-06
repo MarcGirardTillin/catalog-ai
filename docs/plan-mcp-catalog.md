@@ -1,6 +1,7 @@
 # Plan — serveur MCP CatalogAI (Claude & Codex)
 
-Statut : **phase 1 implémentée** (2026-10-06) — guide de connexion : [mcp.md](mcp.md).
+Statut : **phases 1 et 2 implémentées** (2026-10-06 ; phase 2 = OAuth par
+enregistrement dynamique, CIMD non fait — Claude se replie sur DCR) — guide de connexion : [mcp.md](mcp.md).
 Écarts au plan : 12 outils (+ `catalogai_list_locations`), mode sans état
 (plusieurs workers en prod), montage à la racine après les routes de l'API.
 Décision Marc : phase 1 avec un jeton personnel ; l'expiration du jeton

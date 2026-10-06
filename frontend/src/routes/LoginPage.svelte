@@ -37,7 +37,16 @@
           : "Connexion impossible. Réessayez."
       return
     }
-    navigate("/")
+    navigate(safeNext())
+  }
+
+  /** Page demandée avant la connexion (`?next=`), seulement un chemin interne
+   *  de l'app — jamais une URL externe (pas de redirection ouverte). */
+  function safeNext(): string {
+    const next = new URLSearchParams(window.location.search).get("next") ?? ""
+    return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
+      ? next
+      : "/"
   }
 </script>
 

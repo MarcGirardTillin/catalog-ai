@@ -8,6 +8,7 @@ from app.models.image_asset import ImageAsset
 from app.models.import_item import ImportItem
 from app.models.import_profile import ImportProfile
 from app.models.instruction import InstructionTemplate
+from app.models.oauth import OAuthAuthorization, OAuthClient, OAuthToken
 from app.models.usage import UsageEvent
 from app.models.usage_price import UsagePrice
 from app.models.usage_snapshot import UsageBillingSnapshot
@@ -25,6 +26,9 @@ __all__ = [
     "FaceReference",
     "ImportProfile",
     "InstructionTemplate",
+    "OAuthAuthorization",
+    "OAuthClient",
+    "OAuthToken",
     "UsageBillingSnapshot",
     "UsageEvent",
     "UsagePrice",

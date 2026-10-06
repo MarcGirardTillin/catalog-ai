@@ -23,6 +23,7 @@
   import JobDetailPage from "./routes/JobDetailPage.svelte"
   import JobsListPage from "./routes/JobsListPage.svelte"
   import LoginPage from "./routes/LoginPage.svelte"
+  import OAuthConsentPage from "./routes/OAuthConsentPage.svelte"
   import MaintenancePage from "./routes/MaintenancePage.svelte"
   import NotFoundPage from "./routes/NotFoundPage.svelte"
   import ProductImagesPage from "./routes/ProductImagesPage.svelte"
@@ -53,6 +54,7 @@
       <Router>
         <Route path="/" component={HomePage} {appName} />
         <Route path="/login" component={LoginPage} />
+        <Route path="/oauth/consent" component={OAuthConsentPage} />
         <Route path="/products/:id/images">
           {#snippet children(params)}
             <ProductImagesPage {appName} id={params.id} />

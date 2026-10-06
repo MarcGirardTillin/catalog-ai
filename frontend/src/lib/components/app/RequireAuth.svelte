@@ -16,7 +16,9 @@
     authReadCurrentUser().then(({ data, error }) => {
       checking = false
       if (error || !data) {
-        navigate("/login")
+        // Retour sur la page demandée après connexion (consentement OAuth…).
+        const here = window.location.pathname + window.location.search
+        navigate(here && here !== "/" ? `/login?next=${encodeURIComponent(here)}` : "/login")
         return
       }
       user = data
