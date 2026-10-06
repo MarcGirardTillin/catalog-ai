@@ -18,7 +18,9 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 # Items the worker has finished with (mirrors app.jobs.queue._WORKER_TERMINAL).
 _SETTLED = ("ready_for_review", "approved", "applied", "rejected", "failed")
 # source_method values that mean "the source page was found without a human".
-_AUTO_METHODS = ("shopify_json",)
+# site_search : fiche trouvée par la recherche interne du site et vérifiée
+# (barcode ou référence) — aussi automatique que shopify_json.
+_AUTO_METHODS = ("shopify_json", "site_search")
 
 
 def _dashboard_stats(

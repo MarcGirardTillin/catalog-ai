@@ -660,6 +660,7 @@
   const METHOD_LABELS: Record<string, string> = {
     shopify_json: "trouvée automatiquement",
     firecrawl: "trouvée par recherche web",
+    site_search: "trouvée via la recherche du site",
     llm: "choisie par l'IA (parmi les candidats)",
     manual: "choisie manuellement",
     needs_manual: "résolution manuelle requise",

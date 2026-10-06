@@ -151,6 +151,7 @@
   const SOURCE_LABELS: Record<string, string> = {
     shopify_json: "automatique",
     firecrawl: "recherche web",
+    site_search: "recherche du site",
     llm: "sélection IA",
     manual: "manuelle",
     needs_manual: "à confirmer",

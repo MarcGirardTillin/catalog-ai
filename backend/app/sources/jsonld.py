@@ -179,7 +179,13 @@ def fetch_jsonld_product(
     finally:
         if own_client:
             active.close()
+    return parse_jsonld_product(html)
 
+
+def parse_jsonld_product(html: str) -> dict[str, Any] | None:
+    """The schema.org Product of an already-fetched page, Shopify-shaped, or
+    None. Partagé avec la recherche interne des sites non-Shopify, qui a déjà
+    le HTML de la fiche en main (aucun GET de plus)."""
     for match in _LDJSON_PATTERN.finditer(html):
         try:
             payload = json.loads(match.group(1))
@@ -196,3 +202,15 @@ def fetch_jsonld_product(
                     product["_currency"] = product.get("_currency") or currency
                 return product
     return None
+
+
+def iter_jsonld_nodes(html: str) -> list[dict[str, Any]]:
+    """Every JSON-LD node of a page (objects, lists and @graph flattened)."""
+    nodes: list[dict[str, Any]] = []
+    for match in _LDJSON_PATTERN.finditer(html):
+        try:
+            payload = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            continue
+        nodes.extend(_iter_nodes(payload))
+    return nodes

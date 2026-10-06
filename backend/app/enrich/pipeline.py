@@ -571,6 +571,23 @@ class EnrichmentPipeline:
             if resolved.method_used == "firecrawl":
                 # Reuse the extraction the resolver already paid for.
                 source_product = resolved.source_product
+            elif resolved.method_used == "site_search":
+                # Recherche interne d'un site non-Shopify : le JSON-LD déjà lu
+                # par le resolver, sinon la chaîne habituelle d'une URL de
+                # fiche (JSON-LD → extraction web métérée).
+                source_product = resolved.source_product
+                if source_product is None:
+                    try:
+                        source_product, _score = self._fetch_source_from_url(
+                            db, item, product, config, resolved.url
+                        )
+                    except LookupError as exc:
+                        logger.warning(
+                            "item %s: site-search page unusable (%s) — "
+                            "staging without source data",
+                            item.id,
+                            exc,
+                        )
             else:
                 site, handle = _split_product_url(resolved.url)
                 try:

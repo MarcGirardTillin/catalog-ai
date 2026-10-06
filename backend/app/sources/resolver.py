@@ -4,6 +4,11 @@ Chain (plan): brand site(s) -> search by identifier (barcode, then reference,
 then title) -> fetch candidates -> score -> confidence gate -> human fallback.
 Searches every provided site and keeps the global best.
 
+Site search (2026-10-06): a site whose `/search/suggest.json` proves it is
+not Shopify (404/HTML) is remembered as such, and — in ``auto`` mode — its
+OWN search engine is queried by barcode then reference (free GETs, see
+``app.sources.site_search``) before any paid fallback.
+
 Fallback (plan Phase 3): when the Shopify JSON chain finds nothing (non-Shopify
 site, broken suggest.json) and a Firecrawl client is provided, a capped
 site-scoped web search + structured extraction takes over. Firecrawl credits
@@ -20,8 +25,9 @@ from pydantic import BaseModel, Field
 from app.api.schemas import Product
 from app.clients.base import ExternalServiceError
 from app.clients.firecrawl import EXTRACT_CREDITS, SEARCH_CREDITS, FirecrawlClient
+from app.sources import site_search
 from app.sources.firecrawl_source import extract_source_product, reference_matches
-from app.sources.jsonld import fetch_jsonld_product
+from app.sources.jsonld import fetch_jsonld_product, parse_jsonld_product
 from app.sources.shopify_json import (
     SCORE_BARCODE,
     candidate_color,
@@ -46,12 +52,24 @@ FIRECRAWL_CANDIDATE_SCORE = 0.3
 # résolu à la place de dark bronze) — candidate for review, never auto-staged.
 FIRECRAWL_COLOR_MISMATCH_SCORE = 0.5
 
+# Recherche interne des sites non-Shopify : barcode retrouvé à l'identique
+# sur la fiche = 1.0, référence = 0.9 (0.5 si la couleur du produit manque),
+# sinon simple candidat de review — jamais résolu automatiquement.
+SITE_SEARCH_MAX_SITES = 2
+SITE_SEARCH_MAX_BARCODES = 3
+SITE_SEARCH_REFERENCE_SCORE = 0.9
+SITE_SEARCH_COLOR_MISMATCH_SCORE = 0.5
+SITE_SEARCH_CANDIDATE_SCORE = 0.3
+
 # Distinct needs_manual reasons (mapped to French in the review UI — keep them
 # provider-neutral, they are user-facing).
 REASON_COLOR_MISMATCH = "pages match the reference but not the product color"
+REASON_NO_REFERENCE = "web search found pages but none matched the product reference"
 
 ResolveStatus = Literal["resolved", "needs_manual", "skipped"]
 Method = Literal["auto", "shopify_json", "firecrawl", "unlocker"]
+# `method_used` / `source_method` values: "shopify_json", "site_search",
+# "firecrawl" (+ "llm" / "manual" / "skipped" set by the pipeline).
 
 UsageRecorder = Callable[[int], None]
 
@@ -188,12 +206,25 @@ def resolve_source_url(
         )
 
     result = _resolve_shopify(client, product, website_urls)
+    if method == "auto" and result.status == "needs_manual":
+        # Sites prouvés non-Shopify : leur propre moteur de recherche, gratuit,
+        # AVANT le repli web payant (vécu Le Petit Souk, Magento 2).
+        non_shopify = [
+            site for site in website_urls if site_search.is_non_shopify(client, site)
+        ]
+        if non_shopify:
+            searched = _resolve_site_search(client, product, non_shopify)
+            if searched.status == "resolved" or searched.candidates:
+                searched.candidates = (searched.candidates + result.candidates)[:5]
+                if searched.status == "resolved":
+                    return searched
+                result = searched
     if method == "auto" and result.status == "needs_manual" and firecrawl is not None:
         fallback = _resolve_firecrawl(
             firecrawl, product, website_urls, usage_recorder, http_client=client
         )
-        # Keep the Shopify near-misses visible to the reviewer alongside the
-        # Firecrawl candidates.
+        # Keep the Shopify / site-search near-misses visible to the reviewer
+        # alongside the Firecrawl candidates.
         fallback.candidates = (fallback.candidates + result.candidates)[:5]
         return fallback
     return result
@@ -207,6 +238,10 @@ def _resolve_shopify(
     seen_urls: set[str] = set()
 
     for site in website_urls:
+        if site_search.is_non_shopify(client, site):
+            # Déjà prouvé non-Shopify (404/HTML) : ne pas refaire les mêmes
+            # requêtes vouées à l'échec à chaque produit du job.
+            continue
         for query in _queries(product):
             try:
                 stubs = search_suggest(client, site, query)
@@ -215,6 +250,9 @@ def _resolve_shopify(
                 # 200 avec du HTML sur /search/suggest.json (vu live : la
                 # marque On) — même dégradation qu'une erreur HTTP.
                 logger.warning("suggest failed on %s (%r): %s", site, query, exc)
+                if site_search.is_non_shopify_error(exc):
+                    site_search.mark_non_shopify(client, site)
+                    break
                 continue
             for stub in stubs:
                 handle = str(stub.get("handle") or "").strip()
@@ -302,6 +340,170 @@ def _break_color_tie(product: Product, candidates: list[Candidate]) -> Candidate
         return None
     # Plusieurs fiches portent la couleur (rare) : ordre historique.
     return matching[0]
+
+
+def _site_search_queries(product: Product) -> list[str]:
+    """Barcodes (deduplicated, capped) then the reference — never the title:
+    a site's search engine on a title returns whole collections, and only an
+    identifier can be verified on the page afterwards."""
+    barcodes: list[str] = []
+    for variant in product.variants:
+        code = (variant.barcode or "").strip()
+        if len(code) >= 8 and code not in barcodes:
+            barcodes.append(code)
+    queries = barcodes[:SITE_SEARCH_MAX_BARCODES]
+    reference = (product.reference_code or "").strip()
+    if reference and reference not in queries:
+        queries.append(reference)
+    return queries
+
+
+def _site_page_score(
+    product: Product, page: site_search.SitePage, hit_ids: list[str]
+) -> tuple[float, dict[str, Any]] | None:
+    """Verify a fetched page against the product.
+
+    Returns (score, source_product) — or None when the page is not even a
+    product page (search landing on a category, home…). The source product
+    is the page's JSON-LD (or a title/description stub without one).
+    """
+    extracted = parse_jsonld_product(page.html)
+    evidence: dict[str, Any] = dict(
+        extracted or site_search.page_text_fields(page.html)
+    )
+    evidence["_reference_codes"] = [
+        *(evidence.get("_reference_codes") or []),
+        *site_search.html_identifiers(page.html),
+        *hit_ids,
+    ]
+    codes = {code.strip() for code in evidence["_reference_codes"]}
+    if any(
+        site_search.barcode_in_page(v.barcode, page) or v.barcode.strip() in codes
+        for v in product.variants
+        if v.barcode
+    ):
+        return SCORE_BARCODE, evidence
+    # Référence seule (les barcodes ont eu leur chance au jeton exact) : un
+    # code de lot « W-<ean> » sur une fiche sœur ne doit pas matcher par
+    # simple inclusion — ni du barcode, ni de la référence quand elle est
+    # incluse dans l'EAN (Le Petit Souk : 38193 ⊂ 5555500381937).
+    barcode_keys = {reference_key(v.barcode) for v in product.variants if v.barcode}
+    barcode_keys.discard("")
+    reference_evidence = {
+        **evidence,
+        "_reference_codes": [
+            code
+            for code in evidence["_reference_codes"]
+            if not any(key in reference_key(code) for key in barcode_keys)
+        ],
+    }
+    by_reference = product.model_copy(update={"variants": []})
+    if reference_matches(by_reference, reference_evidence):
+        color = _single_color(product)
+        if color is not None and not _color_in_texts(
+            color,
+            page.url,
+            evidence.get("title"),
+            evidence.get("body_html"),
+            evidence.get("_color"),
+            *evidence["_reference_codes"],
+        ):
+            return SITE_SEARCH_COLOR_MISMATCH_SCORE, evidence
+        return SITE_SEARCH_REFERENCE_SCORE, evidence
+    if extracted is None and not site_search.looks_like_product_page(page.html):
+        return None
+    return SITE_SEARCH_CANDIDATE_SCORE, evidence
+
+
+def _resolve_site_search(
+    client: httpx.Client, product: Product, sites: list[str]
+) -> ResolveResult:
+    """Non-Shopify sites: query their own search, verify, gate.
+
+    Per product: at most ``SITE_SEARCH_MAX_SITES`` sites, 3 barcodes +
+    reference as queries, ``site_search.MAX_SEARCH_GETS`` search GETs and
+    ``site_search.MAX_PAGE_FETCHES`` page GETs overall (+ one home-page GET
+    per host and per cache lifetime). No Firecrawl credit is ever spent here.
+    """
+    queries = _site_search_queries(product)
+    if not queries:
+        return ResolveResult(status="needs_manual", reason="no identifier to search")
+    budget = site_search.SearchBudget()
+    candidates: list[Candidate] = []
+    sources: dict[str, dict[str, Any]] = {}
+    seen: set[str] = set()
+
+    def resolved(best: Candidate) -> ResolveResult:
+        # Le JSON-LD déjà lu sert de fiche source (comme le chemin web) ;
+        # sans JSON-LD, le pipeline récupère la fiche par sa chaîne habituelle.
+        source = sources.get(best.url)
+        return ResolveResult(
+            status="resolved",
+            url=best.url,
+            score=best.score,
+            method_used="site_search",
+            candidates=sorted(candidates, key=lambda c: c.score, reverse=True)[:5],
+            source_product=source if source and source.get("_jsonld") else None,
+        )
+
+    for site in sites[:SITE_SEARCH_MAX_SITES]:
+        for query in queries:
+            if budget.searches <= 0:
+                break
+            for hit in site_search.search_site(client, site, query, budget):
+                if hit.url in seen:
+                    continue
+                seen.add(hit.url)
+                page = hit.page
+                if page is None:
+                    if budget.pages <= 0:
+                        break
+                    budget.pages -= 1
+                    page = site_search.fetch_page(client, hit.url)
+                if page is None or not site_search.same_site(page.url, site):
+                    continue
+                seen.add(page.url)
+                scored = _site_page_score(product, page, hit.ids)
+                if scored is None:
+                    continue
+                score, evidence = scored
+                candidate = Candidate(
+                    url=page.url,
+                    title=evidence.get("title"),
+                    score=score,
+                    color=evidence.get("_color"),
+                )
+                candidates.append(candidate)
+                sources[page.url] = evidence
+                if score >= SCORE_BARCODE:
+                    return resolved(candidate)
+            if any(c.score >= AUTO_STAGE_THRESHOLD for c in candidates):
+                break
+        if any(c.score >= AUTO_STAGE_THRESHOLD for c in candidates):
+            break
+
+    candidates.sort(key=lambda c: c.score, reverse=True)
+    if candidates and candidates[0].score >= AUTO_STAGE_THRESHOLD:
+        best = _break_color_tie(product, candidates)
+        if best is not None:
+            return resolved(best)
+        return ResolveResult(
+            status="needs_manual",
+            candidates=candidates[:5],
+            reason=REASON_COLOR_MISMATCH,
+        )
+    if candidates:
+        color_mismatch = any(
+            c.score == SITE_SEARCH_COLOR_MISMATCH_SCORE for c in candidates
+        )
+        return ResolveResult(
+            status="needs_manual",
+            candidates=candidates[:5],
+            # Raison déjà traduite par la review (texte neutre « des pages
+            # ont été trouvées sur le site de la marque… »).
+            reason=REASON_COLOR_MISMATCH if color_mismatch else REASON_NO_REFERENCE,
+        )
+    return ResolveResult(status="needs_manual", reason="no candidate found")
 
 
 def _firecrawl_score(product: Product, url: str, extracted: dict[str, Any]) -> float:
@@ -409,9 +611,7 @@ def _resolve_firecrawl(
         return ResolveResult(
             status="needs_manual",
             candidates=candidates[:5],
-            reason=REASON_COLOR_MISMATCH
-            if color_mismatch
-            else "web search found pages but none matched the product reference",
+            reason=REASON_COLOR_MISMATCH if color_mismatch else REASON_NO_REFERENCE,
         )
     return ResolveResult(
         status="needs_manual",
