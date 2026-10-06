@@ -39,9 +39,12 @@ après sa création).
 | Outil | Rôle | Module | Écrit dans Tillin |
 |---|---|---|---|
 | `catalogai_get_account_overview` | modules, crédits, coûts par action, session Tillin | — | non |
-| `catalogai_search_products` | recherche catalogue (texte, marque) | — | non |
+| `catalogai_search_products` | recherche catalogue (texte, marque par nom ou id) | — | non |
+| `catalogai_list_brands` | marques (recherche par nom) | — | non |
 | `catalogai_get_product` | fiche, variantes, images | — | non |
 | `catalogai_start_enrichment` | lance un enrichissement (renvoie le job) | enrichissement | non (débite des crédits) |
+| `catalogai_list_enrichments` | enrichissements lancés (filtre par jour, statut) | enrichissement | non |
+| `catalogai_list_enriched_products` | fiches traitées sur une période, par marque et statut | enrichissement | non |
 | `catalogai_get_job_status` | suivi d'un enrichissement | enrichissement | non |
 | `catalogai_list_items_to_review` | fiches et propositions de l'IA | enrichissement | non |
 | `catalogai_review_item` | valider / écarter / relancer | enrichissement | non |

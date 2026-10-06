@@ -2,6 +2,9 @@
 
 ## Latest Changes
 
+- MCP : nouveaux outils pour les questions du type « produits Le Petit Souk
+  enrichis aujourd'hui » — liste des enrichissements par jour, fiches
+  traitées par période/marque/statut, recherche de marque par nom.
 - Serveur MCP : pilotez CatalogAI depuis Claude Code ou OpenAI Codex
   (recherche produits, enrichissements, imports) avec un jeton personnel
   créé dans Paramètres → Claude & Codex ; mêmes droits et crédits que l'app,

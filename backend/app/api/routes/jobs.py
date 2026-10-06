@@ -1,5 +1,6 @@
 """Enrichment job routes: create, list, detail."""
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
@@ -110,6 +111,8 @@ def list_jobs(
         Literal["ready_for_review", "approved", "applied", "rejected", "failed"] | None,
         Query(),
     ] = None,
+    created_after: Annotated[datetime | None, Query()] = None,
+    created_before: Annotated[datetime | None, Query()] = None,
 ) -> PaginatedResponse[JobPublic]:
     account_id = resolve_account_id(db, current_user)
     # Import jobs have their own screen (/imports) — keep them out of Jobs.
@@ -117,6 +120,10 @@ def list_jobs(
         EnrichmentJob.account_id == account_id,
         EnrichmentJob.job_type == "enrichment",
     )
+    if created_after is not None:
+        base = base.where(EnrichmentJob.created_at >= created_after)
+    if created_before is not None:
+        base = base.where(EnrichmentJob.created_at < created_before)
     if status is not None:
         base = base.where(EnrichmentJob.status == status)
     if item_status is not None:

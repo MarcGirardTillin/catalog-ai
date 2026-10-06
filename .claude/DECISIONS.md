@@ -1209,4 +1209,10 @@ MCP : acceptée par Marc pour la phase 1. Effet de bord : le SDK MCP installe
 `uv.lock` committé avec `pypdf` (déclaré mais absent du verrou : l'image
 `uv sync --frozen` ne l'installait pas — extraction des liens d'images des
 bons JOOR muette en prod depuis le 31/07).
+Ajout (retour Marc, même jour) : `catalogai_list_enrichments`,
+`catalogai_list_enriched_products`, `catalogai_list_brands` et marque par NOM
+dans `search_products`. Jours en heure de Paris. Filtre par marque sans
+lecture produit par produit : id de la marque → ses produits via la recherche
+Tillin (5 pages de 100 max) → intersection avec les fiches enrichies (délai
+de 60 s de Codex). `/jobs` accepte `created_after` / `created_before`.
 

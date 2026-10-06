@@ -187,7 +187,7 @@ def test_every_tool_declares_annotations() -> None:
     import asyncio
 
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert len(tools) == 12
+    assert len(tools) == 15
     for tool in tools:
         assert tool.annotations is not None and tool.annotations.title, tool.name
         assert tool.annotations.read_only_hint is not None, tool.name
@@ -344,3 +344,127 @@ async def test_expired_tillin_session_says_what_to_do(
     monkeypatch.setattr(mcp_guard, "xano_client_for_user", expired)
     with pytest.raises(ToolError, match="reconnectez-vous sur catalog.tillin.fr"):
         await mcp_client.call_tool("catalogai_search_products", {"query": "robe"})
+
+
+class _FakeCatalog:
+    """Tillin simulé : 2 marques, produits 31-32 chez Le Petit Souk."""
+
+    def list_brands(self) -> list[Any]:
+        from app.api.schemas import Brand
+
+        return [
+            Brand(id=7, name="Le Petit Souk"),
+            Brand(id=8, name="Maileg"),
+            Brand(id=9, name="Petit Bateau"),
+        ]
+
+    def search_products(self, **kwargs: Any) -> Any:
+        from app.api.schemas import Product
+        from app.clients.xano import ProductPage
+
+        ids = {7: [31, 32], 8: [33]}.get(kwargs.get("brand") or 0, [31, 32, 33])
+        items = [Product(id=i, title=f"Produit {i}") for i in ids]
+        return ProductPage(items=items, total=len(items), page=1, per_page=100)
+
+
+@pytest.fixture
+def fake_catalog(monkeypatch: pytest.MonkeyPatch) -> _FakeCatalog:
+    catalog = _FakeCatalog()
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: catalog)
+    return catalog
+
+
+def _processed_items(db: Session, user: User, product_ids: list[int]) -> int:
+    from app.models import EnrichmentItem
+
+    job = EnrichmentJob(
+        account_id=user.account_id, job_type="enrichment", status="completed"
+    )
+    db.add(job)
+    db.commit()
+    now = datetime.now(UTC)
+    for product_id in product_ids:
+        db.add(
+            EnrichmentItem(
+                job_id=job.id,
+                account_id=user.account_id,
+                tillin_product_id=product_id,
+                status="ready_for_review",
+                product_title=f"Produit {product_id}",
+                staged_title=f"Titre IA {product_id}",
+                started_at=now - timedelta(minutes=2),
+                finished_at=now - timedelta(minutes=1),
+            )
+        )
+    # Une fiche traitée il y a 3 jours : hors « aujourd'hui ».
+    db.add(
+        EnrichmentItem(
+            job_id=job.id,
+            account_id=user.account_id,
+            tillin_product_id=31,
+            status="applied",
+            started_at=now - timedelta(days=3),
+            finished_at=now - timedelta(days=3),
+        )
+    )
+    db.commit()
+    return job.id
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("fake_catalog")
+async def test_enriched_products_today_filtered_by_brand_name(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    """Question de Marc : « produits Le Petit Souk enrichis aujourd'hui »."""
+    _processed_items(db, as_user, [31, 32, 33])
+
+    data = await _call(
+        mcp_client,
+        "catalogai_list_enriched_products",
+        since="today",
+        brand="le petit souk",
+    )
+    assert data["brand"] == {"id": 7, "name": "Le Petit Souk"}
+    assert sorted(item["product_id"] for item in data["items"]) == [31, 32]
+    assert {item["status"] for item in data["items"]} == {"ready_for_review"}
+    assert data["items"][0]["proposed_title"].startswith("Titre IA")
+
+    everything = await _call(mcp_client, "catalogai_list_enriched_products")
+    assert len(everything["items"]) == 3  # celle d'il y a 3 jours exclue
+
+    with pytest.raises(ToolError, match="Plusieurs marques"):
+        await mcp_client.call_tool(
+            "catalogai_list_enriched_products", {"brand": "petit"}
+        )
+    with pytest.raises(ToolError, match="Aucune marque"):
+        await mcp_client.call_tool(
+            "catalogai_list_enriched_products", {"brand": "zara"}
+        )
+    with pytest.raises(ToolError, match="Date illisible"):
+        await mcp_client.call_tool(
+            "catalogai_list_enriched_products", {"since": "demain"}
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("fake_catalog", "as_user")
+async def test_brand_tools_and_search_by_brand_name(mcp_client: Client[Any]) -> None:
+    brands = await _call(mcp_client, "catalogai_list_brands", query="petit")
+    assert [b["name"] for b in brands["brands"]] == ["Le Petit Souk", "Petit Bateau"]
+
+    found = await _call(mcp_client, "catalogai_search_products", brand="Maileg")
+    assert [p["id"] for p in found["products"]] == [33]
+
+
+@pytest.mark.anyio
+async def test_list_enrichments_by_day(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    job_id = _processed_items(db, as_user, [41])
+    today = await _call(mcp_client, "catalogai_list_enrichments", since="today")
+    assert [e["job_id"] for e in today["enrichments"]] == [job_id]
+    old = await _call(
+        mcp_client, "catalogai_list_enrichments", since="2020-01-01", until="2020-01-31"
+    )
+    assert old["total"] == 0
