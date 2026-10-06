@@ -1,8 +1,7 @@
 // Calculs de l'éditeur d'image du studio, portés de l'éditeur Tillin
 // (packages/ui/src/lib/image-edit.ts) : formats, quart de tour, miroir,
-// taille de sortie, zone recadrée et rendu d'aperçu. Le serveur
-// (POST /imaging/assets/{id}/edit) refait le même calcul pour la sortie
-// réelle ; seul `renderPreview` touche au canvas.
+// taille de sortie, zone recadrée, poignées du cadre. Fonctions pures : le
+// serveur (POST /imaging/assets/{id}/edit) produit la sortie réelle.
 
 export type Point = { x: number; y: number }
 export type Size = { width: number; height: number }
@@ -94,16 +93,90 @@ export function displayScale(natural: Size, frame: Size, edit: ImageEdit): numbe
   return Math.max(frame.width / box.width, frame.height / box.height) * edit.zoom
 }
 
-/** Zone recadrée (px de l'image tournée) correspondant à l'état affiché. */
-export function areaOf(natural: Size, frame: Size, edit: ImageEdit): Area {
+/** Rectangle dans le repère de la scène (px affichés, origine en haut à gauche). */
+export type Rect = Point & Size
+
+/** Cadre maximal centré dans la scène. */
+export function centeredRect(stage: Size, frame: Size): Rect {
+  return {
+    x: (stage.width - frame.width) / 2,
+    y: (stage.height - frame.height) / 2,
+    width: frame.width,
+    height: frame.height,
+  }
+}
+
+/** Zone (px de l'image tournée) sous un cadre quelconque de la scène, l'image
+ *  restant à l'échelle du cadre maximal `frame` (elle ne bouge pas pendant
+ *  qu'on tire une poignée). */
+export function areaOfRect(
+  natural: Size,
+  stage: Size,
+  frame: Size,
+  rect: Rect,
+  edit: ImageEdit,
+): Area {
   const box = rotatedSize(natural, edit.quarter)
   const s = displayScale(natural, frame, edit)
   return {
-    x: box.width / 2 - (frame.width / 2 + edit.pan.x) / s,
-    y: box.height / 2 - (frame.height / 2 + edit.pan.y) / s,
-    width: frame.width / s,
-    height: frame.height / s,
+    x: box.width / 2 + (rect.x - (stage.width / 2 + edit.pan.x)) / s,
+    y: box.height / 2 + (rect.y - (stage.height / 2 + edit.pan.y)) / s,
+    width: rect.width / s,
+    height: rect.height / s,
   }
+}
+
+export type Handle = "nw" | "ne" | "sw" | "se" | "n" | "s" | "w" | "e"
+
+/** Plus petit côté du cadre pendant un redimensionnement (px affichés). */
+export const MIN_FRAME_SIDE = 40
+
+/**
+ * Cadre redimensionné en tirant une poignée de `dx`/`dy` px : le coin (ou le
+ * côté) opposé reste fixe, le cadre reste dans la scène. `ratio` impose les
+ * proportions (format fixe) ; null = libre. Les poignées de côté ne changent
+ * qu'une dimension (format libre seulement).
+ */
+export function resizeRect(
+  start: Rect,
+  handle: Handle,
+  dx: number,
+  dy: number,
+  stage: Size,
+  ratio: number | null,
+): Rect {
+  const west = handle.includes("w")
+  const north = handle.includes("n")
+  const horizontal = handle !== "n" && handle !== "s"
+  const vertical = handle !== "w" && handle !== "e"
+  // Point fixe (coin ou côté opposé) et place disponible vers la poignée.
+  const anchorX = west ? start.x + start.width : start.x
+  const anchorY = north ? start.y + start.height : start.y
+  const roomW = west ? anchorX : stage.width - anchorX
+  const roomH = north ? anchorY : stage.height - anchorY
+  let width = horizontal ? start.width + (west ? -dx : dx) : start.width
+  let height = vertical ? start.height + (north ? -dy : dy) : start.height
+  if (ratio !== null) {
+    // La dimension qui a le plus bougé (relativement) entraîne l'autre.
+    if (Math.abs(width - start.width) >= Math.abs(height - start.height) * ratio) {
+      height = width / ratio
+    } else {
+      width = height * ratio
+    }
+    const fit = Math.min(1, roomW / width, roomH / height)
+    width *= fit
+    height *= fit
+    const grow = Math.max(1, MIN_FRAME_SIDE / width, MIN_FRAME_SIDE / height)
+    width *= grow
+    height *= grow
+  } else {
+    width = Math.min(roomW, Math.max(MIN_FRAME_SIDE, width))
+    height = Math.min(roomH, Math.max(MIN_FRAME_SIDE, height))
+  }
+  // Une poignée de côté garde le cadre centré sur l'autre axe.
+  const x = horizontal ? (west ? anchorX - width : anchorX) : start.x
+  const y = vertical ? (north ? anchorY - height : anchorY) : start.y
+  return { x, y, width, height }
 }
 
 /** Inverse de `areaOf` : rouvre l'éditeur sur une édition déjà appliquée. */
@@ -217,77 +290,6 @@ export function isEdited(edit: ImageEdit, natural: Size | null): boolean {
     edit.flipV ||
     edit.size !== null
   )
-}
-
-type Matrix = readonly [number, number, number, number, number, number]
-
-const multiply = (m1: Matrix, m2: Matrix): Matrix => [
-  m1[0] * m2[0] + m1[2] * m2[1],
-  m1[1] * m2[0] + m1[3] * m2[1],
-  m1[0] * m2[2] + m1[2] * m2[3],
-  m1[1] * m2[2] + m1[3] * m2[3],
-  m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
-  m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
-]
-
-/** Transformation qui dessine la zone `area` à la taille `size` : miroir et
- *  quart de tour autour du centre, découpe, mise à l'échelle. */
-function editMatrix(natural: Size, area: Area, edit: ImageEdit, size: Size): Matrix {
-  const quarter = edit.quarter % 4
-  const box = rotatedSize(natural, quarter)
-  const cos = [1, 0, -1, 0][quarter] ?? 1
-  const sin = [0, 1, 0, -1][quarter] ?? 0
-  const steps: Matrix[] = [
-    [size.width / area.width, 0, 0, size.height / area.height, 0, 0],
-    [1, 0, 0, 1, box.width / 2 - area.x, box.height / 2 - area.y],
-    [cos, sin, -sin, cos, 0, 0],
-    [edit.flipH ? -1 : 1, 0, 0, edit.flipV ? -1 : 1, 0, 0],
-    [1, 0, 0, 1, -natural.width / 2, -natural.height / 2],
-  ]
-  return steps.reduce(multiply)
-}
-
-/** Aperçu « Rendu » calculé dans le navigateur (le serveur produit le vrai
- *  fichier). Petit canvas : le côté le plus long est ramené à `maxSide`. */
-export async function renderPreview(
-  image: HTMLImageElement,
-  area: Area,
-  edit: ImageEdit,
-  size: Size,
-  background: string,
-  maxSide = 900,
-): Promise<string> {
-  const k = Math.min(1, maxSide / Math.max(size.width, size.height))
-  const preview = {
-    width: Math.max(1, Math.round(size.width * k)),
-    height: Math.max(1, Math.round(size.height * k)),
-  }
-  const canvas = document.createElement("canvas")
-  canvas.width = preview.width
-  canvas.height = preview.height
-  const ctx = canvas.getContext("2d")
-  if (!ctx) throw new Error("canvas")
-  ctx.fillStyle = background
-  ctx.fillRect(0, 0, preview.width, preview.height)
-  ctx.imageSmoothingQuality = "high"
-  ctx.setTransform(
-    ...editMatrix(
-      { width: image.naturalWidth, height: image.naturalHeight },
-      area,
-      edit,
-      preview,
-    ),
-  )
-  ctx.drawImage(image, 0, 0)
-  const url = await new Promise<string>((resolve, reject) =>
-    canvas.toBlob(
-      (blob) => (blob ? resolve(URL.createObjectURL(blob)) : reject(new Error("toBlob"))),
-      "image/png",
-    ),
-  )
-  canvas.width = 0
-  canvas.height = 0
-  return url
 }
 
 /** Format fixe correspondant à un rapport (1 % de tolérance), sinon libre. */

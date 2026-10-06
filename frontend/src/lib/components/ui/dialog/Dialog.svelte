@@ -10,15 +10,12 @@
     title,
     onClose,
     dismissable = true,
-    wide = false,
     children,
   }: {
     title: string
     onClose: () => void
     /** false = Échap/clic fond/✕ inactifs (action en cours). */
     dismissable?: boolean
-    /** Carte large et défilante (éditeur d'image). */
-    wide?: boolean
     children: Snippet
   } = $props()
 
@@ -43,9 +40,7 @@
     onclick={() => dismissable && onClose()}
   ></button>
   <div
-    class="bg-card border-border relative flex w-full flex-col gap-4 rounded-lg border p-4 shadow-2xl {wide
-      ? 'max-h-[92vh] max-w-5xl overflow-y-auto'
-      : 'max-w-md'}"
+    class="bg-card border-border relative flex w-full max-w-md flex-col gap-4 rounded-lg border p-4 shadow-2xl"
   >
     <div class="flex items-start justify-between gap-3">
       <h2 class="font-title text-base font-bold">{title}</h2>

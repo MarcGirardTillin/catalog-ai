@@ -47,7 +47,7 @@
   import { Select } from "@/lib/components/ui/select"
   import { formatFileSize } from "@/lib/format"
 
-  import ImageEditDialog from "./ImageEditDialog.svelte"
+  import CropEditor from "./CropEditor.svelte"
   import Lightbox from "./Lightbox.svelte"
 
   let {
@@ -81,21 +81,21 @@
     work.asset?.can_render === true && !work.saving && !multiOutput,
   )
   const saved = $derived(work.status === "saved")
-  // « Modifier l'image » (recadrage, rotation, miroir, taille) : toute sortie
-  // unique non enregistrée — génération comprise — et sans perdre une
-  // finalisation IA.
+  // Onglet « Cadrage » (recadrage, rotation, miroir, taille) : toute sortie
+  // unique non enregistrée — génération comprise — sans perdre une
+  // finalisation IA. Onglet principal : « Produit » (repositionnement) pour
+  // une normalisation, « Aperçu » pour une génération.
   const canEdit = $derived(
     work.asset?.can_edit === true && !work.saving && !multiOutput,
   )
-  let editOpen = $state(false)
+  let tool = $state<"main" | "crop">("main")
+  const cropping = $derived(tool === "crop" && canEdit)
 
   async function onEdited(asset: ImageAssetPublic) {
     work.asset = asset
     const previews = await fetchAssetPreviews(asset)
     for (const url of work.previewUrls) URL.revokeObjectURL(url)
     work.previewUrls = previews
-    editOpen = false
-    toast.success(asset.edit ? "Image modifiée" : "Modifications retirées")
   }
 
   // --- Re-render (repositionnement) : débouncé, séquencé (1 à la fois) ---
@@ -202,11 +202,11 @@
     if (finalized && !finalizeWarned) {
       // La finalisation est « cuite » : le premier repositionnement du
       // produit recompose depuis le cutout et l'annule — on prévient une
-      // fois. (« Modifier l'image », lui, la conserve.)
+      // fois. (L'onglet « Cadrage », lui, la conserve.)
       const proceed = window.confirm(
         "Repositionner le produit recompose l'image et annule la finalisation " +
           "IA — une nouvelle finalisation sera facturée. Pour seulement " +
-          "recadrer, utilisez « Modifier l'image ». Continuer ?",
+          "recadrer, utilisez l'onglet « Cadrage ». Continuer ?",
       )
       if (!proceed) return
       finalizeWarned = true
@@ -348,6 +348,10 @@
               </button>
             {/each}
           </div>
+        {:else if cropping && work.asset}
+          {#key work.asset.id}
+            <CropEditor asset={work.asset} onApplied={onEdited} />
+          {/key}
         {:else}
           <div
             class="relative overflow-hidden rounded-md {canRender
@@ -412,18 +416,6 @@
                   <Grid3x3 size={14} />
                 </button>
               {/if}
-              {#if canEdit}
-                <button
-                  type="button"
-                  class="bg-card/80 text-foreground hover:bg-card rounded-full p-1.5 transition-colors"
-                  aria-label="Modifier l'image (recadrer, tourner, redimensionner)"
-                  title="Modifier l'image"
-                  onpointerdown={(e) => e.stopPropagation()}
-                  onclick={() => (editOpen = true)}
-                >
-                  <CropIcon size={14} />
-                </button>
-              {/if}
               {#if work.previewUrls[0]}
                 <button
                   type="button"
@@ -439,7 +431,40 @@
             </div>
           </div>
         {/if}
-        {#if canRender}
+        {#if canEdit}
+          <!-- Onglets sous l'image : la barre d'outils suit l'onglet. -->
+          <div class="flex justify-center">
+            <div class="bg-muted inline-flex rounded-md p-0.5" role="tablist" aria-label="Retouche de l'image">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tool === "main"}
+                class="rounded px-3 py-1 text-xs transition-colors {tool === 'main'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (tool = "main")}
+              >
+                {canRender ? "Produit" : "Aperçu"}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tool === "crop"}
+                class="flex items-center gap-1 rounded px-3 py-1 text-xs transition-colors {tool === 'crop'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (tool = "crop")}
+              >
+                <CropIcon size={12} aria-hidden="true" />
+                Cadrage
+                {#if work.asset?.edit}
+                  <span class="bg-primary size-1.5 rounded-full" aria-label="(appliqué)"></span>
+                {/if}
+              </button>
+            </div>
+          </div>
+        {/if}
+        {#if canRender && !cropping}
           <!-- Contrôles sous l'image MODIFIÉE, centrés (demande Marc). -->
           <!-- Échelle (barre courte + crans de 5 + saisie directe) + reset -->
             <div class="flex flex-wrap items-center justify-center gap-2">
@@ -505,7 +530,9 @@
           <span>
             {multiOutput
               ? `Visuels générés (${work.previewUrls.length})`
-              : `Après${canRender ? " — glissez pour repositionner" : ""}`}
+              : cropping
+                ? "Cadrage — glissez l'image, tirez les poignées du cadre"
+                : `Après${canRender ? " — glissez pour repositionner" : ""}`}
           </span>
           <span class="tabular-nums">
             {outputFile?.width ? `${outputFile.width}×${outputFile.height}` : ""}
@@ -714,12 +741,4 @@
 
 {#if lightboxSrc}
   <Lightbox src={lightboxSrc} onClose={() => (lightboxSrc = null)} />
-{/if}
-
-{#if editOpen && work.asset}
-  <ImageEditDialog
-    asset={work.asset}
-    onClose={() => (editOpen = false)}
-    onApplied={onEdited}
-  />
 {/if}
