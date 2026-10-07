@@ -9,7 +9,7 @@ from app.api.schemas.settings import CreditPack
 
 CreditKind = Literal["purchase", "grant", "subscription", "consumption", "adjustment"]
 CreditAction = Literal[
-    "import_product", "enrich_item", "image_process", "image_generate"
+    "import_product", "enrich_item", "image_process", "image_generate", "image_finalize"
 ]
 
 

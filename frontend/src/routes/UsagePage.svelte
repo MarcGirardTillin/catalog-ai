@@ -92,6 +92,7 @@
       enrich_item: stats?.feature_enrich !== false,
       image_process: stats?.feature_studio !== false,
       image_generate: stats?.feature_studio !== false,
+      image_finalize: stats?.feature_studio !== false,
     } as Record<string, boolean>
   })
 
@@ -101,6 +102,7 @@
     { key: "enrich_item", label: "Fiches enrichies" },
     { key: "image_process", label: "Images traitées" },
     { key: "image_generate", label: "Visuels générés" },
+    { key: "image_finalize", label: "Visuels finalisés" },
   ]
   const visibleActionTiles = $derived(
     ACTION_TILES.filter((tile) => featureByAction[tile.key]),

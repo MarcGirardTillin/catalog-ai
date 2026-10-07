@@ -1168,7 +1168,8 @@ export const CreditEntryPublicSchema = {
                         'import_product',
                         'enrich_item',
                         'image_process',
-                        'image_generate'
+                        'image_generate',
+                        'image_finalize'
                     ]
                 },
                 {

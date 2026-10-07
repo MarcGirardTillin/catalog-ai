@@ -203,6 +203,21 @@ def test_admin_grant_and_ledger(admin_client: TestClient) -> None:
     assert [e["kind"] for e in ledger["entries"]] == ["adjustment", "purchase"]
 
 
+def test_admin_ledger_lists_every_consumption_action(admin_client: TestClient) -> None:
+    # Régression : une finalisation Studio (image_finalize) faisait échouer
+    # la validation de la réponse → 500 sur la page crédits du client.
+    account_id = _account_id(admin_client)
+    _grant(account_id, 100)
+    db = _db()
+    for action in credits_service.credit_grid(db, account_id):
+        credits_service.consume(db, account_id=account_id, action=action, quantity=1)
+    db.commit()
+    response = admin_client.get(f"/admin/accounts/{account_id}/credits")
+    assert response.status_code == 200, response.text
+    actions = {e["action"] for e in response.json()["entries"] if e["action"]}
+    assert "image_finalize" in actions
+
+
 def test_admin_grant_rejects_zero(admin_client: TestClient) -> None:
     account_id = _account_id(admin_client)
     response = admin_client.post(

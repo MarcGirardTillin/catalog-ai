@@ -665,7 +665,7 @@ export type CreditEntryPublic = {
     /**
      * Action
      */
-    action?: 'import_product' | 'enrich_item' | 'image_process' | 'image_generate' | null;
+    action?: 'import_product' | 'enrich_item' | 'image_process' | 'image_generate' | 'image_finalize' | null;
     /**
      * Quantity
      */

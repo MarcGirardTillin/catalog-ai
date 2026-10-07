@@ -292,6 +292,7 @@
         enrich_item: "Fiches enrichies",
         image_process: "Images traitées",
         image_generate: "Visuels générés",
+        image_finalize: "Visuels finalisés",
       }
       const base = labels[entry.action] ?? entry.action
       return entry.quantity != null ? `${base} × ${entry.quantity}` : base

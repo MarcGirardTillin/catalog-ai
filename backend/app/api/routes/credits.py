@@ -35,6 +35,7 @@ ACTION_LABELS = {
     "enrich_item": "Fiches enrichies",
     "image_process": "Images traitées",
     "image_generate": "Visuels générés",
+    "image_finalize": "Visuels finalisés",
 }
 
 
