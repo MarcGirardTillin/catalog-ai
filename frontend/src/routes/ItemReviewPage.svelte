@@ -43,6 +43,7 @@
   import { Label } from "@/lib/components/ui/label"
   import { Skeleton } from "@/lib/components/ui/skeleton"
   import { accountSettings, loadAccountSettings } from "@/lib/accountSettings.svelte"
+  import { matchedByLabel } from "@/lib/enrich-match"
   import { formatDuration } from "@/lib/format"
   import { prefs } from "@/lib/preferences.svelte"
   import AppShell from "@/lib/components/app/AppShell.svelte"
@@ -1288,6 +1289,9 @@
                 {/if}
                 {#if methodLabel}
                   <span>source : {methodLabel}</span>
+                {/if}
+                {#if matchedByLabel(item)}
+                  <span>trouvé par : {matchedByLabel(item)}</span>
                 {/if}
                 {#if item.match_score != null}
                   <span class="font-mono">score {item.match_score.toFixed(2)}</span>

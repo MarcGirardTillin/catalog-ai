@@ -114,6 +114,7 @@ def test_search_redirecting_to_barcode_page_resolves_at_one() -> None:
     assert result.status == "resolved"
     assert result.method_used == "site_search"
     assert result.score == 1.0
+    assert result.matched_by == "barcode"
     assert result.url == f"{SITE}/p/deguisement-enfant-chevalier.html"
     # Le JSON-LD déjà lu sert de fiche source (aucun fetch de plus).
     assert result.source_product is not None
@@ -167,6 +168,7 @@ def test_page_without_barcode_but_reference_resolves_at_point_nine() -> None:
     assert result.method_used == "site_search"
     assert result.score == 0.9
     assert result.url == f"{SITE}/p/chevalier.html"
+    assert result.matched_by == "reference"
 
 
 def test_unverified_page_stays_a_review_candidate() -> None:

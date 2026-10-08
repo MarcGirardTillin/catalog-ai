@@ -8,12 +8,13 @@ export type Size = { width: number; height: number }
 /** Zone recadrée en pixels de l'image tournée (débord autorisé = marge). */
 export type Area = Size & Point
 
-export type AspectKey = "1:1" | "16:9" | "4:5" | "5:4" | "libre"
+export type AspectKey = "1:1" | "16:9" | "4:5" | "3:4" | "5:4" | "libre"
 
 export const ASPECTS: { value: AspectKey; label: string }[] = [
   { value: "1:1", label: "1:1" },
   { value: "16:9", label: "16:9" },
   { value: "4:5", label: "4:5" },
+  { value: "3:4", label: "3:4" },
   { value: "5:4", label: "5:4" },
   { value: "libre", label: "Libre" },
 ]
@@ -22,6 +23,7 @@ const FIXED: Record<Exclude<AspectKey, "libre">, number> = {
   "1:1": 1,
   "16:9": 16 / 9,
   "4:5": 4 / 5,
+  "3:4": 3 / 4,
   "5:4": 5 / 4,
 }
 
@@ -50,11 +52,14 @@ export type ImageEdit = {
   size: Size | null
 }
 
-/** État de départ : image entière au format libre, sans zoom ni rotation. */
+/** État de départ : image entière, sans zoom ni rotation, au format de
+ * l'image elle-même — celui choisi pour le traitement (4:5, 1:1…) quand il
+ * correspond à un format fixe, sinon libre. */
 export function initialEdit(natural: Size | null): ImageEdit {
+  const ratio = natural && natural.height > 0 ? natural.width / natural.height : 1
   return {
-    aspect: "libre",
-    freeRatio: natural && natural.height > 0 ? natural.width / natural.height : 1,
+    aspect: natural ? aspectOfRatio(ratio) : "libre",
+    freeRatio: ratio,
     pan: { x: 0, y: 0 },
     zoom: 1,
     quarter: 0,

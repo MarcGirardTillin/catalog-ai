@@ -155,6 +155,7 @@ def test_pipeline_stages_title_weights_images_and_copy(
     assert item.source_url == f"{SITE}/products/g-short-double-navy"
     assert item.source_method == "shopify_json"
     assert item.match_score == 1.0
+    assert (item.resolution_json or {})["matched_by"] == "barcode"
     assert item.staged_weights_json == [
         {"variant_id": 11, "weight": 0.32, "weight_unit": "kg"},
         {"variant_id": 12, "weight": 0.34, "weight_unit": "kg"},
@@ -353,6 +354,7 @@ def test_stage_from_url_manually_restages(
     assert item.source_method == "manual"
     assert item.source_url == f"{SITE}/products/g-short-double-navy"
     assert item.match_score == 1.0
+    assert (item.resolution_json or {})["matched_by"] == "barcode"
     assert item.staged_images_json == [
         {"url": f"{SITE}/cdn/1.jpg", "position": 1},
         {"url": f"{SITE}/cdn/2.jpg", "position": 2},

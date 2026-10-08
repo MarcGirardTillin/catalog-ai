@@ -28,6 +28,7 @@ from app.clients.firecrawl import EXTRACT_CREDITS, SEARCH_CREDITS, FirecrawlClie
 from app.sources import site_search
 from app.sources.firecrawl_source import extract_source_product, reference_matches
 from app.sources.jsonld import fetch_jsonld_product, parse_jsonld_product
+from app.sources.match_basis import MatchBasis, match_basis
 from app.sources.shopify_json import (
     SCORE_BARCODE,
     candidate_color,
@@ -82,6 +83,9 @@ class Candidate(BaseModel):
     # Shopify ou extraction de page) — affichée dans la review pour repérer
     # le bon coloris d'un coup d'œil.
     color: str | None = None
+    # Information qui a rapproché la fiche du produit (code-barres,
+    # référence, titre) — le score seul ne la dit pas.
+    matched_by: MatchBasis | None = None
 
 
 class ResolveResult(BaseModel):
@@ -89,6 +93,7 @@ class ResolveResult(BaseModel):
     url: str | None = None
     score: float | None = None
     method_used: str | None = None
+    matched_by: MatchBasis | None = None
     candidates: list[Candidate] = Field(default_factory=list)
     reason: str | None = None
     # The already-extracted source product for `url` (Firecrawl path only) so
@@ -276,6 +281,7 @@ def _resolve_shopify(
                         title=full.get("title"),
                         score=score,
                         color=candidate_color(full),
+                        matched_by=match_basis(product, full),
                     )
                 )
                 if score >= SCORE_BARCODE:
@@ -285,6 +291,7 @@ def _resolve_shopify(
                         url=url,
                         score=score,
                         method_used="shopify_json",
+                        matched_by=candidates[-1].matched_by,
                         candidates=sorted(
                             candidates, key=lambda c: c.score, reverse=True
                         )[:5],
@@ -306,6 +313,7 @@ def _resolve_shopify(
             url=best.url,
             score=best.score,
             method_used="shopify_json",
+            matched_by=best.matched_by,
             candidates=candidates[:5],
         )
     if candidates:
@@ -415,6 +423,14 @@ def _site_page_score(
     return SITE_SEARCH_CANDIDATE_SCORE, evidence
 
 
+def _site_match_basis(score: float) -> MatchBasis:
+    if score >= SCORE_BARCODE:
+        return "barcode"
+    if score in (SITE_SEARCH_REFERENCE_SCORE, SITE_SEARCH_COLOR_MISMATCH_SCORE):
+        return "reference"
+    return "title"
+
+
 def _resolve_site_search(
     client: httpx.Client, product: Product, sites: list[str]
 ) -> ResolveResult:
@@ -442,6 +458,7 @@ def _resolve_site_search(
             url=best.url,
             score=best.score,
             method_used="site_search",
+            matched_by=best.matched_by,
             candidates=sorted(candidates, key=lambda c: c.score, reverse=True)[:5],
             source_product=source if source and source.get("_jsonld") else None,
         )
@@ -472,6 +489,9 @@ def _resolve_site_search(
                     title=evidence.get("title"),
                     score=score,
                     color=evidence.get("_color"),
+                    # Branches de _site_page_score : 1.0 code-barres (jeton
+                    # exact, y compris dans le HTML brut), 0.9/0.5 référence.
+                    matched_by=_site_match_basis(score),
                 )
                 candidates.append(candidate)
                 sources[page.url] = evidence
@@ -589,6 +609,7 @@ def _resolve_firecrawl(
                 title=extracted.get("title"),
                 score=_firecrawl_score(product, url, extracted),
                 color=extracted.get("_color"),
+                matched_by=match_basis(product, extracted),
             )
             candidates.append(candidate)
             if candidate.score >= FIRECRAWL_RESOLVED_SCORE:
@@ -597,6 +618,7 @@ def _resolve_firecrawl(
                     url=url,
                     score=candidate.score,
                     method_used="firecrawl",
+                    matched_by=candidate.matched_by,
                     candidates=candidates[:5],
                     source_product=extracted,
                 )

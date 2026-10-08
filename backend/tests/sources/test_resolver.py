@@ -133,6 +133,7 @@ def test_resolver_finds_product_by_barcode() -> None:
     assert result.url == f"{SITE}/products/g-short-double-navy"
     assert result.score == 1.0
     assert result.method_used == "shopify_json"
+    assert result.matched_by == "barcode"
 
 
 def test_resolver_needs_manual_when_low_confidence() -> None:

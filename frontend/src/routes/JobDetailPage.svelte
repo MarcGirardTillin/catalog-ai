@@ -5,6 +5,8 @@
   import { navigate } from "svelte5-router"
 
   import {
+    itemsApplyItemRoute,
+    itemsApproveItem,
     jobsCancelJob,
     jobsListJobItems,
     jobsReadJob,
@@ -19,6 +21,7 @@
   import FeatureGate from "@/lib/components/app/FeatureGate.svelte"
   import RequireAuth from "@/lib/components/app/RequireAuth.svelte"
   import StatusBadge from "@/lib/components/app/StatusBadge.svelte"
+  import { matchedByLabel } from "@/lib/enrich-match"
   import { formatDuration } from "@/lib/format"
 
   let { appName, id }: { appName: string; id: string } = $props()
@@ -146,6 +149,82 @@
     queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] })
   }
 
+  // --- Validation groupée (Marc 2026-10-08) : valider plusieurs produits
+  // sans passer par la vérification, comme une review où l'on ne touche à
+  // rien (mêmes routes, même jeu de champs proposés). ---
+  const selectable = (item: ItemPublic) =>
+    item.status === "ready_for_review" || item.status === "approved"
+  const selectableItems = $derived((items ?? []).filter(selectable))
+  let selected = $state<Set<number>>(new Set())
+  // La liste bouge (polling, décisions) : la sélection ne garde que les
+  // items encore sélectionnables.
+  const selectedItems = $derived(selectableItems.filter((i) => selected.has(i.id)))
+  const allSelected = $derived(
+    selectableItems.length > 0 && selectedItems.length === selectableItems.length,
+  )
+  const someSelected = $derived(selectedItems.length > 0 && !allSelected)
+  const selectedToReview = $derived(
+    selectedItems.filter((i) => i.status === "ready_for_review").length,
+  )
+
+  function toggleItem(itemId: number) {
+    const next = new Set(selected)
+    if (next.has(itemId)) next.delete(itemId)
+    else next.add(itemId)
+    selected = next
+  }
+  function toggleAll() {
+    selected = allSelected ? new Set() : new Set(selectableItems.map((i) => i.id))
+  }
+
+  let bulkBusy = $state<"approve" | "apply" | null>(null)
+  let bulkTotal = $state(0)
+  let bulkDone = $state(0)
+
+  async function processItem(item: ItemPublic, apply: boolean): Promise<boolean> {
+    if (item.status === "ready_for_review") {
+      const { error } = await itemsApproveItem({ path: { item_id: item.id } })
+      if (error) return false
+    }
+    if (apply) {
+      const { error } = await itemsApplyItemRoute({ path: { item_id: item.id } })
+      if (error) return false
+    }
+    return true
+  }
+
+  async function bulkValidate(apply: boolean) {
+    const targets = apply
+      ? selectedItems
+      : selectedItems.filter((i) => i.status === "ready_for_review")
+    if (bulkBusy || targets.length === 0) return
+    bulkBusy = apply ? "apply" : "approve"
+    bulkTotal = targets.length
+    bulkDone = 0
+    let failed = 0
+    // Trois à la fois : l'application écrit dans Tillin (images, poids).
+    const queue = [...targets]
+    async function worker() {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        if (!(await processItem(next, apply))) failed += 1
+        bulkDone += 1
+      }
+    }
+    await Promise.all([worker(), worker(), worker()])
+    bulkBusy = null
+    selected = new Set()
+    const ok = targets.length - failed
+    const verb = apply ? "validé(s) et appliqué(s)" : "validé(s)"
+    if (ok > 0) toast.success(`${ok} produit(s) ${verb}`)
+    if (failed > 0) {
+      toast.error(`${failed} produit(s) en échec — ouvrez-les pour voir le détail.`)
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["jobs", jobId] }),
+      queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] }),
+    ])
+  }
+
   // Libellés neutres pour la méthode de résolution (white-label : jamais de
   // nom de prestataire dans l'UI).
   const SOURCE_LABELS: Record<string, string> = {
@@ -183,7 +262,10 @@
         feature="feature_enrich"
         message="Le module d'enrichissement n'est pas activé pour votre compte."
       >
-      <div class="mx-auto flex max-w-4xl flex-col gap-3 p-4">
+      <div
+        class="mx-auto flex max-w-4xl flex-col gap-3 p-4"
+        class:pb-20={selectedItems.length > 0 || bulkBusy}
+      >
         {#if errorMessage}
           <p class="text-destructive text-xs" role="alert">{errorMessage}</p>
           <Button variant="secondary" class="w-full sm:w-auto" onclick={() => navigate("/jobs")}>
@@ -262,7 +344,22 @@
             </CardContent>
           </Card>
 
-          <h2 class="font-title mt-1 text-sm font-bold">Produits</h2>
+          <div class="mt-1 flex items-center justify-between gap-2">
+            <h2 class="font-title text-sm font-bold">Produits</h2>
+            {#if selectableItems.length > 0}
+              <label class="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  class="accent-primary block size-4"
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  disabled={bulkBusy !== null}
+                  onchange={toggleAll}
+                />
+                Tout sélectionner ({selectableItems.length})
+              </label>
+            {/if}
+          </div>
           {#if items === null}
             <Skeleton class="h-16 w-full" />
           {:else if items.length === 0}
@@ -274,9 +371,28 @@
             </Card>
           {:else}
             {#each items as item (item.id)}
+              {@const matchedBy = matchedByLabel(item)}
+              <div class="flex items-center gap-2">
+              {#if selectableItems.length > 0}
+                <!-- Case hors du bouton de la carte (contenu interactif
+                     interdit dans un <button>) ; colonne gardée vide pour
+                     les produits non sélectionnables (alignement). -->
+                <div class="flex w-4 shrink-0 justify-center">
+                  {#if selectable(item)}
+                    <input
+                      type="checkbox"
+                      class="accent-primary block size-4"
+                      aria-label={`Sélectionner ${item.product_title ?? `le produit ${item.tillin_product_id}`}`}
+                      checked={selected.has(item.id)}
+                      disabled={bulkBusy !== null}
+                      onchange={() => toggleItem(item.id)}
+                    />
+                  {/if}
+                </div>
+              {/if}
               <button
                 type="button"
-                class="w-full cursor-pointer text-left"
+                class="min-w-0 flex-1 cursor-pointer text-left"
                 onclick={() => navigate(`/items/${item.id}`)}
               >
                 <Card class="hover:ring-primary/40 transition-shadow" size="sm">
@@ -318,6 +434,9 @@
                             item.source_method}
                         </span>
                       {/if}
+                      {#if matchedBy}
+                        <span>trouvé par : {matchedBy}</span>
+                      {/if}
                       {#if item.match_score != null}
                         <span class="font-mono">score {item.match_score.toFixed(2)}</span>
                       {/if}
@@ -331,10 +450,47 @@
                   </CardContent>
                 </Card>
               </button>
+              </div>
             {/each}
           {/if}
         {/if}
       </div>
+      {#if selectedItems.length > 0 || bulkBusy}
+        <!-- Barre d'actions de la sélection (même motif que la recherche
+             produits). « Valider » ne concerne que les produits à vérifier. -->
+        <div class="border-border bg-card fixed inset-x-0 bottom-0 border-t sm:left-60">
+          <div class="p-3">
+            <div class="mx-auto flex max-w-4xl flex-wrap items-center gap-2 sm:justify-end">
+              <span class="text-muted-foreground mr-auto text-xs">
+                {bulkBusy
+                  ? `Traitement… ${bulkDone}/${bulkTotal}`
+                  : `${selectedItems.length} sélectionné(s)`}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={bulkBusy !== null}
+                onclick={() => (selected = new Set())}
+              >
+                Vider
+              </Button>
+              {#if selectedToReview > 0}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={bulkBusy !== null}
+                  onclick={() => bulkValidate(false)}
+                >
+                  Valider ({selectedToReview})
+                </Button>
+              {/if}
+              <Button size="sm" disabled={bulkBusy !== null} onclick={() => bulkValidate(true)}>
+                Valider et appliquer ({selectedItems.length})
+              </Button>
+            </div>
+          </div>
+        </div>
+      {/if}
       </FeatureGate>
     </AppShell>
   {/snippet}

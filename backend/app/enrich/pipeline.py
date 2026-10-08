@@ -56,6 +56,7 @@ from app.sources.firecrawl_source import (
     reference_matches,
 )
 from app.sources.jsonld import fetch_jsonld_product
+from app.sources.match_basis import match_basis
 from app.sources.resolver import (
     Method,
     ResolveResult,
@@ -531,7 +532,10 @@ class EnrichmentPipeline:
                 item.source_url = url
                 item.source_method = "manual"
                 item.match_score = score
-                item.resolution_json = {"reason": "URL fournie au lancement"}
+                item.resolution_json = {
+                    "reason": "URL fournie au lancement",
+                    "matched_by": match_basis(product, override_source),
+                }
                 self._stage_source(db, item, product, override_source, config)
                 self._stage_copy(db, item, product, override_source, config)
                 return
@@ -562,6 +566,7 @@ class EnrichmentPipeline:
             unique_candidates.append(candidate)
         item.resolution_json = {
             "reason": resolved.reason,
+            "matched_by": resolved.matched_by,
             "candidates": [c.model_dump() for c in unique_candidates],
         }
 
@@ -719,6 +724,7 @@ class EnrichmentPipeline:
         item.resolution_json = {
             **(item.resolution_json or {}),
             "reason": f"sélection IA : {choice.reason}"[:300],
+            "matched_by": match_basis(product, source_product),
         }
         return source_product
 
@@ -751,6 +757,10 @@ class EnrichmentPipeline:
         item.match_score = score
         item.source_url = url
         item.source_method = "manual"
+        item.resolution_json = {
+            **(item.resolution_json or {}),
+            "matched_by": match_basis(product, source_product),
+        }
         self._stage_source(db, item, product, source_product, config)
         extra_sources.restore_extras(item, snapshot)
         self._stage_copy(db, item, product, source_product, config)

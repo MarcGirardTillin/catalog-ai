@@ -77,11 +77,11 @@
   // sortie unique non enregistrée — génération comprise — sans perdre une
   // finalisation IA. Il remplace l'ancien repositionnement du produit.
   const canEdit = $derived(
-    work.asset?.can_edit === true && !work.saving && !multiOutput,
+    work.asset?.can_edit === true && !work.saving && !saved && !multiOutput,
   )
   // La finalisation IA reste réservée aux normalisations (cutout disponible).
   const canFinalize = $derived(
-    work.asset?.can_render === true && !work.saving && !multiOutput,
+    work.asset?.can_render === true && !work.saving && !saved && !multiOutput,
   )
 
   async function onEdited(asset: ImageAssetPublic) {

@@ -310,6 +310,8 @@ def _item_summary(item: ItemPublic) -> dict[str, Any]:
         "source_url": item.source_url,
         "source_method": item.source_method,
         "match_score": item.match_score,
+        # Information qui a rapproché la fiche : barcode / reference / title.
+        "matched_by": (item.resolution_json or {}).get("matched_by"),
         "proposed_title": item.staged_title,
         "proposed_description": _clip(item.staged_description, 400),
         "proposed_meta": item.staged_meta,

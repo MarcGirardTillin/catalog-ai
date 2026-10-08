@@ -665,7 +665,9 @@
       return false
     }
     work.status = "saved"
-    work.asset = { ...asset, can_render: false }
+    // Enregistré : les fichiers de travail sont purgés côté serveur, le
+    // cadrage n'est plus possible (l'aperçu reste celui déjà chargé).
+    work.asset = { ...asset, can_render: false, can_edit: false }
     if (!options?.silent) {
       toast.success(
         `${data.created} image${data.created > 1 ? "s" : ""} enregistrée${data.created > 1 ? "s" : ""}${data.deactivated > 0 ? ", originale remplacée" : ""}`,
