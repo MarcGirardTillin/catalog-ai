@@ -83,6 +83,12 @@ class ItemPublic(BaseModel):
         return self
 
 
+class JobItemsRetryRequest(BaseModel):
+    """Relance groupée : les fiches choisies dans la liste du job."""
+
+    item_ids: list[int] = Field(min_length=1, max_length=500)
+
+
 class ItemApplyRequest(BaseModel):
     """Optional apply body — required semantics for RE-propagation.
 

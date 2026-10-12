@@ -502,6 +502,39 @@ def retry_item(
     return item
 
 
+def retry_selected_items(
+    db: Session,
+    job: EnrichmentJob,
+    item_ids: list[int],
+    *,
+    launcher_user_id: int | None = None,
+) -> int:
+    """Requeue the chosen items of a job (à vérifier, écartés, échecs) for a
+    full re-generation. Items in another status are skipped silently.
+    Returns how many were requeued."""
+    wanted = set(item_ids)
+    targets = [i for i in job.items if i.id in wanted and i.status in _RETRYABLE]
+    if not targets:
+        raise AppException(
+            status_code=409,
+            code="invalid_state",
+            message="No selected item can be retried",
+        )
+    _adopt_launcher(job, launcher_user_id)
+    for item in targets:
+        _reset_item_for_retry(item)
+    job.status = "pending"
+    job.started_at = None
+    job.finished_at = None
+    db.commit()
+    return len(targets)
+
+
+def retryable_count(job: EnrichmentJob, item_ids: list[int]) -> int:
+    wanted = set(item_ids)
+    return sum(1 for i in job.items if i.id in wanted and i.status in _RETRYABLE)
+
+
 def retry_failed_items(
     db: Session, job: EnrichmentJob, *, launcher_user_id: int | None = None
 ) -> int:

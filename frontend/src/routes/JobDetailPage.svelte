@@ -11,6 +11,7 @@
     jobsListJobItems,
     jobsReadJob,
     jobsRetryJobFailures,
+    jobsRetryJobItems,
   } from "@/client"
   import { ConfirmButton } from "@/lib/components/ui/confirm-button"
   import type { ItemPublic, JobPublic } from "@/client"
@@ -149,11 +150,20 @@
     queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] })
   }
 
-  // --- Validation groupée (Marc 2026-10-08) : valider plusieurs produits
-  // sans passer par la vérification, comme une review où l'on ne touche à
-  // rien (mêmes routes, même jeu de champs proposés). ---
-  const selectable = (item: ItemPublic) =>
+  // --- Actions groupées : valider plusieurs produits sans passer par la
+  // vérification (Marc 2026-10-08), comme une review où l'on ne touche à
+  // rien (mêmes routes, même jeu de champs proposés) ; relancer plusieurs
+  // enrichissements (Marc 2026-10-12). ---
+  const validatable = (item: ItemPublic) =>
     item.status === "ready_for_review" || item.status === "approved"
+  const retryable = (item: ItemPublic) =>
+    item.status === "ready_for_review" ||
+    item.status === "rejected" ||
+    item.status === "failed"
+  const selectable = (item: ItemPublic) => validatable(item) || retryable(item)
+  // Fiche sans page source (recherche sautée ou sans résultat) : la cible
+  // typique d'une relance.
+  const withoutSource = (item: ItemPublic) => retryable(item) && !item.source_url
   const selectableItems = $derived((items ?? []).filter(selectable))
   let selected = $state<Set<number>>(new Set())
   // La liste bouge (polling, décisions) : la sélection ne garde que les
@@ -166,6 +176,12 @@
   const selectedToReview = $derived(
     selectedItems.filter((i) => i.status === "ready_for_review").length,
   )
+  const selectedValidatable = $derived(selectedItems.filter(validatable))
+  const selectedRetryable = $derived(selectedItems.filter(retryable))
+  const withoutSourceItems = $derived(selectableItems.filter(withoutSource))
+  function selectWithoutSource() {
+    selected = new Set(withoutSourceItems.map((i) => i.id))
+  }
 
   function toggleItem(itemId: number) {
     const next = new Set(selected)
@@ -177,7 +193,7 @@
     selected = allSelected ? new Set() : new Set(selectableItems.map((i) => i.id))
   }
 
-  let bulkBusy = $state<"approve" | "apply" | null>(null)
+  let bulkBusy = $state<"approve" | "apply" | "retry" | null>(null)
   let bulkTotal = $state(0)
   let bulkDone = $state(0)
 
@@ -195,7 +211,7 @@
 
   async function bulkValidate(apply: boolean) {
     const targets = apply
-      ? selectedItems
+      ? selectedValidatable
       : selectedItems.filter((i) => i.status === "ready_for_review")
     if (bulkBusy || targets.length === 0) return
     bulkBusy = apply ? "apply" : "approve"
@@ -223,6 +239,34 @@
       queryClient.invalidateQueries({ queryKey: ["jobs", jobId] }),
       queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] }),
     ])
+  }
+
+  // Relance groupée : un seul appel, le worker retraite les fiches (recherche
+  // en ligne comprise, selon la configuration du job).
+  async function bulkRetry() {
+    const targets = selectedRetryable
+    if (bulkBusy || targets.length === 0) return
+    bulkBusy = "retry"
+    bulkTotal = targets.length
+    bulkDone = 0
+    const { data, error } = await jobsRetryJobItems({
+      path: { job_id: jobId },
+      body: { item_ids: targets.map((i) => i.id) },
+    })
+    bulkBusy = null
+    if (error || !data) {
+      const code = (error as { code?: string } | undefined)?.code
+      toast.error(
+        code === "insufficient_credits"
+          ? "Crédits insuffisants pour relancer cette sélection."
+          : "Relance impossible.",
+      )
+      return
+    }
+    selected = new Set()
+    toast.success(`Relance lancée (${targets.length} produit(s))`)
+    queryClient.setQueryData(["jobs", jobId], data)
+    await queryClient.invalidateQueries({ queryKey: ["jobs", jobId, "items"] })
   }
 
   // Libellés neutres pour la méthode de résolution (white-label : jamais de
@@ -347,6 +391,7 @@
           <div class="mt-1 flex items-center justify-between gap-2">
             <h2 class="font-title text-sm font-bold">Produits</h2>
             {#if selectableItems.length > 0}
+              <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
               <label class="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs">
                 <input
                   type="checkbox"
@@ -358,6 +403,18 @@
                 />
                 Tout sélectionner ({selectableItems.length})
               </label>
+              {#if withoutSourceItems.length > 0}
+                <Button
+                  variant="link"
+                  size="sm"
+                  class="h-auto p-0 text-xs"
+                  disabled={bulkBusy !== null}
+                  onclick={selectWithoutSource}
+                >
+                  Sans page source ({withoutSourceItems.length})
+                </Button>
+              {/if}
+              </div>
             {/if}
           </div>
           {#if items === null}
@@ -474,6 +531,17 @@
               >
                 Vider
               </Button>
+              {#if selectedRetryable.length > 0}
+                <!-- Relance : la fiche est entièrement refaite (recherche,
+                     page source, rédaction) et re-débitée à sa fin. -->
+                <ConfirmButton
+                  variant="outline"
+                  label={`Relancer (${selectedRetryable.length})`}
+                  confirmLabel={`Relancer ${selectedRetryable.length} produit(s) ?`}
+                  disabled={bulkBusy !== null}
+                  onconfirm={bulkRetry}
+                />
+              {/if}
               {#if selectedToReview > 0}
                 <Button
                   variant="outline"
@@ -484,9 +552,11 @@
                   Valider ({selectedToReview})
                 </Button>
               {/if}
-              <Button size="sm" disabled={bulkBusy !== null} onclick={() => bulkValidate(true)}>
-                Valider et appliquer ({selectedItems.length})
-              </Button>
+              {#if selectedValidatable.length > 0}
+                <Button size="sm" disabled={bulkBusy !== null} onclick={() => bulkValidate(true)}>
+                  Valider et appliquer ({selectedValidatable.length})
+                </Button>
+              {/if}
             </div>
           </div>
         </div>

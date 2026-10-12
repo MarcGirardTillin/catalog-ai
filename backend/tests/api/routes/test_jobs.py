@@ -506,6 +506,67 @@ def test_retry_job_requeues_failed_and_rejected(auth_client: TestClient) -> None
     assert counts["applied"] == 1  # applied untouched
 
 
+def test_retry_selected_items_requeues_only_retryable(
+    auth_client: TestClient,
+) -> None:
+    from app.api.deps import get_db, get_job_runner
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [621, 622, 623, 624])
+    db = next(app.dependency_overrides[get_db]())
+    items = db.query(EnrichmentItem).filter_by(job_id=job["id"]).all()
+    statuses = ["ready_for_review", "failed", "applied", "ready_for_review"]
+    for item, status in zip(items, statuses, strict=True):
+        item.status = status
+        item.source_method = "skipped"
+    db.commit()
+    chosen = [items[0].id, items[1].id, items[2].id]  # pas le 4e
+
+    runs: list[int] = []
+    app.dependency_overrides[get_job_runner] = lambda: runs.append
+    try:
+        response = auth_client.post(
+            f"/jobs/{job['id']}/retry-items", json={"item_ids": chosen}
+        )
+    finally:
+        app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
+
+    assert response.status_code == 200, response.text
+    counts = response.json()["counts"]
+    assert counts["pending"] == 2  # à vérifier + échec choisis
+    assert counts["applied"] == 1  # appliqué : jamais relancé
+    assert counts["ready_for_review"] == 1  # non choisi
+    assert runs == [job["id"]]
+
+    # Rien de relançable dans la sélection -> 409.
+    again = auth_client.post(
+        f"/jobs/{job['id']}/retry-items", json={"item_ids": [items[2].id]}
+    )
+    assert again.status_code == 409
+
+
+def test_retry_selected_items_scoped_to_the_job(auth_client: TestClient) -> None:
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [631])
+    other = _create_job(auth_client, [632])
+    db = next(app.dependency_overrides[get_db]())
+    foreign = db.query(EnrichmentItem).filter_by(job_id=other["id"]).first()
+    assert foreign is not None
+    foreign.status = "ready_for_review"
+    db.commit()
+    # Un item d'un autre job n'est jamais relancé via ce job.
+    response = auth_client.post(
+        f"/jobs/{job['id']}/retry-items", json={"item_ids": [foreign.id]}
+    )
+    assert response.status_code == 409
+    db.refresh(foreign)
+    assert foreign.status == "ready_for_review"
+
+
 def test_apply_writes_to_destination_and_marks_applied(
     auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

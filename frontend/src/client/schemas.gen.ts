@@ -5059,6 +5059,26 @@ export const JobCreateRequestSchema = {
     title: 'JobCreateRequest'
 } as const;
 
+export const JobItemsRetryRequestSchema = {
+    properties: {
+        item_ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            maxItems: 500,
+            minItems: 1,
+            title: 'Item Ids'
+        }
+    },
+    type: 'object',
+    required: [
+        'item_ids'
+    ],
+    title: 'JobItemsRetryRequest',
+    description: 'Relance groupée : les fiches choisies dans la liste du job.'
+} as const;
+
 export const JobPublicSchema = {
     properties: {
         id: {

@@ -2483,6 +2483,75 @@
         }
       }
     },
+    "/jobs/{job_id}/retry-items": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Retry Job Items",
+        "description": "Relance groupée des fiches choisies (Marc 2026-10-12) : recherche,\nrécupération de la fiche source et rédaction refaites, un seul réveil du\nworker. Chaque fiche relancée est re-débitée à sa fin de traitement.",
+        "operationId": "jobs-retry_job_items",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobItemsRetryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPublic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/jobs/{job_id}/cancel": {
       "post": {
         "tags": [
@@ -13419,6 +13488,25 @@
           "selection"
         ],
         "title": "JobCreateRequest"
+      },
+      "JobItemsRetryRequest": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids"
+        ],
+        "title": "JobItemsRetryRequest",
+        "description": "Relance groupée : les fiches choisies dans la liste du job."
       },
       "JobPublic": {
         "properties": {

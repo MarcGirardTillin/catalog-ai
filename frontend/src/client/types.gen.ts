@@ -2760,6 +2760,18 @@ export type JobCreateRequest = {
 };
 
 /**
+ * JobItemsRetryRequest
+ *
+ * Relance groupée : les fiches choisies dans la liste du job.
+ */
+export type JobItemsRetryRequest = {
+    /**
+     * Item Ids
+     */
+    item_ids: Array<number>;
+};
+
+/**
  * JobPublic
  */
 export type JobPublic = {
@@ -5100,6 +5112,36 @@ export type JobsRetryJobFailuresResponses = {
 };
 
 export type JobsRetryJobFailuresResponse = JobsRetryJobFailuresResponses[keyof JobsRetryJobFailuresResponses];
+
+export type JobsRetryJobItemsData = {
+    body: JobItemsRetryRequest;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/jobs/{job_id}/retry-items';
+};
+
+export type JobsRetryJobItemsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobsRetryJobItemsError = JobsRetryJobItemsErrors[keyof JobsRetryJobItemsErrors];
+
+export type JobsRetryJobItemsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobPublic;
+};
+
+export type JobsRetryJobItemsResponse = JobsRetryJobItemsResponses[keyof JobsRetryJobItemsResponses];
 
 export type JobsCancelJobData = {
     body?: never;

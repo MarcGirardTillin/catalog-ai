@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 from app.api.deps import CurrentUserDep, JobRunnerDep, SessionDep, require_feature
 from app.api.exceptions import AppException
 from app.api.schemas import PaginatedResponse
-from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobPublic
+from app.api.schemas.enrichment import (
+    ItemPublic,
+    JobCreateRequest,
+    JobItemsRetryRequest,
+    JobPublic,
+)
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import credit_grid, require_credits
 from app.api.services.enrichment import (
@@ -18,6 +23,8 @@ from app.api.services.enrichment import (
     get_job,
     job_counts,
     retry_failed_items,
+    retry_selected_items,
+    retryable_count,
 )
 from app.jobs.queue import _rollup_job
 from app.models import EnrichmentItem, EnrichmentJob
@@ -168,6 +175,31 @@ def retry_job_failures(
     account_id = resolve_account_id(db, current_user)
     job = get_job(db, account_id=account_id, job_id=job_id)
     retry_failed_items(db, job, launcher_user_id=current_user.id)
+    background.add_task(run_job, job.id)
+    return _to_public(db, job)
+
+
+@router.post("/{job_id}/retry-items", response_model=JobPublic)
+def retry_job_items(
+    job_id: int,
+    payload: JobItemsRetryRequest,
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    background: BackgroundTasks,
+    run_job: JobRunnerDep,
+) -> JobPublic:
+    """Relance groupée des fiches choisies (Marc 2026-10-12) : recherche,
+    récupération de la fiche source et rédaction refaites, un seul réveil du
+    worker. Chaque fiche relancée est re-débitée à sa fin de traitement."""
+    account_id = resolve_account_id(db, current_user)
+    job = get_job(db, account_id=account_id, job_id=job_id)
+    require_credits(
+        db,
+        account_id,
+        retryable_count(job, payload.item_ids)
+        * credit_grid(db, account_id)["enrich_item"],
+    )
+    retry_selected_items(db, job, payload.item_ids, launcher_user_id=current_user.id)
     background.add_task(run_job, job.id)
     return _to_public(db, job)
 
