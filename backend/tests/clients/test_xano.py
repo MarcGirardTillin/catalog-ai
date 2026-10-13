@@ -921,3 +921,74 @@ def test_map_product_resolves_department_from_classification_then_static() -> No
     legacy = _map_product({"id": 2, "title": "Robe", "department_id": 2}, {}, {})
     assert legacy.department == "Femme"
     assert legacy.division is None
+
+
+def _brand_counting_store(
+    brands: list[list[dict[str, Any]] | None],
+) -> tuple[httpx.MockTransport, list[int]]:
+    """Fake Xano whose /brand answers successive payloads (None = 500)."""
+    calls: list[int] = []
+    detail = {"id": 1911, "brand_id": 77, "product_variants": []}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/auth/login"):
+            return httpx.Response(200, json={"authToken": "jwt-token"})
+        if path.endswith("/brand"):
+            calls.append(1)
+            payload = brands[min(len(calls), len(brands)) - 1]
+            if payload is None:
+                return httpx.Response(500)
+            return httpx.Response(200, json=payload)
+        if path.endswith("/get_all_informations"):
+            return httpx.Response(200, json={"company_all_informations": {}})
+        return httpx.Response(200, json=detail)
+
+    return httpx.MockTransport(handler), calls
+
+
+JOUR_FERIE = [{"id": 77, "title": "Jour Férié", "brand_website": "puzzlejourferie.com"}]
+
+
+def test_brand_created_after_first_load_is_seen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Régression jobs 378/416 : la marque (ou son site) n'existait pas au
+    # premier chargement du cache — le produit restait sans site, donc
+    # l'enrichissement sautait la recherche en ligne.
+    import app.clients.xano as xano
+
+    clock = [1000.0]
+    monkeypatch.setattr("app.clients.xano.time.monotonic", lambda: clock[0])
+    transport, calls = _brand_counting_store([[], JOUR_FERIE])
+    with _client(transport) as client:
+        first = client.get_product(1911)
+        assert first is not None and first.brand is not None
+        assert first.brand.website_urls == []
+        # Marque absente : pas de rechargement en rafale…
+        client.get_product(1911)
+        assert len(calls) == 1
+        # … mais retenté passé le délai.
+        clock[0] += xano.BRAND_CACHE_RETRY_SECONDS + 1
+        again = client.get_product(1911)
+    assert again is not None and again.brand is not None
+    assert again.brand.website_urls == ["https://puzzlejourferie.com"]
+    assert len(calls) == 2
+
+
+def test_brand_map_expires_and_survives_a_failed_reload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.clients.xano as xano
+
+    clock = [1000.0]
+    monkeypatch.setattr("app.clients.xano.time.monotonic", lambda: clock[0])
+    transport, calls = _brand_counting_store([JOUR_FERIE, None])
+    with _client(transport) as client:
+        assert client.get_product(1911) is not None
+        clock[0] += xano.BRAND_CACHE_TTL_SECONDS + 1
+        # Rechargement en échec : la carte précédente reste servie.
+        product = client.get_product(1911)
+    assert len(calls) == 2
+    assert product is not None and product.brand is not None
+    assert product.brand.website_urls == ["https://puzzlejourferie.com"]

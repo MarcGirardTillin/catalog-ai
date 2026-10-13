@@ -12,6 +12,7 @@ contract lives in one place.
 """
 
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -356,6 +357,18 @@ def _collect_images(raw: Mapping[str, Any]) -> list[ProductImage]:
     return images
 
 
+# Cache des marques par client (voir XanoClient._brand_map).
+BRAND_CACHE_TTL_SECONDS = 300.0
+BRAND_CACHE_RETRY_SECONDS = 30.0
+
+
+def _brand_key(brand_id: Any) -> int | None:
+    try:
+        return int(brand_id) if brand_id else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _to_urls(value: Any) -> list[str]:
     """Normalize a brand website field to a list of scheme-qualified URLs.
 
@@ -551,6 +564,8 @@ class XanoClient:
         )
         self._token: str | None = token
         self._brands: dict[int, Mapping[str, Any]] | None = None
+        self._brands_loaded_at = 0.0
+        self._brands_expire_at = 0.0
         self._class_maps: dict[str, dict[int, str]] | None = None
 
     def _reauthenticate(self) -> None:
@@ -731,14 +746,26 @@ class XanoClient:
         except httpx.HTTPError as exc:
             raise XanoError("Xano is unreachable", code="xano_unavailable") from exc
 
-    def _brand_map(self) -> dict[int, Mapping[str, Any]]:
-        """Lazily load and cache the `{brand_id: brand}` map from `/brand`.
+    def _brand_map(self, *, need: Any = None) -> dict[int, Mapping[str, Any]]:
+        """Load and cache the `{brand_id: brand}` map from `/brand`.
 
-        Brand enrichment is best-effort: if the endpoint is unavailable the map
-        is cached empty and products keep their `brand_id` only (never raises).
+        Le client vit aussi longtemps que le token (un par processus) : la
+        carte expire au bout de ``BRAND_CACHE_TTL_SECONDS`` pour voir une
+        marque créée ou un site renseigné depuis — sinon l'enrichissement
+        saute la recherche en ligne (« no website URL for brand », vécu jobs
+        378/416 Jour Férié / Hello Hossy). ``need`` (brand_id d'un produit)
+        absent de la carte force un rechargement, au plus toutes les
+        ``BRAND_CACHE_RETRY_SECONDS``.
+
+        Best-effort : un échec garde la carte précédente (ou vide) et sera
+        retenté après ``BRAND_CACHE_RETRY_SECONDS`` (never raises).
         """
-        if self._brands is not None:
-            return self._brands
+        now = time.monotonic()
+        if self._brands is not None and now < self._brands_expire_at:
+            missing = need is not None and _brand_key(need) not in self._brands
+            recent = now - self._brands_loaded_at < BRAND_CACHE_RETRY_SECONDS
+            if not missing or recent:
+                return self._brands
         brands: dict[int, Mapping[str, Any]] = {}
         try:
             payload = self._request(BRANDS_PATH, {})
@@ -747,7 +774,13 @@ class XanoClient:
                     brands[int(raw["id"])] = raw
         except XanoError:
             logger.warning("could not load Xano brands; brand names/URLs omitted")
+            self._brands = self._brands or {}
+            self._brands_loaded_at = now
+            self._brands_expire_at = now + BRAND_CACHE_RETRY_SECONDS
+            return self._brands
         self._brands = brands
+        self._brands_loaded_at = now
+        self._brands_expire_at = now + BRAND_CACHE_TTL_SECONDS
         return brands
 
     def _classification_maps(self) -> dict[str, dict[int, str]]:
@@ -860,7 +893,8 @@ class XanoClient:
         payload = self._request(f"{PRODUCT_PATH}/{product_id}", {})
         if not isinstance(payload, Mapping):
             return None
-        return _map_product(payload, self._brand_map(), self._classification_maps())
+        brands = self._brand_map(need=payload.get("brand_id"))
+        return _map_product(payload, brands, self._classification_maps())
 
     def get_classification(self) -> dict[str, list[dict[str, Any]]]:
         """Classification lists for search filters (brands, categories, …).
