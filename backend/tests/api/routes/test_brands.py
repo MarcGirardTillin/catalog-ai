@@ -154,3 +154,27 @@ def test_update_website_urls_upstream_error_is_502(
 
     assert response.status_code == 502
     assert response.json()["code"] == "xano_error"
+
+
+def test_update_website_urls_refreshes_every_client_brand_cache(
+    auth_client: TestClient,
+    override_xano: InstallXano,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Un site ajouté doit être vu par les jobs des AUTRES utilisateurs du
+    # processus (chacun a son client Xano et sa carte des marques).
+    import app.api.deps as deps
+    from app.clients.xano import XanoClient
+
+    other = XanoClient("https://tillin.test/api", token="other-user")
+    other._brands = {1332: {"id": 1332, "title": "Gramicci"}}
+    other._brands_expire_at = float("inf")
+    monkeypatch.setattr(deps, "_token_clients", {"other-user": other})
+
+    override_xano(lambda request: httpx.Response(200, json={}))
+    response = auth_client.put(
+        "/brands/1332/website_urls", json={"website_urls": ["gramicci.com"]}
+    )
+    assert response.status_code == 200
+    assert other._brands is None
+    other.close()

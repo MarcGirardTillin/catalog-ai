@@ -8,7 +8,7 @@ renvoient un APERÇU tant que `confirm` n'est pas vrai.
 """
 
 import threading
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -242,11 +242,13 @@ def _day(value: str) -> date:
 def _day_range(since: str, until: str | None) -> tuple[datetime, datetime]:
     """Du début du jour `since` à la fin du jour `until` (inclus), heure de
     Paris ; sans `until` : jusqu'à maintenant."""
-    start = datetime.combine(_day(since), time.min, PARIS)
+    # Bornes rendues en UTC : comme les horodatages stockés (la base de test
+    # compare en texte — une borne +02:00 y décalait le jour entre 0 h et 2 h).
+    start = datetime.combine(_day(since), time.min, PARIS).astimezone(UTC)
     if until is None:
-        return start, datetime.now(PARIS) + timedelta(seconds=1)
+        return start, datetime.now(UTC) + timedelta(seconds=1)
     end = datetime.combine(_day(until), time.min, PARIS) + timedelta(days=1)
-    return start, end
+    return start, end.astimezone(UTC)
 
 
 def _resolve_brand(ctx: ToolContext, name: str) -> dict[str, Any]:

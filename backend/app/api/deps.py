@@ -82,6 +82,21 @@ def get_service_xano_client() -> XanoClient:
     return _service_xano_client
 
 
+def invalidate_brand_caches() -> None:
+    """Vide la carte des marques de TOUS les clients Xano du processus.
+
+    Appelé quand un site de marque change (le client du compte qui l'a
+    modifié n'est pas le seul à servir ce catalogue) et au démarrage de
+    chaque traitement d'enrichissement : un job lancé après l'ajout d'une
+    URL la voit, quel que soit le processus qui le traite.
+    """
+    clients = list(_token_clients.values())
+    if _service_xano_client is not None:
+        clients.append(_service_xano_client)
+    for client in clients:
+        client.invalidate_brands()
+
+
 def _client_for_token(token: str) -> XanoClient:
     """One shared client per token (httpx pool + brand cache)."""
     cached = _token_clients.get(token)

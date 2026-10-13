@@ -1175,7 +1175,12 @@ class XanoClient:
             _brand_website_urls_path(brand_id),
             {"brand_id": brand_id, "website_urls": normalized},
         )
+        self.invalidate_brands()
+
+    def invalidate_brands(self) -> None:
+        """Oublie la carte des marques : la prochaine lecture la recharge."""
         self._brands = None
+        self._brands_expire_at = 0.0
 
     def product_import(
         self, *, file_name: str, csv_bytes: bytes, location_id: int

@@ -8,7 +8,7 @@ browser).
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import XanoDep, get_current_user
+from app.api.deps import XanoDep, get_current_user, invalidate_brand_caches
 from app.api.schemas.brands import BrandPublic, BrandWebsiteUrlsUpdate
 from app.clients.xano import normalize_website_urls
 
@@ -36,6 +36,7 @@ def update_brand_website_urls(
     """Replace a brand's reference website URLs in Tillin."""
     normalized = normalize_website_urls(payload.website_urls)
     xano.set_brand_website_urls(brand_id, normalized)
+    invalidate_brand_caches()
     # Echo the normalized URLs actually sent (the upstream response shape is
     # unknown); the name is not re-read — the client already displays it.
     return BrandPublic(id=brand_id, website_urls=normalized)

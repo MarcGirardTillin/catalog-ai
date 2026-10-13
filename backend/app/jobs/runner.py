@@ -14,6 +14,7 @@ import logging
 
 import httpx
 
+from app.api.deps import invalidate_brand_caches
 from app.api.schemas import Product
 from app.clients.claude import ClaudeClient
 from app.clients.firecrawl import FirecrawlClient
@@ -134,6 +135,8 @@ def process_pending(job_id: int) -> None:
     from earlier jobs — harmless and cooperative with any running worker.
     """
     pipeline = get_pipeline()
+    # Sites de marque ajoutés juste avant le lancement : carte rechargée.
+    invalidate_brand_caches()
     processed = 0
     while True:
         db = SessionLocal()
