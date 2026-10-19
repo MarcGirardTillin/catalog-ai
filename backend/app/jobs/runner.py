@@ -23,6 +23,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.enrich.pipeline import EnrichmentPipeline, ProductReader
 from app.jobs.worker import process_one
+from app.sources.cloudflare import source_client
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +119,11 @@ def get_pipeline() -> EnrichmentPipeline:
         # résidentiel (échecs transitoires anti-bot vus sur amiparis.com et
         # panconesi — décision Marc 2026-07-31). Jamais Xano ni les API
         # payantes : ce client ne sert qu'aux sites des marques.
-        http_client = httpx.Client(
+        # Repli « empreinte navigateur » sur défi Cloudflare (faguo-store.com,
+        # job 419 — décision Marc 2026-10-20).
+        http_client = source_client(
             timeout=20.0,
             headers={"User-Agent": _USER_AGENT},
-            follow_redirects=True,
             proxy=settings.SOURCE_PROXY_URL or None,
         )
         _pipeline = build_pipeline(http_client)

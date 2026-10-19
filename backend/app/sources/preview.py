@@ -13,6 +13,8 @@ from html import unescape
 
 import httpx
 
+from app.sources.cloudflare import source_client
+
 logger = logging.getLogger(__name__)
 
 # Only the <head> matters; cap the read so a huge page can't hurt us.
@@ -58,9 +60,7 @@ def _extract_image(html: str, base_url: str) -> str | None:
 def fetch_page_preview(url: str, *, client: httpx.Client | None = None) -> str | None:
     """Return the page's social-sharing image URL, or None (best-effort)."""
     own_client = client is None
-    active = client or httpx.Client(
-        timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True
-    )
+    active = client or source_client(timeout=_TIMEOUT, headers=_HEADERS)
     try:
         with active.stream("GET", url) as response:
             if response.status_code >= 400:

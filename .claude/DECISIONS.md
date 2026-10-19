@@ -1236,3 +1236,16 @@ ouverte) pour revenir au consentement. Session Tillin 72 h toujours non
 renouvelée par le MCP (renouvelée quand l'utilisateur se connecte à l'app,
 y compris pour consentir).
 
+
+## 2026-10-20 — Sites de marque derrière Cloudflare : repli `curl_cffi`
+
+Certains sites (faguo-store.com, job 419) renvoient `403 cf-mitigated:
+challenge` au client httpx du pipeline, proxy résidentiel compris, sur la
+seule empreinte TLS/HTTP2 (en-têtes et user-agent sans effet ; curl et un
+client à empreinte navigateur passent sans JavaScript). Décision Marc :
+`curl_cffi` (impersonation Chrome) en **repli seulement**, via un transport
+httpx (`app/sources/cloudflare.py`, `source_client`) branché sur les clients
+des sites de marque (pipeline, JSON-LD, aperçu de page, sonde d'images) —
+jamais Xano ni les API payantes. Un hôte reconnu bloqué passe directement
+par le repli pendant 6 h. Playwright écarté : +400 Mo d'image, 2-5 s par
+page, inutile quand le blocage est réseau et non JavaScript.

@@ -52,6 +52,7 @@ from app.imaging.service import (
     normalize_product_image,
 )
 from app.models import EnrichmentItem, ImageAsset
+from app.sources.cloudflare import source_client
 from app.sources.firecrawl_source import (
     extract_source_product,
     merge_extracted_text,
@@ -288,10 +289,8 @@ def _probe_sibling_images(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
     found = {src}
     misses = 0
     try:
-        with httpx.Client(
-            timeout=10,
-            follow_redirects=True,
-            proxy=settings.SOURCE_PROXY_URL or None,
+        with source_client(
+            timeout=10, proxy=settings.SOURCE_PROXY_URL or None
         ) as client:
             for candidate in candidates:
                 try:

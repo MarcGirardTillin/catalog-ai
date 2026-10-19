@@ -159,11 +159,11 @@ def fetch_jsonld_product(
     # Proxy source (jamais Xano ni les API payantes) : mêmes échecs
     # transitoires anti-bot que les pages produit (amiparis/panconesi).
     from app.core.config import settings
+    from app.sources.cloudflare import source_client
 
-    active = client or httpx.Client(
+    active = client or source_client(
         timeout=_TIMEOUT,
         headers=_HEADERS,
-        follow_redirects=True,
         proxy=settings.SOURCE_PROXY_URL or None,
     )
     try:
