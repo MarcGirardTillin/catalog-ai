@@ -867,3 +867,30 @@ def test_cancel_job_rejects_pending_items_without_credits(
     again = auth_client.post(f"/jobs/{job['id']}/cancel")
     assert again.status_code == 409
     assert again.json()["code"] == "not_running"
+
+
+def test_auto_image_processing_requires_studio(auth_client: TestClient) -> None:
+    from sqlalchemy import select
+
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import Account
+
+    assert auth_client.get("/settings/account").status_code == 200
+    db = next(app.dependency_overrides[get_db]())
+    account = db.scalars(select(Account)).first()
+    assert account is not None
+    account.settings_json = {**(account.settings_json or {}), "feature_studio": False}
+    db.commit()
+
+    body = {
+        "selection": {"ids": [701]},
+        "config": {"image": {"auto_normalize": True}},
+    }
+    response = auth_client.post("/jobs", json=body)
+    assert response.status_code == 403
+    assert response.json()["code"] == "feature_disabled"
+    # Sans l'option, le lancement reste possible (module enrichissement).
+    assert (
+        auth_client.post("/jobs", json={"selection": {"ids": [701]}}).status_code == 201
+    )

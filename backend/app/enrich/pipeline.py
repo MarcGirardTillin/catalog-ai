@@ -31,7 +31,9 @@ from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas import Product
 from app.api.schemas.settings import TitleCase
+from app.api.services.credits import balance as credit_balance
 from app.api.services.credits import consume as consume_credits
+from app.api.services.credits import credit_grid
 from app.api.services.imaging import account_normalize_service_defaults
 from app.api.services.usage import record_claude_usage, record_usage
 from app.clients.base import ExternalServiceError
@@ -1046,13 +1048,24 @@ class EnrichmentPipeline:
             else None
         )
         options = _normalize_options(config, base)
+        cost = credit_grid(db, item.account_id)["image_process"] if db else 0
         entries: list[dict[str, Any]] = []
         for position, url in enumerate(sources, start=1):
             entry: dict[str, Any] | None = None
             if auto_normalize and self._photoroom is not None and db is not None:
-                entry = normalize_staged_entry(
-                    db, item, self._photoroom, url, position, options
-                )
+                # Les images ne sont pas pré-débitées au lancement : sans
+                # solde suffisant, l'original est gardé (traitable ensuite
+                # depuis la vérification) — jamais de solde négatif.
+                if credit_balance(db, item.account_id) < cost:
+                    logger.info(
+                        "item %s: image %s kept raw (insufficient credits)",
+                        item.id,
+                        position,
+                    )
+                else:
+                    entry = normalize_staged_entry(
+                        db, item, self._photoroom, url, position, options
+                    )
             entries.append(entry or {"url": url, "position": position})
         item.staged_images_json = entries or None
 

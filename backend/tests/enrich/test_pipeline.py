@@ -18,7 +18,14 @@ from app.enrich.pipeline import EnrichmentPipeline
 from app.imaging import staging
 from app.imaging.compose import probe
 from app.jobs.worker import process_one
-from app.models import Account, EnrichmentItem, EnrichmentJob, ImageAsset, UsageEvent
+from app.models import (
+    Account,
+    CreditEntry,
+    EnrichmentItem,
+    EnrichmentJob,
+    ImageAsset,
+    UsageEvent,
+)
 from tests.images import cutout_png, source_jpeg
 
 SITE = "https://gramicci.example"
@@ -81,11 +88,17 @@ def _store(catalog: dict[str, dict[str, Any]]) -> httpx.MockTransport:
 
 
 def _seed_item(
-    db: Session, product_id: int, config: dict[str, Any] | None = None
+    db: Session,
+    product_id: int,
+    config: dict[str, Any] | None = None,
+    *,
+    credits: int = 0,
 ) -> EnrichmentItem:
     account = Account(name="default")
     db.add(account)
     db.flush()
+    if credits:
+        db.add(CreditEntry(account_id=account.id, kind="grant", credits=credits))
     job = EnrichmentJob(
         account_id=account.id, selection_json={}, config_json=config or {}
     )
@@ -603,6 +616,33 @@ def _photoroom(handler: Any) -> PhotoroomClient:
 
 
 @pytest.mark.usefixtures("imaging_dir")
+def test_auto_normalize_keeps_originals_without_credits(
+    db_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Images non pré-débitées au lancement : sans solde, l'original est gardé
+    # (jamais de solde négatif, jamais d'appel Photoroom).
+    db = db_session_factory()
+    item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
+    monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, content=cutout_png())
+
+    _run(db, photoroom=_photoroom(handler))
+
+    db.refresh(item)
+    assert calls == []
+    assert db.query(ImageAsset).count() == 0
+    assert item.staged_images_json == [
+        {"url": f"{SITE}/cdn/1.jpg", "position": 1},
+        {"url": f"{SITE}/cdn/2.jpg", "position": 2},
+    ]
+
+
+@pytest.mark.usefixtures("imaging_dir")
 def test_pipeline_normalizes_source_images_with_photoroom(
     db_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
@@ -614,6 +654,7 @@ def test_pipeline_normalizes_source_images_with_photoroom(
         # Originals are the default since 2026-07-10; batch normalization is
         # an explicit opt-in.
         config={"image": {"bg_color": "F5F5F5", "quality": 90, "auto_normalize": True}},
+        credits=100,
     )
     monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
     seen: list[httpx.Request] = []
@@ -686,7 +727,9 @@ def test_pipeline_normalization_failure_falls_back_to_raw_url(
 ) -> None:
     """One image failing keeps its raw URL; the others stay normalized."""
     db = db_session_factory()
-    item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
+    item = _seed_item(
+        db, PRODUCT.id, config={"image": {"auto_normalize": True}}, credits=100
+    )
 
     def fake_download(url: str) -> bytes:
         if "1.jpg" in url:
@@ -792,7 +835,9 @@ def test_pipeline_firecrawl_fallback_end_to_end(
     """Shopify KO on a non-Shopify site → firecrawl resolves, images are
     normalized from the extracted URLs, copy sees the source description."""
     db = db_session_factory()
-    item = _seed_item(db, PRODUCT.id, config={"image": {"auto_normalize": True}})
+    item = _seed_item(
+        db, PRODUCT.id, config={"image": {"auto_normalize": True}}, credits=100
+    )
     claude = _FakeClaude()
     monkeypatch.setattr(imaging_service, "_download_source", lambda url: source_jpeg())
 

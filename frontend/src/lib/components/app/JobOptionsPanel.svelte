@@ -15,7 +15,12 @@
   // `showSourceUrl` : sélection d'UN SEUL produit — propose l'URL exacte de
   // la fiche (court-circuite la résolution, contrairement aux « sources
   // supplémentaires » qui ne sont que des domaines à fouiller).
-  let { showSourceUrl = false }: { showSourceUrl?: boolean } = $props()
+  // `studioEnabled` : module Studio du compte — conditionne le traitement
+  // automatique des images (garde serveur sur POST /jobs).
+  let {
+    showSourceUrl = false,
+    studioEnabled = false,
+  }: { showSourceUrl?: boolean; studioEnabled?: boolean } = $props()
 
   let instructions = $state<InstructionPublic[]>([])
   // Bibliothèque indisponible (backend pas encore déployé, réseau…) : le
@@ -37,6 +42,9 @@
   let tTitle = $state(true)
   let tWeights = $state(true)
   let tImages = $state(true)
+  // Traitement des images (réglages Studio du compte) dès l'enrichissement,
+  // au lieu de l'original à traiter dans la vérification (Marc 2026-10-19).
+  let autoImages = $state(false)
   // Recherche de la page produit en ligne (décochée = zéro résolution ni
   // scraping — utile pour les tâches « description seulement »).
   let onlineSearch = $state(true)
@@ -79,6 +87,7 @@
       }
     }
     if (!onlineSearch) config.scrape = { online: false }
+    if (studioEnabled && tImages && autoImages) config.image = { auto_normalize: true }
     return config
   }
 </script>
@@ -111,7 +120,19 @@
         <input type="checkbox" bind:checked={tImages} />
         Images (visuels source)
       </label>
+      {#if studioEnabled && tImages}
+        <label class="flex items-center gap-1.5 text-xs">
+          <input type="checkbox" bind:checked={autoImages} />
+          Traiter les images automatiquement (réglages Studio)
+        </label>
+      {/if}
     </div>
+    {#if studioEnabled && tImages && autoImages}
+      <p class="text-muted-foreground text-xs">
+        Chaque image traitée consomme des crédits Studio ; sans solde
+        suffisant, l'image d'origine est gardée.
+      </p>
+    {/if}
   </fieldset>
 
   <div class="flex flex-col gap-1.5">

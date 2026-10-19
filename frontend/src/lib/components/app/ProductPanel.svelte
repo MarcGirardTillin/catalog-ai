@@ -1230,7 +1230,7 @@
 {#if enrichOpen}
   <Dialog title="Enrichir ce produit" onClose={() => (enrichOpen = false)}>
     <div class="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
-      <JobOptionsPanel bind:this={enrichPanel} showSourceUrl />
+      <JobOptionsPanel bind:this={enrichPanel} showSourceUrl {studioEnabled} />
     </div>
     <div class="mt-3 flex justify-end gap-2">
       <Button variant="outline" onclick={() => (enrichOpen = false)}>Annuler</Button>

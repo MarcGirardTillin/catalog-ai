@@ -1161,7 +1161,11 @@
             dismissable={!submitting}
           >
             <div class="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
-              <JobOptionsPanel bind:this={optionsPanel} showSourceUrl={selected.size === 1} />
+              <JobOptionsPanel
+                bind:this={optionsPanel}
+                showSourceUrl={selected.size === 1}
+                studioEnabled={canStudio}
+              />
             </div>
             <div class="mt-3 flex justify-end gap-2">
               <Button

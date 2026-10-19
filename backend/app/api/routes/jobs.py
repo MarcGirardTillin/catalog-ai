@@ -26,6 +26,7 @@ from app.api.services.enrichment import (
     retry_selected_items,
     retryable_count,
 )
+from app.api.services.imaging import account_settings
 from app.jobs.queue import _rollup_job
 from app.models import EnrichmentItem, EnrichmentJob
 from app.models.enrichment import ITEM_STATUSES
@@ -87,6 +88,21 @@ def create_enrichment_job(
     background (the response returns at once; the worker drains after)."""
     account_id = resolve_account_id(db, current_user)
     selection = payload.selection.model_dump(exclude_none=True)
+    # Traitement automatique des images = module Studio (décision Marc
+    # 2026-07-16 : le traitement d'image relève du Studio, même depuis
+    # l'enrichissement) — garde serveur, bypass admin assumé.
+    image_config = payload.config.get("image")
+    if (
+        isinstance(image_config, dict)
+        and image_config.get("auto_normalize")
+        and not current_user.is_admin
+        and not account_settings(db, account_id).feature_studio
+    ):
+        raise AppException(
+            status_code=403,
+            code="feature_disabled",
+            message="Le traitement des images (Studio) n'est pas activé pour votre compte.",
+        )
     # Refuse the launch before any write when the balance cannot cover the
     # sheets (images consumed along the way are not pre-charged).
     n_items = len(selection.get("ids") or [])
