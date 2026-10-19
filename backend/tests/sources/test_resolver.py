@@ -246,6 +246,44 @@ def test_shopify_color_breaks_reference_tie() -> None:
     assert result.url == f"{SITE}/products/small-belted-hobo-bag-dark-bronze"
 
 
+def test_shopify_color_code_found_in_skus_breaks_the_tie() -> None:
+    """Cas Faguo (job 419) : couleur Tillin = code « PUR12 », absent de l'URL
+    et du titre (« polaire mauve ») mais présent dans les SKU de la fiche."""
+    mauve = {
+        "title": "Pull polaire mauve",
+        "handle": "polaires-mauve-polyester-recycle-modele-aubiac",
+        "tags": ["FM-F26PL0901-PUR12", "FW26"],
+        "variants": [{"sku": "F26PL0901-PUR12-S#267276", "barcode": "333"}],
+    }
+    ecru = {
+        "title": "Pull polaire écru",
+        "handle": "polaires-ecru-polyester-recycle-modele-aubiac",
+        "tags": ["FM-F26PL0901-ECR00", "FW26"],
+        "variants": [{"sku": "F26PL0901-ECR00-S#267100", "barcode": "444"}],
+    }
+    product = Product(
+        id=221184,
+        title="Pull polaire",
+        reference_code="F26PL0901",
+        variants=[ProductVariant(id=1, color="PUR12", size="S")],
+    )
+    transport = _store(
+        {
+            "polaires-ecru-polyester-recycle-modele-aubiac": ecru,
+            "polaires-mauve-polyester-recycle-modele-aubiac": mauve,
+        }
+    )
+    with httpx.Client(transport=transport) as client:
+        result = resolve_source_url(client, product, [SITE])
+
+    assert result.status == "resolved"
+    assert (
+        result.url == f"{SITE}/products/polaires-mauve-polyester-recycle-modele-aubiac"
+    )
+    # Les textes de départage ne fuient pas dans resolution_json.
+    assert "color_texts" not in result.candidates[0].model_dump()
+
+
 def test_shopify_reference_tie_without_color_match_needs_manual() -> None:
     """Tous les coloris partagent la référence mais aucun ne porte la couleur
     du produit : ne pas choisir avec assurance."""

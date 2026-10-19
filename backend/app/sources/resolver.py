@@ -86,6 +86,11 @@ class Candidate(BaseModel):
     # Information qui a rapproché la fiche du produit (code-barres,
     # référence, titre) — le score seul ne la dit pas.
     matched_by: MatchBasis | None = None
+    # Textes où chercher la couleur du produit en plus de l'URL et du titre :
+    # SKU, tags, valeurs d'option de la fiche. Les marques à codes couleur
+    # (Faguo « PUR12 » : fiche « polaires-mauve-… », SKU « F26PL0901-PUR12-S »)
+    # ne les écrivent que là. Jamais sérialisé dans resolution_json.
+    color_texts: list[str] = Field(default_factory=list, exclude=True)
 
 
 class ResolveResult(BaseModel):
@@ -282,6 +287,7 @@ def _resolve_shopify(
                         score=score,
                         color=candidate_color(full),
                         matched_by=match_basis(product, full),
+                        color_texts=_shopify_color_texts(full),
                     )
                 )
                 if score >= SCORE_BARCODE:
@@ -325,6 +331,20 @@ def _resolve_shopify(
     return ResolveResult(status="needs_manual", reason="no candidate found")
 
 
+def _shopify_color_texts(candidate: dict[str, Any]) -> list[str]:
+    """SKU, tags et valeurs d'option d'une fiche Shopify (départage couleur)."""
+    texts: list[str] = []
+    for variant in candidate.get("variants") or []:
+        if isinstance(variant, dict):
+            texts.extend(
+                str(variant.get(key) or "")
+                for key in ("sku", "title", "option1", "option2", "option3")
+            )
+    tags = candidate.get("tags")
+    texts.extend(tags if isinstance(tags, list) else [str(tags or "")])
+    return [text for text in texts if text]
+
+
 def _break_color_tie(product: Product, candidates: list[Candidate]) -> Candidate | None:
     """Pick among the top-score candidates using the product's color.
 
@@ -341,7 +361,11 @@ def _break_color_tie(product: Product, candidates: list[Candidate]) -> Candidate
     color = _single_color(product)
     if color is None:
         return tied[0]
-    matching = [c for c in tied if _color_in_texts(color, c.url, c.title)]
+    matching = [
+        c
+        for c in tied
+        if _color_in_texts(color, c.url, c.title, c.color, *c.color_texts)
+    ]
     if len(matching) == 1:
         return matching[0]
     if not matching:
