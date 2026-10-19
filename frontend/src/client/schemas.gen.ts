@@ -5925,6 +5925,42 @@ export const ProductSchema = {
     description: 'Canonical product as consumed by the enrichment/intake engine.'
 } as const;
 
+export const ProductEnrichmentStatusSchema = {
+    properties: {
+        product_id: {
+            type: 'integer',
+            title: 'Product Id'
+        },
+        item_id: {
+            type: 'integer',
+            title: 'Item Id'
+        },
+        job_id: {
+            type: 'integer',
+            title: 'Job Id'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: [
+        'product_id',
+        'item_id',
+        'job_id',
+        'status',
+        'updated_at'
+    ],
+    title: 'ProductEnrichmentStatus',
+    description: 'Dernier passage d\'enrichissement d\'un produit (badge de la liste).'
+} as const;
+
 export const ProductImageSchema = {
     properties: {
         id: {

@@ -18,6 +18,8 @@
 
   import {
     catalogGetFilters,
+    itemsListEnrichedProducts,
+    itemsListProductEnrichmentStatus,
     jobsCreateEnrichmentJob,
     productsListProducts,
     statsDashboardStats,
@@ -85,6 +87,29 @@
   let season = $state<number | null>(null)
   let supplier = $state<number | null>(null)
   let tag = $state<number | null>(null)
+  // Filtre « Enrichis » (Marc 2026-10-19) : "" = catalogue Tillin normal,
+  // sinon les produits déjà passés en enrichissement (dernier passage,
+  // "any" ou un statut). Vue locale : les filtres catalogue n'y
+  // s'appliquent pas (la recherche Tillin ne filtre pas par ids).
+  type EnrichedFilter =
+    | ""
+    | "any"
+    | "ready_for_review"
+    | "approved"
+    | "applied"
+    | "rejected"
+    | "failed"
+  let enriched = $state<EnrichedFilter>("")
+  const ENRICHED_OPTIONS: { value: EnrichedFilter; label: string }[] = [
+    { value: "", label: "Tous les produits" },
+    { value: "any", label: "Enrichis" },
+    { value: "ready_for_review", label: "Enrichis — à vérifier" },
+    { value: "approved", label: "Enrichis — validés" },
+    { value: "applied", label: "Enrichis — appliqués" },
+    { value: "rejected", label: "Enrichis — écartés" },
+    { value: "failed", label: "Enrichis — en échec" },
+  ]
+  const enrichedMode = $derived(enriched !== "")
 
   // Options de filtres (une seule lecture, cache TanStack).
   const filtersQuery = createQuery(() => ({
@@ -147,9 +172,22 @@
         tag,
         status,
         ecommerce,
+        enriched,
       },
     ],
     queryFn: async () => {
+      if (enriched !== "") {
+        const { data, error } = await itemsListEnrichedProducts({
+          query: {
+            enrichment: enriched,
+            search: submittedSearch || null,
+            page,
+            per_page: prefs.products_per_page,
+          },
+        })
+        if (error || !data) throw new Error("enriched_products_failed")
+        return data
+      }
       const { data, error } = await productsListProducts({
         query: {
           search: submittedSearch || null,
@@ -178,6 +216,24 @@
   const loading = $derived(productsQuery.isFetching)
   const errorMessage = $derived(
     productsQuery.isError ? "Recherche impossible. Vérifiez la connexion Xano." : null,
+  )
+
+  // Badge « enrichi » : dernier passage d'enrichissement des produits de la
+  // page affichée (absent = jamais enrichi).
+  const pageProductIds = $derived((products ?? []).map((p) => p.id))
+  const enrichmentStatusQuery = createQuery(() => ({
+    queryKey: ["items", "product-status", pageProductIds],
+    queryFn: async () => {
+      const { data, error } = await itemsListProductEnrichmentStatus({
+        query: { product_ids: pageProductIds },
+      })
+      if (error || !data) throw new Error("product_status_failed")
+      return data
+    },
+    enabled: canEnrich && pageProductIds.length > 0,
+  }))
+  const enrichmentByProduct = $derived(
+    new Map((enrichmentStatusQuery.data ?? []).map((row) => [row.product_id, row])),
   )
 
   // Selected product ids persist across pages/searches until the job is created.
@@ -226,6 +282,16 @@
       { key: "supplier", group: "Fournisseur", value: supplier, options: filters?.suppliers, reset: () => (supplier = null) },
       { key: "tag", group: "Tag", value: tag, options: filters?.tags, reset: () => (tag = null) },
     ]
+    if (enriched !== "") {
+      list.push({
+        key: "enriched",
+        label: ENRICHED_OPTIONS.find((o) => o.value === enriched)?.label ?? "Enrichis",
+        clear: () => {
+          enriched = ""
+          onFilterChange()
+        },
+      })
+    }
     for (const g of groups) {
       if (g.value === null) continue
       list.push({
@@ -247,6 +313,7 @@
     brand = category = season = supplier = tag = null
     status = "2"
     ecommerce = ""
+    enriched = ""
     page = 1
   }
 
@@ -302,6 +369,10 @@
     season = num("season") ?? season
     supplier = num("supplier") ?? supplier
     tag = num("tag") ?? tag
+    const enrichedParam = params.get("enriched") ?? ""
+    if (ENRICHED_OPTIONS.some((o) => o.value === enrichedParam)) {
+      enriched = enrichedParam as EnrichedFilter
+    }
     page = num("page") ?? page
   }
 
@@ -317,6 +388,7 @@
     if (season != null) params.set("season", String(season))
     if (supplier != null) params.set("supplier", String(supplier))
     if (tag != null) params.set("tag", String(tag))
+    if (enriched) params.set("enriched", enriched)
     if (page > 1) params.set("page", String(page))
     const query = params.toString()
     const url = query ? `/products?${query}` : "/products"
@@ -629,8 +701,32 @@
           />
         </div>
 
+        {#if canEnrich}
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="flex min-w-48 flex-col gap-1">
+              <span class="text-foreground text-xs font-medium">Enrichissement</span>
+              <Select class="px-2" bind:value={enriched} onchange={onFilterChange}>
+                {#each ENRICHED_OPTIONS as option (option.value)}
+                  <option value={option.value}>{option.label}</option>
+                {/each}
+              </Select>
+            </label>
+            {#if enrichedMode}
+              <p class="text-muted-foreground pb-2 text-xs">
+                Produits déjà enrichis, du plus récent au plus ancien. La
+                recherche porte sur le titre ; les autres filtres ne
+                s'appliquent pas à cette vue.
+              </p>
+            {/if}
+          </div>
+        {/if}
+
         {#if filters}
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <fieldset
+            disabled={enrichedMode}
+            class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+            class:opacity-50={enrichedMode}
+          >
             <!-- Fournisseur avant Marque (demande Marc 2026-07-29). -->
             <FilterSelect label="Fournisseur" options={filters.suppliers ?? []} bind:value={supplier} onchange={onFilterChange} />
             <FilterSelect label="Marque" options={filters.brands ?? []} bind:value={brand} onchange={onFilterChange} />
@@ -655,7 +751,7 @@
                 <option value="4">Non connectés</option>
               </Select>
             </label>
-          </div>
+          </fieldset>
         {/if}
 
         {#if chips.length > 0}
@@ -817,6 +913,24 @@
                       <td class="px-4 {cellPad}">
                         <div class="flex min-w-0 flex-col gap-0.5">
                           <span class="line-clamp-2 font-medium">{label(product)}</span>
+                          {#if enrichmentByProduct.get(product.id)}
+                            {@const pass = enrichmentByProduct.get(product.id)!}
+                            <!-- Badge « enrichi » : dernier passage ; ouvre la
+                                 vérification sans déclencher la ligne. -->
+                            <a
+                              href={`/items/${pass.item_id}`}
+                              class="text-muted-foreground flex w-fit items-center gap-1.5 text-xs"
+                              title="Dernier enrichissement — ouvrir la vérification"
+                              onclick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                navigate(`/items/${pass.item_id}`)
+                              }}
+                            >
+                              Enrichi
+                              <StatusBadge status={pass.status} context="enrichment" />
+                            </a>
+                          {/if}
                           {#if product.reference_code && product.reference_code !== label(product)}
                             <span class="text-muted-foreground font-mono text-xs">
                               {product.reference_code}

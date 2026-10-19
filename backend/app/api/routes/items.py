@@ -1,7 +1,10 @@
 """Enrichment item routes: detail, staged edits, review decisions, apply."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends
-from sqlalchemy import select
+from concurrent.futures import ThreadPoolExecutor
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from sqlalchemy import func, select
 
 from app.api.deps import (
     CurrentUserDep,
@@ -13,7 +16,7 @@ from app.api.deps import (
     require_feature,
 )
 from app.api.exceptions import AppException
-from app.api.schemas import Product
+from app.api.schemas import PaginatedResponse, Product
 from app.api.schemas.enrichment import (
     ItemApplyRequest,
     ItemExtraSourceRequest,
@@ -24,6 +27,7 @@ from app.api.schemas.enrichment import (
     ItemPublic,
     ItemResolveRequest,
     PagePreview,
+    ProductEnrichmentStatus,
 )
 from app.api.services.accounts import resolve_account_id
 from app.api.services.credits import credit_grid, require_credits
@@ -32,6 +36,7 @@ from app.api.services.enrichment import (
     apply_item,
     generate_item_copy,
     get_item,
+    latest_items_by_product,
     normalize_item_image,
     remove_item_extra_source,
     resolve_item_from_url,
@@ -40,6 +45,7 @@ from app.api.services.enrichment import (
     set_item_main_color,
     update_staged_fields,
 )
+from app.clients.xano import XanoError
 from app.destinations.xano_tillin import XanoTillinDestination
 from app.enrich.extra_sources import extra_source_urls
 from app.models import EnrichmentItem
@@ -74,6 +80,90 @@ def list_product_item_history(
         .limit(20)
     ).all()
     return [ItemHistoryEntry.model_validate(row, from_attributes=True) for row in rows]
+
+
+# Statuts proposés au filtre « Enrichis » de la liste produits.
+EnrichedFilter = Literal[
+    "any", "ready_for_review", "approved", "applied", "rejected", "failed"
+]
+_ENRICHED_PAGE_WORKERS = 8
+
+
+@router.get("/product-status", response_model=list[ProductEnrichmentStatus])
+def list_product_enrichment_status(
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    product_ids: Annotated[list[int], Query(max_length=200)],
+) -> list[ProductEnrichmentStatus]:
+    """Badge « enrichi » de la liste produits : dernier passage de chacun
+    des produits affichés (absents = jamais enrichis). Scopé compte."""
+    account_id = resolve_account_id(db, current_user)
+    rows = db.scalars(
+        latest_items_by_product(account_id).where(
+            EnrichmentItem.tillin_product_id.in_(product_ids)
+        )
+    ).all()
+    return [
+        ProductEnrichmentStatus(
+            product_id=row.tillin_product_id,
+            item_id=row.id,
+            job_id=row.job_id,
+            status=row.status,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/enriched-products", response_model=PaginatedResponse[Product])
+def list_enriched_products(
+    db: SessionDep,
+    current_user: CurrentUserDep,
+    xano: XanoDep,
+    enrichment: EnrichedFilter = "any",
+    search: str | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    per_page: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> PaginatedResponse[Product]:
+    """Filtre « Enrichis » de la liste produits (Marc 2026-10-19).
+
+    La recherche Tillin ne filtre pas par liste d'ids : la page vient des
+    items locaux (dernier passage par produit, plus récent d'abord, statut
+    et titre filtrables), puis chaque produit est relu dans Tillin. Les
+    autres filtres catalogue ne s'appliquent pas à cette vue.
+    """
+    account_id = resolve_account_id(db, current_user)
+    query = latest_items_by_product(account_id)
+    if enrichment != "any":
+        query = query.where(EnrichmentItem.status == enrichment)
+    text = (search or "").strip()
+    if text:
+        query = query.where(EnrichmentItem.product_title.ilike(f"%{text}%"))
+    total = int(
+        db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+        or 0
+    )
+    rows = db.scalars(query.offset((page - 1) * per_page).limit(per_page)).all()
+    wanted = [(row.tillin_product_id, row.product_title) for row in rows]
+
+    def read(entry: tuple[int, str | None]) -> Product:
+        product_id, title = entry
+        try:
+            product = xano.get_product(product_id)
+        except XanoError:
+            product = None
+        # Produit supprimé ou illisible : ligne minimale (pagination juste).
+        return product or Product(id=product_id, title=title)
+
+    with ThreadPoolExecutor(max_workers=_ENRICHED_PAGE_WORKERS) as pool:
+        products = list(pool.map(read, wanted))
+    return PaginatedResponse(
+        items=products,
+        total=total,
+        page=page,
+        page_size=per_page,
+        total_pages=(total + per_page - 1) // per_page,
+    )
 
 
 @router.get("/{item_id}", response_model=ItemPublic)

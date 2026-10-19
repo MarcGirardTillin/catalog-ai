@@ -894,3 +894,110 @@ def test_auto_image_processing_requires_studio(auth_client: TestClient) -> None:
     assert (
         auth_client.post("/jobs", json={"selection": {"ids": [701]}}).status_code == 201
     )
+
+
+def _enriched_fixture(auth_client: TestClient) -> dict[int, int]:
+    """Produits 801 (re-enrichi : dernier passage appliqué), 802 (à vérifier),
+    803 (écarté). Renvoie {product_id: dernier item_id}."""
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    first = _create_job(auth_client, [801, 802])
+    second = _create_job(auth_client, [801, 803])
+    db = next(app.dependency_overrides[get_db]())
+    statuses = {
+        (first["id"], 801): "rejected",
+        (first["id"], 802): "ready_for_review",
+        (second["id"], 801): "applied",
+        (second["id"], 803): "rejected",
+    }
+    latest: dict[int, int] = {}
+    for item in db.query(EnrichmentItem).order_by(EnrichmentItem.id).all():
+        key = (item.job_id, item.tillin_product_id)
+        if key in statuses:
+            item.status = statuses[key]
+            item.product_title = f"Produit {item.tillin_product_id}"
+            latest[item.tillin_product_id] = item.id
+    db.commit()
+    return latest
+
+
+def test_product_enrichment_status_reports_the_latest_pass(
+    auth_client: TestClient,
+) -> None:
+    latest = _enriched_fixture(auth_client)
+    response = auth_client.get(
+        "/items/product-status", params={"product_ids": [801, 802, 999]}
+    )
+    assert response.status_code == 200
+    by_product = {row["product_id"]: row for row in response.json()}
+    assert set(by_product) == {801, 802}  # 999 : jamais enrichi
+    assert by_product[801]["status"] == "applied"  # le dernier passage gagne
+    assert by_product[801]["item_id"] == latest[801]
+    assert by_product[802]["status"] == "ready_for_review"
+
+
+def test_enriched_products_page_filters_and_reads_tillin(
+    auth_client: TestClient,
+) -> None:
+    from app.api.deps import get_xano_client
+    from app.api.schemas import Product
+    from app.main import app
+
+    _enriched_fixture(auth_client)
+
+    class _FakeXano:
+        def get_product(self, pid: int) -> Product | None:
+            # 803 a été supprimé dans Tillin : ligne minimale.
+            return None if pid == 803 else Product(id=pid, title=f"Tillin {pid}")
+
+    app.dependency_overrides[get_xano_client] = lambda: _FakeXano()
+    try:
+        everything = auth_client.get("/items/enriched-products").json()
+        rejected = auth_client.get(
+            "/items/enriched-products", params={"enrichment": "rejected"}
+        ).json()
+        searched = auth_client.get(
+            "/items/enriched-products", params={"search": "produit 802"}
+        ).json()
+        paged = auth_client.get(
+            "/items/enriched-products", params={"per_page": 2, "page": 2}
+        ).json()
+    finally:
+        app.dependency_overrides.pop(get_xano_client, None)
+
+    # Plus récent d'abord ; 801 n'apparaît qu'une fois.
+    assert [p["id"] for p in everything["items"]] == [803, 801, 802]
+    assert everything["total"] == 3
+    assert everything["items"][0]["title"] == "Produit 803"  # repli local
+    assert everything["items"][1]["title"] == "Tillin 801"
+    # 801 a été écarté puis appliqué : seul son dernier passage compte.
+    assert [p["id"] for p in rejected["items"]] == [803]
+    assert [p["id"] for p in searched["items"]] == [802]
+    assert paged["total_pages"] == 2
+    assert [p["id"] for p in paged["items"]] == [802]
+
+
+def test_enriched_views_require_the_enrichment_module(
+    auth_client: TestClient,
+) -> None:
+    from sqlalchemy import select
+
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models import Account
+
+    assert auth_client.get("/settings/account").status_code == 200
+    db = next(app.dependency_overrides[get_db]())
+    account = db.scalars(select(Account)).first()
+    assert account is not None
+    account.settings_json = {**(account.settings_json or {}), "feature_enrich": False}
+    db.commit()
+    assert (
+        auth_client.get(
+            "/items/product-status", params={"product_ids": [1]}
+        ).status_code
+        == 403
+    )
+    assert auth_client.get("/items/enriched-products").status_code == 403

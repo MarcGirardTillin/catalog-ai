@@ -7,7 +7,7 @@ import httpx
 
 if TYPE_CHECKING:
     from app.clients.photoroom import PhotoroomClient
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import AppException
@@ -613,3 +613,23 @@ def apply_item(
     db.commit()
     db.refresh(item)
     return item
+
+
+def latest_items_by_product(account_id: int) -> Select[tuple[EnrichmentItem]]:
+    """Le DERNIER item d'enrichissement de chaque produit du compte (les
+    imports ne comptent pas), le plus récent d'abord."""
+    latest = (
+        select(func.max(EnrichmentItem.id).label("id"))
+        .join(EnrichmentJob, EnrichmentJob.id == EnrichmentItem.job_id)
+        .where(
+            EnrichmentItem.account_id == account_id,
+            EnrichmentJob.job_type == "enrichment",
+        )
+        .group_by(EnrichmentItem.tillin_product_id)
+        .subquery()
+    )
+    return (
+        select(EnrichmentItem)
+        .join(latest, EnrichmentItem.id == latest.c.id)
+        .order_by(EnrichmentItem.id.desc())
+    )

@@ -4508,6 +4508,180 @@
         }
       }
     },
+    "/items/product-status": {
+      "get": {
+        "tags": [
+          "items"
+        ],
+        "summary": "List Product Enrichment Status",
+        "description": "Badge « enrichi » de la liste produits : dernier passage de chacun\ndes produits affichés (absents = jamais enrichis). Scopé compte.",
+        "operationId": "items-list_product_enrichment_status",
+        "parameters": [
+          {
+            "name": "product_ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Product Ids"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductEnrichmentStatus"
+                  },
+                  "title": "Response Items-List Product Enrichment Status"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/enriched-products": {
+      "get": {
+        "tags": [
+          "items"
+        ],
+        "summary": "List Enriched Products",
+        "description": "Filtre « Enrichis » de la liste produits (Marc 2026-10-19).\n\nLa recherche Tillin ne filtre pas par liste d'ids : la page vient des\nitems locaux (dernier passage par produit, plus récent d'abord, statut\net titre filtrables), puis chaque produit est relu dans Tillin. Les\nautres filtres catalogue ne s'appliquent pas à cette vue.",
+        "operationId": "items-list_enriched_products",
+        "parameters": [
+          {
+            "name": "enrichment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "ready_for_review",
+                "approved",
+                "applied",
+                "rejected",
+                "failed"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Enrichment"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Per Page"
+            }
+          },
+          {
+            "name": "catalogai_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Catalogai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_Product_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/items/{item_id}": {
       "get": {
         "tags": [
@@ -14333,6 +14507,41 @@
         ],
         "title": "Product",
         "description": "Canonical product as consumed by the enrichment/intake engine."
+      },
+      "ProductEnrichmentStatus": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id"
+          },
+          "item_id": {
+            "type": "integer",
+            "title": "Item Id"
+          },
+          "job_id": {
+            "type": "integer",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "item_id",
+          "job_id",
+          "status",
+          "updated_at"
+        ],
+        "title": "ProductEnrichmentStatus",
+        "description": "Dernier passage d'enrichissement d'un produit (badge de la liste)."
       },
       "ProductImage": {
         "properties": {

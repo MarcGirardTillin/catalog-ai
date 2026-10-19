@@ -3285,6 +3285,34 @@ export type Product = {
 };
 
 /**
+ * ProductEnrichmentStatus
+ *
+ * Dernier passage d'enrichissement d'un produit (badge de la liste).
+ */
+export type ProductEnrichmentStatus = {
+    /**
+     * Product Id
+     */
+    product_id: number;
+    /**
+     * Item Id
+     */
+    item_id: number;
+    /**
+     * Job Id
+     */
+    job_id: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
  * ProductImage
  *
  * An image associated with a product.
@@ -6054,6 +6082,80 @@ export type ItemsListProductItemHistoryResponses = {
 };
 
 export type ItemsListProductItemHistoryResponse = ItemsListProductItemHistoryResponses[keyof ItemsListProductItemHistoryResponses];
+
+export type ItemsListProductEnrichmentStatusData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Product Ids
+         */
+        product_ids: Array<number>;
+    };
+    url: '/items/product-status';
+};
+
+export type ItemsListProductEnrichmentStatusErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsListProductEnrichmentStatusError = ItemsListProductEnrichmentStatusErrors[keyof ItemsListProductEnrichmentStatusErrors];
+
+export type ItemsListProductEnrichmentStatusResponses = {
+    /**
+     * Response Items-List Product Enrichment Status
+     *
+     * Successful Response
+     */
+    200: Array<ProductEnrichmentStatus>;
+};
+
+export type ItemsListProductEnrichmentStatusResponse = ItemsListProductEnrichmentStatusResponses[keyof ItemsListProductEnrichmentStatusResponses];
+
+export type ItemsListEnrichedProductsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Enrichment
+         */
+        enrichment?: 'any' | 'ready_for_review' | 'approved' | 'applied' | 'rejected' | 'failed';
+        /**
+         * Search
+         */
+        search?: string | null;
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Per Page
+         */
+        per_page?: number;
+    };
+    url: '/items/enriched-products';
+};
+
+export type ItemsListEnrichedProductsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ItemsListEnrichedProductsError = ItemsListEnrichedProductsErrors[keyof ItemsListEnrichedProductsErrors];
+
+export type ItemsListEnrichedProductsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaginatedResponseProduct;
+};
+
+export type ItemsListEnrichedProductsResponse = ItemsListEnrichedProductsResponses[keyof ItemsListEnrichedProductsResponses];
 
 export type ItemsReadItemData = {
     body?: never;

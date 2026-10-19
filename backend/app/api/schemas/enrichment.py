@@ -125,6 +125,16 @@ class ItemImageNormalizeRequest(BaseModel):
     revert: bool = False
 
 
+class ProductEnrichmentStatus(BaseModel):
+    """Dernier passage d'enrichissement d'un produit (badge de la liste)."""
+
+    product_id: int
+    item_id: int
+    job_id: int
+    status: str
+    updated_at: datetime
+
+
 class ItemHistoryEntry(BaseModel):
     """Trace compacte d'un passage d'enrichissement pour UN produit.
 
