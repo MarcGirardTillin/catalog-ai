@@ -63,6 +63,23 @@ def test_extract_source_product_none_when_no_json() -> None:
         assert extract_source_product(firecrawl, "https://brand.example/p/1") is None
 
 
+def test_extract_source_product_rejects_bot_wall_pages() -> None:
+    # Page anti-robot rendue à la place de la fiche (patagonia.com, item
+    # 1609) : un titre seul, ni images ni description — pas une fiche.
+    for extracted in (
+        {
+            "title": "Black Hole Duffel Bag 40 Liters",
+            "images": [],
+            "reference_codes": [],
+        },
+        {"title": "Hang Tight! Routing to checkout...", "description": "Please wait"},
+    ):
+        with _client(extracted) as firecrawl:
+            assert (
+                extract_source_product(firecrawl, "https://brand.example/p/9") is None
+            )
+
+
 def test_extract_source_product_carries_technical_text_fields() -> None:
     """Les champs techniques (accordéons : caractéristiques, composition,
     pays, entretien) voyagent sous des clés underscore vers le copywriter."""

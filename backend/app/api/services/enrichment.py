@@ -304,7 +304,7 @@ def resolve_item_from_url(
         raise AppException(
             status_code=503,
             code="source_site_busy",
-            message="Le site de la marque fait patienter ses visiteurs : réessayez.",
+            message="Le site de la marque bloque les robots : fiche illisible.",
         ) from exc
     except (LookupError, ValueError, httpx.HTTPError) as exc:
         db.rollback()

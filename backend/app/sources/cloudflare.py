@@ -40,12 +40,13 @@ def is_cloudflare_challenge(response: httpx.Response) -> bool:
     )
 
 
-# Salle d'attente Akamai (« Visitor Prioritization ») : page 200 sans le
-# produit, servie à une partie du trafic quand le site est chargé — y compris
-# aux navigateurs (vécu patagonia.com, Neiwa, enrichissement 458 : « Résoudre »
-# n'a marché qu'au 3e clic). On réessaie avec un délai avant d'abandonner.
-_WAITING_ROOM_MARKERS = ("Hang Tight! Routing to checkout",)
-WAITING_ROOM_DELAYS = (3.0, 6.0)
+# Page anti-robot Akamai Bot Manager (« Hang Tight! Routing to checkout… »,
+# fichier « botfailover ») : servie en 200, sans le produit, à tout client qui
+# n'exécute pas son JavaScript — httpx comme curl_cffi, proxy compris (vécu
+# patagonia.com, Neiwa, enrichissement 458, vérifié le 2026-10-26). Le
+# blocage est constant : pas de réessai, on la signale comme un échec.
+_WAITING_ROOM_MARKERS = ("Hang Tight! Routing to checkout", "botfailover")
+WAITING_ROOM_DELAYS: tuple[float, ...] = ()
 WAITING_ROOM_HEADER = "x-catalogai-waiting-room"
 _BUSY_TTL = 120.0
 _busy_hosts: dict[str, float] = {}

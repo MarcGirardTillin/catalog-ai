@@ -59,6 +59,11 @@ def extract_source_product(
     if extracted is None:
         return None
     images = [str(u) for u in extracted.get("images") or [] if u]
+    title = str(extracted.get("title") or "")
+    # Page anti-robot rendue à la place de la fiche (Akamai, patagonia.com) :
+    # ni images ni description — ce n'est pas une fiche produit.
+    if "Routing to checkout" in title or not (images or extracted.get("description")):
+        return None
     references = [str(code) for code in extracted.get("reference_codes") or [] if code]
     color = extracted.get("color")
     result: dict[str, Any] = {

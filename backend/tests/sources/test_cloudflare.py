@@ -121,41 +121,27 @@ WAITING = (
 )
 
 
-def test_waiting_room_is_retried_then_reported(
+def test_bot_wall_page_is_reported_as_an_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Vécu patagonia.com : salle d'attente Akamai servie en 200 à une partie
-    # du trafic ; la vraie page passe souvent au 2e ou 3e essai.
+    # Vécu patagonia.com : page anti-robot Akamai servie en 200, sans le
+    # produit, à tout client sans JavaScript — signalée en 503, site marqué.
     from app.sources import cloudflare as module
 
-    sleeps: list[float] = []
-    monkeypatch.setattr("app.sources.cloudflare.time.sleep", sleeps.append)
     monkeypatch.setattr(module, "_busy_hosts", {})
-    answers = iter([WAITING, WAITING, "<html><title>Doudoune</title></html>"])
 
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, html=next(answers))
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "walled.example":
+            return httpx.Response(200, html=WAITING)
+        return httpx.Response(200, html="<html><title>Doudoune</title></html>")
 
-    with httpx.Client(
-        transport=CloudflareFallbackTransport(httpx.MockTransport(handler))
-    ) as c:
-        page = c.get("https://brand.example/p.html")
-    assert page.status_code == 200 and "Doudoune" in page.text
-    assert sleeps == list(module.WAITING_ROOM_DELAYS)
+    transport = CloudflareFallbackTransport(httpx.MockTransport(handler))
+    with httpx.Client(transport=transport) as client:
+        walled = client.get("https://walled.example/p.html")
+        fine = client.get("https://brand.example/p.html")
+
+    assert walled.status_code == 503
+    assert walled.headers[module.WAITING_ROOM_HEADER] == "1"
+    assert module.site_is_busy("https://walled.example/x")
+    assert fine.status_code == 200 and "Doudoune" in fine.text
     assert not module.site_is_busy("https://brand.example/p.html")
-
-    def always_waiting(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, html=WAITING)
-
-    sleeps.clear()
-    with httpx.Client(
-        transport=CloudflareFallbackTransport(httpx.MockTransport(always_waiting))
-    ) as c:
-        busy = c.get("https://busy.example/p.html")
-        again = c.get("https://busy.example/q.html")
-    assert busy.status_code == 503
-    assert busy.headers[module.WAITING_ROOM_HEADER] == "1"
-    assert module.site_is_busy("https://busy.example/x")
-    # Site déjà en attente : la requête suivante n'attend plus.
-    assert again.status_code == 503
-    assert sleeps == list(module.WAITING_ROOM_DELAYS)
