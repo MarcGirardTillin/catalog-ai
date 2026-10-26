@@ -796,8 +796,11 @@
     })
     resolving = false
     if (error || !data) {
+      const code = (error as { code?: string } | undefined)?.code
       toast.error(
-        "Impossible de résoudre depuis cette URL (page introuvable ou site non pris en charge).",
+        code === "source_site_busy"
+          ? "Le site de la marque fait patienter ses visiteurs (forte affluence). Réessayez dans un instant."
+          : "Impossible de résoudre depuis cette URL (page introuvable ou site non pris en charge).",
       )
       return
     }

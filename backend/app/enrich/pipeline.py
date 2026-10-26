@@ -52,7 +52,7 @@ from app.imaging.service import (
     normalize_product_image,
 )
 from app.models import EnrichmentItem, ImageAsset
-from app.sources.cloudflare import source_client
+from app.sources.cloudflare import SiteBusyError, site_is_busy, source_client
 from app.sources.firecrawl_source import (
     extract_source_product,
     merge_extracted_text,
@@ -849,6 +849,10 @@ class EnrichmentPipeline:
 
         # JSON-LD schema.org : structuré et GRATUIT quand la page le publie.
         source_product = fetch_jsonld_product(url, client=self._http)
+        if source_product is None and site_is_busy(url):
+            # Salle d'attente : l'extraction web (payante) lirait la page
+            # d'attente comme une fiche — réessayer plus tard.
+            raise SiteBusyError(f"brand site waiting room at {url}")
         if source_product is None and self._firecrawl is not None:
             try:
                 source_product = extract_source_product(self._firecrawl, url)
@@ -862,6 +866,8 @@ class EnrichmentPipeline:
             else:
                 self._firecrawl_recorder(db, item)(EXTRACT_CREDITS)
         if source_product is None:
+            if site_is_busy(url):
+                raise SiteBusyError(f"brand site waiting room at {url}")
             raise LookupError(f"no product page at {url}")
         return source_product, (
             0.9 if reference_matches(product, source_product) else 0.5

@@ -40,6 +40,46 @@ def is_cloudflare_challenge(response: httpx.Response) -> bool:
     )
 
 
+# Salle d'attente Akamai (« Visitor Prioritization ») : page 200 sans le
+# produit, servie à une partie du trafic quand le site est chargé — y compris
+# aux navigateurs (vécu patagonia.com, Neiwa, enrichissement 458 : « Résoudre »
+# n'a marché qu'au 3e clic). On réessaie avec un délai avant d'abandonner.
+_WAITING_ROOM_MARKERS = ("Hang Tight! Routing to checkout",)
+WAITING_ROOM_DELAYS = (3.0, 6.0)
+WAITING_ROOM_HEADER = "x-catalogai-waiting-room"
+_BUSY_TTL = 120.0
+_busy_hosts: dict[str, float] = {}
+_busy_lock = threading.Lock()
+
+
+class SiteBusyError(LookupError):
+    """Le site de la marque fait patienter ses visiteurs (salle d'attente) :
+    réessayer un peu plus tard, la page existe sans doute."""
+
+
+def is_waiting_room(response: httpx.Response) -> bool:
+    """Page d'attente anti-surcharge servie à la place de la vraie page."""
+    if response.status_code != 200:
+        return False
+    if "html" not in response.headers.get("content-type", "").lower():
+        return False
+    head = response.read()[:4000].decode("utf-8", errors="ignore")
+    return any(marker in head for marker in _WAITING_ROOM_MARKERS)
+
+
+def site_is_busy(url: str) -> bool:
+    """Vrai si ce site vient de nous laisser en salle d'attente (2 min)."""
+    host = httpx.URL(url).host
+    with _busy_lock:
+        until = _busy_hosts.get(host)
+        return until is not None and time.monotonic() < until
+
+
+def _mark_busy(host: str) -> None:
+    with _busy_lock:
+        _busy_hosts[host] = time.monotonic() + _BUSY_TTL
+
+
 class CloudflareFallbackTransport(httpx.BaseTransport):
     """httpx transport : réseau normal, repli curl_cffi sur défi Cloudflare."""
 
@@ -56,6 +96,32 @@ class CloudflareFallbackTransport(httpx.BaseTransport):
         self._local = threading.local()
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        response = self._send(request)
+        # Site déjà en attente il y a moins de 2 min : pas de nouvelle
+        # attente (un job enchaîne les requêtes vers le même site).
+        delays = () if site_is_busy(str(request.url)) else WAITING_ROOM_DELAYS
+        for delay in delays:
+            if not is_waiting_room(response):
+                return response
+            logger.info(
+                "waiting room on %s — retrying in %.0fs", request.url.host, delay
+            )
+            response.close()
+            time.sleep(delay)
+            response = self._send(request)
+        if not is_waiting_room(response):
+            return response
+        # Toujours en attente : une erreur explicite plutôt qu'une page 200
+        # sans produit (les appelants la traitent comme un échec).
+        _mark_busy(request.url.host)
+        return httpx.Response(
+            503,
+            headers={WAITING_ROOM_HEADER: "1", "content-type": "text/plain"},
+            content=b"brand site waiting room",
+            request=request,
+        )
+
+    def _send(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
         if self._is_blocked(host):
             fallback = self._fallback(request)

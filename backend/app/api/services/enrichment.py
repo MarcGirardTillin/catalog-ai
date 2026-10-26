@@ -14,6 +14,7 @@ from app.api.exceptions import AppException
 from app.api.schemas.enrichment import JobCounts
 from app.destinations.base import Destination
 from app.models import Account, EnrichmentItem, EnrichmentJob, InstructionTemplate
+from app.sources.cloudflare import SiteBusyError
 
 # Account-level defaults merged into a new job's config when absent.
 _ACCOUNT_CONFIG_DEFAULTS = (
@@ -298,6 +299,13 @@ def resolve_item_from_url(
         )
     try:
         stage(item, url)
+    except SiteBusyError as exc:
+        db.rollback()
+        raise AppException(
+            status_code=503,
+            code="source_site_busy",
+            message="Le site de la marque fait patienter ses visiteurs : réessayez.",
+        ) from exc
     except (LookupError, ValueError, httpx.HTTPError) as exc:
         db.rollback()
         raise AppException(
