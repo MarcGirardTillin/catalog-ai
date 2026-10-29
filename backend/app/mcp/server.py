@@ -29,12 +29,13 @@ from app.api.routes import locations as location_routes
 from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobSelection
 from app.api.schemas.imports import ImportTransferRequest
 from app.api.services.credits import balance as credit_balance
-from app.api.services.credits import credit_grid
+from app.api.services.credits import credit_grid, require_credits
 from app.api.services.imaging import account_settings
 from app.mcp.auth import ApiTokenVerifier
 from app.mcp.guard import ToolContext, run_tool
 from app.mcp.oauth import CatalogOAuthProvider
-from app.models import Account, EnrichmentItem, EnrichmentJob
+from app.mcp.uploads import UPLOAD_TTL, UploadGrant, sign_upload, upload_url
+from app.models import Account, EnrichmentItem, EnrichmentJob, InstructionTemplate
 
 INSTRUCTIONS = (
     "CatalogAI (Tillin) : catalogue produits d'une boutique, enrichissement des "
@@ -128,6 +129,9 @@ async def get_account_overview() -> dict[str, Any]:
 
 def _product_summary(product: Any) -> dict[str, Any]:
     colors = sorted({v.color for v in product.variants if v.color})
+    stocks = [
+        v.stock_quantity for v in product.variants if v.stock_quantity is not None
+    ]
     return {
         "id": product.id,
         "title": product.title,
@@ -138,6 +142,10 @@ def _product_summary(product: Any) -> dict[str, Any]:
         "variants": len(product.variants),
         "colors": colors,
         "images": len(product.images),
+        # Somme des variantes ; None = stock inconnu (aucune variante suivie).
+        "stock": sum(stocks) if stocks else None,
+        # Connexions e-commerce (« Shopify »…) ; vide = non connecté.
+        "origins": list(product.origins),
     }
 
 
@@ -157,11 +165,13 @@ async def search_products(
         int | None, Field(description="Filtre marque (id Tillin)")
     ] = None,
     page: Annotated[int, Field(ge=1)] = 1,
-    per_page: Annotated[int, Field(ge=1, le=25)] = 10,
+    per_page: Annotated[int, Field(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
     """Recherche dans le catalogue Tillin de la boutique (résumé par produit :
-    id, titre, référence, marque, prix, couleurs, nombre d'images). La marque
-    se donne par son nom (`brand`) ou son id (`brand_id`)."""
+    id, titre, référence, marque, prix, couleurs, nombre d'images, stock total
+    des variantes, connexions e-commerce `origins` — vide = non synchronisé).
+    La marque se donne par son nom (`brand`) ou son id (`brand_id`) ; jusqu'à
+    100 produits par page."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         wanted = brand_id
@@ -182,7 +192,7 @@ async def search_products(
 @mcp.tool(name="catalogai_get_product", annotations=_read_only("Fiche produit"))
 async def get_product(product_id: int) -> dict[str, Any]:
     """Fiche d'un produit Tillin : description, variantes (code-barres,
-    couleur, taille, prix, stock) et images."""
+    couleur, taille, prix, stock), images et connexions e-commerce."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         product = ctx.xano.get_product(product_id)
@@ -300,6 +310,187 @@ async def list_brands(
     return await run_tool("list_brands", None, work)
 
 
+# --- Images produit -------------------------------------------------------------
+# Mêmes endpoints Tillin que l'app (ajout en masse, désactivation, positions),
+# sans module requis — comme l'upload de la fiche produit dans l'app.
+
+_MAX_IMAGES_PER_CALL = 20
+
+
+def _require_product(ctx: ToolContext, product_id: int) -> Any:
+    product = ctx.xano.get_product(product_id)
+    if product is None:
+        raise AppException(
+            status_code=404, code="not_found", message="Produit introuvable"
+        )
+    return product
+
+
+def _gallery(product: Any) -> list[dict[str, Any]]:
+    return [
+        {"image_id": image.id, "url": image.url, "position": image.position}
+        for image in product.images
+        if image.id is not None
+    ]
+
+
+@mcp.tool(
+    name="catalogai_create_image_upload",
+    annotations=_write("Préparer l'envoi d'images locales"),
+)
+async def create_image_upload(
+    product_id: int,
+    filenames: Annotated[
+        list[str],
+        Field(
+            min_length=1,
+            max_length=_MAX_IMAGES_PER_CALL,
+            description="Noms des fichiers locaux à envoyer (ex. packshot-1.jpg)",
+        ),
+    ],
+) -> dict[str, Any]:
+    """Prépare l'ajout d'images STOCKÉES SUR L'ORDINATEUR à une fiche produit :
+    renvoie une URL d'envoi par fichier, valable 30 minutes. Envoyez chaque
+    fichier avec `curl -sS -X PUT --data-binary @<fichier> "<upload_url>"` :
+    la réponse JSON donne l'image créée (image_id, url hébergée) ou l'erreur
+    (format, poids : 15 Mo max ; JPEG, PNG, WEBP, HEIC). Les images s'ajoutent
+    en fin de galerie : réordonnez ou remplacez ensuite avec
+    catalogai_arrange_product_images. Images accessibles en ligne : utilisez
+    plutôt catalogai_add_product_images."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        _require_product(ctx, product_id)
+        uploads = []
+        for name in filenames:
+            clean = name.strip().replace("\\", "/").rsplit("/", 1)[-1] or "image.jpg"
+            token = sign_upload(
+                UploadGrant(
+                    user_id=ctx.user.id,
+                    account_id=ctx.account_id,
+                    product_id=product_id,
+                    filename=clean[:200],
+                )
+            )
+            uploads.append({"filename": clean, "upload_url": upload_url(token)})
+        return {
+            "product_id": product_id,
+            "expires_in_minutes": int(UPLOAD_TTL.total_seconds() // 60),
+            "method": "PUT, corps = octets bruts du fichier",
+            "uploads": uploads,
+        }
+
+    return await run_tool("create_image_upload", None, work, write=True)
+
+
+@mcp.tool(
+    name="catalogai_add_product_images",
+    annotations=_write("Ajouter des images depuis des URLs"),
+)
+async def add_product_images(
+    product_id: int,
+    image_urls: Annotated[
+        list[str],
+        Field(
+            min_length=1,
+            max_length=_MAX_IMAGES_PER_CALL,
+            description="URLs publiques des images (http/https)",
+        ),
+    ],
+) -> dict[str, Any]:
+    """Ajoute à une fiche des images accessibles en ligne : Tillin les
+    télécharge et les héberge, en fin de galerie. Renvoie les images créées
+    et les URLs que Tillin n'a pas pu récupérer. Réordonner ou remplacer :
+    catalogai_arrange_product_images."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        urls = [u.strip() for u in image_urls if u.strip()]
+        invalid = [u for u in urls if not u.lower().startswith(("http://", "https://"))]
+        if invalid:
+            raise ToolError(f"URL non http(s) : {', '.join(invalid[:5])}")
+        _require_product(ctx, product_id)
+        created = ctx.xano.add_product_images(product_id, urls)
+        # L'endpoint Tillin avale les échecs (200 avec une liste amputée) :
+        # sans correspondance fiable URL → image, on signale le manque.
+        return {
+            "product_id": product_id,
+            "requested": len(urls),
+            "created": [{"image_id": i.id, "url": i.url} for i in created],
+            "not_created": max(len(urls) - len(created), 0),
+        }
+
+    return await run_tool("add_product_images", None, work, write=True)
+
+
+@mcp.tool(
+    name="catalogai_arrange_product_images",
+    annotations=_write("Ordonner / remplacer les images", destructive=True),
+)
+async def arrange_product_images(
+    product_id: int,
+    image_ids: Annotated[
+        list[int],
+        Field(
+            min_length=1,
+            description=(
+                "Ids des images dans l'ordre voulu (la 1re devient l'image "
+                "principale) ; ids visibles dans catalogai_get_product ou au "
+                "retour d'un ajout"
+            ),
+        ),
+    ],
+    remove_others: Annotated[
+        bool,
+        Field(
+            description=(
+                "true = « remplacer » : les images non listées sont retirées "
+                "de la fiche ; false = elles restent, après les listées"
+            )
+        ),
+    ] = False,
+    confirm: Annotated[
+        bool,
+        Field(description="false = aperçu seulement ; true = écrit dans Tillin"),
+    ] = False,
+) -> dict[str, Any]:
+    """Réordonne la galerie d'une fiche et, avec remove_others=true, retire
+    les images non listées (remplacement). Sans confirm=true, renvoie
+    seulement l'aperçu. Les images retirées sont désactivées dans Tillin."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        product = _require_product(ctx, product_id)
+        current = [image.id for image in product.images if image.id is not None]
+        unknown = [i for i in image_ids if i not in current]
+        if unknown:
+            raise ToolError(
+                f"Images inconnues sur cette fiche : {unknown[:10]} — relisez-la "
+                "avec catalogai_get_product."
+            )
+        wanted = list(dict.fromkeys(image_ids))
+        others = [i for i in current if i not in wanted]
+        removed = others if remove_others else []
+        order = wanted if remove_others else wanted + others
+        if not confirm:
+            return {
+                "preview": True,
+                "order": order,
+                "will_remove": removed,
+                "note": "Rien n'a été écrit. Relancez avec confirm=true.",
+            }
+        if removed:
+            ctx.xano.deactivate_product_images(removed)
+        ctx.xano.set_product_image_positions(
+            [(image_id, position) for position, image_id in enumerate(order, start=1)]
+        )
+        updated = ctx.xano.get_product(product_id) or product
+        return {
+            "product_id": product_id,
+            "removed": removed,
+            "images": _gallery(updated),
+        }
+
+    return await run_tool("arrange_product_images", None, work, write=True)
+
+
 # --- Enrichissement -----------------------------------------------------------
 
 
@@ -324,6 +515,116 @@ def _item_summary(item: ItemPublic) -> dict[str, Any]:
     }
 
 
+# Clés de `config` acceptées depuis le MCP : celles que l'app envoie au
+# lancement (panneau d'options) et les réglages par défaut du compte que
+# l'utilisateur peut déjà modifier. Le reste (modèle d'IA, lanceur, profils
+# d'import…) n'est pas un choix client : refusé plutôt qu'ignoré.
+CONFIG_KEYS: dict[str, str] = {
+    "editorial_instructions": (
+        "texte libre : consignes de rédaction (remplace le prompt)"
+    ),
+    "seo_keywords": "liste de mots-clés SEO à placer dans le texte",
+    "extra_website_urls": (
+        "liste d'URLs de sites où chercher la fiche, en plus du site de la marque"
+    ),
+    "source_url_override": (
+        "URL de la page produit à utiliser (un seul produit par job)"
+    ),
+    "transforms": (
+        "objet {copy, meta, title, weights, images} de booléens : false = ne "
+        "pas générer cet élément (absent = tout générer)"
+    ),
+    "scrape": "objet {online: false} : aucune recherche en ligne (texte seul)",
+    "image": (
+        "objet {auto_normalize: true} : traiter les images (réglages Studio du "
+        "compte, module studio requis, crédits image en plus)"
+    ),
+    "title_template": (
+        "modèle de titre, ex. « {title} - {brand} » (défaut : réglage du compte)"
+    ),
+    "title_case": "casse du titre : none, upper, capitalize, title, sentence",
+    "client_context": (
+        "contexte boutique ajouté aux consignes (défaut : réglage du compte)"
+    ),
+    "meta_max_length": "longueur max de la meta description, 50 à 320 (défaut 160)",
+    "content_language": "langue du texte, code ISO (défaut fr)",
+    "keep_product_names": "false = le texte peut reformuler le nom du produit",
+}
+_TRANSFORM_KEYS = ("copy", "meta", "title", "weights", "images")
+
+
+def _checked_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    checked = dict(config or {})
+    if "instruction_id" in checked:
+        raise ToolError(
+            "Choisissez le prompt avec prompt_id (ou prompts), pas dans config."
+        )
+    unknown = sorted(set(checked) - set(CONFIG_KEYS))
+    if unknown:
+        raise ToolError(
+            f"Clés de config inconnues : {', '.join(unknown)}. Clés possibles : "
+            f"{', '.join(CONFIG_KEYS)}."
+        )
+    transforms = checked.get("transforms")
+    if transforms is not None and (
+        not isinstance(transforms, dict) or set(transforms) - set(_TRANSFORM_KEYS)
+    ):
+        raise ToolError(
+            f"transforms : objet de booléens parmi {', '.join(_TRANSFORM_KEYS)}."
+        )
+    return checked
+
+
+def _account_prompt_ids(ctx: ToolContext) -> set[int]:
+    return set(
+        ctx.db.scalars(
+            select(InstructionTemplate.id).where(
+                InstructionTemplate.account_id == ctx.account_id
+            )
+        ).all()
+    )
+
+
+@mcp.tool(
+    name="catalogai_list_prompts", annotations=_read_only("Prompts d'enrichissement")
+)
+async def list_prompts() -> dict[str, Any]:
+    """Prompts (instructions de rédaction) de la bibliothèque du compte : id,
+    nom, catégories Tillin visées (le prompt s'y applique d'office quand
+    aucun n'est choisi) et début du texte. À passer en prompt_id ou prompts
+    dans catalogai_start_enrichment."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        rows = ctx.db.scalars(
+            select(InstructionTemplate)
+            .where(InstructionTemplate.account_id == ctx.account_id)
+            .order_by(
+                InstructionTemplate.position.is_(None),
+                InstructionTemplate.position,
+                InstructionTemplate.name,
+            )
+        ).all()
+        return {
+            "total": len(rows),
+            "prompts": [
+                {
+                    "prompt_id": row.id,
+                    "name": row.name,
+                    "categories": [str(c) for c in row.categories_json or []],
+                    "excerpt": _clip(row.content, 300),
+                }
+                for row in rows
+            ],
+            "default_rule": (
+                "Sans prompt choisi : consignes par défaut du compte si elles "
+                "existent, sinon le prompt rattaché à la catégorie Tillin de "
+                "chaque produit."
+            ),
+        }
+
+    return await run_tool("list_prompts", "feature_enrich", work)
+
+
 @mcp.tool(
     name="catalogai_start_enrichment",
     annotations=_write("Lancer un enrichissement"),
@@ -332,41 +633,98 @@ async def start_enrichment(
     product_ids: Annotated[
         list[int], Field(min_length=1, max_length=100, description="Ids Tillin")
     ],
+    prompt_id: Annotated[
+        int | None,
+        Field(description="Prompt pour tous les produits (catalogai_list_prompts)"),
+    ] = None,
+    prompts: Annotated[
+        dict[str, int] | None,
+        Field(
+            description=(
+                'Prompt PAR PRODUIT : {"<product_id>": <prompt_id>} ; les '
+                "produits absents prennent prompt_id (ou la règle par défaut). "
+                "Un job est créé par prompt."
+            )
+        ),
+    ] = None,
     config: Annotated[
         dict[str, Any] | None,
         Field(
             description=(
-                "Options facultatives du job (mêmes clés que l'app, ex. "
-                "source_url_override pour un seul produit) ; vide = réglages "
-                "du compte."
+                "Options facultatives (vide = réglages du compte). Clés : "
+                + " ; ".join(f"{key} — {text}" for key, text in CONFIG_KEYS.items())
             )
         ),
     ] = None,
 ) -> dict[str, Any]:
     """Lance l'enrichissement IA de produits (description, meta, titre,
     poids, images depuis le site de la marque). Débite des crédits par fiche
-    traitée. Renvoie aussitôt le job : suivez-le avec
-    catalogai_get_job_status, puis vérifiez avec catalogai_list_items_to_review."""
+    traitée. Avec des prompts différents par produit, un job par prompt.
+    Renvoie aussitôt le ou les jobs : suivez-les avec catalogai_get_job_status,
+    puis vérifiez avec catalogai_list_items_to_review."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
-        background = BackgroundTasks()
-        job = job_routes.create_enrichment_job(
-            JobCreateRequest(
-                selection=JobSelection(ids=product_ids), config=config or {}
-            ),
-            ctx.db,
-            ctx.user,
-            background,
-            job_runner(),
-        )
-        _spawn(background)
+        base_config = _checked_config(config)
+        per_product: dict[int, int] = {}
+        for key, value in (prompts or {}).items():
+            try:
+                per_product[int(key)] = int(value)
+            except (TypeError, ValueError) as exc:
+                raise ToolError(
+                    f"prompts : la clé « {key} » n'est pas un id produit."
+                ) from exc
+        strays = sorted(set(per_product) - set(product_ids))
+        if strays:
+            raise ToolError(
+                f"prompts cite des produits hors product_ids : {strays[:10]}"
+            )
+        # Tout est vérifié AVANT la première écriture (prompts du compte,
+        # crédits de l'ensemble) : jamais de lancement partiel.
+        wanted = {p for p in [prompt_id, *per_product.values()] if p is not None}
+        missing = sorted(wanted - _account_prompt_ids(ctx))
+        if missing:
+            raise ToolError(
+                f"Prompts introuvables sur ce compte : {missing} — voir "
+                "catalogai_list_prompts."
+            )
+        groups: dict[int | None, list[int]] = {}
+        for product_id in dict.fromkeys(product_ids):
+            group = per_product.get(product_id, prompt_id)
+            groups.setdefault(group, []).append(product_id)
         per_item = credit_grid(ctx.db, ctx.account_id)["enrich_item"]
-        return {
-            "job_id": job.id,
-            "status": job.status,
-            "items": job.counts.total,
-            "estimated_credits": job.counts.total * per_item,
-        }
+        require_credits(
+            ctx.db, ctx.account_id, sum(map(len, groups.values())) * per_item
+        )
+
+        jobs: list[dict[str, Any]] = []
+        for group_prompt, ids in groups.items():
+            job_config = dict(base_config)
+            if group_prompt is not None:
+                job_config["instruction_id"] = group_prompt
+            background = BackgroundTasks()
+            job = job_routes.create_enrichment_job(
+                JobCreateRequest(selection=JobSelection(ids=ids), config=job_config),
+                ctx.db,
+                ctx.user,
+                background,
+                job_runner(),
+            )
+            _spawn(background)
+            jobs.append(
+                {
+                    "job_id": job.id,
+                    "prompt_id": group_prompt,
+                    "status": job.status,
+                    "items": job.counts.total,
+                }
+            )
+        total = sum(int(job["items"]) for job in jobs)
+        result: dict[str, Any] = {"jobs": jobs, "estimated_credits": total * per_item}
+        if len(jobs) == 1:
+            result.update(
+                job_id=jobs[0]["job_id"], status=jobs[0]["status"], items=total
+            )
+        return result
 
     return await run_tool("start_enrichment", "feature_enrich", work, write=True)
 

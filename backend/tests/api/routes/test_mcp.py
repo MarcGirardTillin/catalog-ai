@@ -188,14 +188,18 @@ def test_every_tool_declares_annotations() -> None:
     import asyncio
 
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert len(tools) == 15
+    assert len(tools) == 19
     for tool in tools:
         assert tool.annotations is not None and tool.annotations.title, tool.name
         assert tool.annotations.read_only_hint is not None, tool.name
     destructive = {
         t.name for t in tools if t.annotations and t.annotations.destructive_hint
     }
-    assert destructive == {"catalogai_apply_item", "catalogai_transfer_import"}
+    assert destructive == {
+        "catalogai_apply_item",
+        "catalogai_arrange_product_images",
+        "catalogai_transfer_import",
+    }
 
 
 # --- Outils -----------------------------------------------------------------------
@@ -459,6 +463,44 @@ async def test_brand_tools_and_search_by_brand_name(mcp_client: Client[Any]) -> 
 
 
 @pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_search_summary_carries_stock_and_origins(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.schemas import Product, ProductVariant
+    from app.clients.xano import ProductPage
+
+    captured: dict[str, Any] = {}
+
+    class Catalog:
+        def search_products(self, **kwargs: Any) -> Any:
+            captured.update(kwargs)
+            items = [
+                Product(
+                    id=51,
+                    variants=[
+                        ProductVariant(stock_quantity=2),
+                        ProductVariant(stock_quantity=3),
+                        ProductVariant(),
+                    ],
+                    origins=["Shopify"],
+                ),
+                Product(id=52, variants=[ProductVariant()]),
+            ]
+            return ProductPage(items=items, total=2, page=1, per_page=100)
+
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: Catalog())
+    found = await _call(mcp_client, "catalogai_search_products", per_page=100)
+    assert captured["per_page"] == 100
+    summaries = {p["id"]: p for p in found["products"]}
+    assert summaries[51]["stock"] == 5
+    assert summaries[51]["origins"] == ["Shopify"]
+    # Aucune variante suivie : stock inconnu, pas 0 ; aucune connexion.
+    assert summaries[52]["stock"] is None
+    assert summaries[52]["origins"] == []
+
+
+@pytest.mark.anyio
 async def test_list_enrichments_by_day(
     as_user: User, mcp_client: Client[Any], db: Session
 ) -> None:
@@ -469,3 +511,292 @@ async def test_list_enrichments_by_day(
         mcp_client, "catalogai_list_enrichments", since="2020-01-01", until="2020-01-31"
     )
     assert old["total"] == 0
+
+
+# --- Images produit ---------------------------------------------------------------
+
+
+class _FakeGallery:
+    """Tillin simulé pour les images : produit 60 avec deux images (1, 2)."""
+
+    def __init__(self) -> None:
+        self.next_id = 100
+        self.uploaded: list[tuple[int, str]] = []
+        self.deactivated: list[int] = []
+        self.positions: list[tuple[int, int]] = []
+
+    def get_product(self, product_id: int) -> Any:
+        from app.api.schemas import Product, ProductImage
+
+        if product_id != 60:
+            return None
+        images = [
+            ProductImage(id=1, url="https://cdn/1.jpg", position=1),
+            ProductImage(id=2, url="https://cdn/2.jpg", position=2),
+        ]
+        return Product(id=60, title="Bob", images=images)
+
+    def _created(self, count: int) -> list[Any]:
+        from app.api.schemas import ProductImage
+
+        created = []
+        for _ in range(count):
+            self.next_id += 1
+            created.append(
+                ProductImage(id=self.next_id, url=f"https://cdn/{self.next_id}.jpg")
+            )
+        return created
+
+    def upload_product_images(self, product_id: int, files: list[Any]) -> list[Any]:
+        self.uploaded.extend((product_id, name) for name, _, _ in files)
+        return self._created(len(files))
+
+    def add_product_images(self, product_id: int, urls: list[str]) -> list[Any]:
+        # Tillin avale un échec sur deux.
+        return self._created(len(urls) // 2)
+
+    def deactivate_product_images(self, ids: list[int]) -> None:
+        self.deactivated.extend(ids)
+
+    def set_product_image_positions(self, positions: list[tuple[int, int]]) -> None:
+        self.positions = list(positions)
+
+
+@pytest.fixture
+def gallery(monkeypatch: pytest.MonkeyPatch) -> _FakeGallery:
+    import app.api.routes.mcp_uploads as upload_routes
+
+    fake = _FakeGallery()
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: fake)
+    monkeypatch.setattr(upload_routes, "xano_client_for_user", lambda db, user: fake)
+    return fake
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_local_image_upload_round_trip(
+    mcp_client: Client[Any], client: TestClient, gallery: _FakeGallery
+) -> None:
+    from tests.images import source_jpeg
+
+    issued = await _call(
+        mcp_client,
+        "catalogai_create_image_upload",
+        product_id=60,
+        filenames=["C:\\photos\\packshot.jpg"],
+    )
+    upload = issued["uploads"][0]
+    assert upload["filename"] == "packshot.jpg"
+    path = upload["upload_url"].split("/mcp-uploads/", 1)[1]
+
+    response = client.put(f"/mcp-uploads/{path}", content=source_jpeg())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["product_id"] == 60 and body["image_id"] == 101
+    assert gallery.uploaded == [(60, "packshot.jpg")]
+
+    # Pas une image : refus explicite, rien n'est envoyé à Tillin.
+    refused = client.put(f"/mcp-uploads/{path}", content=b"not an image")
+    assert refused.status_code == 422
+    assert len(gallery.uploaded) == 1
+
+
+@pytest.mark.anyio
+async def test_upload_link_rejects_forged_and_session_tokens(
+    as_user: User, client: TestClient, gallery: _FakeGallery
+) -> None:
+    from app.core.security.tokens import create_access_token, decode_access_token
+    from app.mcp.uploads import UploadGrant, sign_upload
+
+    session = create_access_token(as_user.id)
+    assert client.put(f"/mcp-uploads/{session}", content=b"x").status_code == 401
+    assert client.put("/mcp-uploads/abc", content=b"x").status_code == 401
+    # Et un lien d'envoi ne vaut pas cookie de session (audience dédiée).
+    grant = UploadGrant(as_user.id, as_user.account_id or 0, 60, "a.jpg")
+    assert decode_access_token(sign_upload(grant)) is None
+    expired = sign_upload(grant, now=datetime.now(UTC) - timedelta(hours=1))
+    assert client.put(f"/mcp-uploads/{expired}", content=b"x").status_code == 401
+    assert gallery.uploaded == []
+
+
+@pytest.mark.anyio
+async def test_upload_link_refused_after_account_switch(
+    as_user: User, client: TestClient, gallery: _FakeGallery, db: Session
+) -> None:
+    from app.mcp.uploads import UploadGrant, sign_upload
+    from tests.images import source_jpeg
+
+    db.refresh(as_user)
+    link = sign_upload(UploadGrant(as_user.id, as_user.account_id or 0, 60, "a.jpg"))
+    other = Account(name="Autre boutique")
+    db.add(other)
+    db.commit()
+    as_user.account_id = other.id
+    db.commit()
+    response = client.put(f"/mcp-uploads/{link}", content=source_jpeg())
+    assert response.status_code == 409
+    assert gallery.uploaded == []
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("gallery")
+async def test_image_upload_requires_write_scope(
+    as_user: User,
+    mcp_client: Client[Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.mcp.oauth import SCOPE_READ
+
+    token = AccessToken(
+        token="t", client_id="c", scopes=[SCOPE_READ], claims={"user_id": as_user.id}
+    )
+    monkeypatch.setattr(mcp_guard, "get_access_token", lambda: token)
+    with pytest.raises(ToolError, match="lecture seule"):
+        await mcp_client.call_tool(
+            "catalogai_create_image_upload", {"product_id": 60, "filenames": ["a.jpg"]}
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user", "gallery")
+async def test_add_images_from_urls_reports_missing(mcp_client: Client[Any]) -> None:
+    added = await _call(
+        mcp_client,
+        "catalogai_add_product_images",
+        product_id=60,
+        image_urls=["https://a/1.jpg", "https://a/2.jpg"],
+    )
+    assert added["requested"] == 2 and added["not_created"] == 1
+    with pytest.raises(ToolError, match="non http"):
+        await mcp_client.call_tool(
+            "catalogai_add_product_images",
+            {"product_id": 60, "image_urls": ["file:///c/a.jpg"]},
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_arrange_images_previews_then_replaces(
+    mcp_client: Client[Any], gallery: _FakeGallery
+) -> None:
+    preview = await _call(
+        mcp_client,
+        "catalogai_arrange_product_images",
+        product_id=60,
+        image_ids=[2],
+        remove_others=True,
+    )
+    assert preview["preview"] is True and preview["will_remove"] == [1]
+    assert gallery.deactivated == [] and gallery.positions == []
+
+    await _call(
+        mcp_client,
+        "catalogai_arrange_product_images",
+        product_id=60,
+        image_ids=[2],
+        remove_others=True,
+        confirm=True,
+    )
+    assert gallery.deactivated == [1]
+    assert gallery.positions == [(2, 1)]
+
+    # Réordonner sans retirer : les non listées suivent.
+    await _call(
+        mcp_client,
+        "catalogai_arrange_product_images",
+        product_id=60,
+        image_ids=[2],
+        confirm=True,
+    )
+    assert gallery.positions == [(2, 1), (1, 2)]
+    with pytest.raises(ToolError, match="inconnues"):
+        await mcp_client.call_tool(
+            "catalogai_arrange_product_images", {"product_id": 60, "image_ids": [99]}
+        )
+
+
+# --- Prompts ------------------------------------------------------------------------
+
+
+def _prompt(db: Session, account_id: int | None, name: str, *categories: str) -> int:
+    from app.models import InstructionTemplate
+
+    row = InstructionTemplate(
+        account_id=account_id,
+        name=name,
+        content=f"Consignes {name}",
+        categories_json=list(categories),
+    )
+    db.add(row)
+    db.commit()
+    return row.id
+
+
+@pytest.mark.anyio
+async def test_list_prompts_scoped_to_account(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    db.refresh(as_user)
+    mine = _prompt(db, as_user.account_id, "Livres", "Livres")
+    other = Account(name="Autre boutique")
+    db.add(other)
+    db.commit()
+    _prompt(db, other.id, "Secret")
+
+    listed = await _call(mcp_client, "catalogai_list_prompts")
+    assert [p["prompt_id"] for p in listed["prompts"]] == [mine]
+    assert listed["prompts"][0]["categories"] == ["Livres"]
+
+
+@pytest.mark.anyio
+async def test_start_enrichment_one_job_per_prompt(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    db.refresh(as_user)
+    books = _prompt(db, as_user.account_id, "Livres")
+    toys = _prompt(db, as_user.account_id, "Jouets")
+
+    started = await _call(
+        mcp_client,
+        "catalogai_start_enrichment",
+        product_ids=[1, 2, 3],
+        prompt_id=books,
+        prompts={"3": toys},
+        config={"seo_keywords": ["noël"]},
+    )
+    assert [(j["prompt_id"], j["items"]) for j in started["jobs"]] == [
+        (books, 2),
+        (toys, 1),
+    ]
+    job = db.get(EnrichmentJob, started["jobs"][1]["job_id"])
+    assert job is not None
+    # Prompt copié dans le job (instantané, comme depuis l'app).
+    assert job.config_json["editorial_instructions"] == "Consignes Jouets"
+    assert job.config_json["seo_keywords"] == ["noël"]
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_start_enrichment_rejects_bad_prompt_and_config_before_writing(
+    mcp_client: Client[Any], db: Session
+) -> None:
+    other = Account(name="Autre boutique")
+    db.add(other)
+    db.commit()
+    foreign = _prompt(db, other.id, "Secret")
+
+    with pytest.raises(ToolError, match="introuvables"):
+        await mcp_client.call_tool(
+            "catalogai_start_enrichment", {"product_ids": [1], "prompt_id": foreign}
+        )
+    with pytest.raises(ToolError, match="inconnues"):
+        await mcp_client.call_tool(
+            "catalogai_start_enrichment",
+            {"product_ids": [1], "config": {"ai_model": "opus"}},
+        )
+    with pytest.raises(ToolError, match="hors product_ids"):
+        await mcp_client.call_tool(
+            "catalogai_start_enrichment",
+            {"product_ids": [1], "prompts": {"9": foreign}},
+        )
+    assert db.query(EnrichmentJob).count() == 0

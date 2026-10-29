@@ -54,10 +54,14 @@ jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
 | Outil | Rôle | Module | Écrit dans Tillin |
 |---|---|---|---|
 | `catalogai_get_account_overview` | modules, crédits, coûts par action, session Tillin | — | non |
-| `catalogai_search_products` | recherche catalogue (texte, marque par nom ou id) | — | non |
+| `catalogai_search_products` | recherche catalogue (texte, marque par nom ou id), avec stock total et connexions e-commerce (`origins`), 100 par page max | — | non |
 | `catalogai_list_brands` | marques (recherche par nom) | — | non |
-| `catalogai_get_product` | fiche, variantes, images | — | non |
-| `catalogai_start_enrichment` | lance un enrichissement (renvoie le job) | enrichissement | non (débite des crédits) |
+| `catalogai_get_product` | fiche, variantes, images, connexions e-commerce | — | non |
+| `catalogai_create_image_upload` | URLs d'envoi (30 min) pour des images locales | — | **oui** (à l'envoi) |
+| `catalogai_add_product_images` | ajoute des images depuis des URLs publiques | — | **oui** |
+| `catalogai_arrange_product_images` | réordonne la galerie, remplace (retire les non listées) — aperçu sans `confirm=true` | — | **oui** |
+| `catalogai_list_prompts` | prompts de la bibliothèque (id, nom, catégories visées) | enrichissement | non |
+| `catalogai_start_enrichment` | lance un enrichissement, prompt global ou par produit (un job par prompt) | enrichissement | non (débite des crédits) |
 | `catalogai_list_enrichments` | enrichissements lancés (filtre par jour, statut) | enrichissement | non |
 | `catalogai_list_enriched_products` | fiches traitées sur une période, par marque et statut | enrichissement | non |
 | `catalogai_get_job_status` | suivi d'un enrichissement | enrichissement | non |
@@ -68,6 +72,48 @@ jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
 | `catalogai_get_import_review` | produits extraits d'un import | import | non |
 | `catalogai_list_locations` | magasins Tillin | import | non |
 | `catalogai_transfer_import` | crée les produits et la réception — aperçu sans `confirm=true` | import | **oui** |
+
+### Images locales
+
+1. `catalogai_create_image_upload(product_id, filenames)` renvoie une URL
+   d'envoi par fichier, valable 30 minutes.
+2. Envoyer chaque fichier : `curl -sS -X PUT --data-binary @photo.jpg "<url>"`.
+   La réponse donne l'image créée (`image_id`, URL hébergée) ou l'erreur
+   (15 Mo max ; JPEG, PNG, WEBP, HEIC converti). Les images s'ajoutent en fin
+   de galerie, nommées selon le modèle de nom d'images du compte.
+3. Ordre ou remplacement : `catalogai_arrange_product_images(product_id,
+   image_ids, remove_others)` — aperçu, puis `confirm=true`.
+
+Nécessite un client qui peut lire les fichiers et lancer `curl` (Claude Code,
+Codex). Sur claude.ai ou Claude Desktop, passer par des URLs publiques
+(`catalogai_add_product_images`). Le lien d'image à une variante n'est pas
+disponible (pas d'endpoint Tillin).
+
+### Prompts et options de `start_enrichment`
+
+- `prompt_id` : un prompt de `catalogai_list_prompts` pour tous les produits.
+- `prompts` : `{"<product_id>": <prompt_id>}` pour un prompt par produit ; un
+  job est créé par prompt. Sans prompt choisi : consignes par défaut du
+  compte, sinon le prompt rattaché à la catégorie Tillin de chaque produit.
+- `config` (facultatif ; clé inconnue = refus) :
+
+| Clé | Valeur |
+|---|---|
+| `editorial_instructions` | texte libre, remplace le prompt |
+| `seo_keywords` | liste de mots-clés |
+| `extra_website_urls` | liste d'URLs où chercher la fiche, en plus du site de la marque |
+| `source_url_override` | URL de la page produit (un seul produit par job) |
+| `transforms` | `{copy, meta, title, weights, images}` booléens — `false` = ne pas générer |
+| `scrape` | `{online: false}` : aucune recherche en ligne |
+| `image` | `{auto_normalize: true}` : traiter les images (module studio, crédits image) |
+| `title_template` | modèle de titre, ex. `{title} - {brand}` |
+| `title_case` | `none`, `upper`, `capitalize`, `title`, `sentence` |
+| `client_context` | contexte boutique ajouté aux consignes |
+| `meta_max_length` | 50 à 320 (défaut 160) |
+| `content_language` | code langue (défaut `fr`) |
+| `keep_product_names` | `false` = le nom du produit peut être reformulé |
+
+Les clés non modifiables par le client (modèle d'IA, lanceur…) sont refusées.
 
 ## 4. Bon à savoir
 

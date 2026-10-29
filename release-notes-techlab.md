@@ -2,6 +2,16 @@
 
 ## Latest Changes
 
+- MCP : la recherche produits renvoie le stock total de chaque produit et
+  ses connexions e-commerce (« Shopify »… ; vide = non synchronisé), jusqu'à
+  100 produits par page — trier une marque par stock ou par synchronisation
+  ne demande plus d'ouvrir chaque fiche.
+- MCP : ajout d'images aux fiches — photos de l'ordinateur via une URL
+  d'envoi (Claude Code, Codex), images en ligne par URL, puis ordre de la
+  galerie ou remplacement (aperçu avant écriture).
+- MCP : choix du prompt d'enrichissement — liste des prompts de la
+  bibliothèque, prompt pour tout le lancement ou par produit (un job par
+  prompt) ; options de lancement documentées, clé inconnue refusée.
 - MCP : connecteur claude.ai (web, Desktop, mobile) — ajoutez
   `https://api-catalog.tillin.fr/mcp` comme connecteur personnalisé et
   autorisez l'accès depuis la page de consentement de CatalogAI (OAuth,

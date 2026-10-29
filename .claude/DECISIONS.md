@@ -1249,3 +1249,24 @@ des sites de marque (pipeline, JSON-LD, aperçu de page, sonde d'images) —
 jamais Xano ni les API payantes. Un hôte reconnu bloqué passe directement
 par le repli pendant 6 h. Playwright écarté : +400 Mo d'image, 2-5 s par
 page, inutile quand le blocage est réseau et non JavaScript.
+
+
+## 2026-10-29 — MCP : images locales par URL signée, options de job en liste blanche
+
+Images : un client MCP ne peut pas pousser un fichier dans un appel d'outil
+(base64 = recopier les octets dans les arguments). `catalogai_create_image_upload`
+émet par fichier une URL `PUT /mcp-uploads/{jeton}` : JWT signé avec
+APP_SECRET, audience dédiée `catalogai-image-upload` (ni cookie de session
+ni l'inverse), 30 min, porte utilisateur/compte/produit/nom. La route
+transmet aussitôt à l'endpoint Tillin d'ajout en masse déjà utilisé par
+l'app (token Tillin de l'utilisateur), sans stockage intermédiaire ni
+migration. Refus si le compte actif a changé depuis l'émission (le token
+Tillin courant ne serait plus celui du produit). Pas de garde de module,
+comme l'upload de la fiche dans l'app. Lien image → variante écarté (pas
+d'endpoint Tillin ; décision Marc : ne pas le préparer).
+
+Options : `start_enrichment` n'accepte que les clés de config que l'app
+envoie au lancement et les réglages de compte modifiables par le client ;
+`ai_model`, `launcher_user_id`, etc. sont refusés. Prompt par produit =
+un job par prompt (pas de changement du pipeline), prompts et crédits
+vérifiés avant tout lancement.
