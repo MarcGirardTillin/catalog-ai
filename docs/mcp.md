@@ -57,6 +57,8 @@ jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
 | `catalogai_search_products` | recherche catalogue (texte, marque par nom ou id), avec stock total et connexions e-commerce (`origins`), 100 par page max | — | non |
 | `catalogai_list_brands` | marques (recherche par nom) | — | non |
 | `catalogai_get_product` | fiche, variantes, images, connexions e-commerce | — | non |
+| `catalogai_list_category_weights` | catégories et poids par défaut (kg) | import ou enrichissement | non |
+| `catalogai_set_category_weights` | modifie ces poids (kg, 0 = effacer) — aperçu sans `confirm=true` | import ou enrichissement | **oui** |
 | `catalogai_create_image_upload` | URLs d'envoi (30 min) pour des images locales | — | **oui** (à l'envoi) |
 | `catalogai_add_product_images` | ajoute des images depuis des URLs publiques | — | **oui** |
 | `catalogai_arrange_product_images` | réordonne la galerie, remplace (retire les non listées) — aperçu sans `confirm=true` | — | **oui** |

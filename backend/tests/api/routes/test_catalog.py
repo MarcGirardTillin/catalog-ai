@@ -96,3 +96,38 @@ def test_filters_drop_hidden_categories(
 
     assert response.status_code == 200
     assert [c["title"] for c in response.json()["categories"]] == ["Shoes"]
+
+
+def test_category_weight_write_keeps_parent_and_visibility(
+    auth_client: TestClient, override_xano: Callable[[Handler], None]
+) -> None:
+    """L'endpoint remet les champs absents à zéro : tout est renvoyé."""
+    import json
+
+    bodies: list[dict[str, object]] = []
+    company = {
+        **COMPANY,
+        "categories": [
+            {"id": 5, "title": "Shoes", "parent_id": 2, "isVisible": False},
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path.endswith("/category/5"):
+            bodies.append(json.loads(request.content))
+            return httpx.Response(200, json={})
+        return httpx.Response(200, json={"company_all_informations": company})
+
+    override_xano(handler)
+    response = auth_client.put(
+        "/catalog/categories/5/default-weight", json={"default_weight_kg": 0.4}
+    )
+    assert response.status_code == 200, response.text
+    assert bodies == [
+        {
+            "title": "Shoes",
+            "default_weight_kg": 0.4,
+            "isVisible": False,
+            "parent_id": 2,
+        }
+    ]

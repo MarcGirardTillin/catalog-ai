@@ -31,6 +31,7 @@ from app.api.schemas.imports import ImportTransferRequest
 from app.api.services.credits import balance as credit_balance
 from app.api.services.credits import credit_grid, require_credits
 from app.api.services.imaging import account_settings
+from app.clients.xano import XanoError
 from app.mcp.auth import ApiTokenVerifier
 from app.mcp.guard import ToolContext, run_tool
 from app.mcp.oauth import CatalogOAuthProvider
@@ -308,6 +309,141 @@ async def list_brands(
         return {"total": len(brands), "brands": brands[:100]}
 
     return await run_tool("list_brands", None, work)
+
+
+# --- Poids par catégorie --------------------------------------------------------
+# Poids par défaut (page Boutique de l'app) : utilisés à l'application d'une
+# fiche et au transfert d'un import quand aucun poids source n'existe. Réservés
+# aux comptes qui ont l'import ou l'enrichissement, comme l'écran de l'app.
+
+
+def _require_weight_modules(ctx: ToolContext) -> None:
+    if ctx.user.is_admin:
+        return
+    settings = account_settings(ctx.db, ctx.account_id)
+    if not (settings.feature_import or settings.feature_enrich):
+        raise ToolError(
+            "Le module import ou enrichissement doit être activé pour gérer les "
+            "poids par catégorie."
+        )
+
+
+@mcp.tool(
+    name="catalogai_list_category_weights",
+    annotations=_read_only("Poids par catégorie"),
+)
+async def list_category_weights(
+    query: Annotated[
+        str | None, Field(description="Partie du nom (insensible à la casse)")
+    ] = None,
+) -> dict[str, Any]:
+    """Catégories Tillin de la boutique et leur poids par défaut en kg (0 = non
+    renseigné). Ce poids s'applique à l'application d'une fiche et au transfert
+    d'un import quand aucun poids source n'existe. Il ne modifie pas les
+    produits déjà en boutique."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        _require_weight_modules(ctx)
+        wanted = (query or "").strip().casefold()
+        categories = [
+            {
+                "category_id": category["id"],
+                "title": category["title"],
+                "default_weight_kg": category.get("default_weight_kg") or 0,
+            }
+            for category in ctx.xano.get_classification().get("categories", [])
+            if category.get("visible", True)
+            and wanted in str(category["title"]).casefold()
+        ]
+        return {"total": len(categories), "categories": categories}
+
+    return await run_tool("list_category_weights", None, work)
+
+
+@mcp.tool(
+    name="catalogai_set_category_weights",
+    annotations=_write("Modifier les poids par catégorie", destructive=True),
+)
+async def set_category_weights(
+    weights: Annotated[
+        dict[str, float],
+        Field(
+            min_length=1,
+            max_length=100,
+            description=(
+                'Poids par défaut en KILOGRAMMES par catégorie : {"<category_id>": '
+                "0.25} ; 0 = effacer. Ids : catalogai_list_category_weights"
+            ),
+        ),
+    ],
+    confirm: Annotated[
+        bool, Field(description="false = aperçu seulement ; true = écrit dans Tillin")
+    ] = False,
+) -> dict[str, Any]:
+    """Modifie le poids par défaut (kg) d'une ou plusieurs catégories. Sans
+    confirm=true, renvoie seulement l'aperçu (avant / après). Vaut pour les
+    prochaines fiches appliquées et les prochains imports : les produits déjà
+    en boutique ne changent pas."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        _require_weight_modules(ctx)
+        wanted: dict[int, float] = {}
+        for key, weight in weights.items():
+            try:
+                wanted[int(key)] = float(weight)
+            except (TypeError, ValueError) as exc:
+                raise ToolError(
+                    f"weights : la clé « {key} » n'est pas un id de catégorie."
+                ) from exc
+        invalid = sorted(i for i, weight in wanted.items() if not 0 <= weight < 1000)
+        if invalid:
+            raise ToolError(
+                f"Poids invalides pour les catégories {invalid[:10]} : attendu "
+                "en kg, de 0 à moins de 1000."
+            )
+        categories = {
+            int(category["id"]): category
+            for category in ctx.xano.get_classification().get("categories", [])
+        }
+        unknown = sorted(set(wanted) - set(categories))
+        if unknown:
+            raise ToolError(
+                f"Catégories inconnues : {unknown[:10]} — voir "
+                "catalogai_list_category_weights."
+            )
+        changes = [
+            {
+                "category_id": category_id,
+                "title": categories[category_id]["title"],
+                "before_kg": categories[category_id].get("default_weight_kg") or 0,
+                "after_kg": weight,
+            }
+            for category_id, weight in wanted.items()
+        ]
+        if not confirm:
+            return {
+                "preview": True,
+                "will_write": changes,
+                "note": "Rien n'a été écrit. Relancez avec confirm=true.",
+            }
+        updated, failed = [], []
+        for change in changes:
+            category = categories[int(change["category_id"])]
+            try:
+                ctx.xano.set_category_default_weight(
+                    int(change["category_id"]),
+                    float(change["after_kg"]),
+                    title=str(category["title"]),
+                    parent_id=category.get("parent_id"),
+                    visible=category.get("visible", True),
+                )
+            except XanoError as exc:
+                failed.append({**change, "error": exc.message})
+            else:
+                updated.append(change)
+        return {"updated": updated, "failed": failed}
+
+    return await run_tool("set_category_weights", None, work, write=True)
 
 
 # --- Images produit -------------------------------------------------------------

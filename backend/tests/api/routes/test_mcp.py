@@ -188,7 +188,7 @@ def test_every_tool_declares_annotations() -> None:
     import asyncio
 
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert len(tools) == 19
+    assert len(tools) == 21
     for tool in tools:
         assert tool.annotations is not None and tool.annotations.title, tool.name
         assert tool.annotations.read_only_hint is not None, tool.name
@@ -198,6 +198,7 @@ def test_every_tool_declares_annotations() -> None:
     assert destructive == {
         "catalogai_apply_item",
         "catalogai_arrange_product_images",
+        "catalogai_set_category_weights",
         "catalogai_transfer_import",
     }
 
@@ -800,3 +801,144 @@ async def test_start_enrichment_rejects_bad_prompt_and_config_before_writing(
             {"product_ids": [1], "prompts": {"9": foreign}},
         )
     assert db.query(EnrichmentJob).count() == 0
+
+
+# --- Poids par catégorie ------------------------------------------------------------
+
+
+class _FakeCategories:
+    """Tillin simulé : 5 sous-catégorie visible, 6 masquée, 7 en échec."""
+
+    def __init__(self) -> None:
+        self.written: list[dict[str, Any]] = []
+
+    def get_classification(self) -> dict[str, list[dict[str, Any]]]:
+        return {
+            "categories": [
+                {
+                    "id": 5,
+                    "title": "Livres",
+                    "parent_id": 2,
+                    "visible": True,
+                    "default_weight_kg": 0.3,
+                },
+                {"id": 6, "title": "Archives", "parent_id": 0, "visible": False},
+                {"id": 7, "title": "Jouets", "parent_id": 0, "visible": True},
+            ]
+        }
+
+    def set_category_default_weight(
+        self, category_id: int, weight: float, **fields: Any
+    ) -> None:
+        from app.clients.xano import XanoError
+
+        if category_id == 7:
+            raise XanoError(message="refus Tillin")
+        self.written.append({"id": category_id, "weight": weight, **fields})
+
+
+@pytest.fixture
+def categories(monkeypatch: pytest.MonkeyPatch) -> _FakeCategories:
+    fake = _FakeCategories()
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: fake)
+    return fake
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user", "categories")
+async def test_list_category_weights_hides_masked(mcp_client: Client[Any]) -> None:
+    listed = await _call(mcp_client, "catalogai_list_category_weights")
+    assert [c["category_id"] for c in listed["categories"]] == [5, 7]
+    assert listed["categories"][0]["default_weight_kg"] == 0.3
+    found = await _call(mcp_client, "catalogai_list_category_weights", query="jou")
+    assert [c["title"] for c in found["categories"]] == ["Jouets"]
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_set_category_weights_previews_then_writes(
+    mcp_client: Client[Any], categories: _FakeCategories
+) -> None:
+    preview = await _call(
+        mcp_client, "catalogai_set_category_weights", weights={"5": 0.5}
+    )
+    assert preview["preview"] is True
+    assert preview["will_write"][0]["before_kg"] == 0.3
+    assert categories.written == []
+
+    done = await _call(
+        mcp_client,
+        "catalogai_set_category_weights",
+        weights={"5": 0.5, "6": 0, "7": 1},
+        confirm=True,
+    )
+    assert [c["category_id"] for c in done["updated"]] == [5, 6]
+    assert done["failed"][0]["category_id"] == 7
+    # Parent et visibilité renvoyés : l'endpoint remet les champs absents à zéro.
+    assert categories.written[0] == {
+        "id": 5,
+        "weight": 0.5,
+        "title": "Livres",
+        "parent_id": 2,
+        "visible": True,
+    }
+    assert categories.written[1]["visible"] is False
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_set_category_weights_refuses_before_writing(
+    mcp_client: Client[Any], categories: _FakeCategories
+) -> None:
+    with pytest.raises(ToolError, match="inconnues"):
+        await mcp_client.call_tool(
+            "catalogai_set_category_weights",
+            {"weights": {"5": 0.5, "99": 1}, "confirm": True},
+        )
+    with pytest.raises(ToolError, match="invalides"):
+        await mcp_client.call_tool(
+            "catalogai_set_category_weights",
+            {"weights": {"5": -1}, "confirm": True},
+        )
+    with pytest.raises(ToolError, match="invalides"):
+        await mcp_client.call_tool(
+            "catalogai_set_category_weights",
+            {"weights": {"5": 2500}, "confirm": True},
+        )
+    assert categories.written == []
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("categories")
+async def test_category_weights_need_a_module(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    _set_flags(db, as_user, feature_import=False, feature_enrich=False)
+    with pytest.raises(ToolError, match="doit être activé"):
+        await mcp_client.call_tool("catalogai_list_category_weights", {})
+    with pytest.raises(ToolError, match="doit être activé"):
+        await mcp_client.call_tool(
+            "catalogai_set_category_weights", {"weights": {"5": 1}, "confirm": True}
+        )
+
+    as_user.is_admin = True
+    db.commit()
+    listed = await _call(mcp_client, "catalogai_list_category_weights")
+    assert listed["total"] == 2
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("categories")
+async def test_set_category_weights_requires_write_scope(
+    as_user: User, mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.mcp.oauth import SCOPE_READ
+
+    token = AccessToken(
+        token="t", client_id="c", scopes=[SCOPE_READ], claims={"user_id": as_user.id}
+    )
+    monkeypatch.setattr(mcp_guard, "get_access_token", lambda: token)
+    with pytest.raises(ToolError, match="lecture seule"):
+        await mcp_client.call_tool(
+            "catalogai_set_category_weights", {"weights": {"5": 1}}
+        )

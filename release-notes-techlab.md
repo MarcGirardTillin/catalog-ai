@@ -2,6 +2,11 @@
 
 ## Latest Changes
 
+- MCP : consultation et mise à jour des poids par défaut par catégorie
+  (aperçu avant écriture). Ils s'appliquent aux prochaines fiches et aux
+  prochains imports, pas aux produits déjà en boutique.
+- Poids par catégorie : le parent et la visibilité de la catégorie sont
+  renvoyés à Tillin à chaque enregistrement, pour ne pas les réinitialiser.
 - MCP : la recherche produits renvoie le stock total de chaque produit et
   ses connexions e-commerce (« Shopify »… ; vide = non synchronisé), jusqu'à
   100 produits par page — trier une marque par stock ou par synchronisation

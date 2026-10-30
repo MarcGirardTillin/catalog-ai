@@ -47,7 +47,11 @@ def set_category_default_weight(
             status_code=404, code="not_found", message="Category not found"
         )
     xano.set_category_default_weight(
-        category_id, payload.default_weight_kg, title=str(current["title"])
+        category_id,
+        payload.default_weight_kg,
+        title=str(current["title"]),
+        parent_id=current.get("parent_id"),
+        visible=current.get("visible", True),
     )
     return FilterOption(
         id=category_id,

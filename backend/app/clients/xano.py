@@ -1145,20 +1145,31 @@ class XanoClient:
         return weights
 
     def set_category_default_weight(
-        self, category_id: int, weight: float, *, title: str
+        self,
+        category_id: int,
+        weight: float,
+        *,
+        title: str,
+        parent_id: int | None = None,
+        visible: bool = True,
     ) -> None:
         """Écrit le poids par défaut d'une catégorie (`POST /category/{id}`).
 
         ⚠ L'endpoint REMPLACE les champs absents par leurs défauts (vérifié
         live 2026-07-25 : un POST sans `title` a vidé le titre) — le titre
-        actuel est donc TOUJOURS renvoyé avec le poids.
+        actuel, le parent et la visibilité sont donc TOUJOURS renvoyés avec le
+        poids.
         """
         if not title.strip():
             raise ValueError("category title is required (endpoint resets it)")
-        self._post(
-            f"/category/{int(category_id)}",
-            {"title": title, "default_weight_kg": float(weight)},
-        )
+        body: dict[str, Any] = {
+            "title": title,
+            "default_weight_kg": float(weight),
+            "isVisible": visible,
+        }
+        if parent_id:
+            body["parent_id"] = int(parent_id)
+        self._post(f"/category/{int(category_id)}", body)
         # Les caches classification portent maintenant une valeur périmée.
         self._class_maps = None
 
