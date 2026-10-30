@@ -188,7 +188,7 @@ def test_every_tool_declares_annotations() -> None:
     import asyncio
 
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert len(tools) == 21
+    assert len(tools) == 22
     for tool in tools:
         assert tool.annotations is not None and tool.annotations.title, tool.name
         assert tool.annotations.read_only_hint is not None, tool.name
@@ -198,6 +198,7 @@ def test_every_tool_declares_annotations() -> None:
     assert destructive == {
         "catalogai_apply_item",
         "catalogai_arrange_product_images",
+        "catalogai_set_brand_websites",
         "catalogai_set_category_weights",
         "catalogai_transfer_import",
     }
@@ -942,3 +943,140 @@ async def test_set_category_weights_requires_write_scope(
         await mcp_client.call_tool(
             "catalogai_set_category_weights", {"weights": {"5": 1}}
         )
+
+
+# --- Sites des marques --------------------------------------------------------------
+
+
+class _FakeBrands:
+    """Tillin simulé : marque 7 avec deux sites, marque 8 sans site."""
+
+    def __init__(self) -> None:
+        self.written: list[tuple[int, list[str]]] = []
+
+    def list_brands(self) -> list[Any]:
+        from app.api.schemas import Brand
+
+        return [
+            Brand(
+                id=7,
+                name="Le Petit Souk",
+                website_urls=["https://lepetitsouk.fr", "https://old.example.com"],
+            ),
+            Brand(id=8, name="Maileg"),
+        ]
+
+    def set_brand_website_urls(self, brand_id: int, urls: list[str]) -> None:
+        self.written.append((brand_id, list(urls)))
+
+
+@pytest.fixture
+def brand_sites(monkeypatch: pytest.MonkeyPatch) -> _FakeBrands:
+    fake = _FakeBrands()
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: fake)
+    return fake
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user", "brand_sites")
+async def test_list_brands_shows_websites(mcp_client: Client[Any]) -> None:
+    listed = await _call(mcp_client, "catalogai_list_brands", query="souk")
+    assert listed["brands"][0]["website_urls"][0] == "https://lepetitsouk.fr"
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_brand_websites_preview_then_add_and_remove(
+    mcp_client: Client[Any], brand_sites: _FakeBrands
+) -> None:
+    preview = await _call(
+        mcp_client,
+        "catalogai_set_brand_websites",
+        brand="Le Petit Souk",
+        add=["new.example.com"],
+        remove=["https://old.example.com/"],
+    )
+    expected = ["https://lepetitsouk.fr", "https://new.example.com"]
+    assert preview["preview"] is True and preview["after"] == expected
+    assert brand_sites.written == []
+
+    done = await _call(
+        mcp_client,
+        "catalogai_set_brand_websites",
+        brand_id=7,
+        add=["new.example.com", "HTTP://LEPETITSOUK.FR"],
+        remove=["old.example.com"],
+        confirm=True,
+    )
+    assert done["updated"] is True
+    assert brand_sites.written == [(7, expected)]
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_brand_websites_replace_and_clear(
+    mcp_client: Client[Any], brand_sites: _FakeBrands
+) -> None:
+    await _call(
+        mcp_client,
+        "catalogai_set_brand_websites",
+        brand_id=8,
+        replace_with=["maileg.com"],
+        confirm=True,
+    )
+    await _call(
+        mcp_client,
+        "catalogai_set_brand_websites",
+        brand_id=7,
+        replace_with=[],
+        confirm=True,
+    )
+    assert brand_sites.written == [(8, ["https://maileg.com"]), (7, [])]
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_brand_websites_refuses_before_writing(
+    mcp_client: Client[Any], brand_sites: _FakeBrands
+) -> None:
+    bad_calls: list[tuple[dict[str, Any], str]] = [
+        ({"brand_id": 99, "add": ["a.com"]}, "absente de ce catalogue"),
+        ({"brand_id": 7}, "Précisez add"),
+        ({"add": ["a.com"]}, "Précisez la marque"),
+        ({"brand_id": 7, "brand": "Maileg", "add": ["a.com"]}, "Précisez la marque"),
+        ({"brand_id": 7, "add": ["a.com"], "replace_with": []}, "ne se combine pas"),
+        ({"brand_id": 7, "add": ["file:///c/a"]}, "invalides"),
+        ({"brand_id": 7, "add": ["pasuneurl"]}, "invalides"),
+        ({"brand_id": 7, "remove": ["absent.com"]}, "absentes"),
+        ({"brand_id": 8, "add": [f"s{i}.com" for i in range(21)]}, "20 sites"),
+    ]
+    for args, message in bad_calls:
+        with pytest.raises(ToolError, match=message):
+            await mcp_client.call_tool(
+                "catalogai_set_brand_websites", {**args, "confirm": True}
+            )
+    assert brand_sites.written == []
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("brand_sites")
+async def test_brand_websites_need_enrich_module_and_write_scope(
+    as_user: User,
+    mcp_client: Client[Any],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.mcp.oauth import SCOPE_READ
+
+    args = {"brand_id": 7, "add": ["a.com"], "confirm": True}
+    _set_flags(db, as_user, feature_enrich=False)
+    with pytest.raises(ToolError, match="enrichissement n'est pas activé"):
+        await mcp_client.call_tool("catalogai_set_brand_websites", args)
+
+    _set_flags(db, as_user, feature_enrich=True)
+    token = AccessToken(
+        token="t", client_id="c", scopes=[SCOPE_READ], claims={"user_id": as_user.id}
+    )
+    monkeypatch.setattr(mcp_guard, "get_access_token", lambda: token)
+    with pytest.raises(ToolError, match="lecture seule"):
+        await mcp_client.call_tool("catalogai_set_brand_websites", args)

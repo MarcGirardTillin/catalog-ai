@@ -2,6 +2,8 @@
 
 ## Latest Changes
 
+- MCP : consultation et modification des sites de référence d'une marque
+  (ajout, retrait, remplacement, aperçu avant écriture).
 - MCP : consultation et mise à jour des poids par défaut par catégorie
   (aperçu avant écriture). Ils s'appliquent aux prochaines fiches et aux
   prochains imports, pas aux produits déjà en boutique.

@@ -22,16 +22,18 @@ from sqlalchemy import select
 
 from app.api.deps import get_job_runner
 from app.api.exceptions import AppException
+from app.api.routes import brands as brand_routes
 from app.api.routes import imports as import_routes
 from app.api.routes import items as item_routes
 from app.api.routes import jobs as job_routes
 from app.api.routes import locations as location_routes
+from app.api.schemas.brands import BrandWebsiteUrlsUpdate
 from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobSelection
 from app.api.schemas.imports import ImportTransferRequest
 from app.api.services.credits import balance as credit_balance
 from app.api.services.credits import credit_grid, require_credits
 from app.api.services.imaging import account_settings
-from app.clients.xano import XanoError
+from app.clients.xano import XanoError, normalize_website_urls
 from app.mcp.auth import ApiTokenVerifier
 from app.mcp.guard import ToolContext, run_tool
 from app.mcp.oauth import CatalogOAuthProvider
@@ -296,19 +298,126 @@ async def list_brands(
         str | None, Field(description="Partie du nom (insensible à la casse)")
     ] = None,
 ) -> dict[str, Any]:
-    """Marques du catalogue Tillin (id et nom), filtrées par nom : retrouver le
-    nom exact ou l'id d'une marque."""
+    """Marques du catalogue Tillin (id, nom, sites de référence), filtrées par
+    nom : retrouver le nom exact ou l'id d'une marque, et voir les sites où
+    l'enrichissement cherche ses fiches."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         wanted = (query or "").strip().casefold()
         brands = [
-            {"id": brand.id, "name": brand.name}
+            {"id": brand.id, "name": brand.name, "website_urls": brand.website_urls}
             for brand in ctx.xano.list_brands()
             if brand.name and wanted in brand.name.casefold()
         ]
         return {"total": len(brands), "brands": brands[:100]}
 
     return await run_tool("list_brands", None, work)
+
+
+_MAX_BRAND_URLS = 20
+
+
+def _clean_brand_urls(urls: list[str]) -> list[str]:
+    cleaned = normalize_website_urls(urls)
+    invalid = [
+        url
+        for url in cleaned
+        if not url.lower().startswith(("http://", "https://"))
+        or "." not in url.split("://", 1)[1]
+    ]
+    if invalid:
+        raise ToolError(f"URL invalides : {', '.join(invalid[:5])}")
+    return cleaned
+
+
+def _url_key(url: str) -> str:
+    return url.split("://", 1)[-1].casefold()
+
+
+@mcp.tool(
+    name="catalogai_set_brand_websites",
+    annotations=_write("Modifier les sites d'une marque", destructive=True),
+)
+async def set_brand_websites(
+    brand: Annotated[
+        str | None, Field(description="Marque par son NOM (ou utilisez brand_id)")
+    ] = None,
+    brand_id: Annotated[int | None, Field(description="Marque (id Tillin)")] = None,
+    add: Annotated[
+        list[str] | None, Field(description="URLs à ajouter aux sites existants")
+    ] = None,
+    remove: Annotated[
+        list[str] | None, Field(description="URLs à retirer des sites existants")
+    ] = None,
+    replace_with: Annotated[
+        list[str] | None,
+        Field(description="Remplace TOUTE la liste ; [] vide la liste"),
+    ] = None,
+    confirm: Annotated[
+        bool, Field(description="false = aperçu seulement ; true = écrit dans Tillin")
+    ] = False,
+) -> dict[str, Any]:
+    """Ajoute, retire ou remplace les sites de référence d'une marque (20 max),
+    ceux où l'enrichissement cherche les fiches produits. Sans confirm=true,
+    renvoie seulement l'aperçu avant / après. Modifier une URL : remove
+    l'ancienne et add la nouvelle. Vaut pour les prochains enrichissements."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        if replace_with is not None and (add or remove):
+            raise ToolError("replace_with ne se combine pas avec add ou remove.")
+        if replace_with is None and not add and not remove:
+            raise ToolError("Précisez add, remove ou replace_with.")
+        if (brand is None) == (brand_id is None):
+            raise ToolError("Précisez la marque : brand (nom) OU brand_id.")
+        # La marque doit être dans le catalogue du compte : un id d'une autre
+        # boutique est refusé avant toute écriture.
+        wanted = brand_id
+        if wanted is None:
+            wanted = int(_resolve_brand(ctx, str(brand))["id"])
+        target = next((b for b in ctx.xano.list_brands() if b.id == wanted), None)
+        if target is None:
+            raise ToolError(
+                f"Marque {wanted} absente de ce catalogue : voir catalogai_list_brands."
+            )
+
+        before = list(target.website_urls)
+        if replace_with is not None:
+            after = _clean_brand_urls(replace_with)
+        else:
+            gone = {_url_key(url) for url in normalize_website_urls(remove or [])}
+            missing = gone - {_url_key(url) for url in before}
+            if missing:
+                raise ToolError(
+                    f"URLs à retirer absentes de la marque : {sorted(missing)[:5]}"
+                )
+            after = [url for url in before if _url_key(url) not in gone]
+            after += _clean_brand_urls(add or [])
+        # Dédoublonné en gardant la première occurrence, dans l'ordre.
+        unique: dict[str, str] = {}
+        for url in after:
+            unique.setdefault(_url_key(url), url)
+        after = list(unique.values())
+        if len(after) > _MAX_BRAND_URLS:
+            raise ToolError(f"{_MAX_BRAND_URLS} sites maximum par marque.")
+
+        change = {
+            "brand_id": wanted,
+            "brand": target.name,
+            "before": before,
+            "after": after,
+        }
+        if not confirm:
+            return {
+                **change,
+                "preview": True,
+                "note": "Rien n'a été écrit. Relancez avec confirm=true.",
+            }
+        brand_routes.update_brand_website_urls(
+            wanted, BrandWebsiteUrlsUpdate(website_urls=after), ctx.xano
+        )
+        return {**change, "updated": True}
+
+    return await run_tool("set_brand_websites", "feature_enrich", work, write=True)
 
 
 # --- Poids par catégorie --------------------------------------------------------

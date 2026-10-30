@@ -55,7 +55,8 @@ jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
 |---|---|---|---|
 | `catalogai_get_account_overview` | modules, crédits, coûts par action, session Tillin | — | non |
 | `catalogai_search_products` | recherche catalogue (texte, marque par nom ou id), avec stock total et connexions e-commerce (`origins`), 100 par page max | — | non |
-| `catalogai_list_brands` | marques (recherche par nom) | — | non |
+| `catalogai_list_brands` | marques et leurs sites de référence (recherche par nom) | — | non |
+| `catalogai_set_brand_websites` | ajoute, retire ou remplace les sites d'une marque — aperçu sans `confirm=true` | enrichissement | **oui** |
 | `catalogai_get_product` | fiche, variantes, images, connexions e-commerce | — | non |
 | `catalogai_list_category_weights` | catégories et poids par défaut (kg) | import ou enrichissement | non |
 | `catalogai_set_category_weights` | modifie ces poids (kg, 0 = effacer) — aperçu sans `confirm=true` | import ou enrichissement | **oui** |
