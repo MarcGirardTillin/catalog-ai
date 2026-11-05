@@ -54,10 +54,13 @@ jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
 | Outil | Rôle | Module | Écrit dans Tillin |
 |---|---|---|---|
 | `catalogai_get_account_overview` | modules, crédits, coûts par action, session Tillin | — | non |
-| `catalogai_search_products` | recherche catalogue (texte, marque par nom ou id), avec stock total et connexions e-commerce (`origins`), 100 par page max | — | non |
+| `catalogai_search_products` | recherche catalogue (texte ; marque, fournisseur, tag, saison par nom ; statut ; connexion et site e-commerce), avec stock total et `origins`, 100 par page max | — | non |
 | `catalogai_list_brands` | marques et leurs sites de référence (recherche par nom) | — | non |
 | `catalogai_set_brand_websites` | ajoute, retire ou remplace les sites d'une marque — aperçu sans `confirm=true` | enrichissement | **oui** |
-| `catalogai_get_product` | fiche, variantes, images, connexions e-commerce | — | non |
+| `catalogai_get_product` | fiche, variantes, images (`image_id`, position, `studio_processed_at`), connexions e-commerce | — | non |
+| `catalogai_studio_process_images` | traitement Studio de base sur des fiches (`dry_run` = compte images et crédits) | studio | non (débite des crédits) |
+| `catalogai_get_studio_job` | suivi d'un traitement Studio, URL publique 24 h de chaque image traitée | studio | non |
+| `catalogai_apply_studio_result` | remplace les originales par les images traitées, même position — aperçu sans `confirm=true` | studio | **oui** |
 | `catalogai_list_category_weights` | catégories et poids par défaut (kg) | import ou enrichissement | non |
 | `catalogai_set_category_weights` | modifie ces poids (kg, 0 = effacer) — aperçu sans `confirm=true` | import ou enrichissement | **oui** |
 | `catalogai_create_image_upload` | URLs d'envoi (30 min) pour des images locales | — | **oui** (à l'envoi) |
@@ -75,6 +78,25 @@ jeton d'accès 1 h, rafraîchissement 30 jours avec rotation), métadonnées sur
 | `catalogai_get_import_review` | produits extraits d'un import | import | non |
 | `catalogai_list_locations` | magasins Tillin | import | non |
 | `catalogai_transfer_import` | crée les produits et la réception — aperçu sans `confirm=true` | import | **oui** |
+
+### Studio (traitement d'image de base)
+
+1. `catalogai_studio_process_images(product_ids, image_ids?, settings?, dry_run)` :
+   détourage (`remove_bg`), fond (`bg_color`, hex), `ratio`, `margin_percent`,
+   `center`, `format`, `quality`, `max_kb`. Chaque réglage absent prend le
+   réglage Studio du compte. Les images déjà issues du Studio sont ignorées
+   (`skip_processed`). `dry_run=true` compte images et crédits sans rien
+   lancer ; sinon un `job_id` est renvoyé et les images sont traitées à la
+   suite, côté serveur. 1 crédit par image réussie.
+2. `catalogai_get_studio_job(job_id)` : statut et, par image, id et URL
+   d'origine, URL traitée (publique 24 h, pour mesurer le fond), dimensions,
+   erreur. Rien n'est encore écrit dans Tillin.
+3. `catalogai_apply_studio_result(job_id | product_id, confirm)` : remplace
+   chaque originale par sa version traitée à la même position et désactive
+   l'originale (route d'enregistrement du Studio de l'app). Le lien public
+   disparaît une fois l'image appliquée.
+
+Pas d'ombre ni de finitions IA dans cette version.
 
 ### Images locales
 

@@ -1270,3 +1270,23 @@ envoie au lancement et les réglages de compte modifiables par le client ;
 `ai_model`, `launcher_user_id`, etc. sont refusés. Prompt par produit =
 un job par prompt (pas de changement du pipeline), prompts et crédits
 vérifiés avant tout lancement.
+
+
+## 2026-11-05 — MCP Studio : job = lot d'actifs, liens publics signés
+
+Le Studio de l'app traite une image par requête (`ImageAsset` verbe
+`normalize`) ; le MCP traite des fiches entières. Un « job » MCP est le lot
+d'actifs portant le même `params_json.mcp_job` (pas de table, pas de
+migration), traité À LA SUITE dans un fil du processus (pas 300 traitements
+en parallèle), solde revérifié avant chaque image, crédit `image_process`
+débité au succès comme dans l'app. L'application réutilise la route
+« save » en mode remplacement (position de l'originale, désactivation).
+Mesure du fond avant validation : images traitées servies par
+`GET /mcp-files/{jeton}`, JWT audience dédiée, 24 h, lié à l'actif et au
+compte ; disparaît quand le staging est purgé (image appliquée). Décision
+Marc : traitement de base seulement (pas d'ombre/finition Photoroom à
+5 crédits), pas de dimensions des images d'origine (Xano ne les donne pas,
+les télécharger rendrait la fiche lente). « Déjà traitée » = image Tillin
+créée par un enregistrement Studio (`tillin_image_ids_json`). Limite
+connue : un redémarrage du backend pendant un job laisse les images non
+traitées en `pending`.

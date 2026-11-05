@@ -9,9 +9,10 @@ l'utilisateur, jamais l'identité de service.
 """
 
 import logging
+from pathlib import PurePosixPath
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -19,9 +20,11 @@ from app.api.deps import SessionDep, xano_client_for_user
 from app.api.exceptions import AppException
 from app.api.routes.products import MAX_UPLOAD_BYTES, _template_names_for_upload
 from app.api.services.accounts import resolve_account_id
+from app.api.services.imaging import MEDIA_TYPES, output_files
+from app.imaging import staging
 from app.imaging.uploads import prepare_upload
-from app.mcp.uploads import UploadGrant, verify_upload
-from app.models import User
+from app.mcp.uploads import UploadGrant, verify_studio_file, verify_upload
+from app.models import ImageAsset, User
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +114,49 @@ def _store(db: Session, grant: UploadGrant, data: bytes) -> dict[str, Any]:
         "image_id": image.id,
         "url": image.url,
     }
+
+
+files_router = APIRouter(prefix="/mcp-files", tags=["mcp"])
+
+
+def _file_not_found() -> AppException:
+    return AppException(
+        status_code=404,
+        code="not_found",
+        message="Image introuvable (déjà appliquée dans Tillin, écartée ou expirée)",
+    )
+
+
+@files_router.get("/{token}")
+def read_studio_file(token: str, db: SessionDep) -> Response:
+    """Image traitée d'un actif Studio, via un lien signé émis par le MCP.
+
+    Public par construction (le lien EST l'autorisation, 24 h) : sert à
+    mesurer le résultat avant de l'appliquer. Disparaît dès que l'image est
+    enregistrée dans Tillin (staging purgé).
+    """
+    grant = verify_studio_file(token)
+    if grant is None:
+        raise AppException(
+            status_code=401,
+            code="file_link_invalid",
+            message="Lien invalide ou expiré (24 h) : relisez le job Studio.",
+        )
+    asset_id, account_id = grant
+    asset = db.get(ImageAsset, asset_id)
+    if asset is None or asset.account_id != account_id:
+        raise _file_not_found()
+    outputs = output_files(asset)
+    if not outputs:
+        raise _file_not_found()
+    relpath = str(outputs[0]["path"])
+    try:
+        data = staging.load(relpath)
+    except (FileNotFoundError, ValueError):
+        raise _file_not_found() from None
+    extension = PurePosixPath(relpath).suffix.lstrip(".").lower()
+    return Response(
+        content=data,
+        media_type=MEDIA_TYPES.get(extension, "application/octet-stream"),
+        headers={"Cache-Control": "private, max-age=300"},
+    )

@@ -2,6 +2,13 @@
 
 ## Latest Changes
 
+- MCP : traitement Studio de base depuis Claude (détourage, fond, ratio,
+  marges, centrage, format, qualité, poids) sur des fiches entières, avec
+  estimation préalable, suivi des images traitées (lien public 24 h) puis
+  remplacement dans Tillin à la même position, aperçu avant écriture.
+- MCP : la fiche produit donne l'id, la position et la date de traitement
+  Studio de chaque image ; la recherche filtre par fournisseur, tag,
+  saison, statut, connexion et site e-commerce.
 - MCP : consultation et modification des sites de référence d'une marque
   (ajout, retrait, remplacement, aperçu avant écriture).
 - MCP : consultation et mise à jour des poids par défaut par catégorie

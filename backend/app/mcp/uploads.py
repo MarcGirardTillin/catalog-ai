@@ -68,3 +68,43 @@ def verify_upload(token: str) -> UploadGrant | None:
 
 def upload_url(token: str) -> str:
     return f"{settings.PUBLIC_API_URL}/mcp-uploads/{token}"
+
+
+# --- Liens de lecture des images Studio ---------------------------------------
+# Image traitée lisible SANS connexion (mesure du fond avant validation) :
+# lien signé, audience dédiée, 24 h, limité à un actif du compte.
+
+STUDIO_FILE_AUDIENCE = "catalogai-studio-file"
+STUDIO_FILE_TTL = timedelta(hours=24)
+
+
+def sign_studio_file(
+    asset_id: int, account_id: int, *, now: datetime | None = None
+) -> str:
+    issued = now or datetime.now(UTC)
+    payload = {
+        "aud": STUDIO_FILE_AUDIENCE,
+        "ast": asset_id,
+        "acc": account_id,
+        "iat": issued,
+        "exp": issued + STUDIO_FILE_TTL,
+    }
+    return jwt.encode(payload, settings.APP_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_studio_file(token: str) -> tuple[int, int] | None:
+    """(asset_id, account_id) d'un lien valide, sinon None."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.APP_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            audience=STUDIO_FILE_AUDIENCE,
+        )
+        return int(payload["ast"]), int(payload["acc"])
+    except (jwt.InvalidTokenError, KeyError, TypeError, ValueError):
+        return None
+
+
+def studio_file_url(token: str) -> str:
+    return f"{settings.PUBLIC_API_URL}/mcp-files/{token}"

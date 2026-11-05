@@ -7,7 +7,10 @@ les actions qui écrivent dans Tillin (`apply_item`, `transfer_import`)
 renvoient un APERÇU tant que `confirm` n'est pas vrai.
 """
 
+import logging
 import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
@@ -20,25 +23,51 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 from sqlalchemy import select
 
-from app.api.deps import get_job_runner
+from app.api.deps import get_job_runner, get_photoroom_client
 from app.api.exceptions import AppException
 from app.api.routes import brands as brand_routes
+from app.api.routes import imaging as imaging_routes
 from app.api.routes import imports as import_routes
 from app.api.routes import items as item_routes
 from app.api.routes import jobs as job_routes
 from app.api.routes import locations as location_routes
+from app.api.schemas import AssetSaveRequest, NormalizeOptions
 from app.api.schemas.brands import BrandWebsiteUrlsUpdate
 from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobSelection
 from app.api.schemas.imports import ImportTransferRequest
 from app.api.services.credits import balance as credit_balance
 from app.api.services.credits import credit_grid, require_credits
-from app.api.services.imaging import account_settings
+from app.api.services.imaging import (
+    account_settings,
+    merged_normalize_options,
+    output_files,
+    run_normalize,
+)
+from app.clients.base import NotConfiguredError
 from app.clients.xano import XanoError, normalize_website_urls
+from app.core.db import SessionLocal
+from app.imaging.naming import render_image_filename
 from app.mcp.auth import ApiTokenVerifier
 from app.mcp.guard import ToolContext, run_tool
 from app.mcp.oauth import CatalogOAuthProvider
-from app.mcp.uploads import UPLOAD_TTL, UploadGrant, sign_upload, upload_url
-from app.models import Account, EnrichmentItem, EnrichmentJob, InstructionTemplate
+from app.mcp.uploads import (
+    STUDIO_FILE_TTL,
+    UPLOAD_TTL,
+    UploadGrant,
+    sign_studio_file,
+    sign_upload,
+    studio_file_url,
+    upload_url,
+)
+from app.models import (
+    Account,
+    EnrichmentItem,
+    EnrichmentJob,
+    ImageAsset,
+    InstructionTemplate,
+)
+
+logger = logging.getLogger("app.mcp")
 
 INSTRUCTIONS = (
     "CatalogAI (Tillin) : catalogue produits d'une boutique, enrichissement des "
@@ -152,6 +181,46 @@ def _product_summary(product: Any) -> dict[str, Any]:
     }
 
 
+_STATUS_CODES = {"inactive": "1", "active": "2", "archived": "3"}
+# Codes Xano natifs : 2 connectés, 3 partiellement, 4 non connectés.
+_ECOMMERCE_CODES = {"connected": 2, "partial": 3, "not_connected": 4}
+
+
+def _resolve_classification(ctx: ToolContext, group: str, label: str, name: str) -> int:
+    """Id d'une valeur de classification (fournisseur, tag, saison) par son
+    nom : exact, sinon unique contenant ; erreur listant les candidates."""
+    wanted = name.strip().casefold()
+    options = [
+        o for o in ctx.xano.get_classification().get(group, []) if o.get("title")
+    ]
+    exact = [o for o in options if str(o["title"]).casefold() == wanted]
+    matches = exact or [o for o in options if wanted in str(o["title"]).casefold()]
+    if len(matches) == 1:
+        return int(matches[0]["id"])
+    if not matches:
+        raise ToolError(f"Aucun {label} « {name} » dans le catalogue.")
+    names = ", ".join(sorted(str(o["title"]) for o in matches)[:10])
+    raise ToolError(f"Plusieurs {label}s correspondent à « {name} » : {names}.")
+
+
+def _studio_processed(
+    ctx: ToolContext, product_id: int | None = None
+) -> dict[int, Any]:
+    """Images Tillin créées par un enregistrement Studio -> date du traitement."""
+    query = select(ImageAsset.tillin_image_ids_json, ImageAsset.finished_at).where(
+        ImageAsset.account_id == ctx.account_id,
+        ImageAsset.tillin_image_ids_json.is_not(None),
+    )
+    if product_id is not None:
+        query = query.where(ImageAsset.product_id == product_id)
+    processed: dict[int, Any] = {}
+    for image_ids, finished_at in ctx.db.execute(query).all():
+        for image_id in image_ids or []:
+            if image_id is not None:
+                processed[int(image_id)] = finished_at
+    return processed
+
+
 @mcp.tool(
     name="catalogai_search_products",
     annotations=_read_only("Rechercher des produits"),
@@ -167,27 +236,70 @@ async def search_products(
     brand_id: Annotated[
         int | None, Field(description="Filtre marque (id Tillin)")
     ] = None,
+    supplier: Annotated[
+        str | None, Field(description="Filtre fournisseur par son NOM")
+    ] = None,
+    tag: Annotated[
+        str | None, Field(description="Filtre tag par son NOM (ex. « Outlet »)")
+    ] = None,
+    season: Annotated[
+        str | None, Field(description="Filtre saison par son NOM (ex. « A/W 26 »)")
+    ] = None,
+    status: Annotated[
+        Literal["active", "inactive", "archived"] | None,
+        Field(description="Statut du produit dans Tillin (vide = tous)"),
+    ] = None,
+    ecommerce: Annotated[
+        Literal["connected", "partial", "not_connected"] | None,
+        Field(description="Connexion e-commerce (vide = toutes)"),
+    ] = None,
+    ecommerce_site: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Ne garder que les produits reliés à ce site (ex. « Shopify ») ; "
+                "filtre appliqué à la page renvoyée"
+            )
+        ),
+    ] = None,
     page: Annotated[int, Field(ge=1)] = 1,
     per_page: Annotated[int, Field(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
     """Recherche dans le catalogue Tillin de la boutique (résumé par produit :
     id, titre, référence, marque, prix, couleurs, nombre d'images, stock total
     des variantes, connexions e-commerce `origins` — vide = non synchronisé).
-    La marque se donne par son nom (`brand`) ou son id (`brand_id`) ; jusqu'à
-    100 produits par page."""
+    Filtres : marque (nom ou id), fournisseur, tag, saison (par leur nom),
+    statut, connexion e-commerce, site e-commerce ; jusqu'à 100 produits par
+    page."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         wanted = brand_id
         if wanted is None and brand:
             wanted = int(_resolve_brand(ctx, brand)["id"])
+        filters: dict[str, Any] = {}
+        for group, label, name, key in (
+            ("suppliers", "fournisseur", supplier, "supplier"),
+            ("tags", "tag", tag, "tag"),
+            ("seasons", "saison", season, "season"),
+        ):
+            if name:
+                filters[key] = _resolve_classification(ctx, group, label, name)
+        if status:
+            filters["status"] = _STATUS_CODES[status]
+        if ecommerce:
+            filters["ecommerce"] = _ECOMMERCE_CODES[ecommerce]
         result = ctx.xano.search_products(
-            text=query, brand=wanted, page=page, per_page=per_page
+            text=query, brand=wanted, page=page, per_page=per_page, **filters
         )
-        return {
-            "total": result.total,
-            "page": page,
-            "products": [_product_summary(p) for p in result.items],
-        }
+        items = result.items
+        response: dict[str, Any] = {"total": result.total, "page": page}
+        if ecommerce_site:
+            site = ecommerce_site.strip().casefold()
+            kept = [p for p in items if site in {o.casefold() for o in p.origins}]
+            response["site_filtered_out"] = len(items) - len(kept)
+            items = kept
+        response["products"] = [_product_summary(p) for p in items]
+        return response
 
     return await run_tool("search_products", None, work)
 
@@ -195,7 +307,8 @@ async def search_products(
 @mcp.tool(name="catalogai_get_product", annotations=_read_only("Fiche produit"))
 async def get_product(product_id: int) -> dict[str, Any]:
     """Fiche d'un produit Tillin : description, variantes (code-barres,
-    couleur, taille, prix, stock), images et connexions e-commerce."""
+    couleur, taille, prix, stock), images (image_id, position, date de
+    traitement Studio si déjà traitée) et connexions e-commerce."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         product = ctx.xano.get_product(product_id)
@@ -203,6 +316,7 @@ async def get_product(product_id: int) -> dict[str, Any]:
             raise AppException(
                 status_code=404, code="not_found", message="Produit introuvable"
             )
+        processed = _studio_processed(ctx, product_id)
         return {
             **_product_summary(product),
             "season": product.season,
@@ -223,7 +337,21 @@ async def get_product(product_id: int) -> dict[str, Any]:
                 }
                 for v in product.variants[:60]
             ],
-            "image_urls": [image.url for image in product.images[:12]],
+            "images": [
+                {
+                    "image_id": image.id,
+                    "url": image.url,
+                    "position": image.position,
+                    # Image issue d'un traitement Studio enregistré (date du
+                    # traitement) ; None = jamais traitée par le Studio.
+                    "studio_processed_at": (
+                        processed[image.id].isoformat()
+                        if image.id in processed and processed[image.id]
+                        else None
+                    ),
+                }
+                for image in product.images[:30]
+            ],
         }
 
     return await run_tool("get_product", None, work)
@@ -553,6 +681,389 @@ async def set_category_weights(
         return {"updated": updated, "failed": failed}
 
     return await run_tool("set_category_weights", None, work, write=True)
+
+
+# --- Studio (traitement d'image de base) ------------------------------------------
+# Mêmes briques que le Studio de l'app : un actif `normalize` par image
+# (détourage, fond, ratio, marges, centrage, format, qualité, poids), crédit
+# `image_process` débité au succès, enregistrement par la route « save » en
+# mode remplacement. Un « job » MCP = les actifs portant le même
+# `params_json.mcp_job` (pas de table dédiée). Module studio requis.
+
+_STUDIO_FETCH_WORKERS = 6
+
+
+def _job_assets_query(ctx: ToolContext, job_id: str) -> Any:
+    return (
+        select(ImageAsset)
+        .where(
+            ImageAsset.account_id == ctx.account_id,
+            ImageAsset.params_json["mcp_job"].as_string() == job_id,
+        )
+        .order_by(ImageAsset.id)
+    )
+
+
+def _studio_targets(
+    ctx: ToolContext,
+    product_ids: list[int],
+    image_ids: list[int] | None,
+    skip_processed: bool,
+) -> dict[str, Any]:
+    """Images à traiter (produit, image, URL, position) + exclusions."""
+    ids = list(dict.fromkeys(product_ids))
+    with ThreadPoolExecutor(max_workers=_STUDIO_FETCH_WORKERS) as pool:
+        products = list(pool.map(ctx.xano.get_product, ids))
+    processed = _studio_processed(ctx) if skip_processed else {}
+    wanted = set(image_ids or [])
+    seen: set[int] = set()
+    targets: list[dict[str, Any]] = []
+    already: list[dict[str, Any]] = []
+    missing = [pid for pid, product in zip(ids, products, strict=True) if not product]
+    for pid, product in zip(ids, products, strict=True):
+        if product is None:
+            continue
+        for image in product.images:
+            if image.id is None or image.id in seen:
+                continue
+            if wanted and image.id not in wanted:
+                continue
+            seen.add(image.id)
+            entry = {
+                "product_id": pid,
+                "image_id": image.id,
+                "url": image.url,
+                "position": image.position,
+            }
+            if image.id in processed:
+                already.append(entry)
+            else:
+                targets.append(entry)
+    unknown = sorted(wanted - seen)
+    if unknown:
+        raise ToolError(
+            f"Images absentes des fiches indiquées : {unknown[:10]} — relisez-les "
+            "avec catalogai_get_product."
+        )
+    return {"targets": targets, "already_processed": already, "missing": missing}
+
+
+def _run_studio_job(
+    jobs: list[tuple[int, str]],
+    options: NormalizeOptions,
+    photoroom: Any,
+    account_id: int,
+    unit_cost: int,
+) -> None:
+    """Traite les images d'un job À LA SUITE (un fil, pas 300 en parallèle).
+
+    Le solde est revérifié avant chaque image : d'autres traitements du
+    compte peuvent l'avoir entamé depuis le lancement.
+    """
+    for asset_id, url in jobs:
+        try:
+            with SessionLocal() as db:
+                if credit_balance(db, account_id) < unit_cost:
+                    asset = db.get(ImageAsset, asset_id)
+                    if asset is not None:
+                        asset.status = "failed"
+                        asset.error = "Crédits insuffisants"
+                        asset.finished_at = datetime.now(UTC)
+                        db.commit()
+                    continue
+            run_normalize(asset_id, url, options, photoroom)
+        except Exception:  # noqa: BLE001 — une image ne bloque pas le job
+            logger.exception("studio job: asset %s failed", asset_id)
+
+
+# Remplaçable dans les tests (pas de vrai traitement d'image).
+studio_job_runner = _run_studio_job
+
+
+def _start_studio_thread(*args: Any) -> None:
+    threading.Thread(
+        target=studio_job_runner, args=args, name="mcp-studio", daemon=True
+    ).start()
+
+
+@mcp.tool(
+    name="catalogai_studio_process_images",
+    annotations=_write("Lancer un traitement Studio"),
+)
+async def studio_process_images(
+    product_ids: Annotated[
+        list[int], Field(min_length=1, max_length=100, description="Ids Tillin")
+    ],
+    image_ids: Annotated[
+        list[int] | None,
+        Field(
+            description=(
+                "Images à traiter (image_id de catalogai_get_product) ; vide = "
+                "toutes les images des fiches"
+            )
+        ),
+    ] = None,
+    settings: Annotated[
+        NormalizeOptions | None,
+        Field(
+            description=(
+                "Réglages facultatifs ; chaque champ absent prend le réglage "
+                "Studio du compte. remove_bg (détourage), bg_color (hex, ex. "
+                "e4e4e4), ratio (4:5, 1:1, 3:4, 16:9, original), center, "
+                "margin_percent (0-45), format (webp, jpeg, png), quality "
+                "(1-100), max_kb (poids max du fichier)"
+            )
+        ),
+    ] = None,
+    skip_processed: Annotated[
+        bool,
+        Field(description="true = ignorer les images déjà issues du Studio"),
+    ] = True,
+    dry_run: Annotated[
+        bool,
+        Field(description="true = compter images et crédits sans rien lancer"),
+    ] = False,
+) -> dict[str, Any]:
+    """Traitement d'image de base du Studio (détourage, fond, ratio, marges,
+    centrage, format, qualité, poids) sur les images de fiches produits. Les
+    résultats restent EN ATTENTE : rien n'est écrit dans Tillin. dry_run=true
+    donne le nombre d'images et de crédits sans rien lancer. Sinon renvoie un
+    job_id : suivez-le avec catalogai_get_studio_job, puis appliquez avec
+    catalogai_apply_studio_result."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        found = _studio_targets(ctx, product_ids, image_ids, skip_processed)
+        targets = found["targets"]
+        options = merged_normalize_options(ctx.db, ctx.account_id, settings)
+        unit_cost = credit_grid(ctx.db, ctx.account_id)["image_process"]
+        balance = credit_balance(ctx.db, ctx.account_id)
+        summary: dict[str, Any] = {
+            "images": len(targets),
+            "estimated_credits": len(targets) * unit_cost,
+            "credits_balance": balance,
+            "skipped_already_processed": len(found["already_processed"]),
+            "products_not_found": found["missing"],
+            "settings": options.model_dump(),
+        }
+        if dry_run:
+            return {**summary, "dry_run": True}
+        if not targets:
+            raise ToolError("Aucune image à traiter sur ces fiches.")
+        require_credits(ctx.db, ctx.account_id, len(targets) * unit_cost)
+        # Le prestataire est résolu AVANT toute écriture (clé absente = refus net).
+        try:
+            photoroom = get_photoroom_client()
+        except NotConfiguredError as exc:
+            raise ToolError(
+                "Le traitement d'image est indisponible (Photoroom)."
+            ) from exc
+        job_id = uuid.uuid4().hex[:12]
+        assets = [
+            ImageAsset(
+                account_id=ctx.account_id,
+                product_id=target["product_id"],
+                verb="normalize",
+                provider="photoroom" if options.remove_bg else "local",
+                status="pending",
+                source_image=target["url"],
+                source_product_image_id=target["image_id"],
+                params_json={
+                    "options": options.model_dump(),
+                    "mcp_job": job_id,
+                    "launched_by": ctx.user.id,
+                },
+            )
+            for target in targets
+        ]
+        ctx.db.add_all(assets)
+        ctx.db.commit()
+        jobs = [(asset.id, str(asset.source_image)) for asset in assets]
+        _start_studio_thread(jobs, options, photoroom, ctx.account_id, unit_cost)
+        return {**summary, "job_id": job_id, "status": "pending"}
+
+    return await run_tool(
+        "studio_process_images", "feature_studio", work, write=not dry_run
+    )
+
+
+def _asset_view(asset: ImageAsset) -> dict[str, Any]:
+    outputs = output_files(asset)
+    output = outputs[0] if outputs else {}
+    saved = asset.tillin_image_ids_json
+    processed_url = None
+    if asset.status == "completed" and output and saved is None:
+        processed_url = studio_file_url(sign_studio_file(asset.id, asset.account_id))
+    return {
+        "asset_id": asset.id,
+        "product_id": asset.product_id,
+        "image_id": asset.source_product_image_id,
+        "source_url": asset.source_image,
+        "status": "applied" if saved is not None else asset.status,
+        "processed_url": processed_url,
+        "width": output.get("width"),
+        "height": output.get("height"),
+        "format": output.get("format"),
+        "size_bytes": output.get("bytes"),
+        "error": asset.error,
+        "tillin_image_ids": saved,
+    }
+
+
+@mcp.tool(
+    name="catalogai_get_studio_job",
+    annotations=_read_only("Suivi d'un traitement Studio"),
+)
+async def get_studio_job(job_id: str) -> dict[str, Any]:
+    """État d'un traitement Studio et, pour chaque image : id et URL
+    d'origine, URL de l'image traitée (publique 24 h, pour la mesurer avant
+    de valider), dimensions, statut, erreur."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        assets = list(ctx.db.scalars(_job_assets_query(ctx, job_id)).all())
+        if not assets:
+            raise AppException(
+                status_code=404, code="not_found", message="Job Studio introuvable"
+            )
+        images = [_asset_view(asset) for asset in assets]
+        counts: dict[str, int] = {}
+        for image in images:
+            counts[image["status"]] = counts.get(image["status"], 0) + 1
+        running = counts.get("pending", 0) + counts.get("processing", 0)
+        return {
+            "job_id": job_id,
+            "status": "processing" if running else "completed",
+            "counts": counts,
+            "links_valid_hours": int(STUDIO_FILE_TTL.total_seconds() // 3600),
+            "images": images,
+        }
+
+    return await run_tool("get_studio_job", "feature_studio", work)
+
+
+@mcp.tool(
+    name="catalogai_apply_studio_result",
+    annotations=_write("Appliquer un traitement Studio", destructive=True),
+)
+async def apply_studio_result(
+    job_id: Annotated[
+        str | None, Field(description="Job Studio (ou utilisez product_id)")
+    ] = None,
+    product_id: Annotated[
+        int | None,
+        Field(description="Toutes les images traitées en attente d'une fiche"),
+    ] = None,
+    confirm: Annotated[
+        bool, Field(description="false = aperçu seulement ; true = écrit dans Tillin")
+    ] = False,
+) -> dict[str, Any]:
+    """Remplace dans Tillin chaque image d'origine par sa version traitée, à
+    la même position dans la galerie, et désactive l'originale. Sans
+    confirm=true, renvoie seulement l'aperçu. Seules les images traitées
+    par catalogai_studio_process_images et pas encore appliquées comptent."""
+
+    def work(ctx: ToolContext) -> dict[str, Any]:
+        if (job_id is None) == (product_id is None):
+            raise ToolError("Précisez job_id OU product_id.")
+        if job_id is not None:
+            query = _job_assets_query(ctx, job_id)
+        else:
+            query = (
+                select(ImageAsset)
+                .where(
+                    ImageAsset.account_id == ctx.account_id,
+                    ImageAsset.product_id == product_id,
+                    ImageAsset.params_json["mcp_job"].as_string().is_not(None),
+                )
+                .order_by(ImageAsset.id)
+            )
+        candidates = [
+            asset
+            for asset in ctx.db.scalars(query).all()
+            if asset.status == "completed"
+            and asset.tillin_image_ids_json is None
+            and asset.source_product_image_id is not None
+        ]
+        # Une image traitée deux fois : la plus récente l'emporte.
+        latest: dict[int, ImageAsset] = {}
+        for asset in candidates:
+            latest[int(asset.source_product_image_id or 0)] = asset
+        products: dict[int, Any] = {}
+        for asset in latest.values():
+            if asset.product_id not in products:
+                products[asset.product_id] = ctx.xano.get_product(asset.product_id)
+        template = (
+            account_settings(ctx.db, ctx.account_id).image_title_template or ""
+        ).strip()
+        plan: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        for source_id, asset in latest.items():
+            product = products.get(asset.product_id)
+            position = next(
+                (
+                    i.position
+                    for i in (product.images if product else [])
+                    if i.id == source_id
+                ),
+                None,
+            )
+            if product is None or position is None:
+                skipped.append(
+                    {
+                        "asset_id": asset.id,
+                        "image_id": source_id,
+                        "reason": "image d'origine absente de la fiche",
+                    }
+                )
+                continue
+            plan.append(
+                {
+                    "asset_id": asset.id,
+                    "product_id": asset.product_id,
+                    "replaces_image_id": source_id,
+                    "position": position,
+                    "processed_url": _asset_view(asset)["processed_url"],
+                }
+            )
+        if not confirm:
+            return {
+                "preview": True,
+                "will_replace": plan,
+                "skipped": skipped,
+                "note": "Rien n'a été écrit. Relancez avec confirm=true.",
+            }
+        applied: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        for step in plan:
+            name = None
+            if template:
+                try:
+                    stem = render_image_filename(
+                        products[step["product_id"]], int(step["position"]), template
+                    )
+                except ValueError:
+                    stem = ""
+                name = stem or None
+            try:
+                result = imaging_routes.save_asset(
+                    int(step["asset_id"]),
+                    AssetSaveRequest(replace=True, filenames=[name] if name else None),
+                    ctx.db,
+                    ctx.user,
+                    ctx.xano,
+                )
+            except AppException as exc:
+                ctx.db.rollback()
+                failed.append({**step, "error": exc.message})
+                continue
+            applied.append(
+                {
+                    **step,
+                    "new_image_ids": [i.id for i in result.images if i.id is not None],
+                }
+            )
+        return {"applied": applied, "failed": failed, "skipped": skipped}
+
+    return await run_tool("apply_studio_result", "feature_studio", work, write=True)
 
 
 # --- Images produit -------------------------------------------------------------

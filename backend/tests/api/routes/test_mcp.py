@@ -188,7 +188,7 @@ def test_every_tool_declares_annotations() -> None:
     import asyncio
 
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert len(tools) == 22
+    assert len(tools) == 25
     for tool in tools:
         assert tool.annotations is not None and tool.annotations.title, tool.name
         assert tool.annotations.read_only_hint is not None, tool.name
@@ -197,6 +197,7 @@ def test_every_tool_declares_annotations() -> None:
     }
     assert destructive == {
         "catalogai_apply_item",
+        "catalogai_apply_studio_result",
         "catalogai_arrange_product_images",
         "catalogai_set_brand_websites",
         "catalogai_set_category_weights",
@@ -1080,3 +1081,349 @@ async def test_brand_websites_need_enrich_module_and_write_scope(
     monkeypatch.setattr(mcp_guard, "get_access_token", lambda: token)
     with pytest.raises(ToolError, match="lecture seule"):
         await mcp_client.call_tool("catalogai_set_brand_websites", args)
+
+
+# --- Studio -------------------------------------------------------------------------
+
+
+class _FakeStudioCatalog:
+    """Tillin simulé : produit 70 (images 1, 2), produit 71 (image 3)."""
+
+    def __init__(self) -> None:
+        self.next_id = 500
+        self.uploaded: list[tuple[int, str]] = []
+        self.deactivated: list[int] = []
+        self.positions: list[tuple[int, int]] = []
+
+    def get_product(self, product_id: int) -> Any:
+        from app.api.schemas import Product, ProductImage
+
+        galleries = {
+            70: [
+                ProductImage(id=1, url="https://cdn/1.jpg", position=1),
+                ProductImage(id=2, url="https://cdn/2.jpg", position=2),
+            ],
+            71: [ProductImage(id=3, url="https://cdn/3.jpg", position=1)],
+        }
+        if product_id not in galleries:
+            return None
+        return Product(
+            id=product_id, title=f"Produit {product_id}", images=galleries[product_id]
+        )
+
+    def upload_product_images(self, product_id: int, files: list[Any]) -> list[Any]:
+        from app.api.schemas import ProductImage
+
+        self.uploaded.extend((product_id, name) for name, _, _ in files)
+        created = []
+        for _ in files:
+            self.next_id += 1
+            created.append(
+                ProductImage(id=self.next_id, url=f"https://cdn/{self.next_id}.webp")
+            )
+        return created
+
+    def deactivate_product_images(self, ids: list[int]) -> None:
+        self.deactivated.extend(ids)
+
+    def set_product_image_positions(self, positions: list[tuple[int, int]]) -> None:
+        self.positions.extend(positions)
+
+
+@pytest.fixture
+def studio(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    db_session_factory: sessionmaker[Session],
+) -> dict[str, Any]:
+    """Catalogue simulé + traitement remplacé par un résultat posé sur disque."""
+    from app.core.config import settings
+    from app.imaging import staging
+    from app.models import ImageAsset
+    from tests.images import source_jpeg
+
+    monkeypatch.setattr(settings, "IMAGING_DIR", str(tmp_path / "imaging"))
+    catalog = _FakeStudioCatalog()
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: catalog)
+    monkeypatch.setattr(mcp_server, "get_photoroom_client", lambda: object())
+    launched: list[list[tuple[int, str]]] = []
+
+    def runner(jobs: list[tuple[int, str]], *_: Any) -> None:
+        launched.append(jobs)
+        session = db_session_factory()
+        for asset_id, _url in jobs:
+            asset = session.get(ImageAsset, asset_id)
+            assert asset is not None
+            path = staging.store(asset_id, 0, source_jpeg(), "jpg")
+            asset.staged_paths_json = [path]
+            asset.staged_files_json = [
+                {
+                    "role": "output",
+                    "path": path,
+                    "width": 800,
+                    "height": 1000,
+                    "format": "jpg",
+                    "bytes": 10,
+                    "index": 0,
+                }
+            ]
+            asset.status = "completed"
+            asset.finished_at = datetime.now(UTC)
+        session.commit()
+        session.close()
+
+    monkeypatch.setattr(mcp_server, "studio_job_runner", runner)
+    # Exécution synchrone : le fil d'arrière-plan n'est pas lancé en test.
+    monkeypatch.setattr(mcp_server, "_start_studio_thread", lambda *args: runner(*args))
+    return {"catalog": catalog, "launched": launched}
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_studio_dry_run_counts_without_launching(
+    mcp_client: Client[Any], studio: dict[str, Any], db: Session
+) -> None:
+    from app.models import ImageAsset
+
+    dry = await _call(
+        mcp_client,
+        "catalogai_studio_process_images",
+        product_ids=[70, 71, 99],
+        settings={"bg_color": "e4e4e4"},
+        dry_run=True,
+    )
+    assert dry["images"] == 3 and dry["estimated_credits"] == 3
+    assert dry["products_not_found"] == [99]
+    assert dry["settings"]["bg_color"] == "e4e4e4"
+    assert studio["launched"] == [] and db.query(ImageAsset).count() == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_studio_job_process_follow_and_apply(
+    mcp_client: Client[Any],
+    client: TestClient,
+    studio: dict[str, Any],
+) -> None:
+    started = await _call(
+        mcp_client,
+        "catalogai_studio_process_images",
+        product_ids=[70],
+        image_ids=[2],
+    )
+    job_id = started["job_id"]
+    assert started["images"] == 1
+
+    job = await _call(mcp_client, "catalogai_get_studio_job", job_id=job_id)
+    assert job["status"] == "completed"
+    image = job["images"][0]
+    assert image["image_id"] == 2 and image["width"] == 800
+    # URL publique : lisible sans connexion.
+    path = image["processed_url"].split("/mcp-files/", 1)[1]
+    fetched = client.get(f"/mcp-files/{path}")
+    assert fetched.status_code == 200
+    assert fetched.headers["content-type"] == "image/jpeg"
+
+    preview = await _call(mcp_client, "catalogai_apply_studio_result", job_id=job_id)
+    assert preview["preview"] is True
+    assert preview["will_replace"][0]["replaces_image_id"] == 2
+    assert studio["catalog"].uploaded == []
+
+    done = await _call(
+        mcp_client, "catalogai_apply_studio_result", job_id=job_id, confirm=True
+    )
+    catalog = studio["catalog"]
+    assert done["applied"][0]["new_image_ids"] == [501]
+    assert catalog.deactivated == [2]
+    # Même position que l'originale.
+    assert catalog.positions == [(501, 2)]
+    # Appliquée : plus de lien public, plus rien à appliquer.
+    assert client.get(f"/mcp-files/{path}").status_code == 404
+    again = await _call(
+        mcp_client, "catalogai_apply_studio_result", product_id=70, confirm=True
+    )
+    assert again["applied"] == []
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("studio")
+async def test_get_product_flags_studio_images_and_relaunch_skips_them(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    from app.models import ImageAsset
+
+    db.refresh(as_user)
+    db.add(
+        ImageAsset(
+            account_id=as_user.account_id,
+            product_id=70,
+            verb="normalize",
+            provider="local",
+            status="completed",
+            tillin_image_ids_json=[1],
+            finished_at=datetime(2026, 11, 1, tzinfo=UTC),
+        )
+    )
+    db.commit()
+    product = await _call(mcp_client, "catalogai_get_product", product_id=70)
+    flags = {i["image_id"]: i["studio_processed_at"] for i in product["images"]}
+    assert flags[1] is not None and flags[2] is None
+
+    dry = await _call(
+        mcp_client, "catalogai_studio_process_images", product_ids=[70], dry_run=True
+    )
+    assert dry["images"] == 1 and dry["skipped_already_processed"] == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("studio")
+async def test_studio_guards(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    with pytest.raises(ToolError, match="absentes des fiches"):
+        await mcp_client.call_tool(
+            "catalogai_studio_process_images", {"product_ids": [70], "image_ids": [3]}
+        )
+    with pytest.raises(ToolError, match="introuvable"):
+        await mcp_client.call_tool("catalogai_get_studio_job", {"job_id": "nope"})
+    with pytest.raises(ToolError, match="job_id OU product_id"):
+        await mcp_client.call_tool("catalogai_apply_studio_result", {})
+
+    _set_flags(db, as_user, feature_studio=False)
+    with pytest.raises(ToolError, match="studio n'est pas activé"):
+        await mcp_client.call_tool(
+            "catalogai_studio_process_images", {"product_ids": [70], "dry_run": True}
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("studio")
+async def test_studio_refuses_without_credits(
+    as_user: User, mcp_client: Client[Any], db: Session
+) -> None:
+    from app.models import ImageAsset
+
+    db.refresh(as_user)
+    db.add(
+        CreditEntry(
+            account_id=as_user.account_id,
+            kind="grant",
+            credits=-5_000_000,
+            label="dette",
+        )
+    )
+    db.commit()
+    with pytest.raises(ToolError, match="(?i)crédit"):
+        await mcp_client.call_tool(
+            "catalogai_studio_process_images", {"product_ids": [70]}
+        )
+    assert db.query(ImageAsset).count() == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user", "studio")
+async def test_studio_job_scoped_to_account(
+    mcp_client: Client[Any], db: Session
+) -> None:
+    from app.models import ImageAsset
+
+    other = Account(name="Autre boutique")
+    db.add(other)
+    db.commit()
+    db.add(
+        ImageAsset(
+            account_id=other.id,
+            product_id=70,
+            verb="normalize",
+            provider="local",
+            status="completed",
+            params_json={"mcp_job": "foreignjob"},
+        )
+    )
+    db.commit()
+    with pytest.raises(ToolError, match="introuvable"):
+        await mcp_client.call_tool("catalogai_get_studio_job", {"job_id": "foreignjob"})
+
+
+def test_studio_file_link_rejects_forged_and_foreign(
+    client: TestClient, db: Session
+) -> None:
+    from app.mcp.uploads import sign_studio_file
+    from app.models import ImageAsset
+
+    assert client.get("/mcp-files/abc").status_code == 401
+    other = Account(name="Autre boutique")
+    db.add(other)
+    db.commit()
+    asset = ImageAsset(
+        account_id=other.id,
+        product_id=1,
+        verb="normalize",
+        provider="local",
+        status="completed",
+    )
+    db.add(asset)
+    db.commit()
+    # Lien signé pour un autre compte que celui de l'actif : refusé.
+    assert (
+        client.get(f"/mcp-files/{sign_studio_file(asset.id, other.id + 1)}").status_code
+        == 404
+    )
+    expired = sign_studio_file(
+        asset.id, other.id, now=datetime.now(UTC) - timedelta(days=2)
+    )
+    assert client.get(f"/mcp-files/{expired}").status_code == 401
+
+
+# --- Filtres de recherche -----------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("as_user")
+async def test_search_filters_resolve_names_and_site(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.schemas import Product
+    from app.clients.xano import ProductPage
+
+    captured: dict[str, Any] = {}
+
+    class Catalog:
+        def get_classification(self) -> dict[str, list[dict[str, Any]]]:
+            return {
+                "tags": [
+                    {"id": 4, "title": "Outlet"},
+                    {"id": 5, "title": "Nouveautés"},
+                ],
+                "seasons": [{"id": 8, "title": "A/W 26"}],
+                "suppliers": [{"id": 3, "title": "Albin Michel"}],
+            }
+
+        def search_products(self, **kwargs: Any) -> Any:
+            captured.update(kwargs)
+            items = [
+                Product(id=1, origins=["Shopify"]),
+                Product(id=2, origins=["Prestashop"]),
+                Product(id=3),
+            ]
+            return ProductPage(items=items, total=3, page=1, per_page=25)
+
+    monkeypatch.setattr(mcp_guard, "xano_client_for_user", lambda db, user: Catalog())
+    found = await _call(
+        mcp_client,
+        "catalogai_search_products",
+        tag="outlet",
+        season="A/W 26",
+        supplier="albin",
+        status="active",
+        ecommerce="connected",
+        ecommerce_site="shopify",
+    )
+    assert (
+        captured["tag"] == 4 and captured["season"] == 8 and captured["supplier"] == 3
+    )
+    assert captured["status"] == "2" and captured["ecommerce"] == 2
+    assert [p["id"] for p in found["products"]] == [1]
+    assert found["site_filtered_out"] == 2
+    with pytest.raises(ToolError, match="Aucun tag"):
+        await mcp_client.call_tool("catalogai_search_products", {"tag": "soldes"})
