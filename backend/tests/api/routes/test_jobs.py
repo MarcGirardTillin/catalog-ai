@@ -283,7 +283,7 @@ def test_resolve_item_manually_restages(auth_client: TestClient) -> None:
     item_id = item.id
 
     class _FakePipeline:
-        def stage_from_url(self, it: EnrichmentItem, url: str) -> None:
+        def stage_from_url(self, it: EnrichmentItem, url: str, **_: Any) -> None:
             it.source_url = url
             it.source_method = "manual"
             it.match_score = 0.9
@@ -385,7 +385,7 @@ def test_generate_item_copy_stages_catalog_only_copy(
     item_id = item.id
 
     class _FakePipeline:
-        def stage_copy_only(self, it: EnrichmentItem) -> None:
+        def stage_copy_only(self, it: EnrichmentItem, **_: Any) -> None:
             it.product_title = "Small Belted Hobo Bag"
             it.staged_description = "Description catalogue."
             it.staged_meta = "Meta catalogue."
@@ -424,7 +424,7 @@ def test_generate_item_copy_unavailable_maps_to_409(
     db.commit()
 
     class _UnavailablePipeline:
-        def stage_copy_only(self, _it: EnrichmentItem) -> None:
+        def stage_copy_only(self, _it: EnrichmentItem, **_: Any) -> None:
             raise RuntimeError("copy generation unavailable")
 
     app.dependency_overrides[get_enrichment_pipeline] = lambda: _UnavailablePipeline()

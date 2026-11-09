@@ -469,3 +469,40 @@ def test_normalize_and_revert_keep_color_tags(
         assert back.json()["staged_images_json"][1] == tagged
     finally:
         app.dependency_overrides.pop(get_photoroom_client, None)
+
+
+def test_review_gestures_read_the_product_as_the_signed_in_user(
+    auth_client: TestClient, pipeline: _Pipeline
+) -> None:
+    """Régression 2026-11-09 (enrichissement 481) : le token du LANCEUR du job
+    avait expiré ; « Ajouter pour une couleur » relisait le produit avec lui,
+    son 401 xano_token_expired déconnectait le relecteur."""
+    from app.api.deps import get_xano_client
+    from app.clients.xano import XanoError
+    from app.main import app
+
+    def expired_launcher(_pid: int, _account: int, _launcher: int | None) -> None:
+        raise XanoError(
+            "Tillin session expired", code="xano_token_expired", status_code=401
+        )
+
+    pipeline._read_product = expired_launcher
+
+    class _UserXano:
+        def get_product(self, pid: int) -> Product:
+            return Product(id=pid, title="Peluche Bunny small")
+
+    item = _review_item(auth_client)
+    app.dependency_overrides[get_xano_client] = lambda: _UserXano()
+    try:
+        added = auth_client.post(
+            f"/items/{item.id}/sources", json={"source_url": BLUE, "color": "Bleu"}
+        )
+        resolved = auth_client.post(
+            f"/items/{item.id}/resolve", json={"source_url": GREEN}
+        )
+    finally:
+        app.dependency_overrides.pop(get_xano_client, None)
+
+    assert added.status_code == 200, added.text
+    assert resolved.status_code == 200, resolved.text

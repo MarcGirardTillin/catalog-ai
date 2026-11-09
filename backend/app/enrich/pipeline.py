@@ -80,6 +80,8 @@ DEFAULT_TITLE_TEMPLATE = "{title}"
 # (product_id, account_id, launcher_user_id) — le lanceur du job, dont le
 # token Xano est préféré pour lire la fiche (None : pool du compte).
 ProductReader = Callable[[int, int, int | None], Product | None]
+# Lecture d'UN produit par l'utilisateur connecté (gestes de la vérification).
+UserProductReader = Callable[[int], Product | None]
 
 
 def _launcher_of(item: EnrichmentItem) -> int | None:
@@ -729,7 +731,27 @@ class EnrichmentPipeline:
         }
         return source_product
 
-    def stage_from_url(self, item: EnrichmentItem, url: str) -> None:
+    def _product_of(
+        self, item: EnrichmentItem, read_product: UserProductReader | None
+    ) -> Product | None:
+        """Produit Tillin d'un item. Gestes de la vérification : lu par
+        l'utilisateur connecté (`read_product`) — le token du LANCEUR du job
+        peut avoir expiré (72 h) et son 401 déconnectait le relecteur (vécu
+        2026-11-09, « Ajouter pour une couleur », enrichissement 481). Sans
+        lecteur (tâche de fond, MCP) : token du lanceur, repli sur le compte."""
+        if read_product is not None:
+            return read_product(item.tillin_product_id)
+        return self._read_product(
+            item.tillin_product_id, item.account_id, _launcher_of(item)
+        )
+
+    def stage_from_url(
+        self,
+        item: EnrichmentItem,
+        url: str,
+        *,
+        read_product: UserProductReader | None = None,
+    ) -> None:
         """Manually (re)resolve an item from a specific source-page URL.
 
         Fetches the page, re-scores the match, and re-stages weights/images/copy
@@ -737,9 +759,7 @@ class EnrichmentPipeline:
         Non-Shopify URLs fall back to Firecrawl extraction when configured.
         Raises LookupError when the URL yields no product page.
         """
-        product = self._read_product(
-            item.tillin_product_id, item.account_id, _launcher_of(item)
-        )
+        product = self._product_of(item, read_product)
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"
@@ -766,7 +786,14 @@ class EnrichmentPipeline:
         extra_sources.restore_extras(item, snapshot)
         self._stage_copy(db, item, product, source_product, config)
 
-    def stage_extra_source(self, item: EnrichmentItem, url: str, color: str) -> None:
+    def stage_extra_source(
+        self,
+        item: EnrichmentItem,
+        url: str,
+        color: str,
+        *,
+        read_product: UserProductReader | None = None,
+    ) -> None:
         """Associe une fiche supplémentaire à une couleur du produit.
 
         Même récupération que la résolution manuelle (JSON Shopify → JSON-LD
@@ -776,9 +803,7 @@ class EnrichmentPipeline:
         principale. Raises LookupError (page inexploitable), ValueError (URL
         = fiche principale) ou RuntimeError (images désactivées pour ce job).
         """
-        product = self._read_product(
-            item.tillin_product_id, item.account_id, _launcher_of(item)
-        )
+        product = self._product_of(item, read_product)
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"
@@ -873,7 +898,9 @@ class EnrichmentPipeline:
             0.9 if reference_matches(product, source_product) else 0.5
         )
 
-    def stage_copy_only(self, item: EnrichmentItem) -> None:
+    def stage_copy_only(
+        self, item: EnrichmentItem, *, read_product: UserProductReader | None = None
+    ) -> None:
         """Generate the copy from catalog data alone, ignoring the source.
 
         The reviewer's escape hatch when resolution stayed uncertain
@@ -881,9 +908,7 @@ class EnrichmentPipeline:
         générer quand même ». Raises RuntimeError when copy generation is
         unavailable (transform disabled or no AI client configured).
         """
-        product = self._read_product(
-            item.tillin_product_id, item.account_id, _launcher_of(item)
-        )
+        product = self._product_of(item, read_product)
         if product is None:
             raise LookupError(
                 f"product {item.tillin_product_id} not found at the source"

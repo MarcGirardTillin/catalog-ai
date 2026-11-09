@@ -1,6 +1,7 @@
 """Enrichment item routes: detail, staged edits, review decisions, apply."""
 
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
@@ -9,6 +10,7 @@ from sqlalchemy import func, select
 from app.api.deps import (
     CurrentUserDep,
     JobRunnerDep,
+    OptionalXanoDep,
     PhotoroomDep,
     PipelineDep,
     SessionDep,
@@ -45,9 +47,10 @@ from app.api.services.enrichment import (
     set_item_main_color,
     update_staged_fields,
 )
-from app.clients.xano import XanoError
+from app.clients.xano import XanoClient, XanoError
 from app.destinations.xano_tillin import XanoTillinDestination
 from app.enrich.extra_sources import extra_source_urls
+from app.enrich.pipeline import UserProductReader
 from app.models import EnrichmentItem
 from app.sources.preview import fetch_page_preview
 
@@ -190,6 +193,12 @@ def read_item_product(
     return product
 
 
+def _user_reader(xano: XanoClient | None) -> UserProductReader | None:
+    """Lecture du produit par l'utilisateur connecté (gestes de la
+    vérification) ; None = repli sur le token du lanceur du job."""
+    return xano.get_product if xano is not None else None
+
+
 @router.post("/{item_id}/resolve", response_model=ItemPublic)
 def resolve_item_route(
     item_id: int,
@@ -197,12 +206,16 @@ def resolve_item_route(
     db: SessionDep,
     current_user: CurrentUserDep,
     pipeline: PipelineDep,
+    xano: OptionalXanoDep,
 ) -> ItemPublic:
     """Manually resolve an item from a chosen source page and re-stage it."""
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
     item = resolve_item_from_url(
-        db, item, payload.source_url, stage=pipeline.stage_from_url
+        db,
+        item,
+        payload.source_url,
+        stage=partial(pipeline.stage_from_url, read_product=_user_reader(xano)),
     )
     return ItemPublic.model_validate(item, from_attributes=True)
 
@@ -214,6 +227,7 @@ def add_item_source_route(
     db: SessionDep,
     current_user: CurrentUserDep,
     pipeline: PipelineDep,
+    xano: OptionalXanoDep,
 ) -> ItemPublic:
     """Associe une fiche supplémentaire à une couleur du produit.
 
@@ -225,7 +239,11 @@ def add_item_source_route(
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
     item = add_item_extra_source(
-        db, item, payload.source_url, payload.color, stage=pipeline.stage_extra_source
+        db,
+        item,
+        payload.source_url,
+        payload.color,
+        stage=partial(pipeline.stage_extra_source, read_product=_user_reader(xano)),
     )
     return ItemPublic.model_validate(item, from_attributes=True)
 
@@ -298,6 +316,7 @@ def generate_item_copy_route(
     db: SessionDep,
     current_user: CurrentUserDep,
     pipeline: PipelineDep,
+    xano: OptionalXanoDep,
 ) -> ItemPublic:
     """Generate the copy from catalog data alone (source left unresolved).
 
@@ -308,7 +327,11 @@ def generate_item_copy_route(
     consumed at queue time — no extra debit."""
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
-    item = generate_item_copy(db, item, stage=pipeline.stage_copy_only)
+    item = generate_item_copy(
+        db,
+        item,
+        stage=partial(pipeline.stage_copy_only, read_product=_user_reader(xano)),
+    )
     return ItemPublic.model_validate(item, from_attributes=True)
 
 
