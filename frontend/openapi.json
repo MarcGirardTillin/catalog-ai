@@ -5271,7 +5271,7 @@
           "items"
         ],
         "summary": "Retry Item Route",
-        "description": "Requeue one item for a full re-generation and kick the worker.",
+        "description": "Requeue one item for a re-generation and kick the worker.\n\nCorps optionnel : `source_url` (page à reprendre, sans recherche) ou\n`keep_source` (reprendre la page source actuelle).",
         "operationId": "items-retry_item_route",
         "parameters": [
           {
@@ -5300,6 +5300,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ItemRetryRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8674,6 +8691,89 @@
                 "schema": {
                   "$ref": "#/components/schemas/OAuthDecision"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp-uploads/{token}": {
+      "put": {
+        "tags": [
+          "mcp"
+        ],
+        "summary": "Receive Upload",
+        "operationId": "mcp-receive_upload",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Mcp-Receive Upload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp-files/{token}": {
+      "get": {
+        "tags": [
+          "mcp"
+        ],
+        "summary": "Read Studio File",
+        "description": "Image traitée d'un actif Studio, via un lien signé émis par le MCP.\n\nPublic par construction (le lien EST l'autorisation, 24 h) : sert à\nmesurer le résultat avant de l'appliquer. Disparaît dès que l'image est\nenregistrée dans Tillin (staging purgé).",
+        "operationId": "mcp-read_studio_file",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -13600,6 +13700,30 @@
         "title": "ItemResolveRequest",
         "description": "Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the web-extraction fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review)."
       },
+      "ItemRetryRequest": {
+        "properties": {
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "keep_source": {
+            "type": "boolean",
+            "title": "Keep Source",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ItemRetryRequest",
+        "description": "Relance d'une fiche. `source_url` : page produit à reprendre telle\nquelle (pas de recherche) ; `keep_source` : reprendre la page source\nactuelle. Sans l'un ni l'autre : relance complète, recherche comprise."
+      },
       "JobCounts": {
         "properties": {
           "total": {
@@ -13673,6 +13797,11 @@
             "maxItems": 500,
             "minItems": 1,
             "title": "Item Ids"
+          },
+          "keep_source": {
+            "type": "boolean",
+            "title": "Keep Source",
+            "default": false
           }
         },
         "type": "object",

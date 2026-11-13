@@ -215,7 +215,13 @@ def retry_job_items(
         retryable_count(job, payload.item_ids)
         * credit_grid(db, account_id)["enrich_item"],
     )
-    retry_selected_items(db, job, payload.item_ids, launcher_user_id=current_user.id)
+    retry_selected_items(
+        db,
+        job,
+        payload.item_ids,
+        launcher_user_id=current_user.id,
+        keep_source=payload.keep_source,
+    )
     background.add_task(run_job, job.id)
     return _to_public(db, job)
 

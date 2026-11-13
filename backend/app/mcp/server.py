@@ -33,7 +33,12 @@ from app.api.routes import jobs as job_routes
 from app.api.routes import locations as location_routes
 from app.api.schemas import AssetSaveRequest, NormalizeOptions
 from app.api.schemas.brands import BrandWebsiteUrlsUpdate
-from app.api.schemas.enrichment import ItemPublic, JobCreateRequest, JobSelection
+from app.api.schemas.enrichment import (
+    ItemPublic,
+    ItemRetryRequest,
+    JobCreateRequest,
+    JobSelection,
+)
 from app.api.schemas.imports import ImportTransferRequest
 from app.api.services.credits import balance as credit_balance
 from app.api.services.credits import credit_grid, require_credits
@@ -1665,11 +1670,24 @@ async def list_items_to_review(
     annotations=_write("Valider, écarter ou relancer une fiche"),
 )
 async def review_item(
-    item_id: int, action: Literal["approve", "reject", "retry"]
+    item_id: int,
+    action: Literal["approve", "reject", "retry"],
+    source_url: Annotated[
+        str | None,
+        Field(
+            description="retry seulement : page produit à reprendre telle quelle "
+            "(pas de nouvelle recherche)"
+        ),
+    ] = None,
+    keep_source: Annotated[
+        bool,
+        Field(description="retry seulement : reprendre la page source actuelle"),
+    ] = False,
 ) -> dict[str, Any]:
     """Décision sur une fiche enrichie : `approve` (validée, prête à
-    appliquer), `reject` (écartée, rien n'est écrit), `retry` (relance
-    complète du traitement, débite à nouveau des crédits)."""
+    appliquer), `reject` (écartée, rien n'est écrit), `retry` (relance du
+    traitement, débite à nouveau des crédits ; avec `source_url` ou
+    `keep_source`, la fiche est reprise sans nouvelle recherche)."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         if action == "approve":
@@ -1679,7 +1697,12 @@ async def review_item(
         else:
             background = BackgroundTasks()
             item = item_routes.retry_item_route(
-                item_id, ctx.db, ctx.user, background, job_runner()
+                item_id,
+                ctx.db,
+                ctx.user,
+                background,
+                job_runner(),
+                ItemRetryRequest(source_url=source_url, keep_source=keep_source),
             )
             _spawn(background)
         return _item_summary(item)

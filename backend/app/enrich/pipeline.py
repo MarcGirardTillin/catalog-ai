@@ -517,7 +517,14 @@ class EnrichmentPipeline:
         # ignorée ») : court-circuite la résolution — même chemin que la
         # résolution manuelle de la review. En cas d'échec (page morte,
         # anti-bot), on retombe sur la résolution automatique.
-        override = str(config.get("source_url_override") or "").strip()
+        # Relance « même fiche » (Marc 2026-11-13) : la page posée sur l'item
+        # à la relance prime sur celle du lancement.
+        retry_override = str(
+            (item.resolution_json or {}).get("source_url_override") or ""
+        ).strip()
+        override = (
+            retry_override or str(config.get("source_url_override") or "").strip()
+        )
         if override.startswith(("http://", "https://")):
             url = _clean_page_url(override)
             try:
@@ -536,7 +543,9 @@ class EnrichmentPipeline:
                 item.source_method = "manual"
                 item.match_score = score
                 item.resolution_json = {
-                    "reason": "URL fournie au lancement",
+                    "reason": "fiche reprise à la relance"
+                    if retry_override
+                    else "URL fournie au lancement",
                     "matched_by": match_basis(product, override_source),
                 }
                 self._stage_source(db, item, product, override_source, config)

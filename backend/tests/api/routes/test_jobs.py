@@ -1001,3 +1001,82 @@ def test_enriched_views_require_the_enrichment_module(
         == 403
     )
     assert auth_client.get("/items/enriched-products").status_code == 403
+
+
+def test_retry_item_can_reuse_a_source_page(auth_client: TestClient) -> None:
+    from app.api.deps import get_db, get_job_runner
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [651])
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).one()
+    item.status = "ready_for_review"
+    item.source_url = "https://brand.example/products/current"
+    db.commit()
+    item_id = item.id
+
+    app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
+    kept = auth_client.post(f"/items/{item_id}/retry", json={"keep_source": True})
+    assert kept.status_code == 200, kept.text
+    db.refresh(item)
+    assert item.resolution_json == {
+        "source_url_override": "https://brand.example/products/current"
+    }
+
+    item.status = "ready_for_review"
+    db.commit()
+    given = auth_client.post(
+        f"/items/{item_id}/retry",
+        json={"source_url": "https://reseller.example/products/same"},
+    )
+    assert given.status_code == 200
+    db.refresh(item)
+    assert item.resolution_json == {
+        "source_url_override": "https://reseller.example/products/same"
+    }
+
+    item.status = "ready_for_review"
+    db.commit()
+    bad = auth_client.post(
+        f"/items/{item_id}/retry", json={"source_url": "pas-une-url"}
+    )
+    assert bad.status_code == 422
+
+    # Sans corps : relance complète, comme avant.
+    full = auth_client.post(f"/items/{item_id}/retry")
+    assert full.status_code == 200
+    db.refresh(item)
+    assert item.resolution_json is None
+
+
+def test_bulk_retry_can_keep_each_source(auth_client: TestClient) -> None:
+    from app.api.deps import get_db, get_job_runner
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [661, 662])
+    db = next(app.dependency_overrides[get_db]())
+    with_page, without_page = (
+        db.query(EnrichmentItem)
+        .filter_by(job_id=job["id"])
+        .order_by(EnrichmentItem.id)
+        .all()
+    )
+    for item in (with_page, without_page):
+        item.status = "ready_for_review"
+    with_page.source_url = "https://brand.example/products/a"
+    db.commit()
+
+    app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
+    response = auth_client.post(
+        f"/jobs/{job['id']}/retry-items",
+        json={"item_ids": [with_page.id, without_page.id], "keep_source": True},
+    )
+    assert response.status_code == 200, response.text
+    db.refresh(with_page)
+    db.refresh(without_page)
+    assert with_page.resolution_json == {
+        "source_url_override": "https://brand.example/products/a"
+    }
+    assert without_page.resolution_json is None  # recherché comme avant

@@ -4994,6 +4994,31 @@ export const ItemResolveRequestSchema = {
     description: 'Manually point an item at a specific source product page.\n\nAny http(s) URL is accepted since the web-extraction fallback: non-Shopify\npages go through LLM extraction (the old validator required a Shopify\n`/products/` URL and would have blocked e.g. salomon.com in the review).'
 } as const;
 
+export const ItemRetryRequestSchema = {
+    properties: {
+        source_url: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2048
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Url'
+        },
+        keep_source: {
+            type: 'boolean',
+            title: 'Keep Source',
+            default: false
+        }
+    },
+    type: 'object',
+    title: 'ItemRetryRequest',
+    description: 'Relance d\'une fiche. `source_url` : page produit à reprendre telle\nquelle (pas de recherche) ; `keep_source` : reprendre la page source\nactuelle. Sans l\'un ni l\'autre : relance complète, recherche comprise.'
+} as const;
+
 export const JobCountsSchema = {
     properties: {
         total: {
@@ -5069,6 +5094,11 @@ export const JobItemsRetryRequestSchema = {
             maxItems: 500,
             minItems: 1,
             title: 'Item Ids'
+        },
+        keep_source: {
+            type: 'boolean',
+            title: 'Keep Source',
+            default: false
         }
     },
     type: 'object',

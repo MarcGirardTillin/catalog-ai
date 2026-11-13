@@ -1453,3 +1453,41 @@ def test_sibling_candidates_directory_counter_still_wins() -> None:
     assert candidates
     assert all("M0" in c or "M1" in c for c in candidates)
     assert not any("slug2" in c for c in candidates)
+
+
+def test_retry_source_on_the_item_is_restaged_without_search(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    """Relance « même fiche » (Marc 2026-11-13) : la page posée sur l'item à
+    la relance est reprise telle quelle, et prime sur celle du lancement."""
+    db = db_session_factory()
+    item = _seed_item(
+        db,
+        PRODUCT.id,
+        config={
+            "source_url_override": f"{SITE}/products/handle-mort",
+            "transforms": {"copy": False},
+        },
+    )
+    item.resolution_json = {
+        "source_url_override": f"{SITE}/products/g-short-double-navy"
+    }
+    db.commit()
+
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
+            http_client=http_client,
+        )
+        assert process_one(db, pipeline) is True
+
+    db.refresh(item)
+    assert item.source_method == "manual"
+    assert item.source_url == f"{SITE}/products/g-short-double-navy"
+    resolution = item.resolution_json or {}
+    assert resolution.get("reason") == "fiche reprise à la relance"
+    assert "source_url_override" not in resolution  # consommée
+    assert item.staged_images_json
+    db.close()

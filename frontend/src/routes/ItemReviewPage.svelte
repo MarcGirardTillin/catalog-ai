@@ -773,10 +773,15 @@
     continueReview(data.job_id)
   }
 
-  async function retry() {
+  // `keepSource` : reprendre la page source actuelle sans nouvelle
+  // recherche (Marc 2026-11-13) ; sinon relance complète.
+  async function retry(keepSource = false) {
     if (!item) return
     busy = true
-    const { data, error } = await itemsRetryItemRoute({ path: { item_id: item.id } })
+    const { data, error } = await itemsRetryItemRoute({
+      path: { item_id: item.id },
+      body: { keep_source: keepSource },
+    })
     busy = false
     if (error || !data) {
       toast.error("Relance impossible.")
@@ -1115,8 +1120,27 @@
                   </button>
                 </div>
               {/if}
-              {#if retryable}
-                <Button variant="outline" size="sm" disabled={busy} onclick={retry}>
+              {#if retryable && item.source_url}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  title="Refaire la fiche à partir de la même page source"
+                  onclick={() => retry(true)}
+                >
+                  {busy ? "…" : "Régénérer (même fiche)"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  title="Refaire la fiche en relançant la recherche de la page produit"
+                  onclick={() => retry(false)}
+                >
+                  Nouvelle recherche
+                </Button>
+              {:else if retryable}
+                <Button variant="outline" size="sm" disabled={busy} onclick={() => retry(false)}>
                   {busy ? "…" : "Régénérer"}
                 </Button>
               {/if}

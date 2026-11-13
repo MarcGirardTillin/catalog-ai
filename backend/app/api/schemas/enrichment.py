@@ -87,6 +87,18 @@ class JobItemsRetryRequest(BaseModel):
     """Relance groupée : les fiches choisies dans la liste du job."""
 
     item_ids: list[int] = Field(min_length=1, max_length=500)
+    # Reprendre la page source actuelle de chaque fiche (sans nouvelle
+    # recherche) ; une fiche sans page source est recherchée comme avant.
+    keep_source: bool = False
+
+
+class ItemRetryRequest(BaseModel):
+    """Relance d'une fiche. `source_url` : page produit à reprendre telle
+    quelle (pas de recherche) ; `keep_source` : reprendre la page source
+    actuelle. Sans l'un ni l'autre : relance complète, recherche comprise."""
+
+    source_url: str | None = Field(default=None, max_length=2048)
+    keep_source: bool = False
 
 
 class ItemApplyRequest(BaseModel):

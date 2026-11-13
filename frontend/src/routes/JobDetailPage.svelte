@@ -243,6 +243,13 @@
 
   // Relance groupée : un seul appel, le worker retraite les fiches (recherche
   // en ligne comprise, selon la configuration du job).
+  // Relance « même fiche » : chaque produit repart de sa page source actuelle
+  // (pas de nouvelle recherche) ; ceux sans page sont recherchés.
+  let keepSources = $state(true)
+  const selectedWithSource = $derived(
+    selectedRetryable.filter((i) => Boolean(i.source_url)).length,
+  )
+
   async function bulkRetry() {
     const targets = selectedRetryable
     if (bulkBusy || targets.length === 0) return
@@ -251,7 +258,10 @@
     bulkDone = 0
     const { data, error } = await jobsRetryJobItems({
       path: { job_id: jobId },
-      body: { item_ids: targets.map((i) => i.id) },
+      body: {
+        item_ids: targets.map((i) => i.id),
+        keep_source: keepSources && selectedWithSource > 0,
+      },
     })
     bulkBusy = null
     if (error || !data) {
@@ -532,8 +542,19 @@
                 Vider
               </Button>
               {#if selectedRetryable.length > 0}
-                <!-- Relance : la fiche est entièrement refaite (recherche,
-                     page source, rédaction) et re-débitée à sa fin. -->
+                <!-- Relance : la fiche est refaite (rédaction, images, poids)
+                     et re-débitée à sa fin ; recherche refaite sauf
+                     « garder les fiches ». -->
+                {#if selectedWithSource > 0}
+                  <label class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      bind:checked={keepSources}
+                      disabled={bulkBusy !== null}
+                    />
+                    Garder les fiches sources
+                  </label>
+                {/if}
                 <ConfirmButton
                   variant="outline"
                   label={`Relancer (${selectedRetryable.length})`}

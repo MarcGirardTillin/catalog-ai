@@ -2709,6 +2709,24 @@ export type ItemResolveRequest = {
 };
 
 /**
+ * ItemRetryRequest
+ *
+ * Relance d'une fiche. `source_url` : page produit à reprendre telle
+ * quelle (pas de recherche) ; `keep_source` : reprendre la page source
+ * actuelle. Sans l'un ni l'autre : relance complète, recherche comprise.
+ */
+export type ItemRetryRequest = {
+    /**
+     * Source Url
+     */
+    source_url?: string | null;
+    /**
+     * Keep Source
+     */
+    keep_source?: boolean;
+};
+
+/**
  * JobCounts
  */
 export type JobCounts = {
@@ -2769,6 +2787,10 @@ export type JobItemsRetryRequest = {
      * Item Ids
      */
     item_ids: Array<number>;
+    /**
+     * Keep Source
+     */
+    keep_source?: boolean;
 };
 
 /**
@@ -6438,7 +6460,10 @@ export type ItemsGenerateItemCopyRouteResponses = {
 export type ItemsGenerateItemCopyRouteResponse = ItemsGenerateItemCopyRouteResponses[keyof ItemsGenerateItemCopyRouteResponses];
 
 export type ItemsRetryItemRouteData = {
-    body?: never;
+    /**
+     * Payload
+     */
+    body?: ItemRetryRequest | null;
     path: {
         /**
          * Item Id
@@ -8076,3 +8101,61 @@ export type OauthDenyRequestResponses = {
 };
 
 export type OauthDenyRequestResponse = OauthDenyRequestResponses[keyof OauthDenyRequestResponses];
+
+export type McpReceiveUploadData = {
+    body?: never;
+    path: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/mcp-uploads/{token}';
+};
+
+export type McpReceiveUploadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type McpReceiveUploadError = McpReceiveUploadErrors[keyof McpReceiveUploadErrors];
+
+export type McpReceiveUploadResponses = {
+    /**
+     * Response Mcp-Receive Upload
+     *
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type McpReadStudioFileData = {
+    body?: never;
+    path: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/mcp-files/{token}';
+};
+
+export type McpReadStudioFileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type McpReadStudioFileError = McpReadStudioFileErrors[keyof McpReadStudioFileErrors];
+
+export type McpReadStudioFileResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};

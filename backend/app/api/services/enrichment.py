@@ -488,17 +488,54 @@ def _adopt_launcher(job: EnrichmentJob, launcher_user_id: int | None) -> None:
     job.config_json = {**(job.config_json or {}), "launcher_user_id": launcher_user_id}
 
 
+# Clé de resolution_json lue par le pipeline au retraitement : page à
+# reprendre sans recherche (relance « même fiche », Marc 2026-11-13).
+RETRY_SOURCE_KEY = "source_url_override"
+
+
+def _retry_source(
+    item: EnrichmentItem, source_url: str | None, keep_source: bool
+) -> str | None:
+    """Page à reprendre à la relance : l'URL donnée, sinon la page actuelle
+    si demandé. Lue AVANT la remise à zéro de l'item."""
+    url = (source_url or "").strip()
+    if url:
+        if not url.startswith(("http://", "https://")):
+            raise AppException(
+                status_code=422,
+                code="invalid_source_url",
+                message="L'URL de la fiche doit commencer par http:// ou https://.",
+            )
+        return url
+    if keep_source and item.source_url:
+        return item.source_url
+    return None
+
+
+def _requeue(item: EnrichmentItem, source: str | None) -> None:
+    _reset_item_for_retry(item)
+    if source:
+        item.resolution_json = {RETRY_SOURCE_KEY: source}
+
+
 def retry_item(
-    db: Session, item: EnrichmentItem, *, launcher_user_id: int | None = None
+    db: Session,
+    item: EnrichmentItem,
+    *,
+    launcher_user_id: int | None = None,
+    source_url: str | None = None,
+    keep_source: bool = False,
 ) -> EnrichmentItem:
-    """Requeue one item for a full re-generation (resolve + scrape + copy)."""
+    """Requeue one item for a re-generation. With `source_url` (or
+    `keep_source`), the pipeline restages from that page instead of
+    searching again; otherwise resolve + scrape + copy from scratch."""
     if item.status not in _RETRYABLE:
         raise AppException(
             status_code=409,
             code="invalid_state",
             message=f"Cannot retry an item in status '{item.status}'",
         )
-    _reset_item_for_retry(item)
+    _requeue(item, _retry_source(item, source_url, keep_source))
     job = db.get(EnrichmentJob, item.job_id)
     if job is not None:
         _adopt_launcher(job, launcher_user_id)
@@ -516,10 +553,11 @@ def retry_selected_items(
     item_ids: list[int],
     *,
     launcher_user_id: int | None = None,
+    keep_source: bool = False,
 ) -> int:
     """Requeue the chosen items of a job (à vérifier, écartés, échecs) for a
-    full re-generation. Items in another status are skipped silently.
-    Returns how many were requeued."""
+    re-generation — from each item's current page with `keep_source`.
+    Items in another status are skipped silently. Returns how many."""
     wanted = set(item_ids)
     targets = [i for i in job.items if i.id in wanted and i.status in _RETRYABLE]
     if not targets:
@@ -530,7 +568,7 @@ def retry_selected_items(
         )
     _adopt_launcher(job, launcher_user_id)
     for item in targets:
-        _reset_item_for_retry(item)
+        _requeue(item, _retry_source(item, None, keep_source))
     job.status = "pending"
     job.started_at = None
     job.finished_at = None

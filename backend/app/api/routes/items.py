@@ -28,6 +28,7 @@ from app.api.schemas.enrichment import (
     ItemPatchRequest,
     ItemPublic,
     ItemResolveRequest,
+    ItemRetryRequest,
     PagePreview,
     ProductEnrichmentStatus,
 )
@@ -342,11 +343,22 @@ def retry_item_route(
     current_user: CurrentUserDep,
     background: BackgroundTasks,
     run_job: JobRunnerDep,
+    payload: ItemRetryRequest | None = None,
 ) -> ItemPublic:
-    """Requeue one item for a full re-generation and kick the worker."""
+    """Requeue one item for a re-generation and kick the worker.
+
+    Corps optionnel : `source_url` (page à reprendre, sans recherche) ou
+    `keep_source` (reprendre la page source actuelle)."""
     account_id = resolve_account_id(db, current_user)
     item = get_item(db, account_id=account_id, item_id=item_id)
-    item = retry_item(db, item, launcher_user_id=current_user.id)
+    options = payload or ItemRetryRequest()
+    item = retry_item(
+        db,
+        item,
+        launcher_user_id=current_user.id,
+        source_url=options.source_url,
+        keep_source=options.keep_source,
+    )
     background.add_task(run_job, item.job_id)
     return ItemPublic.model_validate(item, from_attributes=True)
 
