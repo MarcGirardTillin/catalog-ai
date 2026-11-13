@@ -442,6 +442,49 @@ def normalize_staged_entry(
     }
 
 
+def _retry_context(item: EnrichmentItem) -> dict[str, Any] | None:
+    """Page à reprendre + fiches couleur mises de côté par la relance."""
+    resolution = item.resolution_json or {}
+    source = str(resolution.get("source_url_override") or "").strip()
+    if not source:
+        return None
+    return {
+        "source": source,
+        "extras": extra_sources.load_snapshot(
+            resolution.get(extra_sources.RETRY_EXTRAS_KEY)
+        ),
+    }
+
+
+def _finish_retry(item: EnrichmentItem, retry: dict[str, Any]) -> None:
+    """Rattache les fiches couleur à la fiche relancée et trace le résultat
+    (page utilisée ou repli) dans resolution_json["retry"]."""
+    requested = _clean_page_url(str(retry["source"]))
+    used = item.source_url == requested
+    snapshot = retry.get("extras")
+    kept: list[str] = []
+    lost: list[str] = []
+    if snapshot is not None:
+        extra_sources.restore_extras(item, snapshot)
+        restored = extra_sources.extra_source_urls(item)
+        for source in snapshot[0]:
+            url = str(source["url"])
+            (kept if url in restored else lost).append(url)
+    resolution = dict(item.resolution_json or {})
+    resolution.pop("source_url_override", None)
+    resolution.pop(extra_sources.RETRY_EXTRAS_KEY, None)
+    resolution["retry"] = {
+        "source_requested": requested,
+        "source_used": used,
+        "source_url_effective": item.source_url,
+        "fallback": not used,
+        "failure": retry.get("failure"),
+        "extra_sources_kept": kept,
+        "extra_sources_lost": lost,
+    }
+    item.resolution_json = resolution
+
+
 class EnrichmentPipeline:
     """Stage enrichment results on one claimed item (worker `Processor`)."""
 
@@ -461,6 +504,16 @@ class EnrichmentPipeline:
         self._firecrawl = firecrawl
 
     def __call__(self, db: Session, item: EnrichmentItem) -> None:
+        # Relance « même fiche » : contexte posé sur l'item par la relance,
+        # lu avant que le traitement ne réécrive resolution_json.
+        retry = _retry_context(item)
+        self._process(db, item, retry)
+        if retry is not None:
+            _finish_retry(item, retry)
+
+    def _process(
+        self, db: Session, item: EnrichmentItem, retry: dict[str, Any] | None
+    ) -> None:
         product = self._read_product(
             item.tillin_product_id, item.account_id, _launcher_of(item)
         )
@@ -505,7 +558,13 @@ class EnrichmentPipeline:
         # tâches « description seulement ») : aucune résolution ni scraping,
         # copie générée sur les données catalogue.
         scrape_config = config.get("scrape")
-        if isinstance(scrape_config, dict) and scrape_config.get("online") is False:
+        online_off = (
+            isinstance(scrape_config, dict) and scrape_config.get("online") is False
+        )
+        # Une page demandée à la relance est lue même recherche en ligne
+        # décochée (geste explicite) ; seule la recherche reste coupée.
+        retry_override = str((retry or {}).get("source") or "").strip()
+        if online_off and not retry_override:
             item.source_method = "skipped"
             item.resolution_json = {"reason": "recherche en ligne désactivée"}
             self._stage_source(db, item, product, None, config)
@@ -519,9 +578,6 @@ class EnrichmentPipeline:
         # anti-bot), on retombe sur la résolution automatique.
         # Relance « même fiche » (Marc 2026-11-13) : la page posée sur l'item
         # à la relance prime sur celle du lancement.
-        retry_override = str(
-            (item.resolution_json or {}).get("source_url_override") or ""
-        ).strip()
         override = (
             retry_override or str(config.get("source_url_override") or "").strip()
         )
@@ -531,13 +587,23 @@ class EnrichmentPipeline:
                 override_source, score = self._fetch_source_from_url(
                     db, item, product, config, url
                 )
-            except LookupError:
+            except LookupError as exc:
                 logger.warning(
-                    "item %s: launch-provided URL %s yielded no product — "
+                    "item %s: provided URL %s yielded no product (%s) — "
                     "falling back to automatic resolution",
                     item.id,
                     url,
+                    exc,
                 )
+                if retry is not None and retry_override:
+                    retry["failure"] = str(exc)[:300]
+                if online_off:
+                    # Recherche coupée : repli sur les données catalogue.
+                    item.source_method = "skipped"
+                    item.resolution_json = {"reason": "recherche en ligne désactivée"}
+                    self._stage_source(db, item, product, None, config)
+                    self._stage_copy(db, item, product, None, config)
+                    return
             else:
                 item.source_url = url
                 item.source_method = "manual"

@@ -1080,3 +1080,37 @@ def test_bulk_retry_can_keep_each_source(auth_client: TestClient) -> None:
         "source_url_override": "https://brand.example/products/a"
     }
     assert without_page.resolution_json is None  # recherché comme avant
+
+
+def test_retry_with_source_sets_aside_color_sheets(auth_client: TestClient) -> None:
+    from app.api.deps import get_db, get_job_runner
+    from app.main import app
+    from app.models import EnrichmentItem
+
+    job = _create_job(auth_client, [671])
+    db = next(app.dependency_overrides[get_db]())
+    item = db.query(EnrichmentItem).filter_by(job_id=job["id"]).one()
+    blue = "https://brand.example/products/blue"
+    item.status = "ready_for_review"
+    item.source_url = "https://brand.example/products/main"
+    item.resolution_json = {"extra_sources": [{"url": blue, "color": "Bleu"}]}
+    item.staged_images_json = [
+        {"url": "https://cdn.example/main.jpg", "position": 1},
+        {
+            "url": "https://cdn.example/blue.jpg",
+            "position": 2,
+            "color": "Bleu",
+            "source_page": blue,
+        },
+    ]
+    db.commit()
+
+    app.dependency_overrides[get_job_runner] = lambda: lambda job_id: None
+    response = auth_client.post(f"/items/{item.id}/retry", json={"keep_source": True})
+    assert response.status_code == 200, response.text
+    result = response.json()["retry_result"]
+    assert result["pending"] is True
+    assert result["source_requested"] == "https://brand.example/products/main"
+    assert result["extra_sources_kept"] == [blue]
+    db.refresh(item)
+    assert item.resolution_json["retry_extras"]["entries"][0]["source_page"] == blue

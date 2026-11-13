@@ -209,3 +209,29 @@ def restore_extras(
         merged.append(entry)
     item.staged_images_json = _renumber(merged) or None
     _set_resolution(item, extra_sources=sources or None, main_color=color)
+
+
+# --- Relance « même fiche » : les fiches couleur survivent à la relance ---
+
+RETRY_EXTRAS_KEY = "retry_extras"
+
+
+def dump_snapshot(
+    snapshot: tuple[list[dict[str, Any]], list[dict[str, Any]], str | None],
+) -> dict[str, Any] | None:
+    """Snapshot sérialisable (resolution_json) ; None sans fiche couleur."""
+    sources, entries, color = snapshot
+    if not sources:
+        return None
+    return {"sources": sources, "entries": entries, "main_color": color}
+
+
+def load_snapshot(
+    raw: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None] | None:
+    if not isinstance(raw, dict) or not isinstance(raw.get("sources"), list):
+        return None
+    sources = [dict(s) for s in raw["sources"] if isinstance(s, dict) and s.get("url")]
+    entries = [dict(e) for e in raw.get("entries") or [] if isinstance(e, dict)]
+    color = raw.get("main_color")
+    return sources, entries, str(color) if color else None

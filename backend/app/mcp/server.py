@@ -1266,6 +1266,8 @@ def _item_summary(item: ItemPublic) -> dict[str, Any]:
         "match_score": item.match_score,
         # Information qui a rapproché la fiche : barcode / reference / title.
         "matched_by": (item.resolution_json or {}).get("matched_by"),
+        # Relance « même fiche » : page utilisée ou repli (None sinon).
+        "retry": item.retry_result.model_dump() if item.retry_result else None,
         "proposed_title": item.staged_title,
         "proposed_description": _clip(item.staged_description, 400),
         "proposed_meta": item.staged_meta,
@@ -1685,9 +1687,19 @@ async def review_item(
     ] = False,
 ) -> dict[str, Any]:
     """Décision sur une fiche enrichie : `approve` (validée, prête à
-    appliquer), `reject` (écartée, rien n'est écrit), `retry` (relance du
-    traitement, débite à nouveau des crédits ; avec `source_url` ou
-    `keep_source`, la fiche est reprise sans nouvelle recherche)."""
+    appliquer), `reject` (écartée, rien n'est écrit) ou `retry` (relance du
+    traitement, débite à nouveau des crédits).
+
+    Relance : sans option, recherche de la page produit refaite. Avec
+    `source_url` (page à reprendre) ou `keep_source` (page source actuelle),
+    la fiche est refaite depuis cette page sans recherche — même si la
+    recherche en ligne était décochée au lancement — et ses fiches « pour
+    une couleur » sont conservées. Le retour `retry` vaut d'abord
+    `pending: true` ; une fois la fiche retraitée (catalogai_get_job_status
+    puis catalogai_list_items_to_review), il indique `source_used`,
+    `source_url_effective`, `fallback` (true = la page n'a pas servi : page
+    morte, site bloqué, aucune donnée — repli sur la recherche automatique,
+    fiche à vérifier), `failure` et `extra_sources_kept` / `_lost`."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
         if action == "approve":

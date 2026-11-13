@@ -1,5 +1,6 @@
 <script lang="ts">
   import ExternalLink from "@lucide/svelte/icons/external-link"
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert"
   import Check from "@lucide/svelte/icons/check"
   import ChevronLeft from "@lucide/svelte/icons/chevron-left"
   import ChevronRight from "@lucide/svelte/icons/chevron-right"
@@ -1293,6 +1294,42 @@
           <!-- Source resolution + manual override. -->
           <Card size="sm">
             <CardContent class="flex flex-col gap-2 text-xs">
+              {#if item.retry_result && !item.retry_result.pending}
+                {@const retryResult = item.retry_result}
+                {#if retryResult.fallback}
+                  <!-- Relance « même fiche » sans la page demandée : ne pas
+                       valider sans vérifier (Marc 2026-11-13). -->
+                  <div
+                    class="border-warning bg-warning/40 text-warning-foreground flex gap-2 rounded-md border p-2.5"
+                    role="alert"
+                  >
+                    <TriangleAlert size={16} class="mt-0.5 shrink-0" aria-hidden="true" />
+                    <div class="flex flex-col gap-0.5">
+                      <span class="font-medium">
+                        La page demandée à la relance n'a pas servi.
+                      </span>
+                      <span>
+                        {retryResult.source_url_effective
+                          ? "La fiche vient d'une autre page, trouvée par la recherche automatique : vérifiez-la avant de valider."
+                          : "La fiche a été rédigée avec les seules données Tillin : vérifiez-la avant de valider."}
+                      </span>
+                      <span class="break-all opacity-80">
+                        Page demandée : {retryResult.source_requested}
+                      </span>
+                    </div>
+                  </div>
+                {:else}
+                  <p class="text-muted-foreground">
+                    Fiche reprise à la relance depuis la page demandée.
+                  </p>
+                {/if}
+                {#if (retryResult.extra_sources_lost ?? []).length > 0}
+                  <p class="text-warning-foreground">
+                    Fiches « pour une couleur » à rajouter :
+                    {(retryResult.extra_sources_lost ?? []).join(", ")}
+                  </p>
+                {/if}
+              {/if}
               <div class="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
                 {#if item.source_url}
                   {#if previews[item.source_url]}

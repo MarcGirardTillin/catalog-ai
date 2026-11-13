@@ -1491,3 +1491,117 @@ def test_retry_source_on_the_item_is_restaged_without_search(
     assert "source_url_override" not in resolution  # consommée
     assert item.staged_images_json
     db.close()
+
+
+def _retry_item(
+    db: Session, config: dict[str, Any], source: str, extras: Any = None
+) -> EnrichmentItem:
+    item = _seed_item(db, PRODUCT.id, config=config)
+    context: dict[str, Any] = {"source_url_override": source}
+    if extras is not None:
+        context["retry_extras"] = extras
+    item.resolution_json = context
+    db.commit()
+    return item
+
+
+def _run_store(db: Session) -> None:
+    with httpx.Client(
+        transport=_store({"g-short-double-navy": SOURCE_PRODUCT})
+    ) as http_client:
+        pipeline = EnrichmentPipeline(
+            read_product=lambda _pid, _account, _launcher: PRODUCT,
+            http_client=http_client,
+        )
+        assert process_one(db, pipeline) is True
+
+
+def test_retry_keeps_color_sheets_and_reports_the_page_used(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    blue = "https://brand.example/products/g-short-blue"
+    item = _retry_item(
+        db,
+        {"transforms": {"copy": False}},
+        f"{SITE}/products/g-short-double-navy",
+        extras={
+            "sources": [{"url": blue, "color": "Bleu"}],
+            "entries": [
+                {
+                    "url": "https://cdn.example/blue-1.jpg",
+                    "position": 9,
+                    "color": "Bleu",
+                    "source_page": blue,
+                }
+            ],
+            "main_color": None,
+        },
+    )
+    _run_store(db)
+    db.refresh(item)
+
+    retry = (item.resolution_json or {})["retry"]
+    assert retry["source_used"] is True
+    assert retry["fallback"] is False
+    assert retry["source_url_effective"] == f"{SITE}/products/g-short-double-navy"
+    assert retry["extra_sources_kept"] == [blue]
+    assert retry["extra_sources_lost"] == []
+    # La fiche couleur reste rattachée, ses images en fin de galerie.
+    assert (item.resolution_json or {})["extra_sources"] == [
+        {"url": blue, "color": "Bleu"}
+    ]
+    images = item.staged_images_json or []
+    assert images[-1]["url"] == "https://cdn.example/blue-1.jpg"
+    assert images[-1]["source_page"] == blue
+    assert "retry_extras" not in (item.resolution_json or {})
+    db.close()
+
+
+def test_retry_dead_page_falls_back_and_says_so(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    item = _retry_item(
+        db, {"transforms": {"copy": False}}, f"{SITE}/products/handle-mort"
+    )
+    _run_store(db)
+    db.refresh(item)
+
+    retry = (item.resolution_json or {})["retry"]
+    assert retry["source_used"] is False
+    assert retry["fallback"] is True
+    assert retry["failure"]
+    # Repli sur la recherche automatique : une autre page a servi.
+    assert item.source_method == "shopify_json"
+    assert retry["source_url_effective"] == f"{SITE}/products/g-short-double-navy"
+    db.close()
+
+
+def test_retry_page_is_read_even_with_online_search_off(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    config = {"transforms": {"copy": False}, "scrape": {"online": False}}
+    used = _retry_item(db, config, f"{SITE}/products/g-short-double-navy")
+    _run_store(db)
+    db.refresh(used)
+    assert used.source_method == "manual"
+    assert (used.resolution_json or {})["retry"]["source_used"] is True
+    db.close()
+
+
+def test_retry_dead_page_with_online_search_off_uses_catalog_data(
+    db_session_factory: sessionmaker[Session],
+) -> None:
+    db = db_session_factory()
+    config = {"transforms": {"copy": False}, "scrape": {"online": False}}
+    dead = _retry_item(db, config, f"{SITE}/products/handle-mort")
+    _run_store(db)
+    db.refresh(dead)
+    # Page morte, recherche coupée : pas de recherche, données catalogue.
+    assert dead.source_method == "skipped"
+    retry = (dead.resolution_json or {})["retry"]
+    assert retry["fallback"] is True
+    assert retry["source_url_effective"] is None
+    db.close()

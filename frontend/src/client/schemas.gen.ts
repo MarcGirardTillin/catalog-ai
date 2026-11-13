@@ -4964,6 +4964,16 @@ export const ItemPublicSchema = {
             type: 'string',
             format: 'date-time',
             title: 'Updated At'
+        },
+        retry_result: {
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/RetryResult'
+                },
+                {
+                    type: 'null'
+                }
+            ]
         }
     },
     type: 'object',
@@ -6396,6 +6406,84 @@ export const RenderRequestSchema = {
     type: 'object',
     title: 'RenderRequest',
     description: 'POST /imaging/assets/{id}/render body — local Pillow recompose.\n\nOffsets are canvas pixels, scale multiplies the fitted size. Any other\nfield left to None keeps the option the asset was produced with.'
+} as const;
+
+export const RetryResultSchema = {
+    properties: {
+        source_requested: {
+            type: 'string',
+            title: 'Source Requested'
+        },
+        pending: {
+            type: 'boolean',
+            title: 'Pending',
+            default: false
+        },
+        source_used: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Used'
+        },
+        source_url_effective: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Url Effective'
+        },
+        fallback: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Fallback'
+        },
+        failure: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Failure'
+        },
+        extra_sources_kept: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Extra Sources Kept'
+        },
+        extra_sources_lost: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Extra Sources Lost'
+        }
+    },
+    type: 'object',
+    required: [
+        'source_requested'
+    ],
+    title: 'RetryResult',
+    description: 'Issue d\'une relance « même fiche » (`source_url` / `keep_source`).\n\n`pending` tant que la fiche n\'est pas retraitée. Ensuite :\n`source_used` (la page demandée a servi), `source_url_effective` (page\nréellement utilisée, None = aucune), `fallback` (repli sur la recherche\nautomatique ou les données catalogue : page morte, site bloqué, aucune\ndonnée — à vérifier avant de valider), fiches « pour une couleur »\nrattachées (`extra_sources_kept`) ou perdues (`extra_sources_lost`).'
 } as const;
 
 export const StagedFilePublicSchema = {

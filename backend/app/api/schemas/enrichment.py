@@ -48,6 +48,45 @@ class JobPublic(BaseModel):
     duration_seconds: float | None = None
 
 
+class RetryResult(BaseModel):
+    """Issue d'une relance « même fiche » (`source_url` / `keep_source`).
+
+    `pending` tant que la fiche n'est pas retraitée. Ensuite :
+    `source_used` (la page demandée a servi), `source_url_effective` (page
+    réellement utilisée, None = aucune), `fallback` (repli sur la recherche
+    automatique ou les données catalogue : page morte, site bloqué, aucune
+    donnée — à vérifier avant de valider), fiches « pour une couleur »
+    rattachées (`extra_sources_kept`) ou perdues (`extra_sources_lost`).
+    """
+
+    source_requested: str
+    pending: bool = False
+    source_used: bool | None = None
+    source_url_effective: str | None = None
+    fallback: bool | None = None
+    failure: str | None = None
+    extra_sources_kept: list[str] = Field(default_factory=list)
+    extra_sources_lost: list[str] = Field(default_factory=list)
+
+
+def retry_result_of(resolution: dict[str, Any] | None) -> RetryResult | None:
+    resolution = resolution or {}
+    pending = resolution.get("source_url_override")
+    if pending:
+        extras = resolution.get("retry_extras") or {}
+        return RetryResult(
+            source_requested=str(pending),
+            pending=True,
+            extra_sources_kept=[
+                str(s.get("url")) for s in extras.get("sources") or [] if s.get("url")
+            ],
+        )
+    raw = resolution.get("retry")
+    if isinstance(raw, dict) and raw.get("source_requested"):
+        return RetryResult.model_validate(raw)
+    return None
+
+
 class ItemPublic(BaseModel):
     id: int
     job_id: int
@@ -75,11 +114,14 @@ class ItemPublic(BaseModel):
     # Wall-clock processing time in seconds, once the item has settled.
     duration_seconds: float | None = None
     updated_at: datetime
+    # Issue de la dernière relance « même fiche » (None sinon).
+    retry_result: RetryResult | None = None
 
     @model_validator(mode="after")
     def _compute_duration(self) -> "ItemPublic":
         if self.started_at is not None and self.finished_at is not None:
             self.duration_seconds = (self.finished_at - self.started_at).total_seconds()
+        self.retry_result = retry_result_of(self.resolution_json)
         return self
 
 

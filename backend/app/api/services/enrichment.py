@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session
 from app.api.exceptions import AppException
 from app.api.schemas.enrichment import JobCounts
 from app.destinations.base import Destination
+from app.enrich.extra_sources import (
+    RETRY_EXTRAS_KEY,
+    dump_snapshot,
+    snapshot_extras,
+)
 from app.models import Account, EnrichmentItem, EnrichmentJob, InstructionTemplate
 from app.sources.cloudflare import SiteBusyError
 
@@ -513,9 +518,16 @@ def _retry_source(
 
 
 def _requeue(item: EnrichmentItem, source: str | None) -> None:
+    """Remise en file. Avec une page à reprendre, les fiches « pour une
+    couleur » sont mises de côté (snapshot) et rattachées par le pipeline
+    à la fiche relancée (Marc 2026-11-13)."""
+    extras = dump_snapshot(snapshot_extras(item)) if source else None
     _reset_item_for_retry(item)
     if source:
-        item.resolution_json = {RETRY_SOURCE_KEY: source}
+        context: dict[str, Any] = {RETRY_SOURCE_KEY: source}
+        if extras is not None:
+            context[RETRY_EXTRAS_KEY] = extras
+        item.resolution_json = context
 
 
 def retry_item(

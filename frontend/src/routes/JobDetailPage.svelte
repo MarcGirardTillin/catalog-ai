@@ -501,6 +501,11 @@
                             item.source_method}
                         </span>
                       {/if}
+                      {#if item.retry_result?.fallback}
+                        <span class="text-warning-foreground font-medium">
+                          page de relance non utilisée — à vérifier
+                        </span>
+                      {/if}
                       {#if matchedBy}
                         <span>trouvé par : {matchedBy}</span>
                       {/if}

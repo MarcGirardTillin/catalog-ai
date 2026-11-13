@@ -2690,6 +2690,7 @@ export type ItemPublic = {
      * Updated At
      */
     updated_at: string;
+    retry_result?: RetryResult | null;
 };
 
 /**
@@ -3523,6 +3524,53 @@ export type RenderRequest = {
      * Max Kb
      */
     max_kb?: number | null;
+};
+
+/**
+ * RetryResult
+ *
+ * Issue d'une relance « même fiche » (`source_url` / `keep_source`).
+ *
+ * `pending` tant que la fiche n'est pas retraitée. Ensuite :
+ * `source_used` (la page demandée a servi), `source_url_effective` (page
+ * réellement utilisée, None = aucune), `fallback` (repli sur la recherche
+ * automatique ou les données catalogue : page morte, site bloqué, aucune
+ * donnée — à vérifier avant de valider), fiches « pour une couleur »
+ * rattachées (`extra_sources_kept`) ou perdues (`extra_sources_lost`).
+ */
+export type RetryResult = {
+    /**
+     * Source Requested
+     */
+    source_requested: string;
+    /**
+     * Pending
+     */
+    pending?: boolean;
+    /**
+     * Source Used
+     */
+    source_used?: boolean | null;
+    /**
+     * Source Url Effective
+     */
+    source_url_effective?: string | null;
+    /**
+     * Fallback
+     */
+    fallback?: boolean | null;
+    /**
+     * Failure
+     */
+    failure?: string | null;
+    /**
+     * Extra Sources Kept
+     */
+    extra_sources_kept?: Array<string>;
+    /**
+     * Extra Sources Lost
+     */
+    extra_sources_lost?: Array<string>;
 };
 
 /**
