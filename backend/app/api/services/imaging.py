@@ -433,6 +433,8 @@ def to_normalize_service_options(options: NormalizeOptionsSchema) -> NormalizeOp
         fmt=options.format,
         quality=options.quality,
         max_kb=options.max_kb,
+        fit=options.fit,
+        anchor=options.anchor,
     )
 
 

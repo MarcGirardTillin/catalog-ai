@@ -110,6 +110,8 @@ def compose(
     max_kb: int | None = None,
     crop_box: tuple[int, int, int, int] | None = None,
     transparent_bg: bool = False,
+    fit: str = "contain",
+    anchor: str = "center",
 ) -> ComposedImage:
     """Compose the product onto a solid-color canvas and encode it.
 
@@ -123,6 +125,12 @@ def compose(
     fin — la sélection est verrouillée au ratio côté UI, donc la sortie garde
     les proportions du format choisi. Les bornes sont resserrées au canevas.
 
+    `fit` : « contain » (le produit tient entier dans la boîte de marge, bandes
+    de fond possibles) ou « cover » (l'image remplit tout le canevas, l'excédent
+    est rogné, aucune bande ; la marge est ignorée). `anchor` : « center » ou
+    « top » (cover : on garde le haut de l'image ; contain : le produit est
+    posé en haut de la boîte de marge). Demande Marc 2026-11-13 (MCP).
+
     `transparent_bg` : canevas RGBA transparent (bg_color ignoré, PNG forcé) —
     utilisé par la finalisation IA pour que Photoroom pose l'ombre sur l'alpha
     puis remplisse le fond lui-même, en préservant le positionnement validé.
@@ -135,6 +143,10 @@ def compose(
         raise ValueError(f"margin_pct out of range: {margin_pct!r}")
     if scale <= 0:
         raise ValueError(f"scale must be positive: {scale!r}")
+    if fit not in ("contain", "cover"):
+        raise ValueError(f"unknown fit {fit!r}")
+    if anchor not in ("center", "top"):
+        raise ValueError(f"unknown anchor {anchor!r}")
 
     if transparent_bg:
         fmt = "png"
@@ -159,16 +171,25 @@ def compose(
     else:
         canvas = Image.new("RGB", (canvas_w, canvas_h), background)
 
-    # Fit inside the margin box, then the user scale on top.
-    avail_w = canvas_w * (1 - 2 * margin_pct)
-    avail_h = canvas_h * (1 - 2 * margin_pct)
-    fit = min(avail_w / src.width, avail_h / src.height) * scale
+    # contain : dans la boîte de marge ; cover : tout le canevas, rogné.
+    # Puis l'échelle manuelle par-dessus.
+    if fit == "cover":
+        factor = max(canvas_w / src.width, canvas_h / src.height) * scale
+        top = 0
+    else:
+        avail_w = canvas_w * (1 - 2 * margin_pct)
+        avail_h = canvas_h * (1 - 2 * margin_pct)
+        factor = min(avail_w / src.width, avail_h / src.height) * scale
+        top = round(canvas_h * margin_pct)
     product = src.resize(
-        (max(1, round(src.width * fit)), max(1, round(src.height * fit))),
+        (max(1, round(src.width * factor)), max(1, round(src.height * factor))),
         Image.Resampling.LANCZOS,
     )
     x = (canvas_w - product.width) // 2 + offset_x
-    y = (canvas_h - product.height) // 2 + offset_y
+    if anchor == "top":
+        y = top + offset_y
+    else:
+        y = (canvas_h - product.height) // 2 + offset_y
     canvas.paste(product, (x, y), product)
 
     if crop_box is not None:

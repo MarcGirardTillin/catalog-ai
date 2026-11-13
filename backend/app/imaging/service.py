@@ -132,6 +132,10 @@ class NormalizeOptions:
     offset_x: int = 0
     offset_y: int = 0
     scale: float = 1.0
+    # « contain » (produit entier, bandes possibles) | « cover » (canevas
+    # rempli, rogné) ; ancrage « center » | « top ».
+    fit: str = "contain"
+    anchor: str = "center"
 
 
 # Instruction (prompt) building blocks for the generative verb: the client's
@@ -445,6 +449,8 @@ def normalize_product_image(
         fmt=options.fmt,
         quality=options.quality,
         max_kb=options.max_kb,
+        fit=options.fit,
+        anchor=options.anchor,
     )
     output = ImagingResult(
         data=composed.data,

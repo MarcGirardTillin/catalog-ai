@@ -98,6 +98,11 @@ class NormalizeOptions(BaseModel):
     format: FormatOption = "webp"
     quality: int = Field(default=80, ge=1, le=100)
     max_kb: int = Field(default=300, ge=1)
+    # « contain » : produit entier dans le cadre (bandes de fond possibles) ;
+    # « cover » : le cadre est rempli, l'excédent rogné, aucune bande.
+    fit: Literal["contain", "cover"] = "contain"
+    # Ancrage du produit dans le cadre : « top » garde le haut de l'image.
+    anchor: Literal["center", "top"] = "center"
 
 
 class NormalizeRequest(BaseModel):

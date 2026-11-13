@@ -5329,6 +5329,24 @@ export const NormalizeOptionsSchema = {
             minimum: 1,
             title: 'Max Kb',
             default: 300
+        },
+        fit: {
+            type: 'string',
+            enum: [
+                'contain',
+                'cover'
+            ],
+            title: 'Fit',
+            default: 'contain'
+        },
+        anchor: {
+            type: 'string',
+            enum: [
+                'center',
+                'top'
+            ],
+            title: 'Anchor',
+            default: 'center'
         }
     },
     type: 'object',

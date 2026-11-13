@@ -1276,6 +1276,52 @@ async def test_get_product_flags_studio_images_and_relaunch_skips_them(
 
 
 @pytest.mark.anyio
+async def test_studio_from_original_restarts_from_the_original_image(
+    as_user: User,
+    mcp_client: Client[Any],
+    db: Session,
+    studio: dict[str, Any],
+) -> None:
+    """Recadrage cover d'une image déjà traitée : on repart de l'ORIGINALE
+    (désactivée dans Tillin), pas de la version qui a déjà des bandes."""
+    from app.models import ImageAsset
+
+    db.refresh(as_user)
+    db.add(
+        ImageAsset(
+            account_id=as_user.account_id,
+            product_id=70,
+            verb="normalize",
+            provider="local",
+            status="completed",
+            source_image="https://cdn.example/original-1.jpg",
+            source_product_image_id=900,
+            tillin_image_ids_json=[1],
+            finished_at=datetime(2026, 11, 1, tzinfo=UTC),
+        )
+    )
+    db.commit()
+
+    started = await _call(
+        mcp_client,
+        "catalogai_studio_process_images",
+        product_ids=[70],
+        image_ids=[1],
+        settings={"ratio": "4:5", "fit": "cover", "anchor": "top", "remove_bg": False},
+        from_original=True,
+    )
+    assert started["images"] == 1 and started["from_original"] == 1
+    assert started["settings"]["fit"] == "cover"
+    assert started["settings"]["anchor"] == "top"
+    (job,) = studio["launched"]
+    assert job[0][1] == "https://cdn.example/original-1.jpg"
+    created = db.query(ImageAsset).filter(ImageAsset.id == job[0][0]).one()
+    # L'application remplacera la version traitée actuelle (image 1).
+    assert created.source_product_image_id == 1
+    assert created.params_json["options"]["fit"] == "cover"
+
+
+@pytest.mark.anyio
 @pytest.mark.usefixtures("studio")
 async def test_studio_guards(
     as_user: User, mcp_client: Client[Any], db: Session

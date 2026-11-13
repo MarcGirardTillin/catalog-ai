@@ -149,6 +149,10 @@ def _normalize_options(
         options.center = bool(raw["center"])
     if raw.get("margin_percent") is not None:
         options.margin_pct = float(raw["margin_percent"]) / 100
+    if raw.get("fit") in ("contain", "cover"):
+        options.fit = str(raw["fit"])
+    if raw.get("anchor") in ("center", "top"):
+        options.anchor = str(raw["anchor"])
     return options
 
 

@@ -277,3 +277,52 @@ def test_edit_image_margin_size_and_base_rescale() -> None:
     )
     assert (rescaled.width, rescaled.height) == (10, 10)
     assert _pixel(rescaled.data, (5, 5)) == (0, 0, 255)
+
+
+def _two_tone(width: int, height: int) -> bytes:
+    """Rouge en haut, bleu en bas (PNG opaque) — repère l'ancrage."""
+    img = Image.new("RGB", (width, height), (0, 0, 255))
+    img.paste((255, 0, 0), (0, 0, width, height // 2))
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
+def _rgb(img: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
+    pixel = img.convert("RGB").getpixel(xy)
+    assert isinstance(pixel, tuple)
+    return (int(pixel[0]), int(pixel[1]), int(pixel[2]))
+
+
+def test_cover_fills_the_frame_without_background_bands() -> None:
+    # Paysage dans un cadre 4:5 : contain laisse des bandes, cover non.
+    source = _two_tone(1000, 500)
+    contain = _open(compose(source, has_alpha=False, bg_color="F5F5F5", fmt="png").data)
+    cover = _open(
+        compose(source, has_alpha=False, bg_color="F5F5F5", fmt="png", fit="cover").data
+    )
+    assert contain.size == cover.size == (1600, 2000)
+    assert _rgb(contain, (800, 5)) == BACKGROUND  # bande en haut
+    for corner in ((0, 0), (1599, 0), (0, 1999), (1599, 1999)):
+        assert _rgb(cover, corner) != BACKGROUND
+
+
+def test_cover_anchor_top_keeps_the_top_of_the_image() -> None:
+    # Portrait très haut : center montre le milieu (rouge→bleu), top garde
+    # le haut (tout rouge sur la hauteur visible).
+    source = _two_tone(500, 1500)
+    center = _open(compose(source, has_alpha=False, fmt="png", fit="cover").data)
+    top = _open(
+        compose(source, has_alpha=False, fmt="png", fit="cover", anchor="top").data
+    )
+    assert _rgb(center, (800, 5)) == (255, 0, 0)
+    assert _rgb(center, (800, 1995)) == (0, 0, 255)
+    assert _rgb(top, (800, 5)) == (255, 0, 0)
+    assert _rgb(top, (800, 1995)) == (255, 0, 0)
+
+
+def test_unknown_fit_or_anchor_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        compose(_two_tone(10, 10), has_alpha=False, fit="stretch")
+    with pytest.raises(ValueError):
+        compose(_two_tone(10, 10), has_alpha=False, anchor="bottom")

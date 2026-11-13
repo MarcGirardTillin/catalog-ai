@@ -2926,6 +2926,14 @@ export type NormalizeOptions = {
      * Max Kb
      */
     max_kb?: number;
+    /**
+     * Fit
+     */
+    fit?: 'contain' | 'cover';
+    /**
+     * Anchor
+     */
+    anchor?: 'center' | 'top';
 };
 
 /**

@@ -208,6 +208,22 @@ def _resolve_classification(ctx: ToolContext, group: str, label: str, name: str)
     raise ToolError(f"Plusieurs {label}s correspondent à « {name} » : {names}.")
 
 
+def _studio_originals(ctx: ToolContext) -> dict[int, str]:
+    """Image Tillin issue d'un enregistrement Studio -> URL de l'image
+    d'ORIGINE (désactivée dans Tillin au remplacement, toujours lisible)."""
+    query = select(ImageAsset.tillin_image_ids_json, ImageAsset.source_image).where(
+        ImageAsset.account_id == ctx.account_id,
+        ImageAsset.tillin_image_ids_json.is_not(None),
+        ImageAsset.source_image.is_not(None),
+    )
+    originals: dict[int, str] = {}
+    for image_ids, source in ctx.db.execute(query).all():
+        for image_id in image_ids or []:
+            if image_id is not None and source:
+                originals[int(image_id)] = str(source)
+    return originals
+
+
 def _studio_processed(
     ctx: ToolContext, product_id: int | None = None
 ) -> dict[int, Any]:
@@ -714,12 +730,18 @@ def _studio_targets(
     product_ids: list[int],
     image_ids: list[int] | None,
     skip_processed: bool,
+    from_original: bool = False,
 ) -> dict[str, Any]:
-    """Images à traiter (produit, image, URL, position) + exclusions."""
+    """Images à traiter (produit, image, URL, position) + exclusions.
+
+    `from_original` : une image déjà issue du Studio est retraitée depuis son
+    image d'ORIGINE (pas depuis la version traitée, qui a peut-être déjà des
+    bandes) ; l'application remplacera la version traitée actuelle."""
     ids = list(dict.fromkeys(product_ids))
     with ThreadPoolExecutor(max_workers=_STUDIO_FETCH_WORKERS) as pool:
         products = list(pool.map(ctx.xano.get_product, ids))
-    processed = _studio_processed(ctx) if skip_processed else {}
+    originals = _studio_originals(ctx) if from_original else {}
+    processed = _studio_processed(ctx) if skip_processed and not from_original else {}
     wanted = set(image_ids or [])
     seen: set[int] = set()
     targets: list[dict[str, Any]] = []
@@ -737,8 +759,9 @@ def _studio_targets(
             entry = {
                 "product_id": pid,
                 "image_id": image.id,
-                "url": image.url,
+                "url": originals.get(image.id, image.url),
                 "position": image.position,
+                "from_original": image.id in originals,
             }
             if image.id in processed:
                 already.append(entry)
@@ -816,7 +839,10 @@ async def studio_process_images(
                 "Studio du compte. remove_bg (détourage), bg_color (hex, ex. "
                 "e4e4e4), ratio (4:5, 1:1, 3:4, 16:9, original), center, "
                 "margin_percent (0-45), format (webp, jpeg, png), quality "
-                "(1-100), max_kb (poids max du fichier)"
+                "(1-100), max_kb (poids max du fichier), fit (contain = produit "
+                "entier, bandes de fond possibles ; cover = cadre rempli, "
+                "excédent rogné, aucune bande), anchor (center ; top = garder le "
+                "haut de l'image)"
             )
         ),
     ] = None,
@@ -824,20 +850,35 @@ async def studio_process_images(
         bool,
         Field(description="true = ignorer les images déjà issues du Studio"),
     ] = True,
+    from_original: Annotated[
+        bool,
+        Field(
+            description=(
+                "true = une image déjà issue du Studio est retraitée depuis son "
+                "image d'origine (désactivée dans Tillin), pas depuis la version "
+                "traitée ; skip_processed est alors ignoré"
+            )
+        ),
+    ] = False,
     dry_run: Annotated[
         bool,
         Field(description="true = compter images et crédits sans rien lancer"),
     ] = False,
 ) -> dict[str, Any]:
     """Traitement d'image de base du Studio (détourage, fond, ratio, marges,
-    centrage, format, qualité, poids) sur les images de fiches produits. Les
-    résultats restent EN ATTENTE : rien n'est écrit dans Tillin. dry_run=true
-    donne le nombre d'images et de crédits sans rien lancer. Sinon renvoie un
-    job_id : suivez-le avec catalogai_get_studio_job, puis appliquez avec
-    catalogai_apply_studio_result."""
+    centrage, cadrage cover/contain, ancrage, format, qualité, poids) sur les
+    images de fiches produits. Recadrage cover 4:5 ancré en haut, sans bandes :
+    settings {ratio: "4:5", fit: "cover", anchor: "top", remove_bg: false} ;
+    from_original=true pour repartir de l'image d'origine d'une image déjà
+    traitée. Les résultats restent EN ATTENTE : rien n'est écrit dans Tillin.
+    dry_run=true donne le nombre d'images et de crédits sans rien lancer.
+    Sinon renvoie un job_id : suivez-le avec catalogai_get_studio_job, puis
+    appliquez avec catalogai_apply_studio_result."""
 
     def work(ctx: ToolContext) -> dict[str, Any]:
-        found = _studio_targets(ctx, product_ids, image_ids, skip_processed)
+        found = _studio_targets(
+            ctx, product_ids, image_ids, skip_processed, from_original
+        )
         targets = found["targets"]
         options = merged_normalize_options(ctx.db, ctx.account_id, settings)
         unit_cost = credit_grid(ctx.db, ctx.account_id)["image_process"]
@@ -847,6 +888,7 @@ async def studio_process_images(
             "estimated_credits": len(targets) * unit_cost,
             "credits_balance": balance,
             "skipped_already_processed": len(found["already_processed"]),
+            "from_original": sum(1 for t in targets if t["from_original"]),
             "products_not_found": found["missing"],
             "settings": options.model_dump(),
         }

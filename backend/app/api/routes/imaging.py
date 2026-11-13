@@ -217,6 +217,8 @@ def render_asset(
         fmt=str(options["format"]),
         quality=int(options["quality"]),
         max_kb=int(options["max_kb"]),
+        fit=str(stored.get("fit", "contain")),
+        anchor=str(stored.get("anchor", "center")),
         crop_box=(
             (body.crop.x, body.crop.y, body.crop.width, body.crop.height)
             if body.crop is not None
@@ -306,6 +308,8 @@ def finalize_asset(
         fmt="png",
         quality=100,
         max_kb=None,
+        fit=str(stored.get("fit", "contain")),
+        anchor=str(stored.get("anchor", "center")),
         crop_box=(
             (crop["x"], crop["y"], crop["width"], crop["height"])
             if isinstance(crop, dict)
